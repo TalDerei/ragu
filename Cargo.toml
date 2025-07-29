@@ -1,21 +1,8 @@
-[package]
-name = "ragu"
-version = "0.0.0"
-authors = ["Sean Bowe <ewillbefull@gmail.com>"]
-description = """
-WIP
-"""
-license = "MIT OR Apache-2.0"
-edition = "2024"
-rust-version = "1.85"
+[workspace]
+members = [
+    "crates/ragu",
+]
 
-readme = "README.md"
-repository = "https://github.com/ebfull/ragu"
-documentation = "https://docs.rs/ragu"
-categories = []
-keywords = []
+resolver = "2"
 
-[features]
-default = []
-
-[dependencies]
+[workspace.dependencies]
