@@ -2,16 +2,10 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
     AngleBracketedGenericArguments, Data, DeriveInput, Error, Fields, GenericArgument,
-    GenericParam, Generics, Ident, Lifetime, PathArguments, Result, Type, TypeParam,
-    TypeParamBound, parse_quote, spanned::Spanned,
+    GenericParam, Generics, Ident, Lifetime, Result, Type, parse_quote, spanned::Spanned,
 };
 
 use crate::helpers::*;
-
-struct GenericDriver {
-    ident: Ident,
-    lifetime: Lifetime,
-}
 
 impl GenericDriver {
     fn gadget_params(&self) -> AngleBracketedGenericArguments {
@@ -88,15 +82,6 @@ impl GenericDriver {
             })
             .collect::<Vec<GenericArgument>>();
         parse_quote!( < #( #args ),* > )
-    }
-}
-
-impl Default for GenericDriver {
-    fn default() -> Self {
-        Self {
-            ident: format_ident!("D"),
-            lifetime: Lifetime::new("'dr", Span::call_site()),
-        }
     }
 }
 
@@ -526,44 +511,6 @@ fn test_gadget_derive() {
 
         ).to_string()
     );
-}
-
-/// Extracts the identifiers D and 'dr from a TypeParam of the form `D: path::to::Driver<'dr>`.
-fn extract_generic_driver(param: &TypeParam) -> Result<GenericDriver> {
-    for bound in &param.bounds {
-        if let TypeParamBound::Trait(bound) = bound {
-            if let Some(seg) = bound.path.segments.last() {
-                if seg.ident != "Driver" {
-                    continue;
-                }
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    let lifetimes = args
-                        .args
-                        .iter()
-                        .filter_map(|arg| {
-                            if let GenericArgument::Lifetime(lt) = arg {
-                                Some(lt.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    if lifetimes.len() == 1 {
-                        return Ok(GenericDriver {
-                            ident: param.ident.clone(),
-                            lifetime: lifetimes[0].clone(),
-                        });
-                    } else {
-                        return Err(Error::new(args.span(), "expected a single lifetime bound"));
-                    }
-                } else {
-                    return Err(Error::new(seg.ident.span(), "expected a lifetime bound"));
-                }
-            }
-        }
-    }
-
-    Err(Error::new(param.span(), "expected a Driver<'dr> bound"))
 }
 
 #[test]

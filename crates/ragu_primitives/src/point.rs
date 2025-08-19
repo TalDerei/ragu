@@ -9,19 +9,17 @@ use ragu_core::{
 
 use core::marker::PhantomData;
 
-use crate::{
-    Boolean, Element,
-    serialize::{Buffer, GadgetSerialize},
-};
+use crate::{Boolean, Element, serialize::GadgetSerialize};
 
 /// Represents an affine point on a curve defined over the circuit's field.
-#[derive(Gadget)]
+#[derive(Gadget, GadgetSerialize)]
 pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine> {
     #[ragu(gadget)]
     x: Element<'dr, D>,
     #[ragu(gadget)]
     y: Element<'dr, D>,
     #[ragu(phantom)]
+    #[ragu(skip)]
     _marker: PhantomData<C>,
 }
 
@@ -185,14 +183,6 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
             y: y_s,
             _marker: PhantomData,
         })
-    }
-}
-
-impl<'dr, D: Driver<'dr>, C: CurveAffine> GadgetSerialize<'dr, D> for Point<'dr, D, C> {
-    fn serialize<B: Buffer<'dr, D>>(&self, dr: &mut D, buf: &mut B) -> Result<()> {
-        self.x.serialize(dr, buf)?;
-        self.y.serialize(dr, buf)?;
-        Ok(())
     }
 }
 

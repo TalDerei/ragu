@@ -1,7 +1,8 @@
-use proc_macro2::TokenTree;
+use proc_macro2::{Span, TokenTree};
+use quote::format_ident;
 use syn::{
-    Attribute, GenericArgument, GenericParam, Ident, Meta, PathArguments, Type, TypeParam,
-    TypeParamBound, TypePath, parse_quote,
+    Attribute, Error, GenericArgument, GenericParam, Ident, Lifetime, Meta, PathArguments, Result,
+    Type, TypeParam, TypeParamBound, TypePath, parse_quote, spanned::Spanned,
 };
 
 pub fn attr_is(attr: &Attribute, needle: &str) -> bool {
@@ -32,6 +33,58 @@ fn test_attr_is() {
 
     let attr: Attribute = parse_quote!(#[not_ragu(driver)]);
     assert!(!attr_is(&attr, "driver"));
+}
+
+pub struct GenericDriver {
+    pub ident: Ident,
+    pub lifetime: Lifetime,
+}
+
+impl Default for GenericDriver {
+    fn default() -> Self {
+        Self {
+            ident: format_ident!("D"),
+            lifetime: Lifetime::new("'dr", Span::call_site()),
+        }
+    }
+}
+
+/// Extracts the identifiers D and 'dr from a TypeParam of the form `D: path::to::Driver<'dr>`.
+pub fn extract_generic_driver(param: &TypeParam) -> Result<GenericDriver> {
+    for bound in &param.bounds {
+        if let TypeParamBound::Trait(bound) = bound {
+            if let Some(seg) = bound.path.segments.last() {
+                if seg.ident != "Driver" {
+                    continue;
+                }
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    let lifetimes = args
+                        .args
+                        .iter()
+                        .filter_map(|arg| {
+                            if let GenericArgument::Lifetime(lt) = arg {
+                                Some(lt.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    if lifetimes.len() == 1 {
+                        return Ok(GenericDriver {
+                            ident: param.ident.clone(),
+                            lifetime: lifetimes[0].clone(),
+                        });
+                    } else {
+                        return Err(Error::new(args.span(), "expected a single lifetime bound"));
+                    }
+                } else {
+                    return Err(Error::new(seg.ident.span(), "expected a lifetime bound"));
+                }
+            }
+        }
+    }
+
+    Err(Error::new(param.span(), "expected a Driver<'dr> bound"))
 }
 
 pub trait Substitution {

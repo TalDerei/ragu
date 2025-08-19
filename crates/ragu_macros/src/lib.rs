@@ -14,6 +14,7 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, Error, LitInt, parse_macro_input};
 
 mod gadget;
+mod gadget_serialize;
 mod helpers;
 mod repr;
 
@@ -31,6 +32,15 @@ pub fn repr256(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Gadget, attributes(ragu))]
 pub fn derive_gadget(input: TokenStream) -> TokenStream {
     gadget::derive(parse_macro_input!(input as DeriveInput))
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+// Documentation for the `GadgetSerialize` derive macro is in `derive@ragu_primitives::serialize::GadgetSerialize`.
+#[allow(missing_docs)]
+#[proc_macro_derive(GadgetSerialize, attributes(ragu))]
+pub fn derive_gadget_serialize(input: TokenStream) -> TokenStream {
+    gadget_serialize::derive(parse_macro_input!(input as DeriveInput))
         .unwrap_or_else(Error::into_compile_error)
         .into()
 }

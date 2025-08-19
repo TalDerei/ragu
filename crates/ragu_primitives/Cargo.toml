@@ -29,6 +29,9 @@ arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_a
 ff = { workspace = true }
 ragu_core = { path = "../ragu_core", version = "0.0.0" }
 
+# Needed for the `GadgetSerialize` derive macro.
+ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
+
 [dev-dependencies]
 rand = { workspace = true }
 group = { workspace = true }

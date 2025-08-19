@@ -365,6 +365,7 @@ dependencies = [
  "group",
  "ragu_arithmetic",
  "ragu_core",
+ "ragu_macros",
  "ragu_pasta",
  "rand 0.8.5",
 ]
