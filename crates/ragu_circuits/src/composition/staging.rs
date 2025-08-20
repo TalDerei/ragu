@@ -1,4 +1,4 @@
-//! TODO(ebfull): Staging circuits.
+//! Staging traits and utilities for partial witness construction.
 
 use ff::Field;
 use ragu_core::Result;
@@ -10,11 +10,10 @@ use crate::{
     polynomials::{Rank, structured, unstructured},
 };
 
-/// Represents a particular stage of witness construction.
-pub trait StagingCircuit<F: Field, R: Rank> {
-    /// The parent stage for this stage. This is set to `() = Self` for the base
-    /// stage.
-    type Parent: StagingCircuit<F, R>;
+/// Represents a particular stage of partial witness construction.
+pub trait Stage<F: Field, R: Rank> {
+    /// The parent stage for this stage. This is set to `()` for the base stage.
+    type Parent: Stage<F, R>;
 
     /// Returns the number of values that are allocated in a stage.
     fn values() -> usize;
@@ -54,11 +53,9 @@ pub trait StagingCircuit<F: Field, R: Rank> {
             for _ in 0..Self::size() {
                 let a = values.next().unwrap_or(F::ZERO);
                 let b = values.next().unwrap_or(F::ZERO);
-                let c = a * b;
-                // ONE
                 rx.a.push(a);
                 rx.b.push(b);
-                rx.c.push(c);
+                rx.c.push(a * b);
             }
 
             assert!(
@@ -76,11 +73,11 @@ pub trait StagingCircuit<F: Field, R: Rank> {
     /// have a `ONE` wire and are used solely for partial witness commitments.
     /// As a result, they must be computed differently.
     fn into_object<'a>() -> Result<Box<dyn CircuitObject<F, R> + 'a>> {
-        Ok(Box::new(StagingObject::new(Self::skip(), Self::size())?))
+        Ok(Box::new(StageObject::new(Self::skip(), Self::size())?))
     }
 }
 
-impl<F: Field, R: Rank> StagingCircuit<F, R> for () {
+impl<F: Field, R: Rank> Stage<F, R> for () {
     type Parent = ();
 
     fn values() -> usize {
@@ -93,13 +90,13 @@ impl<F: Field, R: Rank> StagingCircuit<F, R> for () {
 }
 
 #[derive(Clone)]
-struct StagingObject<R: Rank> {
+struct StageObject<R: Rank> {
     skip: usize,
     size: usize,
     _marker: core::marker::PhantomData<R>,
 }
 
-impl<R: Rank> StagingObject<R> {
+impl<R: Rank> StageObject<R> {
     /// Creates a new staging circuit polynomial with the given `skip` and
     /// `size` values. Witnesses that satisfy this circuit will have all
     /// non-`ONE` multiplication gate wires enforced to equal zero except
@@ -117,9 +114,9 @@ impl<R: Rank> StagingObject<R> {
     }
 }
 
-impl<F: Field, R: Rank> CircuitObject<F, R> for StagingObject<R> {
+impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
     fn sxy(&self, x: F, y: F) -> F {
-        // Bound is enforced in `StagingObject::new`.
+        // Bound is enforced in `StageObject::new`.
         assert!(self.skip + self.size < R::n());
         let reserved: usize = R::n() - self.skip - self.size - 1;
 
@@ -154,7 +151,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StagingObject<R> {
     }
 
     fn sx(&self, x: F) -> unstructured::Polynomial<F, R> {
-        // Bound is enforced in `StagingObject::new`.
+        // Bound is enforced in `StageObject::new`.
         assert!(self.skip + self.size < R::n());
         let reserved: usize = R::n() - self.skip - self.size - 1;
 
@@ -206,7 +203,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StagingObject<R> {
     }
 
     fn sy(&self, y: F) -> structured::Polynomial<F, R> {
-        // Bound is enforced in `StagingObject::new`.
+        // Bound is enforced in `StageObject::new`.
         assert!(self.skip + self.size < R::n());
         let reserved: usize = R::n() - self.skip - self.size - 1;
 
@@ -266,9 +263,9 @@ mod tests {
 
     use crate::{CircuitExt, CircuitObject, polynomials::Rank};
 
-    use super::{StagingCircuit, StagingObject};
+    use super::{Stage, StageObject};
 
-    impl<F: Field, R: Rank> crate::Circuit<F> for StagingObject<R> {
+    impl<F: Field, R: Rank> crate::Circuit<F> for StageObject<R> {
         type Instance<'source> = ();
         type Witness<'source> = ();
         type Output<'dr, D: Driver<'dr, F = F>> = ();
@@ -322,7 +319,7 @@ mod tests {
         struct MyStage1;
         struct MyStage2;
 
-        impl StagingCircuit<Fp, R> for MyStage1 {
+        impl Stage<Fp, R> for MyStage1 {
             type Parent = ();
 
             fn values() -> usize {
@@ -330,7 +327,7 @@ mod tests {
             }
         }
 
-        impl StagingCircuit<Fp, R> for MyStage2 {
+        impl Stage<Fp, R> for MyStage2 {
             type Parent = MyStage1;
 
             fn values() -> usize {
@@ -376,8 +373,8 @@ mod tests {
         fn test_exy_proptest(skip in 0..R::n(), num in 0..R::n()) {
             prop_assume!(skip + 1 + num <= R::n());
 
-            let staging_object = StagingObject::<R>::new(skip, num).unwrap();
-            let comparison_object = staging_object.clone().into_object::<R>().unwrap();
+            let stage_object = StageObject::<R>::new(skip, num).unwrap();
+            let comparison_object = stage_object.clone().into_object::<R>().unwrap();
 
             let check = |x: Fp, y: Fp| {
                 let xn_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
@@ -397,9 +394,9 @@ mod tests {
 
                 prop_assert_eq!(sy.eval(x), sxy);
                 prop_assert_eq!(sx.eval(y), sxy);
-                prop_assert_eq!(staging_object.sxy(x, y), sxy);
-                prop_assert_eq!(staging_object.sx(x).eval(y), sxy);
-                prop_assert_eq!(staging_object.sy(y).eval(x), sxy);
+                prop_assert_eq!(stage_object.sxy(x, y), sxy);
+                prop_assert_eq!(stage_object.sx(x).eval(y), sxy);
+                prop_assert_eq!(stage_object.sy(y).eval(x), sxy);
 
                 Ok(())
             };
