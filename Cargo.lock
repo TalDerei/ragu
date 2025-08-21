@@ -338,6 +338,7 @@ dependencies = [
  "ff",
  "pasta_curves",
  "ragu_macros",
+ "rand 0.8.5",
 ]
 
 [[package]]
