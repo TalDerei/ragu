@@ -13,7 +13,7 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
-use arithmetic::{CurveAffine, u136};
+use arithmetic::{CurveAffine, Uendo};
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use ragu_core::{
     Result,
@@ -34,23 +34,23 @@ use crate::{
 #[derive(Gadget)]
 pub struct Endoscalar<'dr, D: Driver<'dr>> {
     #[ragu(gadget)]
-    bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ u136::BITS as usize }>>,
+    bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ Uendo::BITS as usize }>>,
     #[ragu(witness)]
-    value: Witness<D, u136>,
+    value: Witness<D, Uendo>,
 }
 
 impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
-    /// Allocate an endoscalar with the provided `u136` value.
-    pub fn alloc(dr: &mut D, value: Witness<D, u136>) -> Result<Self> {
-        // Convert the provided u136 into a little-endian representation of its
+    /// Allocate an endoscalar with the provided `Uendo` value.
+    pub fn alloc(dr: &mut D, value: Witness<D, Uendo>) -> Result<Self> {
+        // Convert the provided Uendo into a little-endian representation of its
         // bits.
-        let mut bits = Vec::with_capacity(u136::BITS as usize);
-        for i in 0..(u136::BITS as usize) {
+        let mut bits = Vec::with_capacity(Uendo::BITS as usize);
+        for i in 0..(Uendo::BITS as usize) {
             let bit = Boolean::alloc(
                 dr,
                 value
                     .view()
-                    .map(|v| (*v >> i) & u136::from(1u64) == u136::from(1u64)),
+                    .map(|v| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64)),
             )?;
             bits.push(Demoted::new(&bit));
         }
@@ -64,8 +64,8 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// Returns an iterator over the bits in this endoscalar, little endian order.
     pub fn bits(&self) -> impl Iterator<Item = Boolean<'dr, D>> {
         let mut bits = self.value.view().map(|v| {
-            (0..(u136::BITS as usize))
-                .map(move |i| (*v >> i) & u136::from(1u64) == u136::from(1u64))
+            (0..(Uendo::BITS as usize))
+                .map(move |i| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64))
         });
 
         self.bits.iter().map(move |demoted_bit| {
@@ -78,8 +78,8 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     where
         D::F: WithSmallOrderMulGroup<3>,
     {
-        let mut bits = Vec::with_capacity(u136::BITS as usize);
-        let mut value = D::just(|| u136::from(0u64));
+        let mut bits = Vec::with_capacity(Uendo::BITS as usize);
+        let mut value = D::just(|| Uendo::from(0u64));
         let mut constant = D::F::ZERO;
 
         let mut coeff_0 = D::F::ZERO;
@@ -87,7 +87,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let coeff_2 = D::F::MULTIPLICATIVE_GENERATOR;
         let coeff_3 = D::F::ONE - D::F::MULTIPLICATIVE_GENERATOR;
 
-        for i in 0..(u136::BITS as usize) {
+        for i in 0..(Uendo::BITS as usize) {
             let (sqrt, bit) = D::with(|| {
                 let value = *elem.value().take() + constant;
 
@@ -105,7 +105,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
 
             value.view_mut().map(|v| {
                 if *bit.snag() {
-                    *v |= u136::from(1u64) << i
+                    *v |= Uendo::from(1u64) << i
                 }
             });
 
@@ -154,7 +154,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let mut acc = p.endo(dr)?.add_incomplete(dr, p)?.double(dr)?;
         let mut bits = self.bits();
 
-        for _ in 0..(u136::BITS as usize / 2) {
+        for _ in 0..(Uendo::BITS as usize / 2) {
             let negate_bit = bits.next().unwrap();
             let endo_bit = bits.next().unwrap();
 
@@ -182,7 +182,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let mut acc = Element::zero(dr);
         let mut bits = self.bits();
 
-        for _ in 0..(u136::BITS as usize / 2) {
+        for _ in 0..(Uendo::BITS as usize / 2) {
             let n = bits.next().unwrap();
             let e = bits.next().unwrap();
             let ne = n.and(dr, &e)?;
@@ -210,7 +210,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
 #[cfg(test)]
 mod tests {
     use super::{Element, Endoscalar, Maybe, Point};
-    use arithmetic::{CurveAffine, CurveExt, u136};
+    use arithmetic::{CurveAffine, CurveExt, Uendo};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_core::{Result, drivers::Simulator};
@@ -218,7 +218,7 @@ mod tests {
     use rand::{Rng, thread_rng};
 
     pub struct EndoscalarTest {
-        pub value: u136,
+        pub value: Uendo,
     }
 
     impl EndoscalarTest {
@@ -226,12 +226,12 @@ mod tests {
         pub fn scale<C: CurveAffine>(&self, p: &C) -> C {
             let p = p.to_curve();
             let mut acc = (p.endo() + p).double();
-            for bits in (0..(u136::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
+            for bits in (0..(Uendo::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
                 let mut s = p;
-                if bits & u136::from(0b01u64) != u136::from(0u64) {
+                if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
                     s = -s;
                 }
-                if bits & u136::from(0b10u64) != u136::from(0u64) {
+                if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
                     s = s.endo();
                 }
 
@@ -243,12 +243,12 @@ mod tests {
         /// Implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021).
         pub fn compute_scalar<F: WithSmallOrderMulGroup<3>>(&self) -> F {
             let mut acc = (F::ZETA + F::ONE).double();
-            for bits in (0..(u136::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
+            for bits in (0..(Uendo::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
                 let mut tmp = F::ONE;
-                if bits & u136::from(0b01u64) != u136::from(0u64) {
+                if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
                     tmp = -tmp;
                 }
-                if bits & u136::from(0b10u64) != u136::from(0u64) {
+                if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
                     tmp = tmp * F::ZETA;
                 }
                 acc = acc.double() + tmp;
@@ -265,12 +265,12 @@ mod tests {
         // constant is a quadratic residue. This can be tested easily in the
         // circuit.
 
-        let mut endoscalar = u136::from(0u64);
+        let mut endoscalar = Uendo::from(0u64);
 
-        for i in (0..u136::BITS).rev() {
+        for i in (0..Uendo::BITS).rev() {
             endoscalar <<= 1;
             if (value + F::from(i as u64)).sqrt().into_option().is_some() {
-                endoscalar |= u136::from(1u64);
+                endoscalar |= Uendo::from(1u64);
             }
         }
 
@@ -284,7 +284,7 @@ mod tests {
 
         let p = EpAffine::generator();
         let e = EndoscalarTest {
-            value: u136::from(206786806484900909362154774549736492353u128),
+            value: Uendo::from(206786806484900909362154774549736492353u128),
         };
         let scaled = e.scale(&p);
         let expected: EpAffine = (p * e.compute_scalar::<Fq>()).into();
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn test_endoscaling() -> Result<()> {
         let p = EpAffine::generator();
-        let r: u136 = thread_rng().r#gen();
+        let r: Uendo = thread_rng().r#gen();
         let expected = EndoscalarTest { value: r }.scale(&p);
 
         Simulator::simulate((p, r), |dr, witness| {
@@ -332,7 +332,7 @@ mod tests {
             assert_eq!(r.group_scale(dr, &p)?.value().take(), expected);
             assert_eq!(
                 dr.num_multiplications(),
-                7 * (1 + (u136::BITS as usize / 2))
+                7 * (1 + (Uendo::BITS as usize / 2))
             );
 
             Ok(())
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_endopacking() -> Result<()> {
-        let r: u136 = thread_rng().r#gen();
+        let r: Uendo = thread_rng().r#gen();
         let expected: Fp = EndoscalarTest { value: r }.compute_scalar();
 
         Simulator::<Fp>::simulate(r, |dr, witness| {

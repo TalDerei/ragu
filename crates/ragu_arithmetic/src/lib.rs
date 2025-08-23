@@ -81,14 +81,14 @@ pub use ragu_macros::repr256;
 
 mod domain;
 mod fft;
-mod uint136;
+mod uendo;
 mod util;
 
 pub use domain::Domain;
 pub use fft::Ring;
 pub use util::{dot, eval, factor, factor_iter, geosum, mul};
 
-pub use uint136::u136;
+pub use uendo::Uendo;
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
 /// is the base field of the other, and vice-versa.

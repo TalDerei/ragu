@@ -30,23 +30,22 @@ const _ASSERT_CORRECT_BITS_VALUE: () = {
 
 /// Integer type used as a random challenge in Ragu's protocols.
 #[derive(Copy, Clone, Default)]
-#[allow(non_camel_case_types)]
-pub struct u136 {
+pub struct Uendo {
     // LSB-first ordering: limbs[0] is least significant
     limbs: [u64; LIMBS],
 }
 
-impl rand::distributions::Distribution<u136> for rand::distributions::Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> u136 {
+impl rand::distributions::Distribution<Uendo> for rand::distributions::Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Uendo {
         let mut limbs = [0; LIMBS];
         for limb in &mut limbs {
             *limb = rng.r#gen();
         }
-        u136 { limbs }.normalized()
+        Uendo { limbs }.normalized()
     }
 }
 
-impl u136 {
+impl Uendo {
     /// The size of this integer type in bits
     pub const BITS: u32 = BITS as u32;
 
@@ -87,27 +86,27 @@ impl u136 {
     }
 }
 
-impl From<u64> for u136 {
+impl From<u64> for Uendo {
     fn from(value: u64) -> Self {
         Self::from_u64(value)
     }
 }
 
-impl From<u128> for u136 {
+impl From<u128> for Uendo {
     fn from(value: u128) -> Self {
         Self::from_u128(value)
     }
 }
 
-impl PartialEq for u136 {
+impl PartialEq for Uendo {
     fn eq(&self, other: &Self) -> bool {
         self.limbs == other.limbs
     }
 }
 
-impl Eq for u136 {}
+impl Eq for Uendo {}
 
-impl BitAnd for u136 {
+impl BitAnd for Uendo {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
@@ -119,7 +118,7 @@ impl BitAnd for u136 {
     }
 }
 
-impl BitOr for u136 {
+impl BitOr for Uendo {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -131,7 +130,7 @@ impl BitOr for u136 {
     }
 }
 
-impl BitOrAssign for u136 {
+impl BitOrAssign for Uendo {
     fn bitor_assign(&mut self, rhs: Self) {
         for i in 0..LIMBS {
             self.limbs[i] |= rhs.limbs[i];
@@ -139,7 +138,7 @@ impl BitOrAssign for u136 {
     }
 }
 
-impl Shl<usize> for u136 {
+impl Shl<usize> for Uendo {
     type Output = Self;
 
     fn shl(self, rhs: usize) -> Self::Output {
@@ -165,13 +164,13 @@ impl Shl<usize> for u136 {
     }
 }
 
-impl ShlAssign<usize> for u136 {
+impl ShlAssign<usize> for Uendo {
     fn shl_assign(&mut self, rhs: usize) {
         *self = *self << rhs;
     }
 }
 
-impl Shr<usize> for u136 {
+impl Shr<usize> for Uendo {
     type Output = Self;
 
     fn shr(self, rhs: usize) -> Self::Output {
@@ -197,9 +196,9 @@ impl Shr<usize> for u136 {
     }
 }
 
-impl Debug for u136 {
+impl Debug for Uendo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "u136(0x")?;
+        write!(f, "Uendo(0x")?;
         for i in (0..LIMBS).rev() {
             write!(f, "{:016x}", self.limbs[i])?;
         }
