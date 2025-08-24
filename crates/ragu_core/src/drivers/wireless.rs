@@ -51,5 +51,7 @@ impl<M: MaybeKind, F: Field> Default for Wireless<M, F> {
 impl<'dr, 'new_dr, D: Driver<'dr>> FromDriver<'dr, 'new_dr, D> for Wireless<D::MaybeKind, D::F> {
     type NewDriver = Self;
 
-    fn convert_wire(&mut self, _: &D::Wire) -> <Self::NewDriver as Driver<'new_dr>>::Wire {}
+    fn convert_wire(&mut self, _: &D::Wire) -> Result<<Self::NewDriver as Driver<'new_dr>>::Wire> {
+        Ok(())
+    }
 }

@@ -264,10 +264,10 @@ pub fn derive(input: DeriveInput, ragu_core_path: Path) -> Result<TokenStream> {
                 }
             },
             FieldType::Wire => {
-                quote! { #ragu_core_path::drivers::FromDriver::convert_wire(ndr, &this.#id) }
+                quote! { #ragu_core_path::drivers::FromDriver::convert_wire(ndr, &this.#id)? }
             }
             FieldType::Gadget => {
-                quote! { #ragu_core_path::gadgets::Gadget::map_gadget(&this.#id, ndr) }
+                quote! { #ragu_core_path::gadgets::Gadget::map_gadget(&this.#id, ndr)? }
             }
             FieldType::Phantom => quote! { ::core::marker::PhantomData },
         };
@@ -285,12 +285,12 @@ pub fn derive(input: DeriveInput, ragu_core_path: Path) -> Result<TokenStream> {
                 fn map<#driver_lifetime, 'new_dr, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, ND: #ragu_core_path::drivers::FromDriver<#driver_lifetime, 'new_dr, #driver_ident>>(
                     this: &Self::Rebind<#driver_lifetime, #driver_ident>,
                     ndr: &mut ND,
-                ) -> Self::Rebind<'new_dr, ND::NewDriver> {
+                ) -> #ragu_core_path::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
                     fn is_send<T: Send>(_: &T) { }
 
-                    #struct_ident {
+                    Ok(#struct_ident {
                         #( #gadget_impl_inits, )*
-                    }
+                    })
                 }
             }
         }
@@ -426,11 +426,11 @@ fn test_gadget_derive_boolean_customdriver() {
                 fn map<'my_dr, 'new_dr, MyD: ::ragu::drivers::Driver<'my_dr, F = DriverField>, ND: ::ragu::drivers::FromDriver<'my_dr, 'new_dr, MyD>>(
                     this: &Self::Rebind<'my_dr, MyD>,
                     ndr: &mut ND,
-                ) -> Self::Rebind<'new_dr, ND::NewDriver> {
+                ) -> ::ragu::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
                     fn is_send<T: Send>(_: &T) { }
 
-                    Boolean {
-                        wire: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire),
+                    Ok(Boolean {
+                        wire: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire)?,
                         value: {
                             use ::ragu::maybe::Maybe;
 
@@ -438,7 +438,7 @@ fn test_gadget_derive_boolean_customdriver() {
                             is_send(&tmp);
                             tmp
                         },
-                    }
+                    })
                 }
             }
         ).to_string()
@@ -498,10 +498,10 @@ fn test_gadget_derive() {
                 fn map<'mydr, 'new_dr, MyD: ::ragu::drivers::Driver<'mydr, F = DriverField>, ND: ::ragu::drivers::FromDriver<'mydr, 'new_dr, MyD>>(
                     this: &Self::Rebind<'mydr, MyD>,
                     ndr: &mut ND,
-                ) -> Self::Rebind<'new_dr, ND::NewDriver> {
+                ) -> ::ragu::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
                     fn is_send<T: Send>(_: &T) { }
 
-                    MyGadget {
+                    Ok(MyGadget {
                         witness_field: {
                             use ::ragu::maybe::Maybe;
 
@@ -509,10 +509,10 @@ fn test_gadget_derive() {
                             is_send(&tmp);
                             tmp
                         },
-                        wire_field: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire_field),
-                        map_field: ::ragu::gadgets::Gadget::map_gadget(&this.map_field, ndr),
+                        wire_field: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire_field)?,
+                        map_field: ::ragu::gadgets::Gadget::map_gadget(&this.map_field, ndr)?,
                         phantom_field: ::core::marker::PhantomData,
-                    }
+                    })
                 }
             }
 

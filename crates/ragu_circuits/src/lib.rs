@@ -29,6 +29,7 @@ mod metrics;
 pub mod polynomials;
 mod rx;
 mod s;
+pub mod staging;
 
 #[cfg(test)]
 mod tests;

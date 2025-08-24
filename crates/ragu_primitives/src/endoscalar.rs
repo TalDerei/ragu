@@ -52,7 +52,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                     .view()
                     .map(|v| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64)),
             )?;
-            bits.push(Demoted::new(&bit));
+            bits.push(Demoted::new(&bit)?);
         }
 
         Ok(Endoscalar {
@@ -133,7 +133,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                     .sub(square.wire())
             })?;
 
-            bits.push(Demoted::new(&bit));
+            bits.push(Demoted::new(&bit)?);
             constant += D::F::ONE;
             coeff_0 += coeff_2;
             coeff_1 += coeff_3;

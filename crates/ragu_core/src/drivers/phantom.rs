@@ -35,5 +35,7 @@ impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
 impl<'dr, 'new_dr, D: Driver<'dr>> FromDriver<'dr, 'new_dr, D> for core::marker::PhantomData<D::F> {
     type NewDriver = Self;
 
-    fn convert_wire(&mut self, _: &D::Wire) -> <Self::NewDriver as Driver<'new_dr>>::Wire {}
+    fn convert_wire(&mut self, _: &D::Wire) -> Result<<Self::NewDriver as Driver<'new_dr>>::Wire> {
+        Ok(())
+    }
 }

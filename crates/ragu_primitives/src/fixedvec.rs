@@ -145,11 +145,12 @@ unsafe impl<F: Field, G: GadgetKind<F>, L: Len> GadgetKind<F> for FixedVec<Phant
     fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
         this: &Self::Rebind<'dr, D>,
         ndr: &mut ND,
-    ) -> Self::Rebind<'new_dr, ND::NewDriver> {
+    ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
         assert_eq!(this.len(), L::len());
-        FixedVec {
-            v: this.iter().map(|g| G::map(g, ndr)).collect(),
+        let v: Result<_> = this.iter().map(|g| G::map(g, ndr)).collect();
+        Ok(FixedVec {
+            v: v?,
             _marker: PhantomData,
-        }
+        })
     }
 }

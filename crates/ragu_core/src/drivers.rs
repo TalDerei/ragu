@@ -224,5 +224,8 @@ pub trait FromDriver<'dr, 'new_dr, D: Driver<'dr>> {
 
     /// Converts a wire from `D` to the new driver's wire type, based on
     /// contextual information.
-    fn convert_wire(&mut self, wire: &D::Wire) -> <Self::NewDriver as Driver<'new_dr>>::Wire;
+    fn convert_wire(
+        &mut self,
+        wire: &D::Wire,
+    ) -> Result<<Self::NewDriver as Driver<'new_dr>>::Wire>;
 }

@@ -1,114 +1,36 @@
-//! Staging traits and utilities for partial witness construction.
-
 use ff::Field;
 use ragu_core::Result;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
     CircuitObject,
     polynomials::{Rank, structured, unstructured},
 };
 
-/// Represents a particular stage of partial witness construction.
-pub trait Stage<F: Field, R: Rank> {
-    /// The parent stage for this stage. This is set to `()` for the base stage.
-    type Parent: Stage<F, R>;
-
-    /// Returns the number of values that are allocated in a stage.
-    fn values() -> usize;
-
-    /// Returns the number of multiplication gates used for allocations.
-    fn size() -> usize {
-        (Self::values() + 1) / 2
-    }
-
-    /// Returns the number of multiplication gates to skip before starting this
-    /// stage, not including the ONE gate which is skipped in all stages.
-    fn skip() -> usize {
-        Self::Parent::skip() + Self::Parent::size()
-    }
-
-    /// Computes the $r(X)$ polynomial for this stage, used as a component of a
-    /// larger $r(X)$ polynomial.
-    fn rx(values: &[F]) -> structured::Polynomial<F, R> {
-        assert_eq!(values.len(), Self::values());
-
-        let mut values = values.iter().cloned();
-        let mut rx = structured::Polynomial::new();
-        {
-            let rx = rx.forward();
-
-            // ONE is not set.
-            rx.a.push(F::ZERO);
-            rx.b.push(F::ZERO);
-            rx.c.push(F::ZERO);
-
-            for _ in 0..Self::skip() {
-                rx.a.push(F::ZERO);
-                rx.b.push(F::ZERO);
-                rx.c.push(F::ZERO);
-            }
-
-            for _ in 0..Self::size() {
-                let a = values.next().unwrap_or(F::ZERO);
-                let b = values.next().unwrap_or(F::ZERO);
-                rx.a.push(a);
-                rx.b.push(b);
-                rx.c.push(a * b);
-            }
-
-            assert!(
-                values.next().is_none(),
-                "staging circuit rx should consume all values"
-            );
-        }
-
-        rx
-    }
-
-    /// Converts this staging circuit into a circuit object.
-    ///
-    /// Staging circuits do not behave like normal circuits because they do not
-    /// have a `ONE` wire and are used solely for partial witness commitments.
-    /// As a result, they must be computed differently.
-    fn into_object<'a>() -> Result<Box<dyn CircuitObject<F, R> + 'a>> {
-        Ok(Box::new(StageObject::new(Self::skip(), Self::size())?))
-    }
-}
-
-impl<F: Field, R: Rank> Stage<F, R> for () {
-    type Parent = ();
-
-    fn values() -> usize {
-        0
-    }
-
-    fn skip() -> usize {
-        0
-    }
-}
-
 #[derive(Clone)]
-struct StageObject<R: Rank> {
-    skip: usize,
-    size: usize,
+pub struct StageObject<R: Rank> {
+    skip_multiplications: usize,
+    num_multiplications: usize,
     _marker: core::marker::PhantomData<R>,
 }
 
 impl<R: Rank> StageObject<R> {
-    /// Creates a new staging circuit polynomial with the given `skip` and
-    /// `size` values. Witnesses that satisfy this circuit will have all
-    /// non-`ONE` multiplication gate wires enforced to equal zero except
-    /// between the `skip..size` gates.
-    fn new(skip: usize, size: usize) -> Result<Self> {
-        if skip + size + 1 > R::n() {
+    /// Creates a new staging circuit polynomial with the given
+    /// `skip_multiplications` and `num_multiplications` values. Witnesses that
+    /// satisfy this circuit will have all non-`ONE` multiplication gate wires
+    /// enforced to equal zero except for the
+    /// `skip_multiplications..(skip_multiplications + num_multiplications)`
+    /// multiplication gates.
+    pub fn new(skip_multiplications: usize, num_multiplications: usize) -> Result<Self> {
+        if skip_multiplications + num_multiplications + 1 > R::n() {
             return Err(ragu_core::Error::MultiplicationBoundExceeded(R::n()));
         }
+        assert!(skip_multiplications + num_multiplications < R::n()); // Technically a redundant assertion.
 
         Ok(Self {
-            skip,
-            size,
+            skip_multiplications,
+            num_multiplications,
             _marker: core::marker::PhantomData,
         })
     }
@@ -117,13 +39,13 @@ impl<R: Rank> StageObject<R> {
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
     fn sxy(&self, x: F, y: F) -> F {
         // Bound is enforced in `StageObject::new`.
-        assert!(self.skip + self.size < R::n());
-        let reserved: usize = R::n() - self.skip - self.size - 1;
+        assert!(self.skip_multiplications + self.num_multiplications < R::n());
+        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
         if x == F::ZERO || y == F::ZERO {
             // If either x or y is zero, the polynomial evaluates to zero. This
             // is unlike standard circuits because the constant term is not used
-            // to store the `ONE` wire.
+            // to constrain the `ONE` wire.
             return F::ZERO;
         }
 
@@ -144,7 +66,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
             w * plus + v * minus + u * plus
         };
 
-        let c1 = block(self.skip - 1, self.skip);
+        let c1 = block(self.skip_multiplications - 1, self.skip_multiplications);
         let c2 = block(R::n() - 2, reserved);
 
         y.pow_vartime([(3 * reserved) as u64]) * c1 + c2
@@ -152,8 +74,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
 
     fn sx(&self, x: F) -> unstructured::Polynomial<F, R> {
         // Bound is enforced in `StageObject::new`.
-        assert!(self.skip + self.size < R::n());
-        let reserved: usize = R::n() - self.skip - self.size - 1;
+        assert!(self.skip_multiplications + self.num_multiplications < R::n());
+        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
         if x == F::ZERO {
             return unstructured::Polynomial::new();
@@ -185,10 +107,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
 
             alloc(); // ONE
 
-            for _ in 0..self.skip {
+            for _ in 0..self.skip_multiplications {
                 enforce_zero(alloc());
             }
-            for _ in 0..self.size {
+            for _ in 0..self.num_multiplications {
                 alloc();
             }
             for _ in 0..reserved {
@@ -204,15 +126,15 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
 
     fn sy(&self, y: F) -> structured::Polynomial<F, R> {
         // Bound is enforced in `StageObject::new`.
-        assert!(self.skip + self.size < R::n());
-        let reserved: usize = R::n() - self.skip - self.size - 1;
+        assert!(self.skip_multiplications + self.num_multiplications < R::n());
+        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
         let mut poly = structured::Polynomial::new();
         if y == F::ZERO {
             return poly;
         }
 
-        let mut yq = y.pow_vartime([(3 * (reserved + self.skip)) as u64]);
+        let mut yq = y.pow_vartime([(3 * (reserved + self.skip_multiplications)) as u64]);
         let y_inv = y.invert().expect("y is not zero");
 
         {
@@ -223,7 +145,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
             poly.b.push(F::ZERO);
             poly.c.push(F::ZERO);
 
-            for _ in 0..self.skip {
+            for _ in 0..self.skip_multiplications {
                 poly.a.push(yq);
                 yq *= y_inv;
                 poly.b.push(yq);
@@ -231,7 +153,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
                 poly.c.push(yq);
                 yq *= y_inv;
             }
-            for _ in 0..self.size {
+            for _ in 0..self.num_multiplications {
                 poly.a.push(F::ZERO);
                 poly.b.push(F::ZERO);
                 poly.c.push(F::ZERO);
@@ -252,18 +174,26 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
 
 #[cfg(test)]
 mod tests {
+    use arithmetic::Uendo;
     use ff::Field;
+    use group::prime::PrimeCurveAffine;
     use proptest::prelude::*;
     use ragu_core::{
         Result,
         drivers::{Coeff, Driver, LinearExpression, Witness},
+        gadgets::GadgetKind,
+        maybe::Maybe,
     };
-    use ragu_pasta::Fp;
-    use rand::thread_rng;
+    use ragu_pasta::{EpAffine, Fp, Fq};
+    use ragu_primitives::{Endoscalar, Point};
+    use rand::{Rng, thread_rng};
 
     use crate::{CircuitExt, CircuitObject, polynomials::Rank};
 
-    use super::{Stage, StageObject};
+    use super::{
+        super::{Stage, StageExt},
+        StageObject,
+    };
 
     impl<F: Field, R: Rank> crate::Circuit<F> for StageObject<R> {
         type Instance<'source> = ();
@@ -287,17 +217,17 @@ mod tests {
         where
             Self: 'dr,
         {
-            let reserved = self.skip + self.size + 1;
+            let reserved = self.skip_multiplications + self.num_multiplications + 1;
             assert!(reserved <= R::n());
 
-            for _ in 0..self.skip {
+            for _ in 0..self.skip_multiplications {
                 let (a, b, c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
                 dr.enforce_zero(|lc| lc.add(&b))?;
                 dr.enforce_zero(|lc| lc.add(&c))?;
             }
 
-            for _ in 0..self.size {
+            for _ in 0..self.num_multiplications {
                 dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             }
 
@@ -312,7 +242,7 @@ mod tests {
         }
     }
 
-    type R = crate::polynomials::R<7>;
+    type R = crate::polynomials::R<13>;
 
     #[test]
     fn test_staging_valid() -> Result<()> {
@@ -323,7 +253,20 @@ mod tests {
             type Parent = ();
 
             fn values() -> usize {
-                13
+                Uendo::BITS as usize
+            }
+
+            type Witness<'source> = Uendo;
+            type OutputKind = Endoscalar<'static, core::marker::PhantomData<Fp>>;
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                dr: &mut D,
+                witness: Witness<D, Self::Witness<'source>>,
+            ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+            where
+                Self: 'dr,
+            {
+                Endoscalar::alloc(dr, witness)
             }
         }
 
@@ -331,20 +274,35 @@ mod tests {
             type Parent = MyStage1;
 
             fn values() -> usize {
-                20
+                4
+            }
+
+            type Witness<'source> = (EpAffine, EpAffine);
+            type OutputKind = (
+                core::marker::PhantomData<Point<'static, core::marker::PhantomData<Fp>, EpAffine>>,
+                core::marker::PhantomData<Point<'static, core::marker::PhantomData<Fp>, EpAffine>>,
+            );
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                dr: &mut D,
+                witness: Witness<D, Self::Witness<'source>>,
+            ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+            where
+                Self: 'dr,
+            {
+                let a = Point::alloc(dr, witness.view().map(|w| w.0))?;
+                let b = Point::alloc(dr, witness.view().map(|w| w.1))?;
+
+                Ok((a, b))
             }
         }
 
-        let rx1 = MyStage1::rx(
-            &(0..13)
-                .map(|_| Fp::random(thread_rng()))
-                .collect::<Vec<_>>(),
-        );
-        let rx2 = MyStage2::rx(
-            &(0..20)
-                .map(|_| Fp::random(thread_rng()))
-                .collect::<Vec<_>>(),
-        );
+        let endoscalar: Uendo = thread_rng().r#gen();
+        let p1 = (EpAffine::generator() * Fq::random(thread_rng())).into();
+        let p2 = (EpAffine::generator() * Fq::random(thread_rng())).into();
+
+        let rx1 = MyStage1::rx(endoscalar)?;
+        let rx2 = MyStage2::rx((p1, p2))?;
 
         let circ1 = MyStage1::into_object()?;
         let circ2 = MyStage2::into_object()?;

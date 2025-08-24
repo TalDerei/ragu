@@ -1,10 +1,11 @@
 //! Implementations of gadgets for foreign types.
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use core::marker::PhantomData;
 use ff::Field;
 
 use crate::{
+    Result,
     drivers::{Driver, FromDriver},
     gadgets::{Gadget, GadgetKind},
 };
@@ -22,7 +23,8 @@ mod unit_impl {
         fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
             _: &Self::Rebind<'dr, D>,
             _: &mut ND,
-        ) -> Self::Rebind<'new_dr, ND::NewDriver> {
+        ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+            Ok(())
         }
     }
 }
@@ -40,8 +42,17 @@ mod array_impl {
         fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
             this: &Self::Rebind<'dr, D>,
             ndr: &mut ND,
-        ) -> Self::Rebind<'new_dr, ND::NewDriver> {
-            core::array::from_fn(|i| G::map(&this[i], ndr))
+        ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+            // TODO(ebfull): perhaps replace with core::array::try_from_fn when
+            // stable (see https://github.com/rust-lang/rust/issues/89379)
+            let mut result = Vec::with_capacity(N);
+            for item in this.iter() {
+                result.push(G::map(item, ndr)?);
+            }
+            match result.try_into() {
+                Ok(arr) => Ok(arr),
+                Err(_) => unreachable!(),
+            }
         }
     }
 }
@@ -61,8 +72,8 @@ mod pair_impl {
         fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
             this: &Self::Rebind<'dr, D>,
             ndr: &mut ND,
-        ) -> Self::Rebind<'new_dr, ND::NewDriver> {
-            (G1::map(&this.0, ndr), G2::map(&this.1, ndr))
+        ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+            Ok((G1::map(&this.0, ndr)?, G2::map(&this.1, ndr)?))
         }
     }
 }
@@ -80,8 +91,8 @@ mod box_impl {
         fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
             this: &Self::Rebind<'dr, D>,
             ndr: &mut ND,
-        ) -> Self::Rebind<'new_dr, ND::NewDriver> {
-            Box::new(G::map(this, ndr))
+        ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+            Ok(Box::new(G::map(this, ndr)?))
         }
     }
 }

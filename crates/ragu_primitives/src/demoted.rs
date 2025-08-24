@@ -52,8 +52,8 @@ impl<'dr, D: Driver<'dr>> Driver<'dr> for DemotedDriver<'dr, D> {
 impl<'dr, D: Driver<'dr>> FromDriver<'dr, 'dr, D> for DemotedDriver<'dr, D> {
     type NewDriver = Self;
 
-    fn convert_wire(&mut self, wire: &D::Wire) -> <Self::NewDriver as Driver<'dr>>::Wire {
-        wire.clone()
+    fn convert_wire(&mut self, wire: &D::Wire) -> Result<<Self::NewDriver as Driver<'dr>>::Wire> {
+        Ok(wire.clone())
     }
 }
 
@@ -67,7 +67,10 @@ impl<'dr, 'new_dr, D: Driver<'dr>, F: FromDriver<'dr, 'new_dr, D>>
 {
     type NewDriver = DemotedDriver<'new_dr, F::NewDriver>;
 
-    fn convert_wire(&mut self, wire: &D::Wire) -> <Self::NewDriver as Driver<'new_dr>>::Wire {
+    fn convert_wire(
+        &mut self,
+        wire: &D::Wire,
+    ) -> Result<<Self::NewDriver as Driver<'new_dr>>::Wire> {
         self.driver.convert_wire(wire)
     }
 }
@@ -87,15 +90,15 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Deref for Demoted<'dr, D, G> {
 
 impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
     /// Strips a gadget of its witness data and returns a demoted version of it.
-    pub fn new(gadget: &G) -> Self {
-        Demoted {
+    pub fn new(gadget: &G) -> Result<Self> {
+        Ok(Demoted {
             gadget: <G::Kind as GadgetKind<D::F>>::map(
                 gadget,
                 &mut DemotedDriver {
                     _marker: core::marker::PhantomData,
                 },
-            ),
-        }
+            )?,
+        })
     }
 }
 
@@ -123,9 +126,9 @@ unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
     fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
         this: &Self::Rebind<'dr, D>,
         ndr: &mut ND,
-    ) -> Self::Rebind<'new_dr, ND::NewDriver> {
-        Demoted {
-            gadget: G::map(&this.gadget, &mut Demoter { driver: ndr }),
-        }
+    ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+        Ok(Demoted {
+            gadget: G::map(&this.gadget, &mut Demoter { driver: ndr })?,
+        })
     }
 }

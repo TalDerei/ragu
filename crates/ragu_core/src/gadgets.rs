@@ -73,7 +73,10 @@ use ff::Field;
 mod foreign;
 mod sendable;
 
-use super::drivers::{Driver, FromDriver};
+use super::{
+    Result,
+    drivers::{Driver, FromDriver},
+};
 pub use sendable::Sendable;
 
 /// An abstract data type (parameterized by a [`Driver`] type) which
@@ -100,7 +103,7 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     fn map_gadget<'new_dr, ND: FromDriver<'dr, 'new_dr, D>>(
         &self,
         ndr: &mut ND,
-    ) -> <Self::Kind as GadgetKind<D::F>>::Rebind<'new_dr, ND::NewDriver> {
+    ) -> Result<<Self::Kind as GadgetKind<D::F>>::Rebind<'new_dr, ND::NewDriver>> {
         Self::Kind::map(self, ndr)
     }
 }
@@ -139,7 +142,7 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     fn map<'dr, 'new_dr, D: Driver<'dr, F = F>, ND: FromDriver<'dr, 'new_dr, D>>(
         this: &Self::Rebind<'dr, D>,
         ndr: &mut ND,
-    ) -> Self::Rebind<'new_dr, ND::NewDriver>;
+    ) -> Result<Self::Rebind<'new_dr, ND::NewDriver>>;
 }
 
 /// Automatically derives the [`Gadget`], [`GadgetKind`] and [`Clone`] traits
