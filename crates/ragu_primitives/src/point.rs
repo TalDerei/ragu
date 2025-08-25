@@ -153,11 +153,24 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
         })
     }
 
-    /// Adds two points. **The caller must ensure that the points do not have
-    /// the same x-coordinate.**
-    pub fn add_incomplete(&self, dr: &mut D, other: &Self) -> Result<Self> {
+    /// Adds two points with different x-coordinates.
+    ///
+    /// If you cannot guarantee `x_0 != x_1` up front, pass `Some(acc)` via
+    /// `nonzero`. On each call, `*acc` is multiplied by `x_1 - x_0`. After
+    /// processing a batch of additions, [invert](Element::invert) `*acc` once;
+    /// inversion succeeds iff every `x_1 - x_0 != 0`, thereby certifying that
+    /// all pairs had distinct x-coordinates.
+    pub fn add_incomplete(
+        &self,
+        dr: &mut D,
+        other: &Self,
+        nonzero: Option<&mut Element<'dr, D>>,
+    ) -> Result<Self> {
         // delta = (y1 - y0) / (x1 - x0)
         let tmp = other.x.sub(dr, &self.x);
+        if let Some(nonzero) = nonzero {
+            *nonzero = nonzero.mul(dr, &tmp)?;
+        }
         let delta = other.y.sub(dr, &self.y).div_nonzero(dr, &tmp)?;
 
         // x3 = delta^2 - x0 - x1
@@ -290,7 +303,7 @@ fn test_add_incomplete() -> Result<()> {
                 let p_gadget = Point::alloc(dr, p.clone())?;
                 let q_gadget = Point::alloc(dr, q.clone())?;
                 dr.reset();
-                let r_gadget = p_gadget.add_incomplete(dr, &q_gadget)?;
+                let r_gadget = p_gadget.add_incomplete(dr, &q_gadget, None)?;
                 let expected = p.take().to_curve() + q.take().to_curve();
                 let expected_affine =
                     C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
