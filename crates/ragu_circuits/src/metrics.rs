@@ -19,6 +19,8 @@ pub struct CircuitMetrics {
     pub num_multiplication_constraints: usize,
 
     /// The degree of the public input polynomial.
+    // TODO(ebfull): not sure if we'll need this later
+    #[allow(dead_code)]
     pub degree_ky: usize,
 }
 

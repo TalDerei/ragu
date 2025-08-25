@@ -16,7 +16,7 @@ extern crate alloc;
 
 use ff::Field;
 use ragu_core::{
-    Result,
+    Error, Result,
     drivers::{Driver, Witness},
 };
 use ragu_primitives::serialize::GadgetSerialize;
@@ -34,7 +34,6 @@ pub mod staging;
 #[cfg(test)]
 mod tests;
 
-pub use metrics::CircuitMetrics;
 use polynomials::{Rank, structured, unstructured};
 
 /// Core trait for arithmetic circuits.
@@ -94,7 +93,15 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     where
         Self: 'a,
     {
-        let metrics = self.metrics()?;
+        let metrics = metrics::eval(&self)?;
+
+        if metrics.num_linear_constraints > R::num_coeffs() {
+            return Err(Error::LinearBoundExceeded(R::num_coeffs()));
+        }
+
+        if metrics.num_multiplication_constraints > R::n() {
+            return Err(Error::MultiplicationBoundExceeded(R::n()));
+        }
 
         struct ProcessedCircuit<C> {
             circuit: C,
@@ -128,11 +135,6 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         witness: Self::Witness<'witness>,
     ) -> Result<(structured::Polynomial<F, R>, Self::Aux<'witness>)> {
         rx::eval(self, witness)
-    }
-
-    /// Computes metrics for the circuit.
-    fn metrics(&self) -> Result<CircuitMetrics> {
-        metrics::eval(self)
     }
 
     /// Computes the public input polynomial $k(Y)$ for the given instance.
