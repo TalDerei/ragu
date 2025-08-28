@@ -2,15 +2,19 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
     AngleBracketedGenericArguments, Data, DeriveInput, Error, Fields, GenericParam, Generics,
-    Ident, Path, Result, parse_quote, spanned::Spanned,
+    Ident, Result, parse_quote, spanned::Spanned,
 };
 
-use crate::helpers::*;
+use crate::{
+    helpers::{GenericDriver, attr_is},
+    path_resolution::{RaguCorePath, RaguPrimitivesPath},
+    substitution::replace_driver_field_in_generic_param,
+};
 
 pub fn derive(
     input: DeriveInput,
-    ragu_core_path: Path,
-    ragu_primitives_path: Path,
+    ragu_core_path: RaguCorePath,
+    ragu_primitives_path: RaguPrimitivesPath,
 ) -> Result<TokenStream> {
     let DeriveInput {
         ident: struct_ident,
@@ -19,18 +23,7 @@ pub fn derive(
         ..
     } = &input;
 
-    let driver = &generics
-        .params
-        .iter()
-        .find_map(|p| match p {
-            GenericParam::Type(ty) => ty
-                .attrs
-                .iter()
-                .any(|a| attr_is(a, "driver"))
-                .then(|| extract_generic_driver(ty)),
-            _ => None,
-        })
-        .unwrap_or(Ok(GenericDriver::default()))?;
+    let driver = &GenericDriver::extract(generics)?;
     let driverfield_ident = format_ident!("DriverField");
 
     // impl_generics = <'a, 'b: 'a, C: Cycle, D: Driver, const N: usize>
@@ -164,7 +157,7 @@ fn test_gadget_serialize_derive() {
         }
     };
 
-    let result = derive(input, parse_quote!(::ragu_core), parse_quote!(::ragu_primitives)).unwrap();
+    let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
 
     assert_eq!(
         result.to_string(),

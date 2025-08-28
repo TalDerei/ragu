@@ -2,38 +2,27 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
     AngleBracketedGenericArguments, Data, DeriveInput, Error, Fields, GenericArgument,
-    GenericParam, Generics, Ident, Lifetime, Path, Result, Type, parse_quote, spanned::Spanned,
+    GenericParam, Generics, Ident, Lifetime, Result, parse_quote, spanned::Spanned,
 };
 
-use crate::helpers::*;
+use crate::{
+    helpers::{GenericDriver, attr_is},
+    path_resolution::RaguCorePath,
+    substitution::replace_driver_field_in_generic_param,
+};
 
 impl GenericDriver {
-    pub fn gadget_params(&self) -> AngleBracketedGenericArguments {
+    fn gadget_params(&self) -> AngleBracketedGenericArguments {
         let driver_ident = &self.ident;
         let lifetime = &self.lifetime;
 
         parse_quote!( <#lifetime, #driver_ident> )
     }
 
-    pub fn is_lt(&self, other: &Lifetime) -> bool {
-        self.lifetime.ident == other.ident
-    }
-
-    pub fn is_ty(&self, other: &Type) -> bool {
-        if let Type::Path(path) = other {
-            if let Some(seg) = path.path.segments.last() {
-                if seg.ident == self.ident {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    pub fn kind_arguments(
+    fn kind_arguments(
         &self,
         ty_generics: &AngleBracketedGenericArguments,
-        ragu_core_path: &Path,
+        ragu_core_path: &RaguCorePath,
     ) -> AngleBracketedGenericArguments {
         let driver_ident = &self.ident;
         let static_lifetime = Lifetime::new("'static", Span::call_site());
@@ -46,26 +35,7 @@ impl GenericDriver {
         parse_quote!( < #( #args ),* > )
     }
 
-    pub fn kind_subst_arguments(
-        &self,
-        ty_generics: &AngleBracketedGenericArguments,
-    ) -> AngleBracketedGenericArguments {
-        let static_lifetime = Lifetime::new("'static", Span::call_site());
-        let args = ty_generics
-            .args
-            .iter()
-            .map(move |gp| match gp {
-                GenericArgument::Type(ty) if self.is_ty(ty) => {
-                    parse_quote!(::core::marker::PhantomData<DriverField>)
-                }
-                GenericArgument::Lifetime(lt) if self.is_lt(lt) => parse_quote!( #static_lifetime ),
-                a => parse_quote!( #a ),
-            })
-            .collect::<Vec<GenericArgument>>();
-        parse_quote!( < #( #args ),* > )
-    }
-
-    pub fn rebind_arguments(
+    fn rebind_arguments(
         &self,
         ty_generics: &AngleBracketedGenericArguments,
     ) -> AngleBracketedGenericArguments {
@@ -86,7 +56,7 @@ impl GenericDriver {
     }
 }
 
-pub fn derive(input: DeriveInput, ragu_core_path: Path) -> Result<TokenStream> {
+pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenStream> {
     let DeriveInput {
         ident: struct_ident,
         generics,
@@ -94,18 +64,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: Path) -> Result<TokenStream> {
         ..
     } = &input;
 
-    let driver = &generics
-        .params
-        .iter()
-        .find_map(|p| match p {
-            GenericParam::Type(ty) => ty
-                .attrs
-                .iter()
-                .any(|a| attr_is(a, "driver"))
-                .then(|| extract_generic_driver(ty)),
-            _ => None,
-        })
-        .unwrap_or(Ok(GenericDriver::default()))?;
+    let driver = &GenericDriver::extract(generics)?;
     let driverfield_ident = format_ident!("DriverField");
 
     // impl_generics = <'a, 'b: 'a, C: Cycle, D: Driver, const N: usize>
@@ -335,7 +294,7 @@ fn test_fail_enum() {
     };
 
     assert!(
-        derive(input, parse_quote! {::ragu}).is_err(),
+        derive(input, RaguCorePath::default()).is_err(),
         "Expected error for enum usage"
     );
 }
@@ -355,7 +314,7 @@ fn test_fail_where_clause() {
     };
 
     assert!(
-        derive(input, parse_quote! {::ragu}).is_err(),
+        derive(input, RaguCorePath::default()).is_err(),
         "Expected error for where clause"
     );
 }
@@ -374,7 +333,7 @@ fn test_fail_multi_annotations() {
     };
 
     assert!(
-        derive(input, parse_quote! {::ragu}).is_err(),
+        derive(input, RaguCorePath::default()).is_err(),
         "Expected error for multiple annotations on field"
     );
 }
@@ -391,7 +350,7 @@ fn test_fail_unnamed_struct() {
     };
 
     assert!(
-        derive(input, parse_quote! {::ragu}).is_err(),
+        derive(input, RaguCorePath::default()).is_err(),
         "Expected error for unnamed struct fields"
     );
 }
@@ -411,7 +370,7 @@ fn test_gadget_derive_boolean_customdriver() {
         }
     };
 
-    let result = derive(input, parse_quote!{::ragu}).unwrap();
+    let result = derive(input, RaguCorePath::default()).unwrap();
 
     assert_eq!(
         result.to_string(),
@@ -422,36 +381,36 @@ fn test_gadget_derive_boolean_customdriver() {
                     Boolean {
                         wire: ::core::clone::Clone::clone(&self.wire),
                         value: {
-                            use ::ragu::maybe::Maybe;
+                            use ::ragu_core::maybe::Maybe;
                             MyD::just(|| self.value.view().take().clone())
                         },
                     }
                 }
             }
             #[automatically_derived]
-            impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::ragu::gadgets::Gadget<'my_dr, MyD>
+            impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::ragu_core::gadgets::Gadget<'my_dr, MyD>
                 for Boolean<'my_dr, MyD>
             {
                 type Kind =
-                    Boolean<'static, ::core::marker::PhantomData< <MyD as ::ragu::drivers::Driver<'my_dr> >::F> >;
+                    Boolean<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'my_dr> >::F> >;
             }
             #[automatically_derived]
-            unsafe impl<DriverField: ::ff::Field> ::ragu::gadgets::GadgetKind<DriverField>
+            unsafe impl<DriverField: ::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
                 for Boolean<'static, ::core::marker::PhantomData<DriverField> >
             {
-                type Rebind<'my_dr, MyD: ::ragu::drivers::Driver<'my_dr, F = DriverField>> =
+                type Rebind<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>> =
                     Boolean<'my_dr, MyD>;
 
-                fn map_gadget<'my_dr, 'new_dr, MyD: ::ragu::drivers::Driver<'my_dr, F = DriverField>, ND: ::ragu::drivers::FromDriver<'my_dr, 'new_dr, MyD>>(
+                fn map_gadget<'my_dr, 'new_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, ND: ::ragu_core::drivers::FromDriver<'my_dr, 'new_dr, MyD>>(
                     this: &Self::Rebind<'my_dr, MyD>,
                     ndr: &mut ND,
-                ) -> ::ragu::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+                ) -> ::ragu_core::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
                     fn is_send<T: Send>(_: &T) { }
 
                     Ok(Boolean {
-                        wire: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire)?,
+                        wire: ::ragu_core::drivers::FromDriver::convert_wire(ndr, &this.wire)?,
                         value: {
-                            use ::ragu::maybe::Maybe;
+                            use ::ragu_core::maybe::Maybe;
 
                             let tmp = ND::just(|| this.value.view().take().clone());
                             is_send(&tmp);
@@ -462,17 +421,17 @@ fn test_gadget_derive_boolean_customdriver() {
 
                 fn enforce_equal_gadget<
                     'my_dr,
-                    D1: ::ragu::drivers::Driver<'my_dr, F = DriverField>,
-                    D2: ::ragu::drivers::Driver<
+                    D1: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>,
+                    D2: ::ragu_core::drivers::Driver<
                             'my_dr,
                             F = DriverField,
-                            Wire = <D1 as ::ragu::drivers::Driver<'my_dr>>::Wire>>
+                            Wire = <D1 as ::ragu_core::drivers::Driver<'my_dr>>::Wire>>
                 (
                     dr: &mut D1,
                     a: &Self::Rebind<'my_dr, D2>,
                     b: &Self::Rebind<'my_dr, D2>,
-                ) -> ::ragu::Result<()> {
-                    ::ragu::drivers::Driver::enforce_equal(dr, &a.wire, &b.wire)?;
+                ) -> ::ragu_core::Result<()> {
+                    ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire, &b.wire)?;
                     Ok(())
                 }
             }
@@ -499,7 +458,7 @@ fn test_gadget_derive() {
         }
     };
 
-    let result = derive(input, parse_quote!{::ragu}).unwrap();
+    let result = derive(input, RaguCorePath::default()).unwrap();
 
     assert_eq!(
         result.to_string(),
@@ -509,7 +468,7 @@ fn test_gadget_derive() {
                 fn clone(&self) -> Self {
                     MyGadget {
                         witness_field: {
-                            use ::ragu::maybe::Maybe;
+                            use ::ragu_core::maybe::Maybe;
                             MyD::just(|| self.witness_field.view().take().clone())
                         },
                         wire_field: ::core::clone::Clone::clone(&self.wire_field),
@@ -520,74 +479,54 @@ fn test_gadget_derive() {
             }
 
             #[automatically_derived]
-            impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::ragu::gadgets::Gadget<'mydr, MyD> for MyGadget<'mydr, MyD, C, N> {
-                type Kind = MyGadget<'static, ::core::marker::PhantomData< <MyD as ::ragu::drivers::Driver<'mydr> >::F >, C, N>;
+            impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::ragu_core::gadgets::Gadget<'mydr, MyD> for MyGadget<'mydr, MyD, C, N> {
+                type Kind = MyGadget<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'mydr> >::F >, C, N>;
             }
 
             #[automatically_derived]
-            unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::ff::Field> ::ragu::gadgets::GadgetKind<DriverField>
+            unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
                 for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
             {
-                type Rebind<'mydr, MyD: ::ragu::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
+                type Rebind<'mydr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
 
-                fn map_gadget<'mydr, 'new_dr, MyD: ::ragu::drivers::Driver<'mydr, F = DriverField>, ND: ::ragu::drivers::FromDriver<'mydr, 'new_dr, MyD>>(
+                fn map_gadget<'mydr, 'new_dr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>, ND: ::ragu_core::drivers::FromDriver<'mydr, 'new_dr, MyD>>(
                     this: &Self::Rebind<'mydr, MyD>,
                     ndr: &mut ND,
-                ) -> ::ragu::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
+                ) -> ::ragu_core::Result<Self::Rebind<'new_dr, ND::NewDriver>> {
                     fn is_send<T: Send>(_: &T) { }
 
                     Ok(MyGadget {
                         witness_field: {
-                            use ::ragu::maybe::Maybe;
+                            use ::ragu_core::maybe::Maybe;
 
                             let tmp = ND::just(|| this.witness_field.view().take().clone());
                             is_send(&tmp);
                             tmp
                         },
-                        wire_field: ::ragu::drivers::FromDriver::convert_wire(ndr, &this.wire_field)?,
-                        map_field: ::ragu::gadgets::Gadget::map(&this.map_field, ndr)?,
+                        wire_field: ::ragu_core::drivers::FromDriver::convert_wire(ndr, &this.wire_field)?,
+                        map_field: ::ragu_core::gadgets::Gadget::map(&this.map_field, ndr)?,
                         phantom_field: ::core::marker::PhantomData,
                     })
                 }
 
                 fn enforce_equal_gadget<
                     'mydr,
-                    D1: ::ragu::drivers::Driver<'mydr, F = DriverField>,
-                    D2: ::ragu::drivers::Driver<
+                    D1: ::ragu_core::drivers::Driver<'mydr, F = DriverField>,
+                    D2: ::ragu_core::drivers::Driver<
                             'mydr,
                             F = DriverField,
-                            Wire = <D1 as ::ragu::drivers::Driver<'mydr>>::Wire>>
+                            Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire>>
                 (
                     dr: &mut D1,
                     a: &Self::Rebind<'mydr, D2>,
                     b: &Self::Rebind<'mydr, D2>,
-                ) -> ::ragu::Result<()> {
-                    ::ragu::drivers::Driver::enforce_equal(dr, &a.wire_field, &b.wire_field)?;
-                    ::ragu::gadgets::Gadget::enforce_equal(&a.map_field, dr, &b.map_field)?;
+                ) -> ::ragu_core::Result<()> {
+                    ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire_field, &b.wire_field)?;
+                    ::ragu_core::gadgets::Gadget::enforce_equal(&a.map_field, dr, &b.map_field)?;
                     Ok(())
                 }
             }
 
         ).to_string()
     );
-}
-
-#[test]
-fn test_extract_generic_driver() {
-    let driver = extract_generic_driver(&parse_quote!(D: ragu_core::Driver<'dr>)).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    let driver = extract_generic_driver(&parse_quote!(D: Driver<'dr>)).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    // Shouldn't cause an error in the macro to have a spurious driver type argument
-    let driver = extract_generic_driver(&parse_quote!(D: Driver<'dr, T>)).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    assert!(extract_generic_driver(&parse_quote!(D: Driver<'dr, 'another_dr>)).is_err());
-    assert!(extract_generic_driver(&parse_quote!(D: Driver)).is_err());
-    assert!(extract_generic_driver(&parse_quote!(D: 'a)).is_err());
 }

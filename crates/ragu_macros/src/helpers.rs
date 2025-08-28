@@ -1,48 +1,9 @@
-use proc_macro_crate::{FoundCrate, crate_name};
-use proc_macro2::{Span, TokenTree};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::format_ident;
 use syn::{
-    Attribute, Error, GenericArgument, GenericParam, Ident, Lifetime, Meta, Path, PathArguments,
-    Result, Type, TypeParam, TypeParamBound, TypePath, parse_quote, spanned::Spanned,
+    Attribute, Error, GenericArgument, GenericParam, Generics, Ident, Lifetime, Meta,
+    PathArguments, Result, TypeParam, TypeParamBound, spanned::Spanned,
 };
-
-pub fn ragu_core_path() -> Result<Path> {
-    Ok(match (crate_name("ragu_core"), crate_name("ragu")) {
-        (Ok(FoundCrate::Itself), _) => parse_quote! { ::ragu_core },
-        (_, Ok(FoundCrate::Itself)) => parse_quote! { ::ragu },
-        (Ok(FoundCrate::Name(name)), _) | (Err(_), Ok(FoundCrate::Name(name))) => {
-            let name: Ident = format_ident!("{}", name);
-            parse_quote! { ::#name }
-        }
-        _ => {
-            return Err(Error::new(
-                Span::call_site(),
-                "Failed to find ragu/ragu_core crate. Ensure it is included in your Cargo.toml.",
-            ));
-        }
-    })
-}
-
-pub fn ragu_primitives_path() -> Result<Path> {
-    Ok(match (crate_name("ragu_primitives"), crate_name("ragu")) {
-        (Ok(FoundCrate::Itself), _) => parse_quote! { ::ragu_primitives },
-        (_, Ok(FoundCrate::Itself)) => parse_quote! { ::ragu::primitives },
-        (Ok(FoundCrate::Name(name)), _) => {
-            let name: Ident = format_ident!("{}", name);
-            parse_quote! { ::#name }
-        }
-        (_, Ok(FoundCrate::Name(name))) => {
-            let name: Ident = format_ident!("{}", name);
-            parse_quote! { ::#name::primitives }
-        }
-        _ => {
-            return Err(Error::new(
-                Span::call_site(),
-                "Failed to find ragu/ragu_primitives crate. Ensure it is included in your Cargo.toml.",
-            ));
-        }
-    })
-}
 
 pub fn attr_is(attr: &Attribute, needle: &str) -> bool {
     if !attr.path().is_ident("ragu") {
@@ -56,6 +17,9 @@ pub fn attr_is(attr: &Attribute, needle: &str) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+use syn::parse_quote;
 
 #[test]
 fn test_attr_is() {
@@ -88,138 +52,99 @@ impl Default for GenericDriver {
     }
 }
 
-/// Extracts the identifiers D and 'dr from a TypeParam of the form `D: path::to::Driver<'dr>`.
-pub fn extract_generic_driver(param: &TypeParam) -> Result<GenericDriver> {
-    for bound in &param.bounds {
-        if let TypeParamBound::Trait(bound) = bound {
-            if let Some(seg) = bound.path.segments.last() {
-                if seg.ident != "Driver" {
-                    continue;
-                }
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    let lifetimes = args
-                        .args
-                        .iter()
-                        .filter_map(|arg| {
-                            if let GenericArgument::Lifetime(lt) = arg {
-                                Some(lt.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    if lifetimes.len() == 1 {
-                        return Ok(GenericDriver {
-                            ident: param.ident.clone(),
-                            lifetime: lifetimes[0].clone(),
-                        });
-                    } else {
-                        return Err(Error::new(args.span(), "expected a single lifetime bound"));
-                    }
-                } else {
-                    return Err(Error::new(seg.ident.span(), "expected a lifetime bound"));
-                }
-            }
-        }
+impl GenericDriver {
+    pub fn extract(generics: &Generics) -> Result<Self> {
+        generics
+            .params
+            .iter()
+            .find_map(|p| match p {
+                GenericParam::Type(ty) => ty
+                    .attrs
+                    .iter()
+                    .any(|a| attr_is(a, "driver"))
+                    .then(|| Self::extract_from_param(ty)),
+                _ => None,
+            })
+            .unwrap_or(Ok(Self::default()))
     }
 
-    Err(Error::new(param.span(), "expected a Driver<'dr> bound"))
-}
-
-pub trait Substitution {
-    fn substitute(&mut self, driver_id: &Ident, driverfield_ident: &Ident);
-}
-
-impl Substitution for TypePath {
-    fn substitute(&mut self, driver_id: &Ident, driverfield_ident: &Ident) {
-        if self.qself.is_none() && self.path.segments.len() == 2 {
-            let segs = &self.path.segments;
-            if segs[0].ident == *driver_id && segs[1].ident == "F" {
-                *self = parse_quote!(#driverfield_ident);
-                return;
-            }
-        }
-
-        for seg in &mut self.path.segments {
-            if let PathArguments::AngleBracketed(ab) = &mut seg.arguments {
-                for arg in ab.args.iter_mut() {
-                    match arg {
-                        GenericArgument::Type(t) => {
-                            t.substitute(driver_id, driverfield_ident);
-                        }
-                        GenericArgument::Constraint(constraint) => {
-                            constraint.bounds.iter_mut().for_each(|bound| {
-                                bound.substitute(driver_id, driverfield_ident);
+    fn extract_from_param(param: &TypeParam) -> Result<Self> {
+        for bound in &param.bounds {
+            if let TypeParamBound::Trait(bound) = bound {
+                if let Some(seg) = bound.path.segments.last() {
+                    if seg.ident != "Driver" {
+                        continue;
+                    }
+                    if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                        let lifetimes = args
+                            .args
+                            .iter()
+                            .filter_map(|arg| {
+                                if let GenericArgument::Lifetime(lt) = arg {
+                                    Some(lt.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        if lifetimes.len() == 1 {
+                            return Ok(GenericDriver {
+                                ident: param.ident.clone(),
+                                lifetime: lifetimes[0].clone(),
                             });
+                        } else {
+                            return Err(Error::new(
+                                args.span(),
+                                "expected a single lifetime bound",
+                            ));
                         }
-                        GenericArgument::AssocType(assoc_type) => {
-                            assoc_type.ty.substitute(driver_id, driverfield_ident);
-                        }
-                        _ => {}
+                    } else {
+                        return Err(Error::new(seg.ident.span(), "expected a lifetime bound"));
                     }
                 }
             }
         }
+
+        Err(Error::new(param.span(), "expected a Driver<'dr> bound"))
     }
 }
 
-impl Substitution for Type {
-    fn substitute(&mut self, driver_id: &Ident, driverfield_ident: &Ident) {
-        match self {
-            Type::Path(type_path) => {
-                type_path.substitute(driver_id, driverfield_ident);
-            }
-            Type::Tuple(tuple) => {
-                for elem in &mut tuple.elems {
-                    elem.substitute(driver_id, driverfield_ident);
-                }
-            }
-            _ => {}
-        }
-    }
+#[test]
+fn test_extract_generic_driver() {
+    let generics = parse_quote!(<#[ragu(driver)] D: ragu_core::Driver<'dr>>);
+    let driver = GenericDriver::extract(&generics).unwrap();
+    assert_eq!(driver.ident.to_string(), "D");
+    assert_eq!(driver.lifetime.to_string(), "'dr");
+
+    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr>>);
+    let driver = GenericDriver::extract(&generics).unwrap();
+    assert_eq!(driver.ident.to_string(), "D");
+    assert_eq!(driver.lifetime.to_string(), "'dr");
+
+    // Shouldn't cause an error in the macro to have a spurious driver type argument
+    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, T>>);
+    let driver = GenericDriver::extract(&generics).unwrap();
+    assert_eq!(driver.ident.to_string(), "D");
+    assert_eq!(driver.lifetime.to_string(), "'dr");
+
+    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, 'another_dr>>);
+    assert!(GenericDriver::extract(&generics).is_err());
+
+    let generics = parse_quote!(<#[ragu(driver)] D: Driver>);
+    assert!(GenericDriver::extract(&generics).is_err());
+
+    let generics = parse_quote!(<#[ragu(driver)] D: 'a>);
+    assert!(GenericDriver::extract(&generics).is_err());
+
+    let generics = parse_quote!(<D: Driver<'dr>>);
+    let driver = GenericDriver::extract(&generics).unwrap();
+    assert_eq!(driver.ident.to_string(), "D");
+    assert_eq!(driver.lifetime.to_string(), "'dr");
 }
 
-impl Substitution for TypeParamBound {
-    fn substitute(&mut self, driver_id: &Ident, driverfield_ident: &Ident) {
-        if let TypeParamBound::Trait(trait_bound) = self {
-            for seg in &mut trait_bound.path.segments {
-                if let syn::PathArguments::AngleBracketed(ab) = &mut seg.arguments {
-                    for arg in ab.args.iter_mut() {
-                        match arg {
-                            GenericArgument::Type(t) => {
-                                t.substitute(driver_id, driverfield_ident);
-                            }
-                            GenericArgument::Constraint(constraint) => {
-                                constraint.bounds.iter_mut().for_each(|b| {
-                                    b.substitute(driver_id, driverfield_ident);
-                                });
-                            }
-                            GenericArgument::AssocType(assoc_type) => {
-                                assoc_type.ty.substitute(driver_id, driverfield_ident);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn replace_driver_field_in_generic_param(
-    param: &mut syn::GenericParam,
-    driver_id: &syn::Ident,
-    driverfield_ident: &syn::Ident,
-) {
-    if let GenericParam::Type(TypeParam {
-        bounds, default, ..
-    }) = param
-    {
-        for bound in bounds.iter_mut() {
-            bound.substitute(driver_id, driverfield_ident);
-        }
-        if let Some(default_ty) = default {
-            default_ty.substitute(driver_id, driverfield_ident);
-        }
-    }
+pub fn macro_body<F>(f: F) -> proc_macro::TokenStream
+where
+    F: FnOnce() -> Result<TokenStream>,
+{
+    f().unwrap_or_else(|e| e.into_compile_error().into()).into()
 }
