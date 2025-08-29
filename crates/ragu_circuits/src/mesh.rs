@@ -98,7 +98,7 @@ impl<'params, F: PrimeField, R: Rank> Mesh<'params, F, R> {
     pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
         self.w(
             w,
-            || structured::Polynomial::new(),
+            structured::Polynomial::default,
             |circuit, circuit_coeff, poly| {
                 let mut tmp = circuit.sy(y);
                 tmp.scale(circuit_coeff);
@@ -111,7 +111,7 @@ impl<'params, F: PrimeField, R: Rank> Mesh<'params, F, R> {
     pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
         self.w(
             w,
-            || unstructured::Polynomial::default(),
+            unstructured::Polynomial::default,
             |circuit, circuit_coeff, poly| {
                 let mut tmp = circuit.sx(x);
                 tmp.scale(circuit_coeff);

@@ -146,5 +146,5 @@ pub fn macro_body<F>(f: F) -> proc_macro::TokenStream
 where
     F: FnOnce() -> Result<TokenStream>,
 {
-    f().unwrap_or_else(|e| e.into_compile_error().into()).into()
+    f().unwrap_or_else(|e| e.into_compile_error()).into()
 }
