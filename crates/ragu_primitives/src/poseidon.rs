@@ -12,9 +12,9 @@ use core::{marker::PhantomData, panic};
 
 use crate::{
     Element,
-    fixedvec::{FixedVec, Len},
     io::Buffer,
     multiadd,
+    vec::{FixedVec, Len},
 };
 
 pub struct T<F: Field, P: arithmetic::PoseidonPermutation<F>>(F, P);

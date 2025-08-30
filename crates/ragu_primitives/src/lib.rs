@@ -17,7 +17,6 @@ extern crate self as ragu_primitives;
 mod boolean;
 mod element;
 mod endoscalar;
-pub mod fixedvec;
 mod foreign;
 pub mod io;
 mod lazy;
@@ -25,6 +24,7 @@ mod point;
 mod poseidon;
 pub mod promotion;
 mod util;
+pub mod vec;
 
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};

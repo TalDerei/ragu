@@ -26,8 +26,8 @@ use alloc::vec::Vec;
 
 use crate::{
     Boolean, Element, Point,
-    fixedvec::{ConstLen, FixedVec},
     promotion::Demoted,
+    vec::{ConstLen, FixedVec},
 };
 
 /// Represents a challenge used to scale elliptic curve points.
