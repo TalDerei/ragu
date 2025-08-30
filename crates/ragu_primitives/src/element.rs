@@ -34,7 +34,7 @@ use crate::serialize::{Buffer, GadgetSerialize};
 ///
 /// ## Promotion
 ///
-/// As with all gadgets, an [`Element`] can be [demoted](crate::demoted) but
+/// As with all gadgets, an [`Element`] can be [demoted](crate::promotion) but
 /// because it only represents a wire it is preferable to demote by extracting
 /// the wire using [`Element::wire`]. Promotion via [`Element::promote`] takes a
 /// wire instead of a demoted gadget to encourage this.

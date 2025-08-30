@@ -1,70 +1,5 @@
 //! Strips away the witness data from a gadget while still preserving access to
 //! it.
-//!
-//! ## Demotion
-//!
-//! All gadgets can be demoted using
-//! [`GadgetExt::demote`](crate::GadgetExt::demote), producing a [`Demoted`]
-//! version of the original gadget that has its witness data stripped away. As
-//! an example, you might have a gadget that contains $64$ boolean-constrained
-//! values:
-//!
-//! ```rust
-//! # use ragu_primitives::{Boolean, GadgetExt, demoted::Demoted};
-//! # use ragu_core::{Result, drivers::{Driver, Witness}, gadgets::Gadget};
-//! #[derive(Gadget)]
-//! struct U64<'dr, D: Driver<'dr>> {
-//!     #[ragu(gadget)]
-//!     // This is the output type of `[Boolean<'dr, D>; 64]::demote()`
-//!     bits: Demoted<'dr, D, [Boolean<'dr, D>; 64]>,
-//!     #[ragu(witness)]
-//!     value: Witness<D, u64>,
-//! }
-//! ```
-//!
-// This example gadget maintains _access_ to the enclosed
-// [`Boolean`](crate::Boolean) values, but each individual boolean does not
-// need to store a separate `bool` value in memory. The `U64` gadget becomes
-// responsible for maintaining the witness information (in this case, a `u64`
-// value) that represents the value of the encapsulated booleans. This improves
-// synthesis performance and reduces memory usage in some contexts without
-// requiring gadgets to expose visibility into their internal state or
-// sacrificing their ability to uphold invariants in their public interface.
-//
-// Demoted gadgets can still partake in synthesis. As an example, you could
-// create a method for computing the logical AND of two `U64` values:
-//
-// ```rust
-// # use ragu_primitives::{Boolean, GadgetExt, demoted::Demoted};
-// # use ragu_core::{Result, drivers::{Driver, Witness}, gadgets::Gadget, maybe::Maybe};
-// # #[derive(Gadget)]
-// # struct U64<'dr, D: Driver<'dr>> {
-// #    #[ragu(gadget)]
-// #    // This is the output type of `[Boolean<'dr, D>; 64]::demote()`
-// #    bits: Demoted<'dr, D, [Boolean<'dr, D>; 64]>,
-// #    #[ragu(witness)]
-// #    value: Witness<D, u64>,
-// # }
-// impl<'dr, D: Driver<'dr>> U64<'dr, D> {
-//     pub fn and(&self, dr: &mut D, other: &Self) -> Result<Self> {
-//         let mut bits = self.bits.clone();
-//         for (a, b) in bits.iter_mut().zip(other.bits.iter()) {
-//             *a = a.and(dr, b)?;
-//         }
-//
-//         Ok(U64 {
-//            bits,
-//            value: self.value.and_then(|v| other.value.map(|o| v & o)),
-//         })
-//     }
-// }
-// ```
-//!
-//! ## Promotion
-//!
-//! If necessary, gadgets can be recovered from their demoted state. Gadgets
-//! must opt into supporting this by implementing the [`Promotion`] trait. Users
-//! can then promote demoted gadgets using the [`Demoted::promote`] method.
 
 use arithmetic::Coeff;
 use ff::Field;
@@ -160,11 +95,12 @@ impl<'dr, 'new_dr, D: Driver<'dr>, F: FromDriver<'dr, 'new_dr, D>>
 /// A gadget that strips witness data from another gadget.
 ///
 /// All gadgets can be demoted using
-/// [`GadgetExt::demote`](crate::GadgetExt::demote). The resulting gadget has
-/// all of its witness data stripped away, but access to the gadget's interface
-/// is maintained.
-///
-/// The original gadget can be recovered by [promotion](Promotion).
+/// [`GadgetExt::demote`](crate::GadgetExt::demote), producing a [`Demoted`]
+/// version of the original gadget that has its witness data stripped away. They
+/// can be recovered (promoted) from their demoted state; gadgets must opt into
+/// supporting this by implementing the [`Promotion`] trait so that users can
+/// then use the [`Demoted::promote`] method. Optionally, gadgets can offer
+/// their own custom promotion strategies.
 pub struct Demoted<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> {
     gadget: <G::Kind as GadgetKind<D::F>>::Rebind<'dr, DemotedDriver<'dr, D>>,
 }

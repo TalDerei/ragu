@@ -15,7 +15,6 @@ extern crate alloc;
 extern crate self as ragu_primitives;
 
 mod boolean;
-pub mod demoted;
 mod element;
 mod endoscalar;
 pub mod fixedvec;
@@ -23,6 +22,7 @@ mod foreign;
 mod lazy;
 mod point;
 mod poseidon;
+pub mod promotion;
 pub mod serialize;
 mod util;
 
@@ -35,7 +35,7 @@ pub use poseidon::Sponge;
 
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
-use demoted::Demoted;
+use promotion::Demoted;
 use serialize::{Buffer, GadgetSerialize};
 
 /// Primitive extension trait for all gadgets.
