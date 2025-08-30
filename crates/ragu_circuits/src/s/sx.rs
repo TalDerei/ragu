@@ -27,10 +27,10 @@ struct Collector<F: Field, R: Rank> {
     linear_constraints: usize,
     x: F,
     x_inv: F,
-    one: F,         // x^{4 * max_n - 1}
-    current_u_x: F, // x^{2 * max_n - 1 - i}
-    current_v_x: F, // x^{2 * max_n + i}
-    current_w_x: F, // x^{4 * max_n - 1 - i}
+    one: F,         // x^{4 * n - 1}
+    current_u_x: F, // x^{2 * n - 1 - i}
+    current_v_x: F, // x^{2 * n + i}
+    current_w_x: F, // x^{4 * n - 1 - i}
     available_b: Option<Wire<F>>,
     _marker: core::marker::PhantomData<R>,
 }
@@ -87,7 +87,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
 
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         let q = self.linear_constraints;
-        if q >= R::num_coeffs() {
+        if q == R::num_coeffs() {
             return Err(Error::LinearBoundExceeded(R::num_coeffs()));
         }
         self.linear_constraints += 1;

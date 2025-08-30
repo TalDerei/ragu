@@ -33,9 +33,12 @@ struct Wire<'table, 'sy, F: Field, R: Rank> {
     table: Option<&'table RefCell<VirtualTable<'sy, F, R>>>,
 }
 
-impl<F: Field, R: Rank> From<WireIndex> for Wire<'_, '_, F, R> {
-    fn from(index: WireIndex) -> Self {
-        Wire { index, table: None }
+impl<'table, 'sy, F: Field, R: Rank> Wire<'table, 'sy, F, R> {
+    fn new(index: WireIndex, table: &'table RefCell<VirtualTable<'sy, F, R>>) -> Self {
+        Wire {
+            index,
+            table: Some(table),
+        }
     }
 }
 
@@ -229,9 +232,9 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Collector<'table, 'sy, F
             table.sy.c.push(F::ZERO);
         }
 
-        let a = Wire::from(WireIndex::A(index));
-        let b = Wire::from(WireIndex::B(index));
-        let c = Wire::from(WireIndex::C(index));
+        let a = Wire::new(WireIndex::A(index), self.virtual_table);
+        let b = Wire::new(WireIndex::B(index), self.virtual_table);
+        let c = Wire::new(WireIndex::C(index), self.virtual_table);
 
         Ok((a, b, c))
     }
@@ -249,7 +252,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Collector<'table, 'sy, F
 
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         let q = self.linear_constraints;
-        if q >= R::num_coeffs() {
+        if q == R::num_coeffs() {
             return Err(Error::LinearBoundExceeded(R::num_coeffs()));
         }
         self.linear_constraints += 1;
