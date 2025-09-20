@@ -1,7 +1,7 @@
 use ff::{Field, PrimeField};
 use pasta_curves::{arithmetic::CurveAffine, group::Group};
 
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 
 /// Evaluates a polynomial $p \in \mathbb{F}\[X]$ at a point $x \in \mathbb{F}$,
 /// where $p$ is defined by `coeffs` in ascending order of degree.
@@ -40,14 +40,7 @@ where
         .fold(F::ZERO, |acc, x| acc + x)
 }
 
-/// Returns an iterator that yields the coefficients of $a / (X - b)$ with no remainder
-/// for the given univariate polynomial $a \in \mathbb{F}\[X]$ and value $b \in \mathbb{F}$.
-/// The coefficients are yielded in reverse order (highest degree first).
-///
-/// # Panics
-///
-/// Panics if the polynomial $a$ is of degree $0$, as it cannot be factored by a linear term.
-pub fn factor_iter<F: Field, I: IntoIterator<Item = F>>(a: I, mut b: F) -> impl Iterator<Item = F>
+fn factor_iter_inner<F: Field, I: IntoIterator<Item = F>>(a: I, mut b: F) -> impl Iterator<Item = F>
 where
     I::IntoIter: DoubleEndedIterator,
 {
@@ -74,6 +67,23 @@ where
     })
 }
 
+/// Returns an iterator that yields the coefficients of $a / (X - b)$ with no remainder
+/// for the given univariate polynomial $a \in \mathbb{F}\[X]$ and value $b \in \mathbb{F}$.
+/// The coefficients are yielded in reverse order (highest degree first).
+///
+/// # Panics
+///
+/// Panics if the polynomial $a$ is of degree $0$, as it cannot be factored by a linear term.
+pub fn factor_iter<'a, F: Field, I: IntoIterator<Item = F> + 'a>(
+    a: I,
+    b: F,
+) -> Box<dyn Iterator<Item = F> + 'a>
+where
+    I::IntoIter: DoubleEndedIterator,
+{
+    Box::new(factor_iter_inner(a, b))
+}
+
 /// Computes $a / (X - b)$ with no remainder for the given univariate polynomial $a \in \mathbb{F}\[X]$ and value $b \in \mathbb{F}$.
 ///
 /// # Panics
@@ -83,7 +93,7 @@ pub fn factor<F: Field, I: IntoIterator<Item = F>>(a: I, b: F) -> Vec<F>
 where
     I::IntoIter: DoubleEndedIterator,
 {
-    let mut result: Vec<F> = factor_iter(a, b).collect();
+    let mut result: Vec<F> = factor_iter_inner(a, b).collect();
     result.reverse();
     result
 }
