@@ -18,7 +18,7 @@
 //! * **Integration of witness evaluation**: Constraints can be written
 //!   alongside witness computation logic, even though drivers tend to reason
 //!   about one or the other. To reduce overhead, drivers specify a [`Maybe<T>`]
-//!   type (via the type alias [`Witness`]) which enables static analysis and
+//!   type (via the type alias [`DriverInput`]) which enables static analysis and
 //!   optimization of witness computation for a specific driver context. This
 //!   coupling with witness evaluation logic is a zero-cost abstraction.
 //! * **Integration of in-circuit and out-of-circuit code**: Recursive proofs
@@ -63,9 +63,10 @@ pub use emulator::Emulator;
 pub use linexp::{DirectSum, LinearExpression};
 pub use simulator::Simulator;
 
-/// Alias for the concrete [`Maybe<T>`] type for a driver `D`, used to represent
-/// witness data.
-pub type Witness<D, T> = <<D as DriverTypes>::MaybeKind as MaybeKind>::Rebind<T>;
+/// Alias for the concrete [`Maybe<T>`] type for a driver `D`, used to represent input data
+/// that may or may not be available. This provides a uniform interface for both public
+/// and private data.
+pub type DriverInput<D, T> = <<D as DriverTypes>::MaybeKind as MaybeKind>::Rebind<T>;
 
 /// Defines implementation types for a concrete driver. Users of drivers do not
 /// need to directly interact with this trait.
@@ -183,14 +184,14 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         self.enforce_zero(|lc| lc.add(a).sub(b))
     }
 
-    /// Proxy for the `Witness::just` method for this driver.
-    fn just<R: Send>(f: impl FnOnce() -> R) -> Witness<Self, R> {
-        <Witness<Self, R> as Maybe<R>>::just(f)
+    /// Proxy for the `Input::just` method for this driver.
+    fn just<R: Send>(f: impl FnOnce() -> R) -> DriverInput<Self, R> {
+        <DriverInput<Self, R> as Maybe<R>>::just(f)
     }
 
     /// Proxy for the `Witness::with` method for this driver.
-    fn with<R: Send>(f: impl FnOnce() -> Result<R>) -> Result<Witness<Self, R>> {
-        <Witness<Self, R> as Maybe<R>>::with(f)
+    fn with<R: Send>(f: impl FnOnce() -> Result<R>) -> Result<DriverInput<Self, R>> {
+        <DriverInput<Self, R> as Maybe<R>>::with(f)
     }
 
     /// Executes a routine with this driver.
@@ -216,8 +217,8 @@ pub trait FromDriver<'dr, 'new_dr, D: Driver<'dr>> {
     type NewDriver: Driver<'new_dr, F = D::F>;
 
     /// Proxy for the `Witness::just` method for the new driver.
-    fn just<R: Send>(f: impl FnOnce() -> R) -> Witness<Self::NewDriver, R> {
-        <Witness<Self::NewDriver, R> as Maybe<R>>::just(f)
+    fn just<R: Send>(f: impl FnOnce() -> R) -> DriverInput<Self::NewDriver, R> {
+        <DriverInput<Self::NewDriver, R> as Maybe<R>>::just(f)
     }
 
     /// Converts a wire from `D` to the new driver's wire type, based on

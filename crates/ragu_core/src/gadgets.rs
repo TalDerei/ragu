@@ -179,13 +179,13 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// ## Example
 ///
 /// ```rust
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
+/// # use ragu_core::{drivers::{Driver, DriverInput}, gadgets::Gadget};
 /// #[derive(Gadget)]
 /// struct Boolean<'dr, D: Driver<'dr>> {
 ///     #[ragu(wire)]
 ///     wire: D::Wire,
 ///     #[ragu(witness)]
-///     value: Witness<D, bool>,
+///     value: DriverInput<D, bool>,
 /// }
 /// ```
 ///
@@ -206,13 +206,13 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// `#[ragu(driver)]` like so:
 ///
 /// ```rust
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
+/// # use ragu_core::{drivers::{Driver, DriverInput}, gadgets::Gadget};
 /// #[derive(Gadget)]
 /// struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 ///     #[ragu(wire)]
 ///     wire: MyD::Wire,
 ///     #[ragu(witness)]
-///     value: Witness<MyD, MyD::F>,
+///     value: DriverInput<MyD, MyD::F>,
 /// }
 /// ```
 pub use ragu_macros::Gadget;
@@ -231,13 +231,13 @@ pub use ragu_macros::Gadget;
 ///
 /// ```rust
 /// # use ff::Field;
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Kind};
+/// # use ragu_core::{drivers::{Driver, DriverInput}, gadgets::Kind};
 /// # #[derive(ragu_core::gadgets::Gadget)]
 /// # struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 /// #     #[ragu(wire)]
 /// #     wire: MyD::Wire,
 /// #     #[ragu(witness)]
-/// #     value: Witness<MyD, MyD::F>,
+/// #     value: DriverInput<MyD, MyD::F>,
 /// # }
 /// # trait MyTrait<F: Field> {
 /// #     type Kind: ragu_core::gadgets::GadgetKind<F>;
@@ -252,14 +252,14 @@ pub use ragu_macros::Gadget;
 ///
 /// ```rust
 /// # use ff::Field;
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::{Kind, Gadget}};
+/// # use ragu_core::{drivers::{Driver, DriverInput}, gadgets::{Kind, Gadget}};
 /// # use core::marker::PhantomData;
 /// # #[derive(ragu_core::gadgets::Gadget)]
 /// # struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 /// #     #[ragu(wire)]
 /// #     wire: MyD::Wire,
 /// #     #[ragu(witness)]
-/// #     value: Witness<MyD, MyD::F>,
+/// #     value: DriverInput<MyD, MyD::F>,
 /// # }
 /// # type MyKind<F: Field> =
 /// <Boolean<'static, PhantomData<F>> as Gadget<'static, PhantomData<F>>>::Kind

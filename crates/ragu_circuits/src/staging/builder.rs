@@ -1,7 +1,7 @@
 use arithmetic::Coeff;
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverTypes, FromDriver, Witness},
+    drivers::{Driver, DriverInput, DriverTypes, FromDriver},
     gadgets::{Gadget, GadgetKind},
 };
 
@@ -100,7 +100,7 @@ impl<
     /// output.
     pub fn add_stage<Next: Stage<D::F, R, Parent = Current> + 'dr>(
         self,
-        witness: Witness<D, Next::Witness<'source>>,
+        witness: DriverInput<D, Next::Witness<'source>>,
     ) -> Result<(
         <Next::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>,
         StageBuilder<'a, 'dr, D, R, Next, Target>,

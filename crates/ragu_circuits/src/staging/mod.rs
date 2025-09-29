@@ -3,7 +3,7 @@
 use ff::Field;
 use ragu_core::{
     Result,
-    drivers::{Driver, Simulator, Witness},
+    drivers::{Driver, DriverInput, Simulator},
     gadgets::GadgetKind,
 };
 use ragu_primitives::io::Write;
@@ -38,7 +38,7 @@ pub trait Stage<F: Field, R: Rank> {
     /// Computes the witness for this stage.
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
-        witness: Witness<D, Self::Witness<'source>>,
+        witness: DriverInput<D, Self::Witness<'source>>,
     ) -> Result<<Self::OutputKind as GadgetKind<F>>::Rebind<'dr, D>>
     where
         Self: 'dr;
@@ -63,7 +63,7 @@ impl<F: Field, R: Rank> Stage<F, R> for () {
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
-        _: Witness<D, Self::Witness<'source>>,
+        _: DriverInput<D, Self::Witness<'source>>,
     ) -> Result<<Self::OutputKind as GadgetKind<F>>::Rebind<'dr, D>>
     where
         Self: 'dr,
@@ -107,7 +107,7 @@ pub trait StagedCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        instance: Witness<D, Self::Instance<'source>>,
+        instance: DriverInput<D, Self::Instance<'source>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>;
 
     /// Given a witness type for this circuit, perform a computation using the
@@ -117,10 +117,10 @@ pub trait StagedCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Final>,
-        witness: Witness<D, Self::Witness<'source>>,
+        witness: DriverInput<D, Self::Witness<'source>>,
     ) -> Result<(
         <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
-        Witness<D, Self::Aux<'source>>,
+        DriverInput<D, Self::Aux<'source>>,
     )>;
 }
 
@@ -159,7 +159,7 @@ impl<F: Field, R: Rank, S: StagedCircuit<F, R>> Circuit<F> for Staged<F, R, S> {
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        instance: Witness<D, S::Instance<'source>>,
+        instance: DriverInput<D, S::Instance<'source>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
         self.circuit.instance(dr, instance)
     }
@@ -167,10 +167,10 @@ impl<F: Field, R: Rank, S: StagedCircuit<F, R>> Circuit<F> for Staged<F, R, S> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        witness: Witness<D, S::Witness<'source>>,
+        witness: DriverInput<D, S::Witness<'source>>,
     ) -> Result<(
         <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
-        Witness<D, S::Aux<'source>>,
+        DriverInput<D, S::Aux<'source>>,
     )> {
         self.circuit.witness(StageBuilder::new(dr), witness)
     }

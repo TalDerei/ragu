@@ -5,7 +5,7 @@ use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverTypes, FromDriver, Witness},
+    drivers::{Driver, DriverInput, DriverTypes, FromDriver},
     gadgets::{Gadget, GadgetKind},
     maybe::Empty,
 };
@@ -23,7 +23,7 @@ pub trait Promotion<F: Field>: GadgetKind<F> {
     /// Promote a demoted gadget with new witness data.
     fn promote<'dr, D: Driver<'dr, F = F>>(
         demoted: &Demoted<'dr, D, Self::Rebind<'dr, D>>,
-        witness: Witness<D, Self::Value>,
+        witness: DriverInput<D, Self::Value>,
     ) -> Self::Rebind<'dr, D>;
 }
 
@@ -127,7 +127,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
     }
 
     /// Promote this demoted gadget with new witness data.
-    pub fn promote(&self, witness: Witness<D, <G::Kind as Promotion<D::F>>::Value>) -> G
+    pub fn promote(&self, witness: DriverInput<D, <G::Kind as Promotion<D::F>>::Value>) -> G
     where
         G::Kind: Promotion<D::F>,
     {

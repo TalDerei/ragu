@@ -2,7 +2,7 @@ use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
     Result,
-    drivers::{Driver, Witness},
+    drivers::{Driver, DriverInput},
     gadgets::{Gadget, GadgetKind},
     routines::{Prediction, Routine},
 };
@@ -229,7 +229,7 @@ impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Routine<F> for Permutation
         &self,
         dr: &mut D,
         mut state: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-        _: Witness<D, Self::Aux<'dr>>,
+        _: DriverInput<D, Self::Aux<'dr>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
         let mut rcs = self.params.round_constants();
 
@@ -258,7 +258,7 @@ impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Routine<F> for Permutation
         _: &mut D,
         _: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
     ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, Witness<D, Self::Aux<'dr>>>,
+        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverInput<D, Self::Aux<'dr>>>,
     > {
         Ok(Prediction::Unknown(D::just(|| ())))
     }

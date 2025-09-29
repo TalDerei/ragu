@@ -13,7 +13,7 @@ use core::marker::PhantomData;
 
 use crate::Circuit;
 
-/// Contains basic details about a circuit that are computed by simulating it.
+/// Performs full constraint system analysis, capturing basic details about a circuit's topology through simulation.
 pub struct CircuitMetrics {
     /// The number of linear constraints, including those for public inputs.
     pub num_linear_constraints: usize,

@@ -17,7 +17,7 @@ use arithmetic::{Coeff, CurveAffine, Uendo};
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use ragu_core::{
     Result,
-    drivers::{Driver, LinearExpression, Witness},
+    drivers::{Driver, DriverInput, LinearExpression},
     gadgets::Gadget,
     maybe::Maybe,
 };
@@ -39,12 +39,12 @@ pub struct Endoscalar<'dr, D: Driver<'dr>> {
 
     /// The represented endoscalar witness value in compact representation.
     #[ragu(witness)]
-    value: Witness<D, Uendo>,
+    value: DriverInput<D, Uendo>,
 }
 
 impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// Allocate an endoscalar with the provided `Uendo` value.
-    pub fn alloc(dr: &mut D, value: Witness<D, Uendo>) -> Result<Self> {
+    pub fn alloc(dr: &mut D, value: DriverInput<D, Uendo>) -> Result<Self> {
         // Convert the provided Uendo into a little-endian representation of its
         // bits.
         let mut bits = Vec::with_capacity(Uendo::BITS as usize);

@@ -3,7 +3,7 @@
 use ff::Field;
 use ragu_core::{
     Result,
-    drivers::{Driver, LinearExpression, Witness},
+    drivers::{Driver, DriverInput, LinearExpression},
     gadgets::{GadgetKind, Kind},
     maybe::Maybe,
 };
@@ -58,7 +58,7 @@ fn test_simple_circuit() {
         fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
-            instance: Witness<D, Self::Instance<'instance>>,
+            instance: DriverInput<D, Self::Instance<'instance>>,
         ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
             let c = Element::alloc(dr, instance.view().map(|v| v.0))?;
             let d = Element::alloc(dr, instance.view().map(|v| v.1))?;
@@ -69,10 +69,10 @@ fn test_simple_circuit() {
         fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
-            witness: Witness<D, Self::Witness<'witness>>,
+            witness: DriverInput<D, Self::Witness<'witness>>,
         ) -> Result<(
             <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
-            Witness<D, Self::Aux<'witness>>,
+            DriverInput<D, Self::Aux<'witness>>,
         )> {
             let a = Element::alloc(dr, witness.view().map(|w| w.0))?;
             let b = Element::alloc(dr, witness.view().map(|w| w.1))?;
