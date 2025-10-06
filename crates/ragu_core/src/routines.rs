@@ -10,7 +10,7 @@ use ff::Field;
 
 use crate::{
     Result,
-    drivers::{Driver, Witness},
+    drivers::{Driver, DriverValue},
     gadgets::GadgetKind,
 };
 
@@ -45,7 +45,7 @@ pub trait Routine<F: Field>: Clone + Send {
         &self,
         dr: &mut D,
         input: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-        aux: Witness<D, Self::Aux<'dr>>,
+        aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>;
 
     /// Routines can offer to predict their outputs given their inputs, which
@@ -58,7 +58,7 @@ pub trait Routine<F: Field>: Clone + Send {
         dr: &mut D,
         input: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
     ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, Witness<D, Self::Aux<'dr>>>,
+        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
     >;
 }
 

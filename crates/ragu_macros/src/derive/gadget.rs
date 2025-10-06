@@ -92,7 +92,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     let gadget_args = driver.gadget_params();
 
     enum FieldType {
-        Witness,
+        Value,
         Wire,
         Gadget,
         Phantom,
@@ -114,14 +114,14 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
             for f in fields {
                 let fid = f.ident.clone().expect("fields contains only named fields");
-                let is_witness = f.attrs.iter().any(|a| attr_is(a, "witness"));
+                let is_value = f.attrs.iter().any(|a| attr_is(a, "value"));
                 let is_wire = f.attrs.iter().any(|a| attr_is(a, "wire"));
                 let is_gadget = f.attrs.iter().any(|a| attr_is(a, "gadget"));
                 let is_phantom = f.attrs.iter().any(|a| attr_is(a, "phantom"));
 
-                match (is_witness, is_wire, is_gadget, is_phantom) {
+                match (is_value, is_wire, is_gadget, is_phantom) {
                     (true, false, false, false) => {
-                        res.push((fid, FieldType::Witness));
+                        res.push((fid, FieldType::Value));
                     }
                     (false, true, false, false) => {
                         res.push((fid, FieldType::Wire));
@@ -135,7 +135,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
                     _ => {
                         return Err(Error::new(
                             fid.span(),
-                            "field attributes must be one of: #[ragu(witness)], #[ragu(wire)], #[ragu(gadget)], or #[ragu(phantom)]",
+                            "field attributes must be one of: #[ragu(value)], #[ragu(wire)], #[ragu(gadget)], or #[ragu(phantom)]",
                         ));
                     }
                 }
@@ -153,7 +153,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
     let clone_impl_inits = fields.iter().map(|(id, ty)| {
         let init = match ty {
-            FieldType::Witness => {
+            FieldType::Value => {
                 let driver_id = &driver.ident;
                 quote! { {
                     use #ragu_core_path::maybe::Maybe;
@@ -223,7 +223,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
     let gadget_impl_inits = fields.iter().map(|(id, ty)| {
         let init = match ty {
-            FieldType::Witness => quote! {
+            FieldType::Value => quote! {
                 {
                     use #ragu_core_path::maybe::Maybe;
 
@@ -308,8 +308,8 @@ fn test_fail_where_clause() {
         {
             #[ragu(wire)]
             wire: MyD::W,
-            #[ragu(witness)]
-            value: Witness<'my_dr, MyD, bool>,
+            #[ragu(value)]
+            value: DriverValue<MyD, bool>,
         }
     };
 
@@ -326,9 +326,9 @@ fn test_fail_multi_annotations() {
         struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
             #[ragu(wire)]
             wire: MyD::W,
-            #[ragu(witness)]
+            #[ragu(value)]
             #[ragu(wire)]
-            value: Witness<'my_dr, MyD, bool>,
+            value: DriverValue<MyD, bool>,
         }
     };
 
@@ -365,8 +365,8 @@ fn test_gadget_derive_boolean_customdriver() {
         struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
             #[ragu(wire)]
             wire: MyD::W,
-            #[ragu(witness)]
-            value: Witness<'my_dr, MyD, bool>,
+            #[ragu(value)]
+            value: DriverValue<MyD, bool>,
         }
     };
 
@@ -447,8 +447,8 @@ fn test_gadget_derive() {
     let input: DeriveInput = parse_quote! {
         #[derive(Gadget)]
         pub struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> {
-            #[ragu(witness)]
-            witness_field: Witness<'mydr, MyD, MyD::F>,
+            #[ragu(value)]
+            witness_field: DriverValue<MyD, MyD::F>,
             #[ragu(wire)]
             wire_field: MyD::W,
             #[ragu(gadget)]

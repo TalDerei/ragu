@@ -201,7 +201,7 @@ mod tests {
     use proptest::prelude::*;
     use ragu_core::{
         Result,
-        drivers::{Driver, LinearExpression, Witness},
+        drivers::{Driver, DriverValue, LinearExpression},
         gadgets::GadgetKind,
         maybe::Maybe,
     };
@@ -225,7 +225,7 @@ mod tests {
         fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
             &self,
             _: &mut D,
-            _: Witness<D, Self::Instance<'source>>,
+            _: DriverValue<D, Self::Instance<'source>>,
         ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
             Ok(())
         }
@@ -233,10 +233,10 @@ mod tests {
         fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
             &self,
             dr: &mut D,
-            _: Witness<D, Self::Witness<'source>>,
+            _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<(
             <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
-            Witness<D, Self::Aux<'source>>,
+            DriverValue<D, Self::Aux<'source>>,
         )> {
             let reserved = self.skip_multiplications + self.num_multiplications + 1;
             assert!(reserved <= R::n());
@@ -282,7 +282,7 @@ mod tests {
 
             fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
                 dr: &mut D,
-                witness: Witness<D, Self::Witness<'source>>,
+                witness: DriverValue<D, Self::Witness<'source>>,
             ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
             where
                 Self: 'dr,
@@ -306,7 +306,7 @@ mod tests {
 
             fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
                 dr: &mut D,
-                witness: Witness<D, Self::Witness<'source>>,
+                witness: DriverValue<D, Self::Witness<'source>>,
             ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
             where
                 Self: 'dr,

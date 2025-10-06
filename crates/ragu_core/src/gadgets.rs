@@ -179,13 +179,13 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// ## Example
 ///
 /// ```rust
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
+/// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Gadget};
 /// #[derive(Gadget)]
 /// struct Boolean<'dr, D: Driver<'dr>> {
 ///     #[ragu(wire)]
 ///     wire: D::Wire,
-///     #[ragu(witness)]
-///     value: Witness<D, bool>,
+///     #[ragu(value)]
+///     value: DriverValue<D, bool>,
 /// }
 /// ```
 ///
@@ -193,9 +193,9 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// implementations for your struct. The fields are annotated with
 /// * `#[ragu(wire)]` for fields that represent wires in the driver, which are
 ///   converted using [`FromDriver::convert_wire`].
-/// * `#[ragu(witness)]` for fields that represent witness data in the driver,
+/// * `#[ragu(value)]` for fields that represent driver-specific values,
 ///   which are converted or cloned using
-///   [`Witness::just`](crate::maybe::Maybe::just).
+///   [`DriverValue::just`](crate::maybe::Maybe::just).
 /// * `#[ragu(gadget)]` for fields that are themselves gadgets, which are
 ///   converted using [`GadgetKind::map_gadget`].
 /// * `#[ragu(phantom)]` for `PhantomData` fields.
@@ -206,13 +206,13 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// `#[ragu(driver)]` like so:
 ///
 /// ```rust
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
+/// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Gadget};
 /// #[derive(Gadget)]
 /// struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 ///     #[ragu(wire)]
 ///     wire: MyD::Wire,
-///     #[ragu(witness)]
-///     value: Witness<MyD, MyD::F>,
+///     #[ragu(value)]
+///     value: DriverValue<MyD, MyD::F>,
 /// }
 /// ```
 pub use ragu_macros::Gadget;
@@ -231,13 +231,13 @@ pub use ragu_macros::Gadget;
 ///
 /// ```rust
 /// # use ff::Field;
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Kind};
+/// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Kind};
 /// # #[derive(ragu_core::gadgets::Gadget)]
 /// # struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 /// #     #[ragu(wire)]
 /// #     wire: MyD::Wire,
-/// #     #[ragu(witness)]
-/// #     value: Witness<MyD, MyD::F>,
+/// #     #[ragu(value)]
+/// #     value: DriverValue<MyD, MyD::F>,
 /// # }
 /// # trait MyTrait<F: Field> {
 /// #     type Kind: ragu_core::gadgets::GadgetKind<F>;
@@ -252,14 +252,14 @@ pub use ragu_macros::Gadget;
 ///
 /// ```rust
 /// # use ff::Field;
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::{Kind, Gadget}};
+/// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::{Kind, Gadget}};
 /// # use core::marker::PhantomData;
 /// # #[derive(ragu_core::gadgets::Gadget)]
 /// # struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
 /// #     #[ragu(wire)]
 /// #     wire: MyD::Wire,
-/// #     #[ragu(witness)]
-/// #     value: Witness<MyD, MyD::F>,
+/// #     #[ragu(value)]
+/// #     value: DriverValue<MyD, MyD::F>,
 /// # }
 /// # type MyKind<F: Field> =
 /// <Boolean<'static, PhantomData<F>> as Gadget<'static, PhantomData<F>>>::Kind

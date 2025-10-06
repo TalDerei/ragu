@@ -30,6 +30,8 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Collector<'a, F, R> {
     const ONE: Self::Wire = ();
 
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
+        // Packs two allocations into one multiplication gate when possible, enabling consecutive
+        // allocations to share gates.
         if let Some(index) = self.available_b.take() {
             let a = self.rx.a[index];
             let b = value()?;

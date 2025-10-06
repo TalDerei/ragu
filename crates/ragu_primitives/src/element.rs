@@ -2,7 +2,7 @@ use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
     Error, Result,
-    drivers::{Driver, LinearExpression, Witness},
+    drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
@@ -45,15 +45,15 @@ pub struct Element<'dr, D: Driver<'dr>> {
     wire: D::Wire,
 
     /// The witness value for the assignment of this wire
-    #[ragu(witness)]
-    value: Witness<D, D::F>,
+    #[ragu(value)]
+    value: DriverValue<D, D::F>,
 }
 
 impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Allocates an element with the provided witness assignment.
     ///
     /// This costs one allocation.
-    pub fn alloc(dr: &mut D, assignment: Witness<D, D::F>) -> Result<Self> {
+    pub fn alloc(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<Self> {
         let wire = dr.alloc(|| Ok(Coeff::Arbitrary(*assignment.snag())))?;
 
         Ok(Element {
@@ -66,7 +66,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// squares it in a single step. Returns $(a, a^2)$.
     ///
     /// This costs one multiplication constraint.
-    pub fn alloc_square(dr: &mut D, assignment: Witness<D, D::F>) -> Result<(Self, Self)> {
+    pub fn alloc_square(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<(Self, Self)> {
         let square = D::just(|| assignment.snag().square());
         let (a, b, c) = dr.mul(|| {
             let value = *assignment.view().take();
@@ -117,13 +117,13 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Constructs a new element from a wire and a witness value. **It is the
     /// caller's responsibility to ensure that the provided witness value is
     /// consistent with the provided wire's value.**
-    pub fn promote(wire: D::Wire, value: Witness<D, D::F>) -> Self {
+    pub fn promote(wire: D::Wire, value: DriverValue<D, D::F>) -> Self {
         Element { wire, value }
     }
 
     /// Returns the value of this element. The caller can rely on this being
     /// consistent with the underlying wire's value.
-    pub fn value(&self) -> Witness<D, &D::F> {
+    pub fn value(&self) -> DriverValue<D, &D::F> {
         self.value.view()
     }
 

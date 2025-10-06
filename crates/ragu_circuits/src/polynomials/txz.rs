@@ -1,7 +1,7 @@
 use ff::Field;
 use ragu_core::{
     Error, Result,
-    drivers::{Driver, Witness},
+    drivers::{Driver, DriverValue},
     gadgets::{GadgetKind, Kind},
     maybe::Maybe,
     routines::{Prediction, Routine},
@@ -31,7 +31,7 @@ impl<F: Field> Routine<F> for Evaluate {
         &self,
         dr: &mut D,
         input: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-        _: Witness<D, Self::Aux<'dr>>,
+        _: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
         let x = input.0;
         let z = input.1;
@@ -72,7 +72,7 @@ impl<F: Field> Routine<F> for Evaluate {
         dr: &mut D,
         input: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
     ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, Witness<D, Self::Aux<'dr>>>,
+        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
     > {
         // TODO(ebfull): This prediction would be more helpful if the inversions
         // were laundered out through the auxillary data.

@@ -166,7 +166,7 @@ fn test_mesh_circuit_consistency() {
     use ff::Field;
     use ragu_core::{
         Result,
-        drivers::{Driver, Witness},
+        drivers::{Driver, DriverValue},
         gadgets::{GadgetKind, Kind},
     };
     use ragu_pasta::Fp;
@@ -188,7 +188,7 @@ fn test_mesh_circuit_consistency() {
         fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
-            instance: Witness<D, Self::Instance<'instance>>,
+            instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
             Element::alloc(dr, instance)
         }
@@ -196,10 +196,10 @@ fn test_mesh_circuit_consistency() {
         fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
-            witness: Witness<D, Self::Witness<'witness>>,
+            witness: DriverValue<D, Self::Witness<'witness>>,
         ) -> Result<(
             <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
-            Witness<D, Self::Aux<'witness>>,
+            DriverValue<D, Self::Aux<'witness>>,
         )> {
             let mut a = Element::alloc(dr, witness)?;
 

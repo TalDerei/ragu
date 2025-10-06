@@ -2,7 +2,7 @@ use arithmetic::{Coeff, CurveAffine};
 use ff::{Field, WithSmallOrderMulGroup};
 use ragu_core::{
     Error, Result,
-    drivers::{Driver, LinearExpression, Witness},
+    drivers::{Driver, DriverValue, LinearExpression},
     gadgets::Gadget,
     maybe::Maybe,
 };
@@ -25,7 +25,7 @@ pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine> {
 impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     /// Allocate a point on the curve. This will return an error if the provided
     /// point is at infinity.
-    pub fn alloc(dr: &mut D, p: Witness<D, C>) -> Result<Self> {
+    pub fn alloc(dr: &mut D, p: DriverValue<D, C>) -> Result<Self> {
         let coordinates = D::with(|| {
             let coordinates = p.take().coordinates().into_option();
             coordinates.ok_or_else(|| {
@@ -71,7 +71,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 
     /// Returns the point represented by this gadget.
-    pub fn value(&self) -> Witness<D, C> {
+    pub fn value(&self) -> DriverValue<D, C> {
         D::just(|| {
             let x = *self.x.value().take();
             let y = *self.y.value().take();

@@ -58,7 +58,7 @@ pub trait Buffer<'dr, D: Driver<'dr>> {
 ///
 /// ```rust
 /// # use arithmetic::CurveAffine;
-/// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
+/// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Gadget};
 /// # use ragu_primitives::{Element, io::Write};
 /// # use core::marker::PhantomData;
 /// #[derive(Gadget, Write)]
