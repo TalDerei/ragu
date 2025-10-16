@@ -82,6 +82,7 @@ pub use ragu_macros::repr256;
 mod coeff;
 mod domain;
 mod fft;
+pub mod parallel;
 mod uendo;
 mod util;
 

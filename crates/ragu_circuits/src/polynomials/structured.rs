@@ -135,13 +135,44 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Inner product of `self` with the reversed `other`.
     pub fn revdot(&self, other: &Self) -> F {
-        self.u
-            .iter()
-            .zip(other.v.iter())
-            .chain(self.v.iter().zip(other.u.iter()))
-            .chain(self.w.iter().zip(other.d.iter()))
-            .chain(self.d.iter().zip(other.w.iter()))
-            .fold(F::ZERO, |acc, (a, b)| acc + (*a * *b))
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            // Compute partial sums in parallel for each vector pair.
+            let uv = parallel::par_iter(&self.u)
+                .zip(parallel::par_iter(&other.v))
+                .map(|(a, b)| *a * *b)
+                .sum::<F>();
+
+            let vu = parallel::par_iter(&self.v)
+                .zip(parallel::par_iter(&other.u))
+                .map(|(a, b)| *a * *b)
+                .sum::<F>();
+
+            let wd = parallel::par_iter(&self.w)
+                .zip(parallel::par_iter(&other.d))
+                .map(|(a, b)| *a * *b)
+                .sum::<F>();
+
+            let dw = parallel::par_iter(&self.d)
+                .zip(parallel::par_iter(&other.w))
+                .map(|(a, b)| *a * *b)
+                .sum::<F>();
+
+            uv + vu + wd + dw
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            self.u
+                .iter()
+                .zip(other.v.iter())
+                .chain(self.v.iter().zip(other.u.iter()))
+                .chain(self.w.iter().zip(other.d.iter()))
+                .chain(self.d.iter().zip(other.w.iter()))
+                .fold(F::ZERO, |acc, (a, b)| acc + (*a * *b))
+        }
     }
 
     /// Add the coefficients of `other` to `self`.
@@ -173,30 +204,73 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     }
 
     /// Transforms this polynomial from $p(X)$ to $p(zX)$ for $z \in \mathbb{F}$.
+    /// Since the polynomial is sparse, padding fills the gaps in the areas where
+    /// the coefficient vectors are less than n.
     pub fn dilate(&mut self, z: F) {
         assert!(self.u.len() <= R::n());
         assert!(self.v.len() <= R::n());
         assert!(self.w.len() <= R::n());
         assert!(self.d.len() <= R::n());
 
-        let mut cur = F::ONE;
-        for c in self.w.iter_mut() {
-            *c *= cur;
-            cur *= z;
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            // Precompute the base powers representing the offsets across vectors (there's probably a more
+            // efficient way to do this).
+            let v_offset = z.pow_vartime([(self.w.len() + self.first_padding()) as u64]);
+            let u_offset = v_offset * z.pow_vartime([self.v.len() as u64]);
+            let d_offset =
+                u_offset * z.pow_vartime([(self.u.len() + self.second_padding()) as u64]);
+
+            parallel::par_iter_mut(&mut self.w)
+                .enumerate()
+                .for_each(|(i, c)| {
+                    *c *= z.pow([i as u64]);
+                });
+
+            let v_len = self.v.len();
+            parallel::par_iter_mut(&mut self.v)
+                .enumerate()
+                .for_each(|(i, b)| {
+                    *b *= v_offset * z.pow([(v_len - 1 - i) as u64]);
+                });
+
+            parallel::par_iter_mut(&mut self.u)
+                .enumerate()
+                .for_each(|(i, a)| {
+                    *a *= u_offset * z.pow([i as u64]);
+                });
+
+            let d_len = self.d.len();
+            parallel::par_iter_mut(&mut self.d)
+                .enumerate()
+                .for_each(|(i, d)| {
+                    *d *= d_offset * z.pow([(d_len - 1 - i) as u64]);
+                });
         }
-        cur *= z.pow_vartime([self.first_padding() as u64]);
-        for b in self.v.iter_mut().rev() {
-            *b *= cur;
-            cur *= z;
-        }
-        for a in self.u.iter_mut() {
-            *a *= cur;
-            cur *= z;
-        }
-        cur *= z.pow_vartime([self.second_padding() as u64]);
-        for d in self.d.iter_mut().rev() {
-            *d *= cur;
-            cur *= z;
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            let mut cur = F::ONE;
+            for c in self.w.iter_mut() {
+                *c *= cur;
+                cur *= z;
+            }
+            cur *= z.pow_vartime([self.first_padding() as u64]);
+            for b in self.v.iter_mut().rev() {
+                *b *= cur;
+                cur *= z;
+            }
+            for a in self.u.iter_mut() {
+                *a *= cur;
+                cur *= z;
+            }
+            cur *= z.pow_vartime([self.second_padding() as u64]);
+            for d in self.d.iter_mut().rev() {
+                *d *= cur;
+                cur *= z;
+            }
         }
     }
 
@@ -279,36 +353,62 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Helper function to apply an operation to all coefficients.
     fn apply_all<Op>(&mut self, op: Op)
     where
-        Op: Fn(&mut F),
+        Op: Fn(&mut F) + Sync,
     {
-        self.u.iter_mut().for_each(&op);
-        self.v.iter_mut().for_each(&op);
-        self.w.iter_mut().for_each(&op);
-        self.d.iter_mut().for_each(&op);
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, ParallelIterator};
+            parallel::par_iter_mut(&mut self.u).for_each(&op);
+            parallel::par_iter_mut(&mut self.v).for_each(&op);
+            parallel::par_iter_mut(&mut self.w).for_each(&op);
+            parallel::par_iter_mut(&mut self.d).for_each(&op);
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            self.u.iter_mut().for_each(&op);
+            self.v.iter_mut().for_each(&op);
+            self.w.iter_mut().for_each(&op);
+            self.d.iter_mut().for_each(&op);
+        }
     }
 
     /// Helper function to combine two polynomials with a binary operation.
-    fn combine_assign_all<Op>(&mut self, other: &Self, mut op: Op)
+    fn combine_assign_all<Op>(&mut self, other: &Self, op: Op)
     where
-        Op: FnMut(&mut F, &F),
+        Op: Fn(&mut F, &F) + Sync,
     {
-        Self::combine_assign(&mut self.u, &other.u, &mut op);
-        Self::combine_assign(&mut self.v, &other.v, &mut op);
-        Self::combine_assign(&mut self.w, &other.w, &mut op);
-        Self::combine_assign(&mut self.d, &other.d, &mut op);
+        Self::combine_assign(&mut self.u, &other.u, &op);
+        Self::combine_assign(&mut self.v, &other.v, &op);
+        Self::combine_assign(&mut self.w, &other.w, &op);
+        Self::combine_assign(&mut self.d, &other.d, &op);
     }
 
     /// Helper function to combine coefficient vectors with a binary operation.
-    fn combine_assign<Op>(a: &mut Vec<F>, b: &[F], mut op: Op)
+    fn combine_assign<Op>(a: &mut Vec<F>, b: &[F], op: &Op)
     where
-        Op: FnMut(&mut F, &F),
+        Op: Fn(&mut F, &F) + Sync,
     {
         if a.len() < b.len() {
             a.resize(b.len(), F::ZERO);
         }
 
-        for (a_coeff, b_coeff) in a.iter_mut().zip(b.iter()) {
-            op(a_coeff, b_coeff);
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            parallel::par_iter_mut(a)
+                .zip(parallel::par_iter(b))
+                .for_each(|(a_coeff, b_coeff)| {
+                    op(a_coeff, b_coeff);
+                });
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            for (a_coeff, b_coeff) in a.iter_mut().zip(b.iter()) {
+                op(a_coeff, b_coeff);
+            }
         }
     }
 

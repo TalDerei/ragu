@@ -1,9 +1,15 @@
 use ff::{Field, PrimeField};
 
+#[cfg(feature = "multicore")]
+use crate::parallel::{self, ParallelIterator};
+
+#[cfg(not(feature = "multicore"))]
+use crate::parallel;
+
 /// A ring that can be used for FFTs.
 pub trait Ring {
     /// Elements of the ring.
-    type R: Default + Clone;
+    type R: Default + Clone + Send;
 
     /// Scalar field for the ring.
     type F: Field;
@@ -50,6 +56,7 @@ pub(crate) fn fft<R: Ring>(log2_n: u32, input: &mut [R::R], omega: R::F) {
     assert_eq!(input.len(), 1 << log2_n);
     let n = input.len() as u32;
 
+    // TODO: Parallelize this bit-reversal computation.
     for i in 0..n {
         let ri = bitreverse(i, log2_n);
         if i < ri {
@@ -61,22 +68,20 @@ pub(crate) fn fft<R: Ring>(log2_n: u32, input: &mut [R::R], omega: R::F) {
     for _ in 0..log2_n {
         let w_m = omega.pow([(n / (m << 1)) as u64]);
 
-        let mut i = 0;
-        while i < n {
+        // Process chunks independently.
+        parallel::par_chunks_mut(input, (m << 1) as usize).for_each(|chunk| {
             let mut w = R::F::ONE;
             for j in 0..m {
                 let mut a = R::R::default();
-                core::mem::swap(&mut a, &mut input[(i + j + m) as usize]);
+                core::mem::swap(&mut a, &mut chunk[(j + m) as usize]);
                 R::scale_assign(&mut a, w);
-                let mut b = input[(i + j) as usize].clone();
+                let mut b = chunk[(j) as usize].clone();
                 R::sub_assign(&mut b, &a);
-                input[(i + j + m) as usize] = b;
-                R::add_assign(&mut input[(i + j) as usize], &a);
+                chunk[(j + m) as usize] = b;
+                R::add_assign(&mut chunk[(j) as usize], &a);
                 w *= w_m;
             }
-
-            i += m << 1;
-        }
+        });
 
         m <<= 1;
     }

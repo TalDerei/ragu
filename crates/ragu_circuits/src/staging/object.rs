@@ -85,9 +85,12 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
             w * plus + v * minus + u * plus
         };
 
-        // TODO(ebfull): underflows possible, though they don't affect the
-        // arithmetic in practice.
-        let c1 = block(self.skip_multiplications - 1, self.skip_multiplications);
+        // Handle the edge case where skip_multiplications is zero.
+        let c1 = if self.skip_multiplications > 0 {
+            block(self.skip_multiplications - 1, self.skip_multiplications)
+        } else {
+            F::ZERO
+        };
         let c2 = block(R::n() - 2, reserved);
 
         y.pow_vartime([(3 * reserved) as u64]) * c1 + c2

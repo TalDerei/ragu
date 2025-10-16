@@ -17,6 +17,60 @@ where
     result
 }
 
+/// Evaluates a single polynomial in multiple points in parallel (batch verification).
+#[cfg(feature = "multicore")]
+#[allow(dead_code)]
+pub fn batch_eval_at_points<F: Field + Sync>(coeffs: &[F], points: &[F]) -> Vec<F> {
+    use crate::parallel::{self, ParallelIterator};
+
+    parallel::par_iter(points)
+        .map(|&x| eval(coeffs.iter(), x))
+        .collect()
+}
+
+#[cfg(not(feature = "multicore"))]
+#[allow(dead_code)]
+pub fn batch_eval_at_points<F: Field + Sync>(coeffs: &[F], points: &[F]) -> Vec<F> {
+    points.iter().map(|&x| eval(coeffs.iter(), x)).collect()
+}
+
+/// Evaluates multiple polynomials at a single point.
+#[cfg(feature = "multicore")]
+#[allow(dead_code)]
+pub fn batch_eval_polynomials<F: Field + Sync>(polys: &[Vec<F>], point: &F) -> Vec<F> {
+    use crate::parallel::{self, ParallelIterator};
+
+    parallel::par_iter(polys)
+        .map(|poly| eval(poly.iter(), *point))
+        .collect()
+}
+
+#[cfg(not(feature = "multicore"))]
+#[allow(dead_code)]
+pub fn batch_eval_polynomials<F: Field>(polys: &[Vec<F>], point: &F) -> Vec<F> {
+    polys.iter().map(|poly| eval(poly.iter(), *point)).collect()
+}
+
+/// Evaluates multiple (polynomial, point) pairs in parallel.
+#[cfg(feature = "multicore")]
+#[allow(dead_code)]
+pub fn batch_eval_pairs<F: Field + Sync>(pairs: &[(Vec<F>, F)]) -> Vec<F> {
+    use crate::parallel::{self, ParallelIterator};
+
+    parallel::par_iter(pairs)
+        .map(|(poly, point)| eval(poly.iter(), *point))
+        .collect()
+}
+
+#[cfg(not(feature = "multicore"))]
+#[allow(dead_code)]
+pub fn batch_eval_pairs<F: Field + Sync>(pairs: &[(Vec<F>, F)]) -> Vec<F> {
+    pairs
+        .iter()
+        .map(|(poly, point)| eval(poly.iter(), *point))
+        .collect()
+}
+
 /// Computes $\langle \mathbf{a} , \mathbf{b} \rangle$ where $\mathbf{a}, \mathbf{b} \in \mathbb{F}^n$
 /// are defined by the provided equal-length iterators.
 ///
@@ -224,10 +278,38 @@ pub fn mul<
 
         let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
 
-        for (coeff, base) in coeffs.iter().zip(bases.clone().into_iter()) {
-            let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
-            if coeff != 0 {
-                buckets[coeff - 1].add_assign(base);
+        #[cfg(feature = "multicore")]
+        {
+            use crate::parallel::{self, IndexedParallelIterator, ParallelIterator};
+            // Collect bases into a vector for parallel processing
+            let bases_vec: Vec<_> = bases.clone().into_iter().collect();
+
+            // Parallel bucket assignment computation
+            let bucket_assignments: Vec<(usize, &C)> = parallel::par_iter(&coeffs)
+                .zip(parallel::par_iter(&bases_vec))
+                .filter_map(|(coeff, base)| {
+                    let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
+                    if coeff != 0 {
+                        Some((coeff - 1, *base))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Sequential aggregation into buckets.
+            for (bucket_idx, base) in bucket_assignments {
+                buckets[bucket_idx].add_assign(&base);
+            }
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            for (coeff, base) in coeffs.iter().zip(bases.clone().into_iter()) {
+                let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
+                if coeff != 0 {
+                    buckets[coeff - 1].add_assign(base);
+                }
             }
         }
 

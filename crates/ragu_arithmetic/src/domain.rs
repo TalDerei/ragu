@@ -1,6 +1,5 @@
-use ff::PrimeField;
-
 use alloc::vec::Vec;
+use ff::PrimeField;
 
 /// Radix-2 evaluation domain for polynomials in fields supported by Ragu.
 pub struct Domain<F> {
@@ -97,8 +96,20 @@ impl<F: PrimeField> Domain<F> {
     pub fn ring_ifft<R: crate::fft::Ring<F = F>>(&self, input: &mut [R::R]) {
         crate::fft::fft::<R>(self.log2_n, input, self.omega_inv);
 
-        for input in input.iter_mut() {
-            R::scale_assign(input, self.n_inv);
+        #[cfg(feature = "multicore")]
+        {
+            use crate::parallel::{self, ParallelIterator};
+
+            parallel::par_iter_mut(input).for_each(|element| {
+                R::scale_assign(element, self.n_inv);
+            })
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            for input in input.iter_mut() {
+                R::scale_assign(input, self.n_inv);
+            }
         }
     }
 
@@ -172,27 +183,50 @@ impl<F: PrimeField> Domain<F> {
             })
             .collect();
         {
+            // Batch inversion using Montogomery's trick.
             let mut scratch = denominators.clone();
             ff::BatchInverter::invert_with_external_scratch(&mut denominators, &mut scratch);
         }
 
-        Some(
-            // (x - \omega^i)^{-1} \cdot \frac{(x^n - 1) \omega^i}{n}
-            denominators
-                .into_iter()
-                .scan((xn - F::ONE) * self.n_inv, move |numerator, denominator| {
-                    let tmp = (*numerator) * denominator;
-                    *numerator *= self.omega;
-                    Some(tmp)
+        // Factor out common \frac{x^n - 1}{n} from (x - \omega^i)^{-1} \cdot \frac{(x^n - 1) \omega^i}{n},
+        // saving recomputing n - 1 unnecessary field multiplications and subtractions.
+        let base_numerator = (xn - F::ONE) * self.n_inv;
+
+        #[cfg(feature = "multicore")]
+        {
+            use crate::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            let result: Vec<F> = parallel::par_iter(&denominators)
+                .enumerate()
+                .map(|(i, denominator)| {
+                    let omega_power = self.omega.pow([i as u64]);
+                    base_numerator * denominator * omega_power
                 })
-                .collect(),
-        )
+                .collect();
+
+            Some(result)
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            Some(
+                // (x - \omega^i)^{-1} \cdot \frac{(x^n - 1) \omega^i}{n}
+                denominators
+                    .into_iter()
+                    .scan(base_numerator, move |base_numerator, denominator| {
+                        let tmp = (*base_numerator) * denominator;
+                        *base_numerator *= self.omega;
+                        Some(tmp)
+                    })
+                    .collect(),
+            )
+        }
     }
 }
 
 #[test]
 fn test_fft() {
-    use crate::eval;
+    use crate::util::batch_eval_at_points;
     use ff::Field;
     use pasta_curves::Fp as F;
 
@@ -205,12 +239,18 @@ fn test_fft() {
 
     params.fft(&mut evals);
 
-    {
-        let mut p = F::ONE;
-        for i in 0..params.n {
-            assert_eq!(evals[i], eval(&coeffs, p));
-            p *= params.omega;
-        }
+    let points: Vec<F> = (0..params.n)
+        .scan(F::ONE, |p, _| {
+            let tmp = *p;
+            *p *= params.omega;
+            Some(tmp)
+        })
+        .collect();
+
+    let batch_evals = batch_eval_at_points(&coeffs, &points);
+
+    for i in 0..params.n {
+        assert_eq!(evals[i], batch_evals[i]);
     }
 
     let mut coeffs_recovered = evals.clone();
@@ -221,10 +261,10 @@ fn test_fft() {
 #[test]
 fn test_ell() {
     use crate::eval;
+    use crate::util::batch_eval_polynomials;
+    use alloc::vec;
     use ff::Field;
     use pasta_curves::Fp as F;
-
-    use alloc::vec;
 
     let params = Domain::<F>::new(5);
 
@@ -245,8 +285,9 @@ fn test_ell() {
 
     let x = F::DELTA;
 
+    let batch_evals = batch_eval_polynomials(&lagrange_polys, &x);
     let expected = params.ell(x, params.n).unwrap();
     for (i, expected) in expected.iter().enumerate() {
-        assert_eq!(eval(&lagrange_polys[i], x), *expected);
+        assert_eq!(batch_evals[i], *expected);
     }
 }

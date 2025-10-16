@@ -83,9 +83,21 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Scale the coefficients of the polynomial by the given factor.
     pub fn scale(&mut self, by: F) {
-        self.coeffs.iter_mut().for_each(|coeff| {
-            *coeff *= by;
-        });
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, ParallelIterator};
+
+            parallel::par_iter_mut(&mut self.coeffs).for_each(|coeff| {
+                *coeff *= by;
+            })
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            self.coeffs.iter_mut().for_each(|coeff| {
+                *coeff *= by;
+            });
+        }
     }
 
     /// Add another unstructured polynomial to this one.
@@ -93,10 +105,22 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         assert_eq!(self.coeffs.len(), R::num_coeffs());
         assert_eq!(other.coeffs.len(), R::num_coeffs());
 
-        self.coeffs
-            .iter_mut()
-            .zip(other.coeffs.iter())
-            .for_each(|(a, b)| *a += b);
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            parallel::par_iter_mut(&mut self.coeffs)
+                .zip(parallel::par_iter(&other.coeffs))
+                .for_each(|(a, b)| *a += b);
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            self.coeffs
+                .iter_mut()
+                .zip(other.coeffs.iter())
+                .for_each(|(a, b)| *a += b);
+        }
     }
 
     /// Adds a structured polynomial to this unstructured polynomial.
@@ -110,21 +134,48 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         assert!(other.w.len() <= R::n());
         assert!(d_len <= R::n());
 
-        let mut cursor = &mut self.coeffs[..];
-        cursor
-            .iter_mut()
-            .zip(other.w.iter())
-            .for_each(|(coeff, val)| *coeff += val);
-        cursor = &mut cursor[R::n() * 2 - v_len..];
-        cursor
-            .iter_mut()
-            .zip(other.v.iter().rev().chain(other.u.iter()))
-            .for_each(|(coeff, val)| *coeff += val);
-        cursor = &mut cursor[R::n() * 2 + v_len - d_len..];
-        cursor
-            .iter_mut()
-            .zip(other.d.iter().rev())
-            .for_each(|(coeff, val)| *coeff += val);
+        #[cfg(feature = "multicore")]
+        {
+            use arithmetic::parallel::{self, IndexedParallelIterator, ParallelIterator};
+
+            let mut cursor = &mut self.coeffs[..];
+            parallel::par_iter_mut(cursor)
+                .zip(parallel::par_iter(&other.w))
+                .for_each(|(coeff, val)| *coeff += val);
+
+            cursor = &mut cursor[R::n() * 2 - v_len..];
+            parallel::par_iter_mut(cursor)
+                .zip(
+                    parallel::par_iter(&other.v)
+                        .rev()
+                        .chain(parallel::par_iter(&other.u)),
+                )
+                .for_each(|(coeff, val)| *coeff += val);
+
+            cursor = &mut cursor[R::n() * 2 + v_len - d_len..];
+            parallel::par_iter_mut(cursor)
+                .zip(parallel::par_iter(&other.d).rev())
+                .for_each(|(coeff, val)| *coeff += val);
+        }
+
+        #[cfg(not(feature = "multicore"))]
+        {
+            let mut cursor = &mut self.coeffs[..];
+            cursor
+                .iter_mut()
+                .zip(other.w.iter())
+                .for_each(|(coeff, val)| *coeff += val);
+            cursor = &mut cursor[R::n() * 2 - v_len..];
+            cursor
+                .iter_mut()
+                .zip(other.v.iter().rev().chain(other.u.iter()))
+                .for_each(|(coeff, val)| *coeff += val);
+            cursor = &mut cursor[R::n() * 2 + v_len - d_len..];
+            cursor
+                .iter_mut()
+                .zip(other.d.iter().rev())
+                .for_each(|(coeff, val)| *coeff += val);
+        }
     }
 
     /// Compute a commitment to this polynomial using the provided generators.

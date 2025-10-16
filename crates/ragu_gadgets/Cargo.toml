@@ -21,5 +21,8 @@ all-features = true
 
 [features]
 default = []
+multicore = ["dep:rayon", "std"]
+std = []
 
 [dependencies]
+rayon = { workspace = true, optional = true }

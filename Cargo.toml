@@ -21,6 +21,14 @@ all-features = true
 
 [features]
 default = []
+multicore = [
+  "ragu_arithmetic/multicore",
+  "ragu_circuits/multicore",
+]
+std = [
+  "ragu_arithmetic/std",
+  "ragu_circuits/std",
+]
 
 [dependencies]
 ragu_core = { path = "crates/ragu_core", version = "0.0.0" }
@@ -48,3 +56,5 @@ pasta_curves = "0.5.1"
 rand = "0.8.5"
 lazy_static = "1.5.0"
 proptest = "1.7.0"
+rayon = "1.11.0"
+criterion = { version = "0.5", features = ["html_reports"] }

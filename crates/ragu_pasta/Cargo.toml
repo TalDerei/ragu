@@ -22,17 +22,19 @@ all-features = true
 [features]
 default = []
 baked = ["lazy_static"]
+multicore = ["dep:rayon", "std"]
+std = []
 
 [build-dependencies]
 arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
 ff = { workspace = true }
 group = { workspace = true }
 pasta_curves = { workspace = true }
+rayon = { workspace = true, optional = true }
 
 [dependencies]
 arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
 ff = { workspace = true }
 group = { workspace = true }
 pasta_curves = { workspace = true }
-
 lazy_static = { workspace = true, optional = true }
