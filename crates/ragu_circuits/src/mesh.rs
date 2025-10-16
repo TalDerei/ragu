@@ -1,15 +1,17 @@
 //! Management of polynomials that encode large sets of circuit polynomials for
 //! efficient querying.
 
-use crate::{
-    Circuit, CircuitExt, CircuitObject,
-    polynomials::{Rank, structured, unstructured},
-};
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 use arithmetic::Domain;
 use arithmetic::bitreverse;
 use ff::PrimeField;
 use ragu_core::{Error, Result};
+
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
+
+use crate::{
+    Circuit, CircuitExt, CircuitObject,
+    polynomials::{Rank, structured, unstructured},
+};
 
 /// Builder for constructing a new [`Mesh`].
 pub struct MeshBuilder<'params, F: PrimeField, R: Rank> {
