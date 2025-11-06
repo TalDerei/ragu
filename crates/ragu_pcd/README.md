@@ -1,4 +1,10 @@
-# `ragu`
+<p align="center">
+  <img width="300" height="80" src="https://tachyon.z.cash/assets/ragu/v1_github600x160.png">
+</p>
+
+# `ragu_pcd`
+
+This crate contains internal implementation code for the [`ragu`](https://crates.io/crates/ragu) crate.
 
 ## License
 

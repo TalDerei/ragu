@@ -1,21 +1,23 @@
 [package]
 name = "ragu_pcd"
 version = "0.0.0"
-authors = [
-    "Sean Bowe <ewillbefull@gmail.com>"
-]
+authors = ["Sean Bowe <ewillbefull@gmail.com>"]
 description = """
-WIP
+Intended for internal use in the Ragu project
 """
 license = "MIT OR Apache-2.0"
 edition = "2024"
 rust-version = "1.85"
 
 readme = "README.md"
-repository = "https://github.com/ebfull/ragu"
-documentation = "https://docs.rs/ragu"
-categories = []
+repository = "https://github.com/tachyon-zcash/ragu"
+documentation = "https://docs.rs/ragu_pcd"
+categories = ["cryptography", "mathematics", "algorithms", "development-tools", "no-std"]
 keywords = []
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]
+all-features = true
 
 [features]
 default = []
