@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn test_non_power_of_two_mesh_sizes() -> Result<()> {
         type TestRank = crate::polynomials::R<8>;
-        for num_circuits in [3, 5, 7, 9, 11, 13, 15, 16] {
+        for num_circuits in 0..21 {
             let mut builder = MeshBuilder::<Fp, TestRank>::new();
 
             for i in 0..num_circuits {
@@ -449,11 +449,9 @@ mod tests {
             let x = Fp::random(thread_rng());
             let y = Fp::random(thread_rng());
 
-            for _ in 0..mesh.domain.n() {
-                let wxy = mesh.wxy(w, x, y);
-                let xy = mesh.xy(x, y);
-                assert_eq!(wxy, xy.eval(w), "Failed for num_circuits={}", num_circuits);
-            }
+            let wxy = mesh.wxy(w, x, y);
+            let xy = mesh.xy(x, y);
+            assert_eq!(wxy, xy.eval(w), "Failed for num_circuits={}", num_circuits);
         }
 
         Ok(())
