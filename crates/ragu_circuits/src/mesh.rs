@@ -79,6 +79,11 @@ impl<'params, F: PrimeField, R: Rank> MeshBuilder<'params, F, R> {
     where
         F: PrimeField<Repr = [u8; 32]>,
     {
+        // Guard against empty meshes.
+        if self.circuits.is_empty() {
+            return Err(Error::CircuitBoundExceeded(0));
+        }
+
         // Compute the smallest power-of-2 domain size that fits all circuits.
         let log2_circuits = self.circuits.len().next_power_of_two().trailing_zeros();
         let domain = Domain::<F>::new(log2_circuits);
@@ -110,45 +115,136 @@ impl<'params, F: PrimeField, R: Rank> MeshBuilder<'params, F, R> {
 
         // Compute K = H(M(w, x, y)) which creates binding commitment to mesh structure.
         let mesh_key = Self::compute_mesh_key(&provisional_mesh);
+        assert_ne!(mesh_key, F::ZERO);
 
         provisional_mesh.mesh_key = Some(mesh_key);
 
         Ok(provisional_mesh)
     }
 
-    /// Compute the mesh binding key K by hashing the mesh structure.
+    /// Compute mesh binding key K through iterative hashing.
     pub fn compute_mesh_key(mesh: &Mesh<'params, F, R>) -> F
     where
-        // Neccesary converting between generic F and concrete Fp for Poseidon hashing.
+        // Neccesary for converting between generic F and concrete Fp for Poseidon hashing.
         F: PrimeField<Repr = [u8; 32]>,
     {
+        let params = Pasta::baked();
+
+        // ITERATION 1.
+
         // Placeholder "nothing-up-my-sleeve challenges" (small primes).
-        // TODO: Add domain-seperated iterative hashing.
-        let w = F::from(2);
-        let x = F::from(3);
-        let y = F::from(5);
+        let w = F::from(2u64);
+        let x = F::from(3u64);
+        let y = F::from(5u64);
+        let w_fp =
+            Fp::from_repr(w.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
+        let x_fp =
+            Fp::from_repr(x.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
+        let y_fp =
+            Fp::from_repr(y.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
 
         // Evaluate the mesh polynomial m(w,x,y) = \sum {l_i(w) * s_i(x,y)}.
         let mesh_eval = mesh.wxy(w, x, y);
-        let mesh_eval_fp = Fp::from_repr(mesh_eval.to_repr()).unwrap_or(Fp::ZERO);
+        let mesh_eval_fp = Fp::from_repr(mesh_eval.to_repr())
+            .expect("mesh evaluation must convert to Fp for hashing");
 
         // Hash with Poseidon using Simulator driver.
-        let params = Pasta::baked();
-        let digest = RefCell::new(Fp::ZERO);
-
+        let h1_digest = RefCell::new(Fp::ZERO);
         let _ = Simulator::simulate(mesh_eval_fp, |dr, value| {
             let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
                 dr,
                 params.circuit_poseidon(),
             );
-            let elem = Element::alloc(dr, value)?;
-            sponge.absorb(dr, &elem)?;
-            let hash_elem = sponge.squeeze(dr)?;
-            *digest.borrow_mut() = *hash_elem.wire();
+            // Hash the domain separation.
+            let ds = Element::constant(dr, Fp::from(1u64));
+            sponge.absorb(dr, &ds)?;
+
+            // Hash the challenge points.
+            let w_elem = Element::constant(dr, w_fp);
+            let x_elem = Element::constant(dr, x_fp);
+            let y_elem = Element::constant(dr, y_fp);
+            sponge.absorb(dr, &w_elem)?;
+            sponge.absorb(dr, &x_elem)?;
+            sponge.absorb(dr, &y_elem)?;
+
+            // Hash the evaluation.
+            let eval_elem = Element::alloc(dr, value)?;
+            sponge.absorb(dr, &eval_elem)?;
+
+            let hash = sponge.squeeze(dr)?;
+            *h1_digest.borrow_mut() = *hash.wire();
             Ok(())
         });
 
-        F::from_repr(digest.borrow().to_repr()).unwrap_or(F::ZERO)
+        // ITERATION 2.
+
+        // In the second iteration, we expand challenges from H1.
+        let h1_fp = *h1_digest.borrow();
+        let challenges = RefCell::new((Fp::ZERO, Fp::ZERO, Fp::ZERO));
+
+        Simulator::simulate(h1_fp, |dr, h1_value| {
+            let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
+                dr,
+                params.circuit_poseidon(),
+            );
+            let h1_elem = Element::alloc(dr, h1_value)?;
+            sponge.absorb(dr, &h1_elem)?;
+
+            let w_elem = sponge.squeeze(dr)?;
+            let x_elem = sponge.squeeze(dr)?;
+            let y_elem = sponge.squeeze(dr)?;
+
+            *challenges.borrow_mut() = (*w_elem.wire(), *x_elem.wire(), *y_elem.wire());
+            Ok(())
+        })
+        .expect("mesh key hash computation must succeed");
+
+        let (w2_fp, x2_fp, y2_fp) = *challenges.borrow();
+        let w =
+            F::from_repr(w2_fp.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
+        let x =
+            F::from_repr(x2_fp.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
+        let y =
+            F::from_repr(y2_fp.to_repr()).expect("mesh evaluation must convert to Fp for hashing");
+
+        let mesh_eval = mesh.wxy(w, x, y);
+        let mesh_eval_fp = Fp::from_repr(mesh_eval.to_repr())
+            .expect("mesh evaluation must convert to Fp for hashing");
+
+        let h2_digest = RefCell::new(Fp::ZERO);
+        Simulator::simulate(mesh_eval_fp, |dr, value| {
+            let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
+                dr,
+                params.circuit_poseidon(),
+            );
+            // Hash the domain separation.
+            let ds = Element::constant(dr, Fp::from(2u64));
+            sponge.absorb(dr, &ds)?;
+
+            // Hash the challenges.
+            let w_elem = Element::constant(dr, w2_fp);
+            let x_elem = Element::constant(dr, x2_fp);
+            let y_elem = Element::constant(dr, y2_fp);
+            sponge.absorb(dr, &w_elem)?;
+            sponge.absorb(dr, &x_elem)?;
+            sponge.absorb(dr, &y_elem)?;
+
+            // Hash the evaluation.
+            let eval_elem = Element::alloc(dr, value)?;
+            sponge.absorb(dr, &eval_elem)?;
+
+            // Hash the previous hash.
+            let h1_elem = Element::constant(dr, h1_fp);
+            sponge.absorb(dr, &h1_elem)?;
+
+            let hash = sponge.squeeze(dr)?;
+            *h2_digest.borrow_mut() = *hash.wire();
+            Ok(())
+        })
+        .expect("mesh key hash computation must succeed");
+
+        F::from_repr(h2_digest.borrow().to_repr())
+            .expect("mesh evaluation must convert to Fp for hashing")
     }
 }
 
@@ -169,7 +265,7 @@ pub struct Mesh<'params, F: PrimeField, R: Rank> {
 
 /// Represents a key for identifying a unique $\omega^j$ value where $\omega$ is
 /// a $2^k$-th root of unity.
-#[derive(Ord, PartialOrd, PartialEq, Eq)]
+#[derive(Ord, PartialOrd, PartialEq, Eq, Hash)]
 struct OmegaKey(u64);
 
 impl<F: PrimeField> From<F> for OmegaKey {
@@ -512,5 +608,37 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_mesh_key_zero_handling() -> Result<()> {
+        let mesh = MeshBuilder::<Fp, TestRank>::new()
+            .register_circuit(SquareCircuit { times: 2 })?
+            .finalize()?;
+
+        assert_ne!(
+            mesh.mesh_key.unwrap(),
+            Fp::ZERO,
+            "Mesh key should never be zero"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_omega_key_uniqueness() {
+        let max_circuits = 1024;
+        let mut seen_keys = std::collections::HashSet::new();
+
+        for i in 0..max_circuits {
+            let omega = omega_j::<Fp>(i);
+            let key = OmegaKey::from(omega);
+
+            assert!(
+                !seen_keys.contains(&key),
+                "OmegaKey collision at index {}",
+                i
+            );
+            seen_keys.insert(key);
+        }
     }
 }

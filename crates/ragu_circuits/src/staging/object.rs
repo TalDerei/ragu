@@ -74,6 +74,13 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
         let x_y3 = x * y3;
         let xinv_y3 = x_inv * y3;
 
+        // Placeholder contribution: Y^(q+1) * (X^(2n-1) - K *X^(4n-1)).
+        let num_linear_from_gates = 3 * (self.skip_multiplications + reserved);
+        let y_power = y.pow_vartime([(num_linear_from_gates + 1) as u64]);
+        let x_2n_minus_1 = x.pow_vartime([(2 * R::n() - 1) as u64]);
+        let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+        let placeholder = y_power * (x_2n_minus_1 - k * x_4n_minus_1);
+
         let block = |end: usize, len: usize| -> F {
             let w = y * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
             let v = y2 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
@@ -93,7 +100,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
         };
         let c2 = block(R::n() - 2, reserved);
 
-        y.pow_vartime([(3 * reserved) as u64]) * c1 + c2
+        placeholder + y.pow_vartime([(3 * reserved) as u64]) * c1 + c2
     }
 
     fn sx(&self, x: F, k: F) -> unstructured::Polynomial<F, R> {
@@ -123,13 +130,15 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
                 out
             };
 
+            // Placeholder contribution: x^(2n-1) - k * x^(4n-1).
+            let (a_0, _b_0, c_0) = alloc();
+            coeffs.push(a_0 - k * c_0);
+
             let mut enforce_zero = |out: (F, F, F)| {
                 coeffs.push(out.0);
                 coeffs.push(out.1);
                 coeffs.push(out.2);
             };
-
-            alloc(); // ONE
 
             for _ in 0..self.skip_multiplications {
                 enforce_zero(alloc());
@@ -158,16 +167,18 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageObject<R> {
             return poly;
         }
 
-        let mut yq = y.pow_vartime([(3 * (reserved + self.skip_multiplications)) as u64]);
+        let num_linear_from_gates = 3 * (reserved + self.skip_multiplications);
+        let mut yq = y.pow_vartime([(num_linear_from_gates + 1) as u64]);
         let y_inv = y.invert().expect("y is not zero");
 
         {
             let poly = poly.backward();
 
-            // ONE
-            poly.a.push(F::ZERO);
+            // Placeholder contribution: Y^q - k * Y^q.
+            poly.a.push(yq);
             poly.b.push(F::ZERO);
-            poly.c.push(F::ZERO);
+            poly.c.push(-k * yq);
+            yq *= y_inv;
 
             for _ in 0..self.skip_multiplications {
                 poly.a.push(yq);
@@ -205,19 +216,56 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression},
-        gadgets::GadgetKind,
+        gadgets::{GadgetKind, Kind},
         maybe::Maybe,
     };
     use ragu_pasta::{EpAffine, Fp, Fq};
-    use ragu_primitives::{Endoscalar, Point};
+    use ragu_primitives::{Element, Endoscalar, Point};
     use rand::{Rng, thread_rng};
 
-    use crate::{CircuitExt, CircuitObject, polynomials::Rank};
+    use crate::{Circuit, CircuitExt, CircuitObject, metrics, polynomials::Rank, s::sy};
 
     use super::{
         super::{Stage, StageExt},
         StageObject,
     };
+
+    /// Dummy circuit.
+    pub struct SquareCircuit {
+        times: usize,
+    }
+
+    impl Circuit<Fp> for SquareCircuit {
+        type Instance<'instance> = Fp;
+        type Output = Kind![Fp; Element<'_, _>];
+        type Witness<'witness> = Fp;
+        type Aux<'witness> = ();
+
+        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            instance: DriverValue<D, Self::Instance<'instance>>,
+        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+            Element::alloc(dr, instance)
+        }
+
+        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            witness: DriverValue<D, Self::Witness<'witness>>,
+        ) -> Result<(
+            <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
+            DriverValue<D, Self::Aux<'witness>>,
+        )> {
+            let mut a = Element::alloc(dr, witness)?;
+
+            for _ in 0..self.times {
+                a = a.square(dr)?;
+            }
+
+            Ok((a, D::just(|| ())))
+        }
+    }
 
     impl<F: Field, R: Rank> crate::Circuit<F> for StageObject<R> {
         type Instance<'source> = ();
@@ -376,6 +424,121 @@ mod tests {
         assert_eq!(sxy, sy.eval(x));
     }
 
+    #[test]
+    fn test_stage_object_all_multiplications() {
+        // Edge case: skip = 0, num = R::n() - 1, reserved = 0.
+        let stage = StageObject::<R>::new(0, R::n() - 1).unwrap();
+        let x = Fp::random(thread_rng());
+        let y = Fp::random(thread_rng());
+        let k = Fp::one();
+
+        let comparison = stage.clone().into_object::<R>().unwrap();
+
+        let xn_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+        let comparison_sxy = comparison.sxy(x, y, k) - xn_minus_1;
+
+        assert_eq!(stage.sxy(x, y, k), comparison_sxy);
+    }
+
+    #[test]
+    fn test_placeholder_constraint_with_zero_k() {
+        // We should verify the polynomial evaluations are consistent even when k = 0
+        // (which would make the circuit unsatisfiable), but we gauard against this
+        // during mesh finalization.
+        let circuit = SquareCircuit { times: 2 };
+        let y = Fp::random(thread_rng());
+        let k = Fp::ZERO;
+
+        let circuit_obj = circuit.into_object::<R>().unwrap();
+        let x = Fp::random(thread_rng());
+        let sxy_result = circuit_obj.sy(y, k).eval(x);
+        let sxy_direct = circuit_obj.sxy(x, y, k);
+        assert_eq!(
+            sxy_result, sxy_direct,
+            "sy.eval(x) should match sxy(x, y, k) even with k = 0"
+        );
+    }
+
+    #[test]
+    fn test_zero_linear_constraints_underflow() {
+        // Attempt to create a circuit with num_linear_constraints = 0.
+        let circuit = SquareCircuit { times: 2 };
+        let y = Fp::random(thread_rng());
+        let k = Fp::one();
+
+        let result = sy::eval::<_, _, R>(&circuit, y, k, 0);
+
+        assert!(
+            result.is_err(),
+            "Reject num_linear_constraints = 0 to prevent underflow"
+        );
+    }
+
+    #[test]
+    fn test_minimum_linear_constraints() {
+        let circuit = SquareCircuit { times: 2 };
+        let y = Fp::random(thread_rng());
+        let k = Fp::one();
+
+        let metrics = metrics::eval(&circuit).expect("metrics should succeed");
+        let mut sy = sy::eval::<_, _, R>(&circuit, y, k, metrics.num_linear_constraints)
+            .expect("sy() evaluation should succeed");
+
+        // The first gate (ONE gate) should have the highest y-power.
+        let expected_y_power = metrics.num_linear_constraints - 1;
+        let actual_first_coeff = sy.backward().a[0];
+        let expected_first_coeff = y.pow_vartime([expected_y_power as u64]);
+
+        // This verifies the y-power calculation is correct
+        assert_eq!(
+            actual_first_coeff, expected_first_coeff,
+            "First coefficient should have correct y-power"
+        );
+    }
+
+    #[test]
+    fn test_stage_object_exact_boundary() {
+        let result = StageObject::<R>::new(R::n() - 2, 1);
+        assert!(result.is_ok(), "Should accept skip + num + 1 == R::n()");
+
+        let result = StageObject::<R>::new(R::n() - 1, 1);
+        assert!(result.is_err(), "Should reject skip + num + 1 > R::n()");
+    }
+
+    #[test]
+    fn test_stage_object_reserved_zero() {
+        // When reserved = 0, all gates except one are used.
+        let stage = StageObject::<R>::new(0, R::n() - 1).expect("skip multiplications");
+
+        let x = Fp::random(thread_rng());
+        let y = Fp::random(thread_rng());
+        let k = Fp::one();
+
+        let sxy = stage.sxy(x, y, k);
+        let sx = stage.sx(x, k);
+        let sy = stage.sy(y, k);
+
+        assert_eq!(sxy, sx.eval(y));
+        assert_eq!(sxy, sy.eval(x));
+    }
+
+    #[test]
+    fn test_stage_object_reserved_computation() {
+        // Check we're computing reserved correctly.
+        for skip in 0..10 {
+            for num in 0..(R::n() - skip - 1) {
+                let _ = StageObject::<R>::new(skip, num).expect("skip multiplications");
+                let expected_reserved = R::n() - skip - num - 1;
+
+                let num_linear_from_gates = 3 * (skip + expected_reserved);
+                assert!(
+                    num_linear_from_gates < R::num_coeffs(),
+                    "Reserved computation should not cause overflow"
+                );
+            }
+        }
+    }
+
     proptest! {
         #[test]
         fn test_exy_proptest(skip in 0..R::n(), num in 0..R::n()) {
@@ -388,9 +551,6 @@ mod tests {
 
             let check = |x: Fp, y: Fp| {
                 let xn_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
-
-                // TODO: We need to also subtract the placeholder constraint.
-                // I think it's y^{num_linear-1} * (x^{2n-1} - x^{4n-1}) to make this failing test pass?
 
                 // This adjusts for the single "ONE" constraint which is always skipped
                 // in staging witnesses.
