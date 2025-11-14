@@ -36,7 +36,7 @@ use crate::{
     Result,
     drivers::{Coeff, DirectSum, Driver, DriverTypes, FromDriver, LinearExpression},
     gadgets::{Gadget, GadgetKind},
-    maybe::{Always, Empty, Maybe, MaybeKind},
+    maybe::{Always, Maybe, MaybeKind},
     routines::{Prediction, Routine},
 };
 
@@ -187,71 +187,24 @@ impl<F: Field> Emulator<Wired<Always<()>, F>> {
 
     /// Extract the raw wire values from a gadget.
     pub fn wires<'dr, G: Gadget<'dr, Self>>(&self, gadget: &G) -> Result<Vec<F>> {
-        /// A driver for extracting a gadget's wire values into a vector for inspection.
-        struct WireExtractor<'dr, D: Driver<'dr>> {
-            wires: Vec<D::Wire>,
-            _marker: core::marker::PhantomData<(&'dr (), D)>,
+        /// A conversion utility for extracting wire values.
+        struct WireExtractor<F: Field> {
+            wires: Vec<MaybeWired<Always<()>, F>>,
         }
 
-        impl<'dr, D: Driver<'dr>> WireExtractor<'dr, D> {
-            /// Creates a new wire extractor.
-            fn new() -> Self {
-                Self {
-                    wires: Vec::new(),
-                    _marker: core::marker::PhantomData,
-                }
-            }
-        }
-
-        impl<'dr, D: Driver<'dr>> DriverTypes for WireExtractor<'dr, D> {
-            type ImplField = D::F;
-            type ImplWire = ();
-            type MaybeKind = Empty;
-            type LCadd = ();
-            type LCenforce = ();
-        }
-
-        impl<'dr, D: Driver<'dr>> Driver<'dr> for WireExtractor<'dr, D> {
-            type F = D::F;
-            type Wire = ();
-            const ONE: Self::Wire = ();
-
-            fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-                Ok(())
-            }
-
-            fn constant(&mut self, _: Coeff<Self::F>) -> Self::Wire {}
-
-            fn mul(
-                &mut self,
-                _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-            ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-                Ok(((), (), ()))
-            }
-
-            fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
-
-            fn enforce_zero(
-                &mut self,
-                _: impl Fn(Self::LCenforce) -> Self::LCenforce,
-            ) -> Result<()> {
-                Ok(())
-            }
-        }
-
-        impl<'dr, D: Driver<'dr>> FromDriver<'dr, 'dr, D> for WireExtractor<'dr, D> {
-            type NewDriver = Self;
+        impl<F: Field> FromDriver<'_, '_, Emulator<Wired<Always<()>, F>>> for WireExtractor<F> {
+            type NewDriver = PhantomData<F>;
 
             fn convert_wire(
                 &mut self,
-                wire: &D::Wire,
-            ) -> Result<<Self::NewDriver as Driver<'dr>>::Wire> {
+                wire: &MaybeWired<Always<()>, F>,
+            ) -> Result<<Self::NewDriver as Driver<'_>>::Wire> {
                 self.wires.push(wire.clone());
                 Ok(())
             }
         }
 
-        let mut collector: WireExtractor<'_, Self> = WireExtractor::new();
+        let mut collector = WireExtractor { wires: Vec::new() };
         <G::Kind as GadgetKind<F>>::map_gadget(gadget, &mut collector)?;
         Ok(collector.wires.into_iter().map(|w| w.value()).collect())
     }
