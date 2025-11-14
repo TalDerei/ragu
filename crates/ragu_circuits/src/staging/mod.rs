@@ -125,7 +125,6 @@ use crate::{
 };
 
 mod builder;
-mod extractor;
 mod object;
 
 pub use builder::StageBuilder;
@@ -297,7 +296,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         let values = {
             let mut dr = Emulator::extractor();
             let out = Self::witness(&mut dr, Always::maybe_just(|| witness))?;
-            extractor::wires::<_, F, _, _>(&out)?
+            dr.wires(&out)?
         };
 
         if values.len() > Self::values() {
