@@ -114,8 +114,8 @@ impl<F: Field> Routine<F> for Evaluate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ragu_core::drivers::Simulator;
     use ragu_pasta::Fp;
+    use ragu_primitives::Simulator;
     use rand::thread_rng;
 
     #[test]

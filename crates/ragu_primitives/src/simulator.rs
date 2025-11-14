@@ -1,8 +1,8 @@
+use arithmetic::Coeff;
 use ff::Field;
-
-use crate::{
+use ragu_core::{
     Error, Result,
-    drivers::{Coeff, DirectSum, Driver, DriverTypes},
+    drivers::{DirectSum, Driver, DriverTypes},
     gadgets::{Gadget, GadgetKind},
     maybe::{Always, MaybeKind},
     routines::{Prediction, Routine},

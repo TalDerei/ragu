@@ -156,7 +156,7 @@ pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
 #[test]
 fn test_boolean_alloc() -> Result<()> {
     type F = ragu_pasta::Fp;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let alloc = |bit: bool| {
         let sim = Simulator::simulate(bit, |dr, bit| {
@@ -185,7 +185,7 @@ fn test_multipack() -> Result<()> {
     use alloc::vec::Vec;
 
     type F = ragu_pasta::Fp;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let bits = (0..1000).map(|i| i % 2 == 0).collect::<Vec<_>>();
 
@@ -212,7 +212,7 @@ fn test_multipack_vector() -> Result<()> {
     use alloc::vec::Vec;
 
     type F = ragu_pasta::Fp;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let bits = vec![false, true, true, false, true]; // 0b10110 = 22
     Simulator::simulate(bits, |dr, bits| {

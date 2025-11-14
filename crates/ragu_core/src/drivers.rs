@@ -57,10 +57,8 @@ use crate::{
 pub mod emulator;
 mod linexp;
 mod phantom;
-mod simulator;
 
 pub use linexp::{DirectSum, LinearExpression};
-pub use simulator::Simulator;
 
 /// Alias for the concrete [`Maybe<T>`] type for a driver `D`, used to represent input data
 /// that may or may not be available. This provides a uniform interface for both public

@@ -223,7 +223,7 @@ fn test_point_alloc() -> Result<()> {
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let alloc = |point: C| {
         Simulator::simulate(point, |dr, point| {
@@ -245,7 +245,7 @@ fn test_point_double() -> Result<()> {
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let double = |point: C| {
         let sim = Simulator::simulate(point, |dr, point| {
@@ -281,7 +281,7 @@ fn test_add_incomplete() -> Result<()> {
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let generator = C::generator();
 
@@ -333,7 +333,7 @@ fn test_double_and_add_incomplete() -> Result<()> {
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let generator = C::generator();
 

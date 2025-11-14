@@ -216,9 +216,11 @@ mod tests {
     use arithmetic::{CurveAffine, CurveExt, Uendo};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
-    use ragu_core::{Result, drivers::Simulator};
+    use ragu_core::Result;
     use ragu_pasta::{EpAffine, Fp};
     use rand::{Rng, thread_rng};
+
+    use crate::Simulator;
 
     pub struct EndoscalarTest {
         pub value: Uendo,

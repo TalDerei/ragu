@@ -269,7 +269,7 @@ fn test_permutation_constraints() -> Result<()> {
     use arithmetic::Cycle;
     use ragu_pasta::{Fp, Pasta};
 
-    type Simulator = ragu_core::drivers::Simulator<Fp>;
+    type Simulator = crate::Simulator<Fp>;
 
     let params = Pasta::baked();
 

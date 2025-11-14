@@ -23,6 +23,7 @@ mod lazy;
 mod point;
 mod poseidon;
 pub mod promotion;
+mod simulator;
 mod util;
 pub mod vec;
 
@@ -32,6 +33,7 @@ pub use endoscalar::Endoscalar;
 pub use lazy::Lazy;
 pub use point::Point;
 pub use poseidon::Sponge;
+pub use simulator::Simulator;
 
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 

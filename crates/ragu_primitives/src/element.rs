@@ -347,7 +347,7 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 #[test]
 fn test_div_nonzero() -> Result<()> {
     type F = ragu_pasta::Fp;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let alloc = |a: F, b: F| {
         let sim = Simulator::simulate((a, b), |dr, witness| {
@@ -381,7 +381,7 @@ fn test_div_nonzero() -> Result<()> {
 #[test]
 fn test_invert() -> Result<()> {
     type F = ragu_pasta::Fp;
-    type Simulator = ragu_core::drivers::Simulator<F>;
+    type Simulator = crate::Simulator<F>;
 
     let inv = |a: F| {
         let sim = Simulator::simulate(a, |dr, witness| {
