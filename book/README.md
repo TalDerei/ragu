@@ -4,7 +4,7 @@ This is the source for the [official Ragu book](https://tachyon.z.cash/_ragu/). 
 
 ## Development
 
-You can render locally and test using `mdbook serve`. Ensure you have `mdbook v0.4.52` and `mdbook-katex v0.9.4` installed to avoid issues.
+You can render locally and test using `mdbook serve`. Ensure you have `mdbook v0.4.52`, `mdbook-katex v0.9.4` and `mdbook-mermaid v0.16.2` installed to avoid issues.
 
 ## Publication
 
