@@ -1,20 +1,20 @@
 # Emulator Driver
 
-The simplest implementation of `Driver` is the `Emulator`, which natively
-executes circuit code without enforcing constraints. This driver is useful when
-the correctness of circuit code does not need to be guaranteed—for example, in
-witness generation logic performed by a prover—because in that case the circuit
-code is just native code with pointless steps. Instead of reimplementing
-algorithms to anticipate the structure or results of their computations, simply
-to avoid the overhead of constraint enforcement or wire assignment tracking done
-in typical circuit synthesis code, the `Emulator` driver can be used to avoid as
-much of this overhead as possible.
+The simplest implementation of `Driver` is the [`Emulator`][emulator-type],
+which natively executes circuit code without enforcing constraints. This driver
+is useful when the correctness of circuit code does not need to be
+guaranteed—for example, in witness generation logic performed by a
+prover—because in that case the circuit code is just native code with pointless
+steps. Instead of reimplementing algorithms to anticipate the structure or
+results of their computations, simply to avoid the overhead of constraint
+enforcement or wire assignment tracking done in typical circuit synthesis code,
+the `Emulator` driver can be used to avoid as much of this overhead as possible.
 
-One of the purposes of the design of the `Driver` abstraction in Ragu is to
-enable circuit code to be written so that it can be efficiently natively
-executed, reducing code. This especially helps with developing recursive proofs
-since almost everything performed by the verifier must be also be written to be
-executed within a circuit as well.
+One of the purposes of the design of the [`Driver`](ragu_core::drivers::Driver)
+abstraction in Ragu is to enable circuit code to be written so that it can be
+efficiently natively executed, reducing code. This especially helps with
+developing recursive proofs since almost everything performed by the verifier
+must be also be written to be executed within a circuit as well.
 
 ## `Wired` and `Wireless` modes
 
@@ -38,3 +38,5 @@ unnecessary computation as possible during emulation depending on their needs.
 provided helper utility (`Emulator::wires`) returns a vector of wires for a
 given gadget. Commonly, `Emulator::always_wires` is used instead when a witness
 is expected to be present (`MaybeKind = Always<()>`).
+
+[emulator-type]: ragu_core::drivers::emulator::Emulator
