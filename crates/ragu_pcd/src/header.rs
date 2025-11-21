@@ -92,3 +92,18 @@ pub trait Header<F: Field>: Send + Sync + Any {
         witness: DriverValue<D, Self::Data<'source>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>;
 }
+
+/// Trivial header that encodes no data.
+impl<F: Field> Header<F> for () {
+    const PREFIX: Prefix = Prefix::internal(1);
+
+    type Data<'source> = ();
+    type Output = ();
+
+    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+        _: &mut D,
+        _: DriverValue<D, Self::Data<'source>>,
+    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        Ok(())
+    }
+}
