@@ -78,24 +78,9 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
             ));
         }
 
-        match self
-            .header_map
-            .get(&<S::Output as Header<C::CircuitField>>::PREFIX)
-        {
-            Some(ty) => {
-                if *ty != TypeId::of::<S::Output>() {
-                    return Err(Error::Initialization(
-                        "two different Header implementations using the same prefix".into(),
-                    ));
-                }
-            }
-            None => {
-                self.header_map.insert(
-                    <S::Output as Header<C::CircuitField>>::PREFIX,
-                    TypeId::of::<S::Output>(),
-                );
-            }
-        }
+        self.prevent_duplicate_prefixes::<S::Output>()?;
+        self.prevent_duplicate_prefixes::<S::Left>()?;
+        self.prevent_duplicate_prefixes::<S::Right>()?;
 
         self.circuit_mesh = self
             .circuit_mesh
@@ -103,6 +88,23 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         self.num_application_steps += 1;
 
         Ok(self)
+    }
+
+    fn prevent_duplicate_prefixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
+        match self.header_map.get(&H::PREFIX) {
+            Some(ty) => {
+                if *ty != TypeId::of::<H>() {
+                    return Err(Error::Initialization(
+                        "two different Header implementations using the same prefix".into(),
+                    ));
+                }
+            }
+            None => {
+                self.header_map.insert(H::PREFIX, TypeId::of::<H>());
+            }
+        }
+
+        Ok(())
     }
 
     /// Perform finalization and optimization steps to produce the
