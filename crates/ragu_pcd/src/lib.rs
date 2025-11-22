@@ -118,7 +118,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 ))?;
 
         // Then, insert all of the "internal circuits" used for recursion plumbing.
-        self.circuit_mesh = self.circuit_mesh.register_circuit(Dummy)?;
+        self.circuit_mesh = self.circuit_mesh.register_circuit(Dummy::<HEADER_SIZE>)?;
 
         Ok(Application {
             circuit_mesh: self.circuit_mesh.finalize(params.circuit_poseidon())?,
@@ -140,7 +140,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// This may or may not be identical to any previously constructed (trivial)
     /// proof, and so is not guaranteed to be freshly randomized.
     pub fn trivial(&self) -> Proof<C, R> {
-        let rx = Dummy
+        let rx = Dummy::<HEADER_SIZE>
             .rx((), self.circuit_mesh.get_key())
             .expect("should not fail")
             .0;
@@ -253,7 +253,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rhs.add_assign(&tz);
 
         let mut ky = Vec::with_capacity(1 + HEADER_SIZE * 3);
-        ky.push(C::CircuitField::ONE);
 
         let mut emulator: Emulator<Wireless<Always<()>, _>> = Emulator::wireless();
         let gadget = H::encode(&mut emulator, Always::maybe_just(|| pcd.data.clone()))?;
@@ -276,6 +275,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         ky.extend(pcd.proof.left_header.iter().cloned());
         ky.extend(pcd.proof.right_header.iter().cloned());
+        ky.push(C::CircuitField::ONE);
+
+        ky.reverse();
         assert_eq!(ky.len(), 1 + HEADER_SIZE * 3);
 
         let valid = rx.revdot(&rhs) == eval(ky.iter(), y);

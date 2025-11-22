@@ -103,6 +103,13 @@ fn rerandomization_flow() {
     let mut rng = StdRng::seed_from_u64(1234);
 
     let trivial = app.trivial().carry::<()>(());
-
     assert!(app.verify(&trivial, &mut rng).unwrap());
+
+    let rerandom = app.rerandomize(trivial.clone(), &mut rng).unwrap();
+    assert!(app.verify(&rerandom, &mut rng).unwrap());
+
+    let merge = app.merge(&mut rng, Step0, (), trivial, rerandom).unwrap().0;
+    let merge = merge.carry::<HeaderA>(());
+
+    assert!(app.verify(&merge, &mut rng).unwrap());
 }
