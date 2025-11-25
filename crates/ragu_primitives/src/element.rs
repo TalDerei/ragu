@@ -163,8 +163,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
     /// Enforces that this element equals zero.
     pub fn enforce_zero(&self, dr: &mut D) -> Result<()> {
-        let zero = Self::zero(dr);
-        self.enforce_equal(dr, &zero)
+        dr.enforce_zero(|lc| lc.add(&self.wire))
     }
 
     /// Negates this element.
