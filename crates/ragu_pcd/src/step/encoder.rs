@@ -80,10 +80,7 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
                 padded::for_header::<H, HEADER_SIZE, _>(dr, gadget)?.write(dr, buf)?
             }
             Encoded::Raw(raw) => {
-                assert_eq!(raw.len(), HEADER_SIZE);
-                for element in raw.into_inner() {
-                    buf.push(element);
-                }
+                buf.extend(raw.into_inner());
             }
         }
         Ok(())
