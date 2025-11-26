@@ -10,19 +10,17 @@
 extern crate alloc;
 
 use arithmetic::Cycle;
-use ff::Field;
 use ragu_circuits::{
-    CircuitExt,
     mesh::{Mesh, MeshBuilder},
     polynomials::Rank,
 };
 use ragu_core::{Error, Result};
 use rand::Rng;
 
-use alloc::{collections::BTreeMap, vec};
+use alloc::collections::BTreeMap;
 use core::{any::TypeId, marker::PhantomData};
 
-use circuits::{dummy::Dummy, internal_circuit_index};
+use circuits::dummy::Dummy;
 use header::Header;
 pub use proof::{Pcd, Proof};
 use step::{Step, adapter::Adapter};
@@ -139,21 +137,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// This may or may not be identical to any previously constructed (trivial)
     /// proof, and so is not guaranteed to be freshly randomized.
     pub fn trivial(&self) -> Proof<C, R> {
-        let rx = Dummy::<HEADER_SIZE>
-            .rx((), self.circuit_mesh.get_key())
-            .expect("should not fail")
-            .0;
-
-        Proof {
-            rx,
-            circuit_id: internal_circuit_index(
-                self.num_application_steps,
-                circuits::DUMMY_CIRCUIT_ID,
-            ),
-            left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-            right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-            _marker: PhantomData,
-        }
+        proof::trivial::<C, R, HEADER_SIZE>(self.num_application_steps, &self.circuit_mesh)
     }
 
     /// Creates a random trivial proof for the empty [`Header`] implementation
