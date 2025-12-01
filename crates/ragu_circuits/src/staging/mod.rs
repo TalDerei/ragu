@@ -127,7 +127,7 @@ use crate::{
 mod builder;
 mod object;
 
-pub use builder::StageBuilder;
+pub use builder::{StageBuilder, StageGuard};
 
 /// Represents a partial witness component for a multi-stage circuit.
 pub trait Stage<F: Field, R: Rank> {
