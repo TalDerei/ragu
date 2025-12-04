@@ -116,16 +116,8 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                     step::rerandomize::Rerandomize::<()>::new(),
                 ))?;
 
-        // Then, insert all of the "internal circuits" used for recursion plumbing.
-        self.circuit_mesh = self
-            .circuit_mesh
-            .register_circuit(internal_circuits::dummy::Circuit)?;
-
-        self.circuit_mesh = self
-            .circuit_mesh
-            .register_circuit(internal_circuits::c::Circuit::<C, R>::new(
-                params.circuit_poseidon(),
-            ))?;
+        // Then, insert all of the internal circuits used for recursion plumbing.
+        self.circuit_mesh = internal_circuits::register_all::<C, R>(self.circuit_mesh, params)?;
 
         Ok(Application {
             circuit_mesh: self.circuit_mesh.finalize(params.circuit_poseidon())?,
