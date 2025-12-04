@@ -1,14 +1,23 @@
+use alloc::vec::Vec;
 use arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     staging::{StageBuilder, Staged, StagedCircuit},
+};
+
+use crate::routines::{
+    ErrorTermsLen,
+    compute_c::{ComputeRevdotClaim, ErrorMatrix, RevdotClaimInput},
 };
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     maybe::Maybe,
 };
-use ragu_primitives::{GadgetExt, Sponge};
+use ragu_primitives::{
+    Element, GadgetExt, Sponge,
+    vec::{ConstLen, FixedVec, Len},
+};
 
 use core::marker::PhantomData;
 
@@ -20,12 +29,12 @@ use super::{
 pub const CIRCUIT_ID: usize = super::C_CIRCUIT_ID;
 pub const STAGED_ID: usize = super::C_STAGED_ID;
 
-pub struct Circuit<'a, C: Cycle, R> {
+pub struct Circuit<'a, C: Cycle, R, const NUM_REVDOT_CLAIMS: usize> {
     circuit_poseidon: &'a C::CircuitPoseidon,
     _marker: PhantomData<(C, R)>,
 }
 
-impl<'a, C: Cycle, R: Rank> Circuit<'a, C, R> {
+impl<'a, C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> Circuit<'a, C, R, NUM_REVDOT_CLAIMS> {
     pub fn new(circuit_poseidon: &'a C::CircuitPoseidon) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             circuit_poseidon,
@@ -36,9 +45,14 @@ impl<'a, C: Cycle, R: Rank> Circuit<'a, C, R> {
 
 pub struct Witness<'a, C: Cycle> {
     pub unified_instance: &'a unified::Instance<C>,
+    pub mu: C::CircuitField,
+    pub nu: C::CircuitField,
+    pub error_terms: Vec<C::CircuitField>,
 }
 
-impl<C: Cycle, R: Rank> StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R> {
+impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::CircuitField, R>
+    for Circuit<'_, C, R, NUM_REVDOT_CLAIMS>
+{
     type Final = preamble::Stage<C, R>;
 
     type Instance<'source> = &'source unified::Instance<C>;
@@ -84,6 +98,40 @@ impl<C: Cycle, R: Rank> StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R> 
 
             // Use our local w value to impose upon the unified instance
             unified_output.w.set(w);
+        }
+
+        // TODO: Call Horner's method routine to evaluate k(Y) polynomials at y.
+
+        // Compute c, the folded revdot product claim.
+        {
+            let mu = Element::alloc(dr, witness.view().map(|w| w.mu))?;
+            let nu = Element::alloc(dr, witness.view().map(|w| w.nu))?;
+            let mu_inv = mu.invert(dr)?;
+
+            // Allocate error terms from witness as an error matrix.
+            let error_elements = (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
+                .map(|i| Element::alloc(dr, witness.view().map(|w| w.error_terms[i])))
+                .collect::<Result<Vec<_>>>()?;
+            let error_matrix = ErrorMatrix::new(
+                FixedVec::<_, ErrorTermsLen<NUM_REVDOT_CLAIMS>>::new(error_elements)
+                    .expect("error_terms length"),
+            );
+
+            // TODO: Use zeros for ky_values for now.
+            let ky_values_vec: Vec<_> = (0..NUM_REVDOT_CLAIMS).map(|_| Element::zero(dr)).collect();
+            let ky_values = FixedVec::<_, ConstLen<NUM_REVDOT_CLAIMS>>::new(ky_values_vec)
+                .expect("ky_values length");
+
+            let input = RevdotClaimInput {
+                mu,
+                nu,
+                mu_inv,
+                error_matrix,
+                ky_values,
+            };
+
+            let c = dr.routine(ComputeRevdotClaim::<NUM_REVDOT_CLAIMS>, input)?;
+            unified_output.c.set(c);
         }
 
         Ok((unified_output.finish(dr, unified_instance)?, D::just(|| ())))
