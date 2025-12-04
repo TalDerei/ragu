@@ -1,5 +1,5 @@
 use arithmetic::Cycle;
-use ragu_circuits::{mesh::MeshBuilder, polynomials::Rank};
+use ragu_circuits::{mesh::MeshBuilder, polynomials::Rank, staging::StageExt};
 use ragu_core::Result;
 
 pub mod c;
@@ -9,6 +9,7 @@ pub mod unified;
 
 const DUMMY_CIRCUIT_ID: usize = 0;
 const C_CIRCUIT_ID: usize = 1;
+const NATIVE_PREAMBLE_CIRCUIT_ID: usize = 2;
 
 pub fn index(num_application_steps: usize, internal_index: usize) -> usize {
     num_application_steps + super::step::NUM_INTERNAL_STEPS + internal_index
@@ -20,5 +21,7 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
 ) -> Result<MeshBuilder<'params, C::CircuitField, R>> {
     let mesh = mesh.register_circuit(dummy::Circuit)?;
     let mesh = mesh.register_circuit(c::Circuit::<C, R>::new(params.circuit_poseidon()))?;
+    let mesh =
+        mesh.register_circuit_object(stages::native::preamble::Stage::<C, R>::into_object()?)?;
     Ok(mesh)
 }
