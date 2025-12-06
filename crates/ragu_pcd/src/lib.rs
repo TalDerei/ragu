@@ -222,6 +222,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: &Pcd<'_, C, R, H>,
         rng: RNG,
     ) -> Result<bool> {
-        verify::verify::<C, R, RNG, H, HEADER_SIZE>(&self.circuit_mesh, pcd, rng)
+        verify::verify::<C, R, RNG, H, HEADER_SIZE>(
+            &self.circuit_mesh,
+            pcd,
+            self.num_application_steps,
+            self.params,
+            rng,
+        )
     }
 }
