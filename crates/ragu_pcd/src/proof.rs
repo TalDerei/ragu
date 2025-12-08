@@ -5,12 +5,12 @@ use ragu_circuits::{
     polynomials::{Rank, structured},
     staging::StageExt,
 };
-use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{
     Element,
     vec::{CollectFixed, Len},
 };
-use rand::rngs::OsRng;
+use rand::{Rng, rngs::OsRng};
 
 use alloc::{vec, vec::Vec};
 
@@ -134,35 +134,36 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// This may or may not be identical to any previously constructed (trivial)
     /// proof, and so is not guaranteed to be freshly randomized.
     pub fn trivial(&self) -> Proof<C, R> {
+        self.try_trivial(&mut OsRng)
+            .expect("trivial proof generation should not fail")
+    }
+
+    fn try_trivial<RNG: Rng>(&self, rng: &mut RNG) -> Result<Proof<C, R>> {
         use internal_circuits::stages;
 
         // Preamble rx polynomial
-        let native_preamble_rx =
-            stages::native::preamble::Stage::<C, R>::rx(()).expect("preamble rx should not fail");
-        let native_preamble_blind = C::CircuitField::ONE;
+        let native_preamble_rx = stages::native::preamble::Stage::<C, R>::rx(())?;
+        let native_preamble_blind = C::CircuitField::random(&mut *rng);
         let native_preamble_commitment =
             native_preamble_rx.commit(self.params.host_generators(), native_preamble_blind);
 
         // Nested preamble rx polynomial
         let nested_preamble_rx =
-            stages::nested::preamble::Stage::<C::HostCurve, R>::rx(native_preamble_commitment)
-                .expect("nested preamble rx should not fail");
-        let nested_preamble_blind = C::ScalarField::ONE;
+            stages::nested::preamble::Stage::<C::HostCurve, R>::rx(native_preamble_commitment)?;
+        let nested_preamble_blind = C::ScalarField::random(&mut *rng);
         let nested_preamble_commitment =
             nested_preamble_rx.commit(self.params.nested_generators(), nested_preamble_blind);
 
         // Compute w = H(nested_preamble_commitment)
         let w =
-            crate::components::transcript::emulate_w::<C>(nested_preamble_commitment, self.params)
-                .expect("w computation should not fail");
+            crate::components::transcript::emulate_w::<C>(nested_preamble_commitment, self.params)?;
 
         // Generate dummy values for mu, nu, and error_terms (for now – these will be derived challenges)
-        let mu = C::CircuitField::random(OsRng);
-        let nu = C::CircuitField::random(OsRng);
+        let mu = C::CircuitField::random(&mut *rng);
+        let nu = C::CircuitField::random(&mut *rng);
         let error_terms = ErrorTermsLen::<NUM_REVDOT_CLAIMS>::range()
-            .map(|_| C::CircuitField::random(OsRng))
-            .collect_fixed()
-            .expect("error_terms collection should not fail");
+            .map(|_| C::CircuitField::random(&mut *rng))
+            .collect_fixed()?;
 
         // Compute c, the folded revdot product claim, by invoking the routine within a wireless emulator.
         let c = Emulator::emulate_wireless((mu, nu, &error_terms), |dr, witness| {
@@ -190,8 +191,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )?
             .value()
             .take())
-        })
-        .expect("c should not fail");
+        })?;
 
         // Create unified instance and compute c_rx
         let unified_instance = internal_circuits::unified::Instance {
@@ -207,17 +207,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             unified_instance: &unified_instance,
             error_terms,
         };
-        let (c_rx, _) = internal_circuit_c
-            .rx::<R>(internal_circuit_c_witness, self.circuit_mesh.get_key())
-            .expect("c_rx computation should not fail");
+        let (c_rx, _) =
+            internal_circuit_c.rx::<R>(internal_circuit_c_witness, self.circuit_mesh.get_key())?;
 
         // Application rx polynomial
-        let application_rx = dummy::Circuit
-            .rx((), self.circuit_mesh.get_key())
-            .expect("should not fail")
-            .0;
+        let application_rx = dummy::Circuit.rx((), self.circuit_mesh.get_key())?.0;
 
-        Proof {
+        Ok(Proof {
             preamble: PreambleProof {
                 native_preamble_rx,
                 native_preamble_commitment,
@@ -233,6 +229,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
                 right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
             },
-        }
+        })
     }
 }
