@@ -14,7 +14,7 @@ impl<const N: usize, U: Send, K: MaybeKind> MaybeCast<[U; N], K> for [U; N] {
     }
 }
 
-// Generate MaybeCast implementations for tuples of size 2 through 31
+// Generate MaybeCast implementations for tuples of size 2 through 32
 ragu_macros::impl_maybe_cast_tuple!(32);
 
 #[cfg(test)]

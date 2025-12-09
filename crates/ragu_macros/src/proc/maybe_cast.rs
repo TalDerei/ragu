@@ -11,7 +11,7 @@ pub fn evaluate(input: LitInt) -> Result<TokenStream> {
         ));
     }
 
-    let impls = (2..max_tuple_size).map(generate_impl_for_size);
+    let impls = (2..=max_tuple_size).map(generate_impl_for_size);
 
     Ok(quote! {
         #(#impls)*
@@ -62,8 +62,8 @@ fn test_generate_2tuple() {
 fn test_evaluate() {
     use syn::parse_quote;
 
-    // Test with 4 to generate implementations for sizes 2 and 3 (exclusive upper bound)
-    let input: syn::LitInt = parse_quote!(4);
+    // Test with 3 to generate implementations for sizes 2 and 3 (inclusive)
+    let input: LitInt = parse_quote!(3);
     let output = evaluate(input).unwrap();
     assert!(!output.is_empty());
 
@@ -79,17 +79,19 @@ fn test_evaluate() {
 fn test_evaluate_minimum() {
     use syn::parse_quote;
 
-    // Test minimum valid input (2 generates nothing, since range is 2..2)
-    let input: syn::LitInt = parse_quote!(2);
+    // Test minimum valid input (2 generates only 2-tuple)
+    let input: LitInt = parse_quote!(2);
     let output = evaluate(input).unwrap();
-    assert_eq!(output.to_string(), "");
+    let output_str = output.to_string();
+    assert!(output_str.contains("T0"));
+    assert!(output_str.contains("T1"));
+    assert!(!output_str.contains("T2"));
 }
 
 #[test]
-fn test_evaluate_error() {
+fn test_evaluate_rejects_small_max() {
     use syn::parse_quote;
 
-    // Test that values less than 2 produce an error
-    let input: syn::LitInt = parse_quote!(1);
+    let input: LitInt = parse_quote!(1);
     assert!(evaluate(input).is_err());
 }
