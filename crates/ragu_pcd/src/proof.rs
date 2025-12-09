@@ -1,7 +1,8 @@
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{
-    CircuitExt, CircuitIndex,
+    CircuitExt,
+    mesh::CircuitIndex,
     polynomials::{Rank, structured},
     staging::StageExt,
 };

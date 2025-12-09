@@ -1,5 +1,9 @@
 use arithmetic::Cycle;
-use ragu_circuits::{CircuitIndex, mesh::MeshBuilder, polynomials::Rank, staging::StageExt};
+use ragu_circuits::{
+    mesh::{CircuitIndex, MeshBuilder},
+    polynomials::Rank,
+    staging::StageExt,
+};
 use ragu_core::Result;
 
 pub mod c;

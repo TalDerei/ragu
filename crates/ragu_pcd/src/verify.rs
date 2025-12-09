@@ -3,8 +3,8 @@
 use arithmetic::{Cycle, eval};
 use ff::PrimeField;
 use ragu_circuits::{
-    CircuitExt, CircuitIndex,
-    mesh::Mesh,
+    CircuitExt,
+    mesh::{CircuitIndex, Mesh},
     polynomials::{Rank, structured},
 };
 use ragu_core::{Error, Result};

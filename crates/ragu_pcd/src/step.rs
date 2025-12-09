@@ -1,7 +1,7 @@
 //! Merging operations defined for the proof-carrying data computational graph.
 
 use arithmetic::Cycle;
-use ragu_circuits::CircuitIndex;
+use ragu_circuits::mesh::CircuitIndex;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
