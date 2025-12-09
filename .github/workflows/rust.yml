@@ -1,5 +1,8 @@
 name: Rust CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
@@ -53,7 +56,7 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           targets: i686-unknown-linux-gnu
-          install-multilib: 'true'
+          install-multilib: "true"
       - name: Run 32-bit tests
         run: cargo test --release --all --locked --target i686-unknown-linux-gnu
 
@@ -97,3 +100,17 @@ jobs:
         run: cargo doc --no-deps --all --locked --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+  book:
+    name: ragu book
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+      - name: Install mdbook and plugins
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.4.52,mdbook-katex@0.9.4,mdbook-mermaid@0.16.2
+      - name: Build book
+        run: mdbook build ./book

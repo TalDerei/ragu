@@ -201,7 +201,7 @@ pub trait StagedCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     /// Represents the output of a circuit computation which can be serialized.
     type Output: Write<F>;
 
-    /// Auxillary data produced during the computation of the
+    /// Auxiliary data produced during the computation of the
     /// [`witness`](StagedCircuit::witness) method that may be useful, such as
     /// interstitial witness material that is needed for future synthesis.
     type Aux<'source>: Send;

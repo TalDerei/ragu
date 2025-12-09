@@ -1,32 +1,65 @@
 # Summary
 
-[Introduction](Introduction.md)
-  - [User Guide](guide/index.md)
-    - [Drivers](guide/drivers.md)
-    - [Gadgets](guide/gadgets/index.md)
-       - [Simple Gadgets](guide/gadgets/simple.md)
-       - [`GadgetKind`](guide/gadgets/gadgetkind.md)
-       - [`Kind!` Macro](guide/gadgets/kind.md)
-    - [Routines](guide/routines.md)
-    - [Getting Started](guide/getting_started.md)
-    - [Writing Circuits](guide/writing_circuits.md)
-    - [Primitives](guide/primitives.md)
-    - [Configuration](guide/configuration.md)
-  - [Design](design/index.md)
-    - [Core Concepts](design/core_concepts.md)
-    - [Structured Vectors](design/structured.md)
-    - [Arithmetic Circuits](design/circuits/index.md)
-      - [Witness Structure](design/circuits/witness.md)
-      - [Constraint System](design/circuits/constraints.md)
-    - [Maybe Values](design/maybe_values.md)
-    - [Lifetimes and Generics](design/lifetimes_and_generics.md)
-    - [Mesh Polynomial](design/mesh.md)
-    - [Recursion](design/recursion/index.md)
-      - [Staging Polynomials](design/recursion/staging.md)
-  - [Development](development/index.md)
-    - [Project Structure](development/structure.md)
-    - [Drivers](development/drivers/index.md)
-      - [Emulator](development/drivers/emulator.md)
-    - [Routines](development/routines.md)
-    - [Circuit Polynomials](development/circuit_polynomials.md)
-  - [Notation](notation.md)
+[Introduction](introduction.md)
+[Proof-Carrying Data](concepts/pcd.md)
+
+---
+
+# Part I: User Guide
+
+- [Getting Started](guide/getting_started.md)
+- [Writing Circuits](guide/writing_circuits.md)
+- [Gadgets](guide/gadgets/index.md)
+  - [Simple Gadgets](guide/gadgets/simple.md)
+  - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
+  - [The Kind! Macro](guide/gadgets/kind.md)
+- [Routines](guide/routines.md)
+- [Drivers](guide/drivers.md)
+- [Configuration](guide/configuration.md)
+
+---
+
+# Part II: Protocol Design
+
+- [Protocol Overview](protocol/index.md)
+- [Preliminaries](protocol/prelim/index.md)
+  - [Notation](protocol/prelim/notation.md)
+  - [Structured Vectors](protocol/prelim/structured_vectors.md)
+  - [Nested Commitment](protocol/prelim/nested_commitment.md)
+  - [Bulletproofs IPA](protocol/prelim/bulletproofs.md)
+  - [Constraint Systems](protocol/prelim/cs.md)
+- [Core Construction](protocol/core/index.md)
+  - [Arithmetization](protocol/core/arithmetization.md)
+  - [NARK](protocol/core/nark.md)
+  - [Split-Accumulation Schemes](protocol/core/accumulation/index.md)
+    - [PCS Batched Evaluation](protocol/core/accumulation/pcs.md)
+    - [Wiring Consistency](protocol/core/accumulation/wiring.md)
+    - [Revdot Product](protocol/core/accumulation/revdot.md)
+- [Extensions](protocol/extensions/index.md)
+  - [Mesh Polynomial](protocol/extensions/mesh.md)
+  - [Endoscalars](protocol/extensions/endoscalar.md)
+  - [Staging](protocol/extensions/staging.md)
+- [Recursion](protocol/recursion/index.md)
+  - [Public Inputs](protocol/recursion/public_inputs.md)
+- [Analysis](protocol/analysis.md)
+
+---
+
+# Part III: Implementation & Design
+
+- [Architecture Overview](implementation/arch.md)
+- [Circuits](implementation/circuits.md)
+- [Polynomial Management](implementation/polynomials.md)
+- [PCD Step and Proofs](implementation/proofs.md)
+- [Staging](implementation/staging.md)
+- [Drivers](implementation/drivers/index.md)
+  - [Emulator](implementation/drivers/emulator.md)
+  - [Writing Custom Drivers](implementation/drivers/custom.md)
+
+---
+
+# Appendices
+
+- [Cryptography Background](appendix/math.md)
+- [Related Work](appendix/related.md)
+- [Terminology](appendix/terminology.md)

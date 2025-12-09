@@ -1,0 +1,18 @@
+[files]
+# Only check markdown files in book/ and Rust source files
+extend-exclude = [
+  "*.js",
+  "*.html",
+  "*.css",
+  "*.json",
+  "*.toml",
+  "*.yaml",
+  "*.yml",
+  "*.lock",
+  "target/",
+  "node_modules/",
+]
+
+[default.extend-words]
+ND = "ND" # ND = NewDriver
+Bootle = "Bootle" # Bootle is a person's name

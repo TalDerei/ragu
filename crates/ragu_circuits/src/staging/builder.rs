@@ -87,7 +87,7 @@ impl<'dr, D: Driver<'dr>> FromDriver<'_, 'dr, Emulator<Wireless<D::MaybeKind, D:
 /// witness computation is deferred until either [`unenforced`](Self::unenforced)
 /// or [`enforced`](Self::enforced) is called.
 ///
-/// Implicitely, dropping this guard without calling either method effectively "skips"
+/// Implicitly, dropping this guard without calling either method effectively "skips"
 /// the stage, where the wire positions are reserved but no gadget is returned.
 pub struct StageGuard<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R>> {
     stage_wires: Vec<D::Wire>,

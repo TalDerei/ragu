@@ -606,8 +606,8 @@ mod tests {
             <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
             DriverValue<D, Self::Aux<'source>>,
         )> {
-            let (gaurd, builder) = builder.add_stage::<ConstrainedStage>()?;
-            let gadget = gaurd.enforced(builder.finish(), witness)?;
+            let (guard, builder) = builder.add_stage::<ConstrainedStage>()?;
+            let gadget = guard.enforced(builder.finish(), witness)?;
             Ok((gadget, D::just(|| ())))
         }
     }
@@ -617,8 +617,8 @@ mod tests {
         let result =
             Emulator::emulate_wireless((Fp::from(42u64), Fp::from(42u64)), |dr, witness| {
                 let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr);
-                let (gaurd, builder) = builder.add_stage::<ConstrainedStage>()?;
-                let _gagdet = gaurd.enforced(builder.finish(), witness)?;
+                let (guard, builder) = builder.add_stage::<ConstrainedStage>()?;
+                let _gagdet = guard.enforced(builder.finish(), witness)?;
                 Ok(())
             });
 

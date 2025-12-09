@@ -75,7 +75,7 @@ impl<F: Field> Routine<F> for Evaluate {
         Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
     > {
         // TODO(ebfull): This prediction would be more helpful if the inversions
-        // were laundered out through the auxillary data.
+        // were laundered out through the auxiliary data.
         let output = Element::alloc(
             dr,
             D::with(|| {

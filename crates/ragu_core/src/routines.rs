@@ -20,7 +20,7 @@ use crate::{
 /// Routines provide a [`predict`](Routine::predict) method so that drivers can
 /// optionally ask the routine implementor to predict the output gadget value by
 /// returning a [`Prediction`]. If the gadget output cannot be efficiently
-/// predicted then at least any auxillary data that may be useful for execution
+/// predicted then at least any auxiliary data that may be useful for execution
 /// can be returned.
 ///
 /// The actual synthesis of a routine is performed in the
@@ -34,7 +34,7 @@ pub trait Routine<F: Field>: Clone + Send {
     /// The kind of a gadget that this routine expects as output
     type Output: GadgetKind<F>;
 
-    /// The auxillary data that may be provided by the
+    /// The auxiliary data that may be provided by the
     /// [`predict`](Routine::predict) method to be used during actual execution,
     /// to avoid redundant computations.
     type Aux<'dr>: Send + Clone;

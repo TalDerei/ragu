@@ -20,4 +20,3 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 # Do not check in these uncommented.
 # [preprocessor.rustdoc-link]
 # after = ["links"]
-

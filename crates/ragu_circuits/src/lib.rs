@@ -52,7 +52,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
     /// a circuit computation.
     type Output: Write<F>;
 
-    /// Auxillary data produced during the computation of the
+    /// Auxiliary data produced during the computation of the
     /// [`witness`](Circuit::witness) method that may be useful, such as
     /// interstitial witness material that is needed for future synthesis.
     type Aux<'source>: Send;

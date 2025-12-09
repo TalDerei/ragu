@@ -10,7 +10,7 @@ The [`Kind!`][kind-macro] macro simplifies this, allowing you to write `Kind![F;
 
 ### Unqualified Expansion
 
-In some cases, this fully qualified syntax can cause bizarre coherence violations in the Rust compiler due to annoying limitations of the language's type system. Because types that automatically derive [`Gadget`][gadget-trait] also implement `GadgetKind<F>` by implementing it for e.g. `Boolean<'static, PhantomData<F>>`, the syntax `Kind![F; @Boolean<'_, _>]` can be used to perform this substitution without the fully qualified syntax, while still refering to the exact same type.
+In some cases, this fully qualified syntax can cause bizarre coherence violations in the Rust compiler due to annoying limitations of the language's type system. Because types that automatically derive [`Gadget`][gadget-trait] also implement `GadgetKind<F>` by implementing it for e.g. `Boolean<'static, PhantomData<F>>`, the syntax `Kind![F; @Boolean<'_, _>]` can be used to perform this substitution without the fully qualified syntax, while still referring to the exact same type.
 
 [boolean-gadget]: ragu_primitives::Boolean
 [gadget-trait]: ragu_core::gadgets::Gadget

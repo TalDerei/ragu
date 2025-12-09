@@ -121,7 +121,7 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
     /// The witness data needed to construct a proof for this step.
     type Witness<'source>: Send;
 
-    /// Auxillary information produced during circuit synthesis. This may be
+    /// Auxiliary information produced during circuit synthesis. This may be
     /// necessary to construct the [`Header::Data`] for the resulting proof.
     type Aux<'source>: Send;
 
