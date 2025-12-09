@@ -83,13 +83,15 @@ pub fn derive_write(input: TokenStream) -> TokenStream {
 #[allow(unused_imports)]
 use ragu_core::maybe::MaybeCast as _;
 
-/// Generate MaybeCast implementations for tuples of sizes 2 up to a given size (exclusive).
+/// Generate `ragu_core::maybe::MaybeCast` implementations for tuples of sizes 2
+/// up to a given size (exclusive).
 ///
 /// # Arguments
 /// * `input` - Maximum tuple size (exclusive). Must be at least 2.
 ///
 /// # Example
-/// `ragu_macros::impl_maybe_cast_tuple!(5);` generates implementations for tuples of size 2..5 (i.e., 2 through 4).
+/// `ragu_macros::impl_maybe_cast_tuple!(5);` generates implementations for
+/// tuples of size `2..5` (i.e., 2 through 4).
 #[proc_macro]
 pub fn impl_maybe_cast_tuple(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitInt);
