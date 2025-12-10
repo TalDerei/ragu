@@ -13,4 +13,4 @@
 \inst:\mathtt{x}
 \wit:\mathtt{w}
 \sample:\overset{\$}{\leftarrow}
-\endo:\underbar{#1}
+\iseq:\overset{?}{=}
