@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use arithmetic::Cycle;
 use ff::PrimeField;
 use ragu_circuits::{mesh::omega_j, polynomials::Rank, staging};
@@ -13,6 +12,7 @@ use ragu_primitives::{
     vec::{CollectFixed, ConstLen, FixedVec},
 };
 
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::{
