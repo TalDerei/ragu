@@ -15,128 +15,90 @@ use ragu_primitives::{
 
 use core::marker::PhantomData;
 
-use crate::{header::Header as HeaderTrait, proof::Pcd, step::padded};
+use crate::{
+    header::Header as HeaderTrait,
+    internal_circuits::unified,
+    proof::{Pcd, Proof},
+    step::padded,
+};
 
 pub const STAGING_ID: usize = crate::internal_circuits::NATIVE_PREAMBLE_STAGING_ID;
 
 type HeaderVec<'dr, D, const HEADER_SIZE: usize> = FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>;
 
-/// Headers from a single proof's k(Y) polynomial.
-pub struct ProofHeaders<F, const HEADER_SIZE: usize> {
-    pub right_header: [F; HEADER_SIZE],
-    pub left_header: [F; HEADER_SIZE],
-    pub output_header: [F; HEADER_SIZE],
-}
-
-pub struct Witness<F, G, const HEADER_SIZE: usize> {
-    pub left: ProofHeaders<F, HEADER_SIZE>,
-    pub right: ProofHeaders<F, HEADER_SIZE>,
-    pub left_circuit_id: F,
-    pub right_circuit_id: F,
-    pub left_w: F,
-    pub left_c: F,
-    pub left_mu: F,
-    pub left_nu: F,
-    pub right_w: F,
-    pub right_c: F,
-    pub right_mu: F,
-    pub right_nu: F,
-    pub left_nested_preamble_commitment: G,
-    pub right_nested_preamble_commitment: G,
+/// Witness for the native preamble stage.
+///
+/// Contains references to the left and right proofs, plus output headers
+/// computed outside the circuit.
+pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+    /// Output header for left proof.
+    pub left_output_header: [C::CircuitField; HEADER_SIZE],
+    /// Output header for right proof.
+    pub right_output_header: [C::CircuitField; HEADER_SIZE],
+    /// Left proof.
+    pub left: &'a Proof<C, R>,
+    /// Right proof.
+    pub right: &'a Proof<C, R>,
 }
 
 #[derive(Gadget)]
-pub struct UnifiedInstance<'dr, D: Driver<'dr>, G: arithmetic::CurveAffine> {
-    /// Nested preamble commitment from this proof.
-    #[ragu(gadget)]
-    pub nested_preamble_commitment: Point<'dr, D, G>,
-    #[ragu(gadget)]
-    pub w: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub c: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub mu: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub nu: Element<'dr, D>,
-}
-
-#[derive(Gadget)]
-pub struct ProofInputs<'dr, D: Driver<'dr>, G: arithmetic::CurveAffine, const HEADER_SIZE: usize> {
-    /// Right header.
+pub struct ProofInputs<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
     #[ragu(gadget)]
     pub right_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    /// Left header.
     #[ragu(gadget)]
     pub left_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    /// Output header.
     #[ragu(gadget)]
     pub output_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    /// Circuit ID for this proof.
     #[ragu(gadget)]
     pub circuit_id: Element<'dr, D>,
-    /// Unified instance data.
     #[ragu(gadget)]
-    pub unified: UnifiedInstance<'dr, D, G>,
+    pub unified: unified::Output<'dr, D, C>,
 }
 
 /// Output of the native preamble stage.
 #[derive(Gadget)]
-pub struct Output<'dr, D: Driver<'dr>, G: arithmetic::CurveAffine, const HEADER_SIZE: usize> {
-    /// Inputs from the left proof.
+pub struct Output<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
     #[ragu(gadget)]
-    pub left: ProofInputs<'dr, D, G, HEADER_SIZE>,
-    /// Inputs from the right proof.
+    pub left: ProofInputs<'dr, D, C, HEADER_SIZE>,
     #[ragu(gadget)]
-    pub right: ProofInputs<'dr, D, G, HEADER_SIZE>,
+    pub right: ProofInputs<'dr, D, C, HEADER_SIZE>,
 }
 
-impl<F: PrimeField, G: Copy, const HEADER_SIZE: usize> Witness<F, G, HEADER_SIZE> {
+impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_SIZE> {
+    /// Create a witness from proof references and pre-computed output headers.
+    pub fn new(
+        left: &'a Proof<C, R>,
+        right: &'a Proof<C, R>,
+        left_output_header: [C::CircuitField; HEADER_SIZE],
+        right_output_header: [C::CircuitField; HEADER_SIZE],
+    ) -> Self {
+        Witness {
+            left_output_header,
+            right_output_header,
+            left,
+            right,
+        }
+    }
+
     /// Create a witness from two PCDs.
     ///
-    /// This extracts data directly from the proofs and computes output headers
-    /// using the encoder pattern, eliminating the need for manual k(Y)
-    /// reconstruction.
-    pub fn from_pcds<'source, C, R, HL, HR>(
-        left: &Pcd<'source, C, R, HL>,
-        right: &Pcd<'source, C, R, HR>,
+    /// Output headers are computed outside the circuit using the encoder pattern.
+    /// Other data (input headers, circuit IDs, unified instance) is accessed
+    /// directly from the proof references during circuit synthesis.
+    pub fn from_pcds<HL, HR>(
+        left: &'a Pcd<'_, C, R, HL>,
+        right: &'a Pcd<'_, C, R, HR>,
     ) -> Result<Self>
     where
-        C: Cycle<CircuitField = F, NestedCurve = G>,
-        R: Rank,
-        HL: HeaderTrait<F>,
-        HR: HeaderTrait<F>,
+        HL: HeaderTrait<C::CircuitField>,
+        HR: HeaderTrait<C::CircuitField>,
     {
-        let left_headers = ProofHeaders {
-            right_header: vec_to_array(&left.proof.application.right_header)?,
-            left_header: vec_to_array(&left.proof.application.left_header)?,
-            output_header: encode_output_header::<F, HL, HEADER_SIZE>(left.data.clone())?,
-        };
-
-        let right_headers = ProofHeaders {
-            right_header: vec_to_array(&right.proof.application.right_header)?,
-            left_header: vec_to_array(&right.proof.application.left_header)?,
-            output_header: encode_output_header::<F, HR, HEADER_SIZE>(right.data.clone())?,
-        };
-
-        Ok(Witness {
-            left: left_headers,
-            right: right_headers,
-            left_circuit_id: omega_j(left.proof.application.circuit_id as u32),
-            right_circuit_id: omega_j(right.proof.application.circuit_id as u32),
-            // Unified instance data from left proof
-            left_w: left.proof.internal_circuits.w,
-            left_c: left.proof.internal_circuits.c,
-            left_mu: left.proof.internal_circuits.mu,
-            left_nu: left.proof.internal_circuits.nu,
-            // Unified instance data from right proof
-            right_w: right.proof.internal_circuits.w,
-            right_c: right.proof.internal_circuits.c,
-            right_mu: right.proof.internal_circuits.mu,
-            right_nu: right.proof.internal_circuits.nu,
-            // Nested preamble commitments
-            left_nested_preamble_commitment: left.proof.preamble.nested_preamble_commitment,
-            right_nested_preamble_commitment: right.proof.preamble.nested_preamble_commitment,
-        })
+        Ok(Witness::new(
+            &left.proof,
+            &right.proof,
+            encode_output_header::<C::CircuitField, HL, HEADER_SIZE>(left.data.clone())?,
+            encode_output_header::<C::CircuitField, HR, HEADER_SIZE>(right.data.clone())?,
+        ))
     }
 }
 
@@ -170,12 +132,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     for Stage<C, R, HEADER_SIZE>
 {
     type Parent = ();
-    type Witness<'source> = &'source Witness<C::CircuitField, C::NestedCurve, HEADER_SIZE>;
-    type OutputKind = Kind![C::CircuitField; Output<'_, _, C::NestedCurve, HEADER_SIZE>];
+    type Witness<'source> = &'source Witness<'source, C, R, HEADER_SIZE>;
+    type OutputKind = Kind![C::CircuitField; Output<'_, _, C, HEADER_SIZE>];
 
     fn values() -> usize {
-        // 2 proofs * (3 headers * HEADER_SIZE + 1 circuit_id + 6 unified instance fields)
-        2 * (3 * HEADER_SIZE + 1 + 6)
+        // 2 proofs * (3 headers * HEADER_SIZE + 1 circuit_id + 7 unified instance values)
+        2 * (3 * HEADER_SIZE + 1 + 7)
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -185,9 +147,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
+        /// Allocate a fixed-size header from a slice of field elements.
         fn alloc_header<'dr, D: Driver<'dr>, const HEADER_SIZE: usize>(
             dr: &mut D,
-            data: DriverValue<D, &[D::F; HEADER_SIZE]>,
+            data: DriverValue<D, &[D::F]>,
         ) -> Result<FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>> {
             let mut v = Vec::with_capacity(HEADER_SIZE);
             for i in 0..HEADER_SIZE {
@@ -196,40 +159,89 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
             Ok(FixedVec::new(v).expect("length"))
         }
 
-        // Allocate left proof inputs
+        // Allocate left unified instance components.
+        let left_nested = Point::alloc(
+            dr,
+            witness
+                .view()
+                .map(|w| w.left.preamble.nested_preamble_commitment),
+        )?;
+        let left_w = Element::alloc(dr, witness.view().map(|w| w.left.internal_circuits.w))?;
+        let left_c = Element::alloc(dr, witness.view().map(|w| w.left.internal_circuits.c))?;
+        let left_mu = Element::alloc(dr, witness.view().map(|w| w.left.internal_circuits.mu))?;
+        let left_nu = Element::alloc(dr, witness.view().map(|w| w.left.internal_circuits.nu))?;
+
+        // Allocate left proof inputs.
         let left = ProofInputs {
-            right_header: alloc_header(dr, witness.view().map(|w| &w.left.right_header))?,
-            left_header: alloc_header(dr, witness.view().map(|w| &w.left.left_header))?,
-            output_header: alloc_header(dr, witness.view().map(|w| &w.left.output_header))?,
-            circuit_id: Element::alloc(dr, witness.view().map(|w| w.left_circuit_id))?,
-            unified: UnifiedInstance {
-                nested_preamble_commitment: Point::alloc(
-                    dr,
-                    witness.view().map(|w| w.left_nested_preamble_commitment),
-                )?,
-                w: Element::alloc(dr, witness.view().map(|w| w.left_w))?,
-                c: Element::alloc(dr, witness.view().map(|w| w.left_c))?,
-                mu: Element::alloc(dr, witness.view().map(|w| w.left_mu))?,
-                nu: Element::alloc(dr, witness.view().map(|w| w.left_nu))?,
-            },
+            right_header: alloc_header(
+                dr,
+                witness
+                    .view()
+                    .map(|w| w.left.application.right_header.as_slice()),
+            )?,
+            left_header: alloc_header(
+                dr,
+                witness
+                    .view()
+                    .map(|w| w.left.application.left_header.as_slice()),
+            )?,
+            output_header: alloc_header(
+                dr,
+                witness.view().map(|w| w.left_output_header.as_slice()),
+            )?,
+            circuit_id: Element::alloc(
+                dr,
+                witness
+                    .view()
+                    .map(|w| omega_j(w.left.application.circuit_id as u32)),
+            )?,
+            unified: unified::Output::from_parts(dr, left_nested, left_w, left_c, left_mu, left_nu),
         };
 
-        // Allocate right proof inputs
+        // Allocate right unified instance components.
+        let right_nested = Point::alloc(
+            dr,
+            witness
+                .view()
+                .map(|w| w.right.preamble.nested_preamble_commitment),
+        )?;
+        let right_w = Element::alloc(dr, witness.view().map(|w| w.right.internal_circuits.w))?;
+        let right_c = Element::alloc(dr, witness.view().map(|w| w.right.internal_circuits.c))?;
+        let right_mu = Element::alloc(dr, witness.view().map(|w| w.right.internal_circuits.mu))?;
+        let right_nu = Element::alloc(dr, witness.view().map(|w| w.right.internal_circuits.nu))?;
+
+        // Allocate right proof inputs.
         let right = ProofInputs {
-            right_header: alloc_header(dr, witness.view().map(|w| &w.right.right_header))?,
-            left_header: alloc_header(dr, witness.view().map(|w| &w.right.left_header))?,
-            output_header: alloc_header(dr, witness.view().map(|w| &w.right.output_header))?,
-            circuit_id: Element::alloc(dr, witness.view().map(|w| w.right_circuit_id))?,
-            unified: UnifiedInstance {
-                nested_preamble_commitment: Point::alloc(
-                    dr,
-                    witness.view().map(|w| w.right_nested_preamble_commitment),
-                )?,
-                w: Element::alloc(dr, witness.view().map(|w| w.right_w))?,
-                c: Element::alloc(dr, witness.view().map(|w| w.right_c))?,
-                mu: Element::alloc(dr, witness.view().map(|w| w.right_mu))?,
-                nu: Element::alloc(dr, witness.view().map(|w| w.right_nu))?,
-            },
+            right_header: alloc_header(
+                dr,
+                witness
+                    .view()
+                    .map(|w| w.right.application.right_header.as_slice()),
+            )?,
+            left_header: alloc_header(
+                dr,
+                witness
+                    .view()
+                    .map(|w| w.right.application.left_header.as_slice()),
+            )?,
+            output_header: alloc_header(
+                dr,
+                witness.view().map(|w| w.right_output_header.as_slice()),
+            )?,
+            circuit_id: Element::alloc(
+                dr,
+                witness
+                    .view()
+                    .map(|w| omega_j(w.right.application.circuit_id as u32)),
+            )?,
+            unified: unified::Output::from_parts(
+                dr,
+                right_nested,
+                right_w,
+                right_c,
+                right_mu,
+                right_nu,
+            ),
         };
 
         Ok(Output { left, right })

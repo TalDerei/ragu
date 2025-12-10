@@ -85,6 +85,27 @@ pub struct OutputBuilder<'a, 'dr, D: Driver<'dr>, C: Cycle> {
     pub nu: Slot<'a, 'dr, D, Element<'dr, D>, C>,
 }
 
+impl<'dr, D: Driver<'dr>, C: Cycle> Output<'dr, D, C> {
+    /// Construct an Output from individual gadget parts.
+    pub fn from_parts(
+        dr: &mut D,
+        nested_preamble_commitment: Point<'dr, D, C::NestedCurve>,
+        w: Element<'dr, D>,
+        c: Element<'dr, D>,
+        mu: Element<'dr, D>,
+        nu: Element<'dr, D>,
+    ) -> Self {
+        Output {
+            nested_preamble_commitment,
+            w,
+            c,
+            mu,
+            nu,
+            zero: Element::zero(dr),
+        }
+    }
+}
+
 impl<'a, 'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle> OutputBuilder<'a, 'dr, D, C> {
     pub fn new() -> Self {
         macro_rules! point_slot {

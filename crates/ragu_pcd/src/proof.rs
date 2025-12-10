@@ -2,7 +2,6 @@ use arithmetic::{Cycle, FixedGenerators};
 use ff::Field;
 use ragu_circuits::{
     CircuitExt,
-    mesh::omega_j,
     polynomials::{Rank, structured},
     staging::StageExt,
 };
@@ -159,40 +158,47 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let application_commitment =
             application_rx.commit(self.params.host_generators(), application_blind);
 
-        // Preamble rx polynomial with dummy headers and zero unified instance data.
-        let dummy_nested_commitment = self.params.nested_generators().g()[0];
-        let preamble_witness: preamble::Witness<C::CircuitField, C::NestedCurve, HEADER_SIZE> =
-            preamble::Witness {
-                left: preamble::ProofHeaders {
-                    output_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                    left_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                    right_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                },
-                right: preamble::ProofHeaders {
-                    output_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                    left_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                    right_header: [C::CircuitField::ZERO; HEADER_SIZE],
-                },
-                // Dummy circuit IDs (trivial proof uses dummy circuit)
-                left_circuit_id: omega_j(internal_circuits::index(
-                    self.num_application_steps,
-                    dummy::CIRCUIT_ID,
-                ) as u32),
-                right_circuit_id: omega_j(internal_circuits::index(
-                    self.num_application_steps,
-                    dummy::CIRCUIT_ID,
-                ) as u32),
-                left_w: C::CircuitField::ZERO,
-                left_c: C::CircuitField::ZERO,
-                left_mu: C::CircuitField::ZERO,
-                left_nu: C::CircuitField::ZERO,
-                right_w: C::CircuitField::ZERO,
-                right_c: C::CircuitField::ZERO,
-                right_mu: C::CircuitField::ZERO,
-                right_nu: C::CircuitField::ZERO,
-                left_nested_preamble_commitment: dummy_nested_commitment,
-                right_nested_preamble_commitment: dummy_nested_commitment,
-            };
+        // Create a dummy proof to use for preamble witness.
+        // The preamble witness needs proof references, but we're creating a trivial proof
+        // from scratch, so we construct a dummy with placeholder values.
+        let dummy_circuit_id =
+            internal_circuits::index(self.num_application_steps, dummy::CIRCUIT_ID);
+
+        let dummy_proof = Proof {
+            preamble: PreambleProof {
+                native_preamble_rx: application_rx.clone(),
+                native_preamble_blind: C::CircuitField::random(&mut *rng),
+                native_preamble_commitment: application_commitment,
+                nested_preamble_rx: structured::Polynomial::new(),
+                nested_preamble_blind: C::ScalarField::random(&mut *rng),
+                nested_preamble_commitment: self.params.nested_generators().g()[0],
+            },
+            internal_circuits: InternalCircuits {
+                w: C::CircuitField::random(&mut *rng),
+                c: C::CircuitField::random(&mut *rng),
+                c_rx: application_rx.clone(),
+                c_rx_blind: C::CircuitField::random(&mut *rng),
+                c_rx_commitment: application_commitment,
+                mu: C::CircuitField::random(&mut *rng),
+                nu: C::CircuitField::random(&mut *rng),
+            },
+            application: ApplicationProof {
+                circuit_id: dummy_circuit_id,
+                left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+                right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+                rx: application_rx.clone(),
+                blind: C::CircuitField::random(&mut *rng),
+                commitment: application_commitment,
+            },
+        };
+
+        // Preamble witness with zero output headers and dummy proof references.
+        let preamble_witness = preamble::Witness::new(
+            &dummy_proof,
+            &dummy_proof,
+            [C::CircuitField::ZERO; HEADER_SIZE],
+            [C::CircuitField::ZERO; HEADER_SIZE],
+        );
 
         let native_preamble_rx = preamble::Stage::<C, R, HEADER_SIZE>::rx(&preamble_witness)
             .expect("preamble rx should not fail");
