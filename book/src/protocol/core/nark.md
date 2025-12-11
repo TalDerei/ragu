@@ -178,14 +178,11 @@ bottlenecks:
 
 **Prover overhead**: Computing the product polynomial $\hat{r}(X) \cdot r(zX)$
 and then decomposing it into $c_1(X)$ and $c_2(X)$ is expensive. We need at
-least 3 FFTs over a domain of size $8n-2$[^prod-cost]—two to transform the
-multiplicands into evaluation form, multiply them pointwise, then one inverse
-FFT to get back to coefficients before we can decompose. This is the most
+least 3 FFTs over a domain of size $8n-2$[^prod-cost]. This is the most
 expensive step for the prover.
 
 **Verifier computation**: The verifier needs to evaluate $s(x,y)$ locally,
-which is an $O(n)$ operation. For large circuits, this linear cost becomes
-noticeable.
+which is a linear-cost operation $O(|\Cir|)=O(n)$.
 
 **Multiple PCS queries**: The verifier makes multiple polynomial oracle queries
 (to $r$, $c_1$, and $c_2$), and each requires a PCS evaluation proof. When
