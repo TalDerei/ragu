@@ -84,6 +84,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let stub = StubUnified::<C>::new();
             stub.ky(&unified_instance)?
         };
+        use ff::Field;
+        assert!(unified_ky[1] == C::CircuitField::ZERO);
 
         // C circuit verification with ky.
         // C's final stage is preamble, so combine preamble_rx with c_rx.

@@ -8,7 +8,7 @@ use ragu_core::{
     gadgets::GadgetKind,
 };
 
-use crate::internal_circuits::unified::{self, OutputBuilder, OutputKind};
+use crate::internal_circuits::unified::{self, OutputBuilder};
 
 /// A stub circuit for computing unified k(Y) in verification.
 /// This mimics the instance method of C and V circuits without
@@ -28,7 +28,7 @@ impl<C> StubUnified<C> {
 impl<C: Cycle> Circuit<C::CircuitField> for StubUnified<C> {
     type Instance<'source> = &'source unified::Instance<C>;
     type Witness<'source> = ();
-    type Output = OutputKind<C>;
+    type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
