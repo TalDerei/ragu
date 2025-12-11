@@ -5,14 +5,14 @@
 The satisfiability of our [Bootle16 constraint system](./arithmetization.md)
 culminates in a single
 [consolidated constraint](./arithmetization.md#consolidated-constraints):
-$\revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}} - \v{t} + \v{s}} = \dot{\v{k}}{\v{y^q}}$
+$\revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}} - \v{t} + \v{s}} = \dot{\v{k}}{\v{y^{4n}}}$
 where
 - the witness vector $\v{r}=(\v{c}\|\rv{b}\|\v{a}\|\v{0})\in\F^{4n}$
 - the circuit wiring vector
-$\v{s}=(\v{0^n}\| \sum_{j=0}^{q-1}y^j\cdot\rv{u}_j \| \sum_j y^j\cdot\v{v}_j \| \sum_j y^j\cdot \rv{w}_j)$,
+$\v{s}=(\v{0^n}\| \sum_{j=0}^{4n-1}y^j\cdot\rv{u}_j \| \sum_j y^j\cdot\v{v}_j \| \sum_j y^j\cdot \rv{w}_j)$,
 - the `mul` constraint vector
 $\v{t} = (\v{0^{3n}}\|\, (\rv{z}^{\bf n:2n} + \v{z}^{\bf 2n:3n})\cdot \rv{1})$,
-- the public input vector $\v{k}\in\F^q$
+- the public input vector $\v{k}\in\F^{4n}$
  
 To design a Polynomial Interactive Oracle Proof (PIOP) for our constraints,
 we first need to translate $\revdot{\v{p}}{\v{q}} = c$ into an equivalent
@@ -52,22 +52,23 @@ Now we define the overall Polynomial IOP protocol for the Bootle16 CS.
 
 Directly mapping from the consolidated arithmetization, let's give constituent 
 polynomials a name to refer to. We simply interpret all the coefficient vectors
-back to polynomials with respective indeterminates. We use shorthand 
-$\sum_i$ for $\sum_{i=0}^{n-1}$, $\sum_j$ for $\sum_{j=0}^{q-1}$.
+back to polynomials with respective indeterminates.
 
-- **witness polynomial**: $r(X)=\sum_i (c_iX^i+b_iX^{2n-1-i}+c_iX^{2n+i})$
+- **witness polynomial**: 
+  $r(X)=\sum_{i=0}^{n-1} (c_iX^i+b_iX^{2n-1-i}+a_iX^{2n+i})$
   - dilated witness polynomial: $r(XZ)$ corresponding to $\v{r}\circ\v{z^{4n}}$ 
   fixated at $z\in\F$
 - **wiring/circuit polynomial**: 
     $$
-    s(X,Y)=\sum_j Y^j\cdot\left(\sum_i (
-        \v{u}_j^{(i)}\cdot X^{2n-1+i} + 
+    s(X,Y)=\sum_{j=0}^{4n-1} Y^j\cdot\left(\sum_{i=0}^{n-1} (
+        \v{u}_j^{(i)}\cdot X^{2n-1-i} + 
         \v{v}_j^{(i)}\cdot X^{2n+i} + 
-        \v{w}_j^{(i)}\cdot X^{4n-1+i} 
+        \v{w}_j^{(i)}\cdot X^{4n-1-i} 
     )\right)
     $$
-- **gate polynomial**: $t(X, Z)=\sum_i (Z^{2n-1-i}+Z^{2n+i})\cdot X^{4n-1-i}$
-- **public input polynomial**: $k(Y) = \sum_j \v{k}_j\cdot Y^j$
+- **gate polynomial**:
+  $t(X, Z)=\sum_{i=0}^{n-1} (Z^{2n-1-i}+Z^{2n+i})\cdot X^{4n-1-i}$
+- **public input polynomial**: $k(Y) = \sum_{j=0}^{4n-1} \v{k}_j\cdot Y^j$
 
 Denote $\mathcal{O}^p$ as a polynomial oracle sent by the prover with which the
 verifier can send open query against such as $p(z)=y$. These oracles are later
