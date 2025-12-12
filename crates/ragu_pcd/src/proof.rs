@@ -25,6 +25,8 @@ use crate::{
 /// Represents a recursive proof for the correctness of some computation.
 pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) preamble: PreambleProof<C, R>,
+    pub(crate) error: ErrorProof<C, R>,
+    pub(crate) ab: ABProof<C, R>,
     pub(crate) query: QueryProof<C, R>,
     pub(crate) f: FProof<C, R>,
     pub(crate) eval: EvalProof<C, R>,
@@ -99,10 +101,36 @@ pub(crate) struct EvalProof<C: Cycle, R: Rank> {
     pub(crate) nested_eval_commitment: C::NestedCurve,
 }
 
+pub(crate) struct ErrorProof<C: Cycle, R: Rank> {
+    pub(crate) native_error_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) native_error_blind: C::CircuitField,
+    pub(crate) native_error_commitment: C::HostCurve,
+
+    pub(crate) nested_error_rx: structured::Polynomial<C::ScalarField, R>,
+    pub(crate) nested_error_blind: C::ScalarField,
+    pub(crate) nested_error_commitment: C::NestedCurve,
+}
+
+pub(crate) struct ABProof<C: Cycle, R: Rank> {
+    pub(crate) a_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) a_blind: C::CircuitField,
+    pub(crate) a_commitment: C::HostCurve,
+
+    pub(crate) b_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) b_blind: C::CircuitField,
+    pub(crate) b_commitment: C::HostCurve,
+
+    pub(crate) nested_ab_rx: structured::Polynomial<C::ScalarField, R>,
+    pub(crate) nested_ab_blind: C::ScalarField,
+    pub(crate) nested_ab_commitment: C::NestedCurve,
+}
+
 impl<C: Cycle, R: Rank> Clone for Proof<C, R> {
     fn clone(&self) -> Self {
         Proof {
             preamble: self.preamble.clone(),
+            error: self.error.clone(),
+            ab: self.ab.clone(),
             query: self.query.clone(),
             f: self.f.clone(),
             eval: self.eval.clone(),
@@ -134,6 +162,35 @@ impl<C: Cycle, R: Rank> Clone for PreambleProof<C, R> {
             nested_preamble_rx: self.nested_preamble_rx.clone(),
             nested_preamble_commitment: self.nested_preamble_commitment,
             nested_preamble_blind: self.nested_preamble_blind,
+        }
+    }
+}
+
+impl<C: Cycle, R: Rank> Clone for ErrorProof<C, R> {
+    fn clone(&self) -> Self {
+        ErrorProof {
+            native_error_rx: self.native_error_rx.clone(),
+            native_error_blind: self.native_error_blind,
+            native_error_commitment: self.native_error_commitment,
+            nested_error_rx: self.nested_error_rx.clone(),
+            nested_error_blind: self.nested_error_blind,
+            nested_error_commitment: self.nested_error_commitment,
+        }
+    }
+}
+
+impl<C: Cycle, R: Rank> Clone for ABProof<C, R> {
+    fn clone(&self) -> Self {
+        ABProof {
+            a_rx: self.a_rx.clone(),
+            a_blind: self.a_blind,
+            a_commitment: self.a_commitment,
+            b_rx: self.b_rx.clone(),
+            b_blind: self.b_blind,
+            b_commitment: self.b_commitment,
+            nested_ab_rx: self.nested_ab_rx.clone(),
+            nested_ab_blind: self.nested_ab_blind,
+            nested_ab_commitment: self.nested_ab_commitment,
         }
     }
 }
@@ -273,6 +330,25 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 nested_preamble_blind: C::ScalarField::random(&mut *rng),
                 nested_preamble_commitment: self.params.nested_generators().g()[0],
             },
+            error: ErrorProof {
+                native_error_rx: structured::Polynomial::new(),
+                native_error_blind: C::CircuitField::random(&mut *rng),
+                native_error_commitment: self.params.host_generators().g()[0],
+                nested_error_rx: structured::Polynomial::new(),
+                nested_error_blind: C::ScalarField::random(&mut *rng),
+                nested_error_commitment: self.params.nested_generators().g()[0],
+            },
+            ab: ABProof {
+                a_rx: structured::Polynomial::new(),
+                a_blind: C::CircuitField::random(&mut *rng),
+                a_commitment: self.params.host_generators().g()[0],
+                b_rx: structured::Polynomial::new(),
+                b_blind: C::CircuitField::random(&mut *rng),
+                b_commitment: self.params.host_generators().g()[0],
+                nested_ab_rx: structured::Polynomial::new(),
+                nested_ab_blind: C::ScalarField::random(&mut *rng),
+                nested_ab_commitment: self.params.nested_generators().g()[0],
+            },
             internal_circuits: InternalCircuits {
                 w: C::CircuitField::random(&mut *rng),
                 c: C::CircuitField::random(&mut *rng),
@@ -359,15 +435,39 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let w =
             crate::components::transcript::emulate_w::<C>(nested_preamble_commitment, self.params)?;
 
-        // Generate dummy values for mu, nu, and error_terms (for now – these will be derived challenges)
-        let mu = C::CircuitField::random(&mut *rng);
-        let nu = C::CircuitField::random(&mut *rng);
-        let error_terms = ErrorTermsLen::<NUM_NATIVE_REVDOT_CLAIMS>::range()
-            .map(|_| C::CircuitField::random(&mut *rng))
-            .collect_fixed()?;
+        // Compute error stage first so we can derive mu/nu from nested_error_commitment.
+        // Create error witness with dummy z and error terms.
+        let z = C::CircuitField::random(&mut *rng);
+        let error_witness = stages::native::error::Witness::<C, NUM_NATIVE_REVDOT_CLAIMS> {
+            z,
+            nested_s_doubleprime_commitment: self.params.nested_generators().g()[0],
+            error_terms: ErrorTermsLen::<NUM_NATIVE_REVDOT_CLAIMS>::range()
+                .map(|_| C::CircuitField::ZERO)
+                .collect_fixed()?,
+        };
+        let native_error_rx =
+            stages::native::error::Stage::<C, R, HEADER_SIZE, NUM_NATIVE_REVDOT_CLAIMS>::rx(
+                &error_witness,
+            )?;
+        let native_error_blind = C::CircuitField::random(&mut *rng);
+        let native_error_commitment =
+            native_error_rx.commit(self.params.host_generators(), native_error_blind);
+
+        // Stubbed nested error rx polynomial
+        let nested_error_rx =
+            stages::nested::error::Stage::<C::HostCurve, R>::rx(native_error_commitment)?;
+        let nested_error_blind = C::ScalarField::random(&mut *rng);
+        let nested_error_commitment =
+            nested_error_rx.commit(self.params.nested_generators(), nested_error_blind);
+
+        // Derive (mu, nu) = H(nested_error_commitment)
+        let (mu, nu) = crate::components::transcript::emulate_mu_nu::<C>(
+            nested_error_commitment,
+            self.params,
+        )?;
 
         // Compute c, the folded revdot product claim, by invoking the routine within a wireless emulator.
-        let c = Emulator::emulate_wireless((mu, nu, &error_terms), |dr, witness| {
+        let c = Emulator::emulate_wireless((mu, nu, &error_witness.error_terms), |dr, witness| {
             let (mu, nu, error_terms) = witness.cast();
 
             let mu = Element::alloc(dr, mu)?;
@@ -393,8 +493,29 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             .take())
         })?;
 
+        // Stubbed A/B polynomials
+        let a_rx = ragu_circuits::polynomials::structured::Polynomial::<C::CircuitField, R>::new();
+        let a_blind = C::CircuitField::random(&mut *rng);
+        let a_commitment = a_rx.commit(self.params.host_generators(), a_blind);
+
+        let b_rx = ragu_circuits::polynomials::structured::Polynomial::<C::CircuitField, R>::new();
+        let b_blind = C::CircuitField::random(&mut *rng);
+        let b_commitment = b_rx.commit(self.params.host_generators(), b_blind);
+
+        // Stubbed nested ab rx polynomial
+        let nested_ab_rx =
+            stages::nested::ab::Stage::<C::HostCurve, R, 2>::rx(&[a_commitment, b_commitment])?;
+        let nested_ab_blind = C::ScalarField::random(&mut *rng);
+        let nested_ab_commitment =
+            nested_ab_rx.commit(self.params.nested_generators(), nested_ab_blind);
+
+        // Derive x = H(mu, nested_ab_commitment).
+        let x =
+            crate::components::transcript::emulate_x::<C>(mu, nested_ab_commitment, self.params)?;
+
         // Compute query witness (stubbed for now).
         let query_witness = internal_circuits::stages::native::query::Witness {
+            x,
             queries: internal_circuits::stages::native::query::Queries::range()
                 .map(|_| C::CircuitField::ZERO)
                 .collect_fixed()?,
@@ -462,6 +583,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Create unified instance and compute c_rx
         let unified_instance = internal_circuits::unified::Instance {
             nested_preamble_commitment,
+            nested_error_commitment,
+            nested_ab_commitment,
             w,
             c,
             mu,
@@ -480,7 +603,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let internal_circuit_c_witness = internal_circuits::c::Witness {
             unified_instance: &unified_instance,
             preamble_witness: &preamble_witness,
-            error_terms,
+            error_witness: &error_witness,
         };
 
         // Compute c_rx using the C-staged circuit
@@ -512,6 +635,25 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 nested_preamble_rx,
                 nested_preamble_commitment,
                 nested_preamble_blind,
+            },
+            error: ErrorProof {
+                native_error_rx,
+                native_error_blind,
+                native_error_commitment,
+                nested_error_rx,
+                nested_error_blind,
+                nested_error_commitment,
+            },
+            ab: ABProof {
+                a_rx,
+                a_blind,
+                a_commitment,
+                b_rx,
+                b_blind,
+                b_commitment,
+                nested_ab_rx,
+                nested_ab_blind,
+                nested_ab_commitment,
             },
             internal_circuits: InternalCircuits {
                 w,

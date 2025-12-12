@@ -10,6 +10,7 @@ use ragu_core::{
     gadgets::{Gadget, GadgetKind},
     maybe::Maybe,
 };
+use ragu_primitives::{GadgetExt, Sponge};
 
 use core::marker::PhantomData;
 
@@ -80,8 +81,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, const NUM_REVDOT_CLAIMS: usize
         let (eval, builder) = builder.add_stage::<native_eval::Stage<C, R, HEADER_SIZE>>()?;
         let dr = builder.finish();
 
-        // TODO: Currently unused, we're missing alpha enforcement.
-        let _query = query.enforced(dr, witness.view().map(|w| w.query_witness))?;
+        let query = query.enforced(dr, witness.view().map(|w| w.query_witness))?;
         let eval = eval.enforced(dr, witness.view().map(|w| w.eval_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
@@ -91,8 +91,36 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, const NUM_REVDOT_CLAIMS: usize
             .nested_f_commitment
             .get(dr, unified_instance)?;
 
-        // TODO: Derive mu, nu challenges.
-        // TODO: Derive x challenge.
+        // Computation of (mu, nu) = H(nested_error_commitment).
+        let (mu, nu) = {
+            let nested_error_commitment = unified_output
+                .nested_error_commitment
+                .get(dr, unified_instance)?;
+            let mut sponge = Sponge::new(dr, self.params.circuit_poseidon());
+            nested_error_commitment.write(dr, &mut sponge)?;
+            let mu = sponge.squeeze(dr)?;
+            let nu = sponge.squeeze(dr)?;
+
+            (mu, nu)
+        };
+
+        // Computation of x = H(mu, nested_ab_commitment).
+        {
+            let nested_ab_commitment = unified_output
+                .nested_ab_commitment
+                .get(dr, unified_instance)?;
+
+            let mut sponge = Sponge::new(dr, self.params.circuit_poseidon());
+            sponge.absorb(dr, &mu)?;
+            nested_ab_commitment.write(dr, &mut sponge)?;
+            let x = sponge.squeeze(dr)?;
+
+            // Query stage's x must equal x.
+            x.enforce_equal(dr, &query.x)?;
+        }
+
+        unified_output.mu.set(mu);
+        unified_output.nu.set(nu);
 
         // Derive alpha challenge.
         let alpha = {

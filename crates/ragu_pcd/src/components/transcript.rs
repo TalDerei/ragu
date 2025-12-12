@@ -83,3 +83,59 @@ pub fn emulate_u<C: Cycle>(
             .take())
     })
 }
+
+/// Computation of (mu, nu) = H(nested_error_commitment)
+pub fn derive_mu_nu<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle>(
+    dr: &mut D,
+    nested_error_commitment: &Point<'dr, D, C::NestedCurve>,
+    params: &'dr C,
+) -> Result<(Element<'dr, D>, Element<'dr, D>)> {
+    let mut sponge = Sponge::new(dr, params.circuit_poseidon());
+    nested_error_commitment.write(dr, &mut sponge)?;
+    let mu = sponge.squeeze(dr)?;
+    let nu = sponge.squeeze(dr)?;
+    Ok((mu, nu))
+}
+
+/// Compute $(mu, nu)$ challenges using the [`Emulator`] for use outside of circuit
+/// contexts.
+pub fn emulate_mu_nu<C: Cycle>(
+    nested_error_commitment: C::NestedCurve,
+    params: &C,
+) -> Result<(C::CircuitField, C::CircuitField)> {
+    Emulator::emulate_wireless(nested_error_commitment, |dr, comm| {
+        let point = Point::alloc(dr, comm)?;
+        let (mu, nu) = derive_mu_nu::<_, C>(dr, &point, params)?;
+        Ok((*mu.value().take(), *nu.value().take()))
+    })
+}
+
+/// Computation of x = H(mu, nested_ab_commitment)
+pub fn derive_x<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle>(
+    dr: &mut D,
+    mu: &Element<'dr, D>,
+    nested_ab_commitment: &Point<'dr, D, C::NestedCurve>,
+    params: &'dr C,
+) -> Result<Element<'dr, D>> {
+    let mut sponge = Sponge::new(dr, params.circuit_poseidon());
+    sponge.absorb(dr, mu)?;
+    nested_ab_commitment.write(dr, &mut sponge)?;
+    sponge.squeeze(dr)
+}
+
+/// Compute $x$ challenge using the [`Emulator`] for use outside of circuit
+/// contexts.
+pub fn emulate_x<C: Cycle>(
+    mu: C::CircuitField,
+    nested_ab_commitment: C::NestedCurve,
+    params: &C,
+) -> Result<C::CircuitField> {
+    Emulator::emulate_wireless((mu, nested_ab_commitment), |dr, witness| {
+        let (mu, comm) = witness.cast();
+        let mu_elem = Element::alloc(dr, mu)?;
+        let point = Point::alloc(dr, comm)?;
+        Ok(*derive_x::<_, C>(dr, &mu_elem, &point, params)?
+            .value()
+            .take())
+    })
+}

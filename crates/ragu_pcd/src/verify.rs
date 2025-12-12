@@ -42,6 +42,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::stages::native::preamble::STAGING_ID,
         );
 
+        // Error stage verification.
+        let error_valid = verifier.check_stage(
+            &pcd.proof.error.native_error_rx,
+            internal_circuits::stages::native::error::STAGING_ID,
+        );
+
         // Query verification.
         let query_valid = verifier.check_stage(
             &pcd.proof.query.native_query_rx,
@@ -68,6 +74,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let unified_instance = internal_circuits::unified::Instance {
             nested_preamble_commitment: pcd.proof.preamble.nested_preamble_commitment,
+            nested_error_commitment: pcd.proof.error.nested_error_commitment,
+            nested_ab_commitment: pcd.proof.ab.nested_ab_commitment,
             w: pcd.proof.internal_circuits.w,
             c: pcd.proof.internal_circuits.c,
             mu: pcd.proof.internal_circuits.mu,
@@ -84,13 +92,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let stub = StubUnified::<C>::new();
             stub.ky(&unified_instance)?
         };
-        use ff::Field;
-        assert!(unified_ky[1] == C::CircuitField::ZERO);
 
         // C circuit verification with ky.
-        // C's final stage is preamble, so combine preamble_rx with c_rx.
+        // C's final stage is error, so combine preamble_rx + error_rx with c_rx.
         let c_circuit_valid = {
             let mut c_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
+            c_combined_rx.add_assign(&pcd.proof.error.native_error_rx);
             c_combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
 
             verifier.check_internal_circuit(
@@ -136,8 +143,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             pcd.proof.application.circuit_id,
             &application_ky,
         );
+        assert!(c_circuit_valid, "c_circuit_valid failed");
+        assert!(v_circuit_valid, "v_circuit_valid failed");
+        assert!(application_valid, "application_valid failed");
 
         Ok(preamble_valid
+            && error_valid
             && query_valid
             && eval_valid
             && c_stage_valid
