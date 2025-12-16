@@ -61,7 +61,7 @@ $\mathsf{Acc.Decide}(\acc_{i+1})$ subroutine which could contain linear-time
 operations—but this is fine since the cost is amortized across all prior steps
 and the per-step recursion overhead is massively reduced to sublinear.
 
-Ragu supports **split accumulation**, a variant formalized in
+Ragu implements **split accumulation**, a variant formalized in
 [[BCLMS20]](https://eprint.iacr.org/2020/1618), in which the verifier
 $\mathsf{Acc.V}$ checks correct accumulation of _only public instances_, allowing
 a potentially non-succinct witness size (usually linear), thus its relaxed
@@ -88,11 +88,56 @@ NARK verification work and only "fold" the committed public instances of a
 running-instance (i.e. accumulator) and the NARK for the last step (i.e.
 $\pi_i$). For all practical purposes, these two formalizations are equivalent.
 In fact, Ragu also does "pure instance folding" and we subsequently use
-"accumulation" and "folding" interchangably.
+"accumulation" and "folding" interchangeably.
 ```
 
-## IVC on Cycles of Curves
+## IVC on a Cycle of Curves
 
-> todo: [[NBS]](https://eprint.iacr.org/2023/969) and [[CycleFold]](https://eprint.iacr.org/2023/1192)
+Accumulation requires folding commitments through random linear combinations -- a
+group operation. As explained [earlier](../../prelim/nested_commitment.md),
+constraining non-native group operations is prohibitively expensive. The
+solution: implement IVC over a 2-cycle of elliptic curves, where each curve's
+group operations are native to the other curve's scalar field.
+
+This creates a ping-pong pattern. We alternate between two circuits—$CS^{(1)}$
+over field $\F_p$ and $CS^{(2)}$ over field $\F_q$—where commitments in one
+circuit's group $\G^{(1)}$ are accumulated in the other circuit, and vice versa.
+The state and accumulator become tuples: $z_i = (z_i^{(1)}, z_i^{(2)})$ and
+$\acc_i = (\acc_i^{(1)}, \acc_i^{(2)})$.
+
+<p align="center">
+  <img src="../../../assets/ivc_on_cycle.svg" alt="ivc_on_cycle_of_curves" />
+</p>
+
+Each IVC step now consists of two halves working in tandem:
+
+**Primary circuit** $CS^{(1)}$:
+- Advances application state $z_i^{(1)} \to z_{i+1}^{(1)}$
+- Folds the previous step's secondary instance $\inst_i^{(2)}$ into accumulator
+  $\acc_i^{(2)} \to \acc_{i+1}^{(2)}$
+- Produces new instance $\inst_{i+1}^{(1)}$ to be folded in the next half
+- Enforces [deferred operations](../../prelim/nested_commitment.md#deferreds) in
+  $CS^{(2)}$ from the last step (its group operations are native here), and 
+  defers its own group operations to $CS^{(2)}$
+
+**Secondary circuit** $CS^{(2)}$:
+- Advances application state $z_i^{(2)} \to z_{i+1}^{(2)}$
+- Folds the primary instance $\inst_{i+1}^{(1)}$ into accumulator
+  $\acc_i^{(1)} \to \acc_{i+1}^{(1)}$
+- Produces new instance $\inst_{i+1}^{(2)}$ for the next step
+- Enforces deferred operations from $CS^{(1)}$ (in the same step) and defer group
+  operations to $CS^{(1)}$ for the next step
+
+Both circuits run accumulation verifiers $\mathsf{Acc.V}$ for the [3
+subprotocols inside the NARK](../nark.md#nark) to verifiably update their
+respective accumulators. The result is efficient recursion: each circuit only
+performs native arithmetic, while the non-native work is deferred to its
+counterpart on the cycle.[^ivc-curve-diagram]
+
+[^ivc-curve-diagram]: The IVC on a curve cycle diagram is heavily based on the
+[[NBS23] paper](https://eprint.iacr.org/2023/969) and [Wilson Nguyen's
+talk](https://youtu.be/l-F5ykQQ4qw). The diagram presents the IVC computation
+chain from the verifier's perspective and omits auxiliary advice and witness
+parts of the NARK instance and accumulator managed by the prover.
 
 ## 2-arity PCD
