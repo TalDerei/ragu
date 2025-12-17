@@ -11,7 +11,7 @@ use core::marker::PhantomData;
 /// The parameters $(m, n)$ that dictate the multi-layer revdot reduction.
 ///
 /// The first layer involves $n$ instances of size-$m$ revdot reductions, and
-/// the second layer reduces these into a single revdot using a single size-$m$
+/// the second layer reduces these into a single revdot using a single size-$n$
 /// revdot reduction.
 ///
 /// The parameters here collapse as much as $m \cdot n$ claims into a single
