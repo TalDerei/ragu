@@ -141,7 +141,7 @@ pub fn emulate_mu_nu<C: Cycle>(
     })
 }
 
-/// Computation of x = H(mu, nu, nested_ab_commitment)
+/// Computation of x = H(nu, nested_ab_commitment)
 pub fn derive_x<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle>(
     dr: &mut D,
     nu: &Element<'dr, D>,

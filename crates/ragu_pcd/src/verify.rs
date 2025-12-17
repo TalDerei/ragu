@@ -41,10 +41,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::stages::native::preamble::STAGING_ID,
         );
 
-        // Error stage verification.
-        let error_valid = verifier.check_stage(
-            &pcd.proof.error.native_error_rx,
-            internal_circuits::stages::native::error::STAGING_ID,
+        // Error_m stage verification (Layer 1).
+        let error_m_valid = verifier.check_stage(
+            &pcd.proof.error.native_error_m_rx,
+            internal_circuits::stages::native::error_m::STAGING_ID,
+        );
+
+        // Error_n stage verification (Layer 2).
+        let error_n_valid = verifier.check_stage(
+            &pcd.proof.error.native_error_n_rx,
+            internal_circuits::stages::native::error_n::STAGING_ID,
         );
 
         // Query verification.
@@ -77,17 +83,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested_s_prime_commitment: pcd.proof.s_prime.nested_s_prime_commitment,
             y: pcd.proof.internal_circuits.y,
             z: pcd.proof.internal_circuits.z,
-            nested_s_doubleprime_commitment: pcd
-                .proof
-                .s_doubleprime
-                .nested_s_doubleprime_commitment,
-            nested_error_commitment: pcd.proof.error.nested_error_commitment,
+            nested_error_m_commitment: pcd.proof.error.nested_error_m_commitment,
             mu: pcd.proof.internal_circuits.mu,
             nu: pcd.proof.internal_circuits.nu,
+            nested_error_n_commitment: pcd.proof.error.nested_error_n_commitment,
+            mu_prime: pcd.proof.internal_circuits.mu_prime,
+            nu_prime: pcd.proof.internal_circuits.nu_prime,
             c: pcd.proof.internal_circuits.c,
             nested_ab_commitment: pcd.proof.ab.nested_ab_commitment,
             x: pcd.proof.internal_circuits.x,
-            nested_s_commitment: pcd.proof.s.nested_s_commitment,
             nested_query_commitment: pcd.proof.query.nested_query_commitment,
             alpha: pcd.proof.internal_circuits.alpha,
             nested_f_commitment: pcd.proof.f.nested_f_commitment,
@@ -103,10 +107,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
 
         // C circuit verification with ky.
-        // C's final stage is error, so combine preamble_rx + error_rx with c_rx.
+        // C's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with c_rx.
         let c_circuit_valid = {
             let mut c_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            c_combined_rx.add_assign(&pcd.proof.error.native_error_rx);
+            c_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
+            c_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
             c_combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
 
             verifier.check_internal_circuit(
@@ -154,7 +159,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         );
 
         Ok(preamble_valid
-            && error_valid
+            && error_m_valid
+            && error_n_valid
             && query_valid
             && eval_valid
             && c_stage_valid
