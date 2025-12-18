@@ -144,8 +144,8 @@ mod tests {
         type P = TestParams3;
         let n = <P as Parameters>::N::len();
 
-        let a: Vec<Fp> = (0..n).map(|_| Fp::random(OsRng)).collect();
-        let b: Vec<Fp> = (0..n).map(|_| Fp::random(OsRng)).collect();
+        let a: Vec<_> = (0..n).map(|_| Fp::random(OsRng)).collect();
+        let b: Vec<_> = (0..n).map(|_| Fp::random(OsRng)).collect();
 
         let mut ky = vec![];
         let mut error = vec![];
@@ -229,9 +229,9 @@ mod tests {
                 let nu = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
 
                 // Layer 1: N instances of M-sized reductions (mimicking c.rs)
-                let error_terms_m: FixedVec<_, ErrorTermsLen<P::M>> =
+                let error_terms_m =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
-                let ky_values_m: FixedVec<_, P::M> =
+                let ky_values_m =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
 
                 let mut collapsed = vec![];
@@ -239,10 +239,10 @@ mod tests {
                     let v = compute_c_m::<_, P>(dr, &mu, &nu, &error_terms_m, &ky_values_m)?;
                     collapsed.push(v);
                 }
-                let collapsed: FixedVec<_, P::N> = FixedVec::new(collapsed)?;
+                let collapsed = FixedVec::new(collapsed)?;
 
                 // Layer 2: Single N-sized reduction using collapsed as ky_values
-                let error_terms_n: FixedVec<_, ErrorTermsLen<P::N>> =
+                let error_terms_n =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
 
                 compute_c_n::<_, P>(dr, &mu, &nu, &error_terms_n, &collapsed)?;

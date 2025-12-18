@@ -14,7 +14,7 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     Application, circuit_counts,
-    components::fold_revdot::{self, ErrorTermsLen, NativeParameters, Parameters},
+    components::fold_revdot::{self, NativeParameters, Parameters},
     header::Header,
     internal_circuits::{self, dummy, stages},
 };
@@ -744,27 +744,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let nu_prime = Element::alloc(dr, nu_prime)?;
 
                 // Allocate error_m error terms (nested structure)
-                let error_terms_m: FixedVec<
-                    FixedVec<Element<'_, _>, ErrorTermsLen<<NativeParameters as Parameters>::M>>,
-                    <NativeParameters as Parameters>::N,
-                > = FixedVec::try_from_fn(|i| {
-                    FixedVec::try_from_fn(|j| {
-                        Element::alloc(dr, error_terms_m.view().map(|et| et[i][j]))
-                    })
-                })?;
+                let error_terms_m: FixedVec<_, <NativeParameters as Parameters>::N> =
+                    FixedVec::try_from_fn(|i| {
+                        FixedVec::try_from_fn(|j| {
+                            Element::alloc(dr, error_terms_m.view().map(|et| et[i][j]))
+                        })
+                    })?;
 
                 // Allocate error_n error terms
-                let error_terms_n: FixedVec<
-                    Element<'_, _>,
-                    ErrorTermsLen<<NativeParameters as Parameters>::N>,
-                > = FixedVec::try_from_fn(|i| {
+                let error_terms_n = FixedVec::try_from_fn(|i| {
                     Element::alloc(dr, error_terms_n.view().map(|et| et[i]))
                 })?;
 
                 // Layer 1: N instances of M-sized reductions
                 // ky_values stay as zeros for now
-                let ky_values_m: FixedVec<_, <NativeParameters as Parameters>::M> =
-                    FixedVec::from_fn(|_| Element::zero(dr));
+                let ky_values_m = FixedVec::from_fn(|_| Element::zero(dr));
 
                 let mut collapsed = vec![];
                 for error_terms_i in error_terms_m.iter() {
@@ -777,8 +771,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     )?;
                     collapsed.push(v);
                 }
-                let collapsed: FixedVec<_, <NativeParameters as Parameters>::N> =
-                    FixedVec::new(collapsed)?;
+                let collapsed = FixedVec::new(collapsed)?;
 
                 // Layer 2: Single N-sized reduction using collapsed as ky_values
                 let c = fold_revdot::compute_c_n::<_, NativeParameters>(

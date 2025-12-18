@@ -75,12 +75,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> staging::Stage<
         let z = Element::alloc(dr, witness.view().map(|w| w.z))?;
 
         // Allocate nested error terms
-        let error_terms: FixedVec<FixedVec<Element<'dr, D>, ErrorTermsLen<P::M>>, P::N> =
-            FixedVec::try_from_fn(|i| {
-                FixedVec::try_from_fn(|j| {
-                    Element::alloc(dr, witness.view().map(|w| w.error_terms[i][j]))
-                })
-            })?;
+        let error_terms = FixedVec::try_from_fn(|i| {
+            FixedVec::try_from_fn(|j| {
+                Element::alloc(dr, witness.view().map(|w| w.error_terms[i][j]))
+            })
+        })?;
 
         Ok(Output { z, error_terms })
     }
