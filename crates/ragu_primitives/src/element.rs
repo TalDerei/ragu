@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use crate::io::{Buffer, Write};
 
 /// Stub for development that isn't algebraically special.
-const TODO_VALUE: u64 = 0xDEAD_BEEF;
+const TODO_VALUE: u64 = 0x5E8B_1D3A;
 
 /// This extension trait provides [`FieldExt::todo`] which returns an arbitrary
 /// non-trivial constant that won't accidentally mask such bugs.
