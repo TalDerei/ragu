@@ -81,9 +81,8 @@ use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 /// Stub for development that isn't algebraically special.
 const TODO_VALUE: u64 = 0x5E8B_1D3A;
 
-/// This extension trait provides [`FieldExt::todo`] which returns an arbitrary
-/// non-trivial constant that won't accidentally mask such bugs.
-pub trait FieldExt: PrimeField {
+/// Extension trait for [`PrimeField`] types providing additional utility methods.
+pub trait PrimeFieldExt: PrimeField {
     /// Returns a non-trivial constant for use as a stub during development.
     #[inline]
     fn todo() -> Self {
@@ -91,7 +90,7 @@ pub trait FieldExt: PrimeField {
     }
 }
 
-impl<F: PrimeField> FieldExt for F {}
+impl<F: PrimeField> PrimeFieldExt for F {}
 
 pub use coeff::Coeff;
 pub use domain::Domain;

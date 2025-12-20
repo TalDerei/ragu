@@ -1,5 +1,5 @@
 use arithmetic::Coeff;
-use arithmetic::FieldExt;
+use arithmetic::PrimeFieldExt;
 use ff::{Field, PrimeField};
 use ragu_core::{
     Error, Result,
@@ -109,7 +109,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
     /// Creates an element with a non-trivial constant for use as a stub.
     ///
-    /// See [`FieldExt::todo`] for the equivalent on bare field elements.
+    /// See [`PrimeFieldExt::todo`] for the equivalent on bare field elements.
     pub fn todo(dr: &mut D) -> Self
     where
         D::F: PrimeField,

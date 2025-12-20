@@ -1,4 +1,4 @@
-use arithmetic::{Cycle, FieldExt};
+use arithmetic::{Cycle, PrimeFieldExt};
 use ff::Field;
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};

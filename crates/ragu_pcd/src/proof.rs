@@ -1,4 +1,4 @@
-use arithmetic::{Cycle, FieldExt, FixedGenerators};
+use arithmetic::{Cycle, FixedGenerators, PrimeFieldExt};
 use ff::Field;
 use ragu_circuits::{
     CircuitExt,
