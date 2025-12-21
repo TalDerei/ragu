@@ -103,14 +103,14 @@ fn rerandomization_flow() {
     let mut rng = StdRng::seed_from_u64(1234);
 
     // Trivial proofs are minimal and don't verify on their own - they're
-    // meant to be inputs to merge() which produces a valid proof.
+    // meant to be inputs to fuse() which produces a valid proof.
     let trivial = app.trivial().carry::<()>(());
 
     let rerandom = app.rerandomize(trivial.clone(), &mut rng).unwrap();
     assert!(app.verify(&rerandom, &mut rng).unwrap());
 
-    let merge = app.merge(&mut rng, Step0, (), trivial, rerandom).unwrap().0;
-    let merge = merge.carry::<HeaderA>(());
+    let fused = app.fuse(&mut rng, Step0, (), trivial, rerandom).unwrap().0;
+    let fused = fused.carry::<HeaderA>(());
 
-    assert!(app.verify(&merge, &mut rng).unwrap());
+    assert!(app.verify(&fused, &mut rng).unwrap());
 }

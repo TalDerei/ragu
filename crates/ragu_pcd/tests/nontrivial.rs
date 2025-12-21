@@ -151,10 +151,10 @@ fn various_merging_operations() -> Result<()> {
     let mut rng = StdRng::seed_from_u64(1234);
 
     // Trivial proofs are minimal and don't verify on their own - they're
-    // meant to be inputs to merge() which produces a valid proof.
+    // meant to be inputs to fuse() which produces a valid proof.
     let trivial = app.trivial().carry::<()>(());
 
-    let leaf1 = app.merge(
+    let leaf1 = app.fuse(
         &mut rng,
         WitnessLeaf {
             poseidon_params: pasta.circuit_poseidon(),
@@ -166,7 +166,7 @@ fn various_merging_operations() -> Result<()> {
     let leaf1 = leaf1.0.carry(leaf1.1);
     assert!(app.verify(&leaf1, &mut rng)?);
 
-    let leaf2 = app.merge(
+    let leaf2 = app.fuse(
         &mut rng,
         WitnessLeaf {
             poseidon_params: pasta.circuit_poseidon(),
@@ -178,7 +178,7 @@ fn various_merging_operations() -> Result<()> {
     let leaf2 = leaf2.0.carry(leaf2.1);
     assert!(app.verify(&leaf2, &mut rng)?);
 
-    let node1 = app.merge(
+    let node1 = app.fuse(
         &mut rng,
         Hash2 {
             poseidon_params: pasta.circuit_poseidon(),
