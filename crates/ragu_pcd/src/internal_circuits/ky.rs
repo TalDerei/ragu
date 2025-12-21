@@ -1,10 +1,12 @@
-//! Circuit for computing the first layer of the revdot reductions, primarily to
-//! compute the $k(Y)$ evaluations and also to invoke the $n$ parallel size-$m$
-//! revdot folding operations.
+//! Circuit for verifying the first layer of the revdot reductions.
 //!
-//! This circuit is built using the preamble (for access to unified instances
-//! and so forth), error_m (for layer 1 error terms), and error_n (for layer 2
-//! error terms and collapsed values) native stages.
+//! This circuit verifies that the collapsed values in error_n match the result
+//! of folding the error_m terms with the k(y) values (which are computed and
+//! verified in hashes_1).
+//!
+//! This circuit is built using the preamble, error_m (for layer 1 error terms),
+//! and error_n (for layer 2 error terms, collapsed values, and k(y) values)
+//! native stages.
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -27,49 +29,44 @@ use super::{
     },
     unified::{self, OutputBuilder},
 };
-use crate::components::{
-    fold_revdot::{self, Parameters},
-    root_of_unity,
-};
+use crate::components::fold_revdot;
 
 pub use crate::internal_circuits::InternalCircuitIndex::KyCircuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::KyStaged as STAGED_ID;
 
 /// Circuit that verifies layer 1 revdot folding.
-pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, P: Parameters> {
-    log2_circuits: u32,
-    _marker: PhantomData<(C, R, P)>,
+pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
+    _marker: PhantomData<(C, R, FP)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> Circuit<C, R, HEADER_SIZE, P> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    Circuit<C, R, HEADER_SIZE, FP>
+{
     /// Create a new ky circuit.
-    pub fn new(log2_circuits: u32) -> Staged<C::CircuitField, R, Self> {
+    pub fn new() -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
-            log2_circuits,
             _marker: PhantomData,
         })
     }
 }
 
 /// Witness for the ky circuit.
-pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> {
+pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
     /// The unified instance containing challenges.
     pub unified_instance: &'a unified::Instance<C>,
-    /// Witness for the preamble stage.
-    pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
     /// Witness for the error_m stage (layer 1 error terms).
-    pub error_m_witness: &'a native_error_m::Witness<C, P>,
+    pub error_m_witness: &'a native_error_m::Witness<C, FP>,
     /// Witness for the error_n stage (layer 2 error terms + collapsed values).
-    pub error_n_witness: &'a native_error_n::Witness<C, P>,
+    pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
-    for Circuit<C, R, HEADER_SIZE, P>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    StagedCircuit<C::CircuitField, R> for Circuit<C, R, HEADER_SIZE, FP>
 {
-    type Final = native_error_n::Stage<C, R, HEADER_SIZE, P>;
+    type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, P>;
+    type Witness<'source> = Witness<'source, C, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -95,36 +92,42 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
     where
         Self: 'dr,
     {
-        let (preamble, builder) =
-            builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
+        let builder = builder.skip_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
         let (error_m, builder) =
-            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
-            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
-
-        let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
-        let error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
-        let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        let error_m = error_m.unenforced(dr, witness.view().map(|w| w.error_m_witness))?;
+        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
-        // Check that circuit IDs are valid domain elements.
-        root_of_unity::enforce(dr, preamble.left.circuit_id.clone(), self.log2_circuits)?;
-        root_of_unity::enforce(dr, preamble.right.circuit_id.clone(), self.log2_circuits)?;
-
         // Get mu, nu from unified instance
         let mu = unified_output.mu.get(dr, unified_instance)?;
         let nu = unified_output.nu.get(dr, unified_instance)?;
+        let fold_c = fold_revdot::FoldC::new(dr, &mu, &nu)?;
 
-        // TODO: Compute ky values properly based on the preamble
-        let ky_values = FixedVec::from_fn(|_| Element::todo(dr));
+        // Read k(y) values from error_n stage (computed and verified in hashes_1).
+        let mut ky_values = [
+            error_n.left_app_ky,
+            error_n.right_app_ky,
+            error_n.left_unified_ky,
+            error_n.right_unified_ky,
+        ]
+        .into_iter();
 
         for (i, error_terms) in error_m.error_terms.iter().enumerate() {
-            fold_revdot::compute_c_m::<_, P>(dr, &mu, &nu, error_terms, &ky_values)?
+            let ky_values =
+                FixedVec::from_fn(|_| ky_values.next().unwrap_or_else(|| Element::zero(dr)));
+
+            fold_c
+                .compute_m::<FP>(dr, error_terms, &ky_values)?
                 .enforce_equal(dr, &error_n.collapsed[i])?;
         }
+
+        assert!(ky_values.next().is_none());
 
         Ok((unified_output.finish(dr, unified_instance)?, D::just(|| ())))
     }

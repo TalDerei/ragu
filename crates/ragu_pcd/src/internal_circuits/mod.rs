@@ -57,7 +57,8 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
 
     let mesh = mesh.register_circuit(dummy::Circuit)?;
     let mesh = {
-        let hashes_1 = hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params);
+        let hashes_1 =
+            hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits);
         mesh.register_circuit_object(hashes_1.final_into_object()?)?
             .register_circuit(hashes_1)?
     };
@@ -67,12 +68,12 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
             .register_circuit(hashes_2)?
     };
     let mesh = {
-        let ky = ky::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(log2_circuits);
+        let ky = ky::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new();
         mesh.register_circuit_object(ky.final_into_object()?)?
             .register_circuit(ky)?
     };
     let mesh = {
-        let c = c::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(log2_circuits);
+        let c = c::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new();
         mesh.register_circuit_object(c.final_into_object()?)?
             .register_circuit(c)?
     };

@@ -19,7 +19,7 @@ use ragu_core::{
     gadgets::{Gadget, GadgetKind},
     maybe::Maybe,
 };
-use ragu_primitives::{GadgetExt, poseidon::Sponge};
+use ragu_primitives::{Element, GadgetExt, poseidon::Sponge};
 
 use core::marker::PhantomData;
 
@@ -29,39 +29,43 @@ use super::{
     },
     unified::{self, OutputBuilder},
 };
-use crate::components::fold_revdot::Parameters;
+use crate::components::{fold_revdot, ky::Ky, root_of_unity};
 
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Circuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Staged as STAGED_ID;
 
-pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, P: Parameters> {
+pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     params: &'params C,
-    _marker: PhantomData<(R, P)>,
+    log2_circuits: u32,
+    _marker: PhantomData<(R, FP)>,
 }
 
-impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters>
-    Circuit<'params, C, R, HEADER_SIZE, P>
+impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    Circuit<'params, C, R, HEADER_SIZE, FP>
 {
-    pub fn new(params: &'params C) -> Staged<C::CircuitField, R, Self> {
+    pub fn new(params: &'params C, log2_circuits: u32) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             params,
+            log2_circuits,
             _marker: PhantomData,
         })
     }
 }
 
-pub struct Witness<'a, C: Cycle, P: Parameters> {
+pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
-    pub error_n_witness: &'a native_error_n::Witness<C, P>,
+    pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
+    pub error_m_witness: &'a native_error_m::Witness<C, FP>,
+    pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
-    for Circuit<'_, C, R, HEADER_SIZE, P>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R, HEADER_SIZE, FP>
 {
-    type Final = native_error_n::Stage<C, R, HEADER_SIZE, P>;
+    type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, P>;
+    type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -87,13 +91,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
     where
         Self: 'dr,
     {
-        let builder = builder.skip_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+        let (preamble, builder) =
+            builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
+        let (error_m, builder) =
+            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
-            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
+        let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
+        let _error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
         let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
+
+        // Verify circuit IDs are valid roots of unity in the mesh domain.
+        root_of_unity::enforce(dr, preamble.left.circuit_id.clone(), self.log2_circuits)?;
+        root_of_unity::enforce(dr, preamble.right.circuit_id.clone(), self.log2_circuits)?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
@@ -121,8 +133,51 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
             let z = sponge.squeeze(dr)?;
             (y, z)
         };
-        unified_output.y.set(y);
+        unified_output.y.set(y.clone());
         unified_output.z.set(z);
+
+        // Compute k(y) values from preamble headers and enforce equality with staged values.
+        {
+            // Compute k(y) for left application circuit (headers).
+            let left_app_ky = {
+                let mut ky = Ky::new(dr, y.clone());
+                preamble.left.left_header.write(dr, &mut ky)?;
+                preamble.left.right_header.write(dr, &mut ky)?;
+                preamble.left.output_header.write(dr, &mut ky)?;
+                ky.finish(dr)?
+            };
+
+            // Compute k(y) for right application circuit (headers).
+            let right_app_ky = {
+                let mut ky = Ky::new(dr, y.clone());
+                preamble.right.left_header.write(dr, &mut ky)?;
+                preamble.right.right_header.write(dr, &mut ky)?;
+                preamble.right.output_header.write(dr, &mut ky)?;
+                ky.finish(dr)?
+            };
+
+            // Compute k(y) for left unified circuit.
+            let left_unified_ky = {
+                let mut ky = Ky::new(dr, y.clone());
+                preamble.left.unified.write(dr, &mut ky)?;
+                Element::zero(dr).write(dr, &mut ky)?;
+                ky.finish(dr)?
+            };
+
+            // Compute k(y) for right unified circuit.
+            let right_unified_ky = {
+                let mut ky = Ky::new(dr, y);
+                preamble.right.unified.write(dr, &mut ky)?;
+                Element::zero(dr).write(dr, &mut ky)?;
+                ky.finish(dr)?
+            };
+
+            // Enforce k(y) values match staged values from error_n.
+            left_app_ky.enforce_equal(dr, &error_n.left_app_ky)?;
+            right_app_ky.enforce_equal(dr, &error_n.right_app_ky)?;
+            left_unified_ky.enforce_equal(dr, &error_n.left_unified_ky)?;
+            right_unified_ky.enforce_equal(dr, &error_n.right_unified_ky)?;
+        }
 
         // Absorb nested_error_m_commitment and verify saved sponge state
         // (mu, nu, mu_prime, nu_prime derivation moved to hashes_2)

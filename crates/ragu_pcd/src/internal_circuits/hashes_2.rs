@@ -30,18 +30,18 @@ use super::{
     },
     unified::{self, OutputBuilder},
 };
-use crate::components::fold_revdot::Parameters;
+use crate::components::fold_revdot;
 
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes2Circuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes2Staged as STAGED_ID;
 
-pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, P: Parameters> {
+pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     params: &'params C,
-    _marker: PhantomData<(R, P)>,
+    _marker: PhantomData<(R, FP)>,
 }
 
-impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters>
-    Circuit<'params, C, R, HEADER_SIZE, P>
+impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    Circuit<'params, C, R, HEADER_SIZE, FP>
 {
     pub fn new(params: &'params C) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
@@ -51,18 +51,18 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters>
     }
 }
 
-pub struct Witness<'a, C: Cycle, P: Parameters> {
+pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
-    pub error_n_witness: &'a native_error_n::Witness<C, P>,
+    pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
-    for Circuit<'_, C, R, HEADER_SIZE, P>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R, HEADER_SIZE, FP>
 {
-    type Final = native_error_n::Stage<C, R, HEADER_SIZE, P>;
+    type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, P>;
+    type Witness<'source> = Witness<'source, C, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -89,12 +89,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         Self: 'dr,
     {
         let builder = builder.skip_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
-            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
-        let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
