@@ -600,9 +600,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let preamble_witness = stages::native::preamble::Witness::new(
             &dummy_proof,
             &dummy_proof,
-            [C::CircuitField::ZERO; HEADER_SIZE],
-            [C::CircuitField::ZERO; HEADER_SIZE],
-        );
+            &[C::CircuitField::ZERO; HEADER_SIZE],
+            &[C::CircuitField::ZERO; HEADER_SIZE],
+        )?;
 
         let native_preamble_rx =
             stages::native::preamble::Stage::<C, R, HEADER_SIZE>::rx(&preamble_witness)

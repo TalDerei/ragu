@@ -46,15 +46,22 @@ impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_S
     pub fn new(
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        left_output_header: [C::CircuitField; HEADER_SIZE],
-        right_output_header: [C::CircuitField; HEADER_SIZE],
-    ) -> Self {
-        Witness {
-            left_output_header,
-            right_output_header,
+        left_output_header: &[C::CircuitField],
+        right_output_header: &[C::CircuitField],
+    ) -> Result<Self> {
+        fn slice_to_array<T: Copy, const N: usize>(slice: &[T]) -> Result<[T; N]> {
+            slice.try_into().map_err(|_| Error::VectorLengthMismatch {
+                expected: N,
+                actual: slice.len(),
+            })
+        }
+
+        Ok(Witness {
+            left_output_header: slice_to_array(left_output_header)?,
+            right_output_header: slice_to_array(right_output_header)?,
             left,
             right,
-        }
+        })
     }
 
     /// Create a witness from two PCDs.
@@ -93,12 +100,12 @@ impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_S
             vec_to_array(&values)
         }
 
-        Ok(Witness::new(
+        Witness::new(
             &left.proof,
             &right.proof,
-            encode_output_header::<C::CircuitField, HL, HEADER_SIZE>(left.data.clone())?,
-            encode_output_header::<C::CircuitField, HR, HEADER_SIZE>(right.data.clone())?,
-        ))
+            &encode_output_header::<C::CircuitField, HL, HEADER_SIZE>(left.data.clone())?,
+            &encode_output_header::<C::CircuitField, HR, HEADER_SIZE>(right.data.clone())?,
+        )
     }
 }
 
