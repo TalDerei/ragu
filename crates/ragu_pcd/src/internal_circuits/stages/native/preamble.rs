@@ -41,66 +41,6 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
     pub right: &'a Proof<C, R>,
 }
 
-#[derive(Gadget)]
-pub struct ProofInputs<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
-    #[ragu(gadget)]
-    pub right_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    #[ragu(gadget)]
-    pub left_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    #[ragu(gadget)]
-    pub output_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    #[ragu(gadget)]
-    pub circuit_id: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub unified: unified::Output<'dr, D, C>,
-}
-
-impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usize>
-    ProofInputs<'dr, D, C, HEADER_SIZE>
-{
-    /// Allocate ProofInputs from a proof reference and pre-computed output header.
-    pub fn alloc<R: Rank>(
-        dr: &mut D,
-        proof: DriverValue<D, &Proof<C, R>>,
-        output_header: DriverValue<D, &[D::F; HEADER_SIZE]>,
-    ) -> Result<Self> {
-        fn alloc_header<'dr, D: Driver<'dr>, const N: usize>(
-            dr: &mut D,
-            data: DriverValue<D, &[D::F]>,
-        ) -> Result<FixedVec<Element<'dr, D>, ConstLen<N>>> {
-            (0..N)
-                .map(|i| Element::alloc(dr, data.view().map(|d| d[i])))
-                .try_collect_fixed()
-        }
-
-        Ok(ProofInputs {
-            right_header: alloc_header(
-                dr,
-                proof.view().map(|p| p.application.right_header.as_slice()),
-            )?,
-            left_header: alloc_header(
-                dr,
-                proof.view().map(|p| p.application.left_header.as_slice()),
-            )?,
-            output_header: alloc_header(dr, output_header.view().map(|h| h.as_slice()))?,
-            circuit_id: Element::alloc(
-                dr,
-                proof.view().map(|p| p.application.circuit_id.omega_j()),
-            )?,
-            unified: unified::Output::alloc_from_proof(dr, proof)?,
-        })
-    }
-}
-
-/// Output of the native preamble stage.
-#[derive(Gadget)]
-pub struct Output<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
-    #[ragu(gadget)]
-    pub left: ProofInputs<'dr, D, C, HEADER_SIZE>,
-    #[ragu(gadget)]
-    pub right: ProofInputs<'dr, D, C, HEADER_SIZE>,
-}
-
 impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_SIZE> {
     /// Create a witness from proof references and pre-computed output headers.
     pub fn new(
@@ -160,6 +100,66 @@ impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_S
             encode_output_header::<C::CircuitField, HR, HEADER_SIZE>(right.data.clone())?,
         ))
     }
+}
+
+#[derive(Gadget)]
+pub struct ProofInputs<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
+    #[ragu(gadget)]
+    pub right_header: HeaderVec<'dr, D, HEADER_SIZE>,
+    #[ragu(gadget)]
+    pub left_header: HeaderVec<'dr, D, HEADER_SIZE>,
+    #[ragu(gadget)]
+    pub output_header: HeaderVec<'dr, D, HEADER_SIZE>,
+    #[ragu(gadget)]
+    pub circuit_id: Element<'dr, D>,
+    #[ragu(gadget)]
+    pub unified: unified::Output<'dr, D, C>,
+}
+
+impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usize>
+    ProofInputs<'dr, D, C, HEADER_SIZE>
+{
+    /// Allocate ProofInputs from a proof reference and pre-computed output header.
+    pub fn alloc<R: Rank>(
+        dr: &mut D,
+        proof: DriverValue<D, &Proof<C, R>>,
+        output_header: DriverValue<D, &[D::F; HEADER_SIZE]>,
+    ) -> Result<Self> {
+        fn alloc_header<'dr, D: Driver<'dr>, const N: usize>(
+            dr: &mut D,
+            data: DriverValue<D, &[D::F]>,
+        ) -> Result<FixedVec<Element<'dr, D>, ConstLen<N>>> {
+            (0..N)
+                .map(|i| Element::alloc(dr, data.view().map(|d| d[i])))
+                .try_collect_fixed()
+        }
+
+        Ok(ProofInputs {
+            right_header: alloc_header(
+                dr,
+                proof.view().map(|p| p.application.right_header.as_slice()),
+            )?,
+            left_header: alloc_header(
+                dr,
+                proof.view().map(|p| p.application.left_header.as_slice()),
+            )?,
+            output_header: alloc_header(dr, output_header.view().map(|h| h.as_slice()))?,
+            circuit_id: Element::alloc(
+                dr,
+                proof.view().map(|p| p.application.circuit_id.omega_j()),
+            )?,
+            unified: unified::Output::alloc_from_proof(dr, proof)?,
+        })
+    }
+}
+
+/// Output of the native preamble stage.
+#[derive(Gadget)]
+pub struct Output<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
+    #[ragu(gadget)]
+    pub left: ProofInputs<'dr, D, C, HEADER_SIZE>,
+    #[ragu(gadget)]
+    pub right: ProofInputs<'dr, D, C, HEADER_SIZE>,
 }
 
 #[derive(Default)]
