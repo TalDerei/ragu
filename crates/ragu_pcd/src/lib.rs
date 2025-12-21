@@ -158,11 +158,31 @@ pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    /// Creates a random trivial proof for the empty [`Header`] implementation
-    /// `()`. This takes more time to generate because it cannot be cached
-    /// within the [`Application`].
-    fn random<'source, RNG: Rng>(&self, _rng: &mut RNG) -> Pcd<'source, C, R, ()> {
-        self.trivial().carry(())
+    /// Creates a minimal trivial proof wrapped as a PCD with empty header.
+    /// Used internally for rerandomization.
+    fn trivial_pcd<'source>(&self) -> Pcd<'source, C, R, ()> {
+        self.trivial_internal().carry(())
+    }
+
+    /// Create a base case PCD by running a step with trivial inputs.
+    ///
+    /// This is the entry point for creating leaf nodes in a PCD tree.
+    /// Internally creates minimal trivial proofs and merges them with
+    /// the provided step to produce a valid proof.
+    pub fn base_step<'source, RNG: Rng, S: Step<C>>(
+        &self,
+        rng: &mut RNG,
+        step: S,
+        witness: S::Witness<'source>,
+    ) -> Result<(Proof<C, R>, S::Aux<'source>)>
+    where
+        S::Left: Header<C::CircuitField, Data<'source> = ()>,
+        S::Right: Header<C::CircuitField, Data<'source> = ()>,
+    {
+        let left_trivial = self.trivial_internal().carry::<S::Left>(());
+        let right_trivial = self.trivial_internal().carry::<S::Right>(());
+
+        self.merge(rng, step, witness, left_trivial, right_trivial)
     }
 
     /// Rerandomize proof-carrying data.
@@ -177,14 +197,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: Pcd<'source, C, R, H>,
         rng: &mut RNG,
     ) -> Result<Pcd<'source, C, R, H>> {
-        let random_proof = self.random(rng);
+        let trivial_pcd = self.trivial_pcd();
         let data = pcd.data.clone();
         let rerandomized_proof = self.merge(
             rng,
             step::rerandomize::Rerandomize::new(),
             (),
             pcd,
-            random_proof,
+            trivial_pcd,
         )?;
 
         Ok(rerandomized_proof.0.carry(data))
