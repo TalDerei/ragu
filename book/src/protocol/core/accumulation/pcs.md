@@ -248,22 +248,28 @@ merge circuits in the last recursion step.
 
 ### Transcript Bridging
 
-Notice in the [IVC-over-2-cycle syntax](../index.md#ivc-on-a-cycle-of-curves),
-both merge circuits accept the same NARK instances from the last step.
-We
-
-For challenge #2,
-Ragu **uses challenges squeezed from $\F_p$ transcript on the primary half
-for both merge circuits**. After applying Poseidon hash function to the verifier
-transcript to get the next random oracle output $s\in\F_p$, we set the next
-verifier challenge as its extracted [endoscalar](../../extensions/endoscalar.md)
+Ragu depends on [endoscalars](../../extensions/endoscalar.md) for the problem of
+challenge consistency. After applying Poseidon hash function to the [verifier
+transcript](../../prelim/transcript.md) to get the next random oracle output
+$s\in\F_p$, we set the next verifier challenge as its extracted endoscalar
 $\endo{s}:=\mathsf{extract(s)}\in\{0,1\}^\lambda\subset \F_p$. This supports both
 native scalar arithmetic $\endo{s}\cdot c\in\F_p$ in the primary circuit and also
 native scalar multiplication (a.k.a. _endoscaling_) $\endo{s}\cdot P\in\G^{(1)}$
-in the secondary circuit. We refer this technique of "deriving challenge on one
-transcript"
-This challenge sharing trick is safe because:
-inputs to merge circuits are the same set of instances
-$\{\inst_{i,L/R},\acc_{i,L/R}\}$, _and_ challenges generated in the current step are
-used to accumulate proofs from the previous step whose instances are already
-committed in a binding manner.
+in the secondary circuit.
+
+Naively, we would maintain two sets of endoscalars -- one for verifier challenges
+from the primary circuit, and the other from the secondary circuit.
+Notice that the two merge circuits accept exactly the same input[^same-input].
+Ragu **uses challenges squeezed from $\F_p$ transcript on the primary half for
+both merge circuits**.
+This optimization, named _transcript bridging_, is only sound in tandem with the
+[input consistency](#nested-staged-commitments) guarantee.
+
+[^same-input]: In the [IVC-over-2-cycle diagram](../index.md#ivc-on-a-cycle-of-curves),
+it appears that the primary merge circuit accepts $(\inst_i, \acc_i)$ while the
+secondary merge circuit accepts $(\inst_i, \acc'_{i+1})$. But that notation is
+only for visual clarity. Since the perfect complementary splitting of the folding
+work, two merge circuits will update different values in the $\acc_i$. There is
+no internal dependency between merge circuits within the same step -- they both
+parse $(\inst_i, \acc_i)$ as the same, general input expression:
+$\inst\in\F_p^\ast\times \G_p^\ast\times \F_q^\ast\times \G_q^\ast$.
