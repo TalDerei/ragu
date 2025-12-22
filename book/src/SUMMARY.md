@@ -24,6 +24,7 @@
     - [Nested Commitment](protocol/prelim/nested_commitment.md)
     - [Bulletproofs IPA](protocol/prelim/bulletproofs.md)
     - [Constraint Systems](protocol/prelim/cs.md)
+    - [Transcript](protocol/prelim/transcript.md)
   - [Core Construction](protocol/core/index.md)
     - [Arithmetization](protocol/core/arithmetization.md)
     - [NARK](protocol/core/nark.md)
