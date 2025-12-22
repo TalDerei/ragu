@@ -12,33 +12,6 @@ for some root of unity $\omega \in \mathbb{F}$ of sufficiently large $2^k$ order
 
 The mesh is a collection of circuits over a particular field, and the mesh has a *domain*, where each circuit is mapped to a successive power of $\omega$ in the domain. 
 
-### Consistency Checks
-
-A fundamental property of multivariate polynomials is that two degree-bounded polynomials are equal if and only if they agree at all points in their domain. Our protocol exploits this to verify polynomial equality probabilistically through random challenge points. 
-
-Given two representations of a polynomial $p(W, X, Y)$, we verify consistency by evaluating at random challenge points. By the Schwartz-Zippel lemma, if two distinct polynomials of degree $d$ are evaluated at a random point, they agree with probability at most $d/|\mathbb{F}|$.
-
-The protocol uses *partial evaluations* to reduce the dimensionality of the polynomial equality checks. We fix variables at specific challenge points and create lower-dimensional restrictions, where in each evaluation at most one variable remains free:
-
-| Evaluation | Type | Description |
-|------------|------|-------------|
-| $p(W, x, y)$ | $\mathbb{F}[W]$ | Univariate in $W$ for fixed $x$ and $y$ |
-| $p(w, X, y)$ | $\mathbb{F}[X]$ | Univariate in $X$ for fixed $w$ and $y$ |
-| $p(w, x, Y)$ | $\mathbb{F}[Y]$ | Univariate in $Y$ for fixed $w$ and $x$ |
-| $p(w, x, y)$ | $\mathbb{F}$ | Point evaluation |
-
-This mirrors the technique used in the [sumcheck](https://people.cs.georgetown.edu/jthaler/sumcheck.pdf) protocol: within a protocol, we alternate between (univariate) restrictions of a polynomial using random challenges to prove equality, probabilistically reducing a claim about many different evaluations of a polynomial to a single polynomial evaluation.
-
-### Applicability to the Mesh
-
-If independent parties claim to hold evaluations of the same mesh polynomial $m(W, X, Y)$ at different points $(w_i, x_i, y_i)$ and $(w_z, x_z, y_z)$, we can verify they share the same underlying polynomial by:
-
-1. Sampling random challenges $w^*, x^*, y^*$,
-2. Evaluating the claimed polynomials at restrictions like $m(w^*, X, Y)$, $m(W, x^*, Y)$, etc,
-3. Checking that the restricted polynomials agree at further challenge points
-
-This ensures that claimed evaluations at different points are derived from the same underlying mesh $m(W, X, Y)$.
-
 For instance, the mesh $m(W, x, y)$ is the polynomial free in $W$ that interpolates all circuit points. At each point $\omega$ in the domain, the mesh polynomial equals the $i$-th circuit's evaluation: 
 
 $$

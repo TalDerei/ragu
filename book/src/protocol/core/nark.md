@@ -4,4 +4,8 @@
 
 ## PIOP
 
-## Ragu NARK
+## Polynomial IOP
+
+### The Verification Checks
+
+## NARK
