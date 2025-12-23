@@ -400,14 +400,20 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Clone for Pcd<'_, C, R, H> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+    /// Creates a minimal trivial proof wrapped as a PCD with empty header.
+    /// Used internally for rerandomization.
+    pub(crate) fn trivial_pcd<'source>(&self) -> Pcd<'source, C, R, ()> {
+        self.trivial_proof().carry(())
+    }
+
     /// Creates a trivial proof for the empty [`Header`] implementation `()`.
     ///
-    /// This is now a minimal internal implementation - trivial proofs use zero
-    /// polynomials and deterministic blindings. They are not meant to verify on
-    /// their own, but are used as inputs to `fuse` to produce valid proofs.
+    /// Trivial proofs use zero polynomials and deterministic blindings. They
+    /// are not meant to verify on their own, but are used as inputs to `fuse`
+    /// to produce valid proofs.
     ///
     /// See also: `seed()` for the public API to seed new computations.
-    pub(crate) fn trivial_internal(&self) -> Proof<C, R> {
+    pub(crate) fn trivial_proof(&self) -> Proof<C, R> {
         // Deterministic blindings
         let host_blind = C::CircuitField::ONE;
         let nested_blind = C::ScalarField::ONE;

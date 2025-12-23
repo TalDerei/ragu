@@ -158,12 +158,6 @@ pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    /// Creates a minimal trivial proof wrapped as a PCD with empty header.
-    /// Used internally for rerandomization.
-    fn trivial_pcd<'source>(&self) -> Pcd<'source, C, R, ()> {
-        self.trivial_internal().carry(())
-    }
-
     /// Seed a new computation by running a step with trivial inputs.
     ///
     /// This is the entry point for creating leaf nodes in a PCD tree.
@@ -175,10 +169,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         step: S,
         witness: S::Witness<'source>,
     ) -> Result<(Proof<C, R>, S::Aux<'source>)> {
-        let left_trivial = self.trivial_internal().carry::<()>(());
-        let right_trivial = self.trivial_internal().carry::<()>(());
-
-        self.fuse(rng, step, witness, left_trivial, right_trivial)
+        self.fuse(rng, step, witness, self.trivial_pcd(), self.trivial_pcd())
     }
 
     /// Rerandomize proof-carrying data.
@@ -193,14 +184,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: Pcd<'source, C, R, H>,
         rng: &mut RNG,
     ) -> Result<Pcd<'source, C, R, H>> {
-        let trivial_pcd = self.trivial_pcd();
         let data = pcd.data.clone();
         let rerandomized_proof = self.fuse(
             rng,
             step::rerandomize::Rerandomize::new(),
             (),
             pcd,
-            trivial_pcd,
+            self.trivial_pcd(),
         )?;
 
         Ok(rerandomized_proof.0.carry(data))
