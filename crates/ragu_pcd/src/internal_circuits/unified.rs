@@ -259,14 +259,14 @@ impl<'a, 'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle> OutputBuilder<'a, '
         instance: &DriverValue<D, &'a Instance<C>>,
     ) -> Result<<InternalOutputKind<C> as GadgetKind<D::F>>::Rebind<'dr, D>> {
         let zero = Element::zero(dr);
-        Ok(Suffix::new(self.finish_inner(dr, instance)?, zero))
+        Ok(Suffix::new(self.finish_no_suffix(dr, instance)?, zero))
     }
 
     /// Finish building the output without wrapping in Suffix.
     ///
     /// This is useful for circuits that need to include additional data
     /// in their output alongside the unified instance.
-    pub fn finish_inner(
+    pub fn finish_no_suffix(
         self,
         dr: &mut D,
         instance: &DriverValue<D, &'a Instance<C>>,

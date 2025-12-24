@@ -202,7 +202,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let output = Output {
             left_header: preamble.left.output_header,
             right_header: preamble.right.output_header,
-            unified: unified_output.finish_inner(dr, unified_instance)?,
+            unified: unified_output.finish_no_suffix(dr, unified_instance)?,
         };
 
         let zero = Element::zero(dr);
