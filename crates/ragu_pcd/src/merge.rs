@@ -473,14 +473,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             let left_application = preamble.left.application_ky(dr, &y)?;
             let right_application = preamble.right.application_ky(dr, &y)?;
+            let (left_unified_ky, left_unified_bridge_ky) =
+                preamble.left.unified_ky_values(dr, &y)?;
+            let (right_unified_ky, right_unified_bridge_ky) =
+                preamble.right.unified_ky_values(dr, &y)?;
 
             Ok((
                 *left_application.value().take(),
                 *right_application.value().take(),
-                *preamble.left.unified_ky(dr, &y)?.value().take(),
-                *preamble.right.unified_ky(dr, &y)?.value().take(),
-                *preamble.left.unified_bridge_ky(dr, &y)?.value().take(),
-                *preamble.right.unified_bridge_ky(dr, &y)?.value().take(),
+                *left_unified_ky.value().take(),
+                *right_unified_ky.value().take(),
+                *left_unified_bridge_ky.value().take(),
+                *right_unified_bridge_ky.value().take(),
             ))
         })
     }

@@ -48,12 +48,11 @@ pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Staged as STAGED_
 #[derive(Gadget, Write)]
 pub struct Output<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
     #[ragu(gadget)]
+    pub unified: unified::Output<'dr, D, C>,
+    #[ragu(gadget)]
     pub left_header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>,
     #[ragu(gadget)]
     pub right_header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>,
-    /// Unified instance (without suffix wrapper).
-    #[ragu(gadget)]
-    pub unified: unified::Output<'dr, D, C>,
 }
 
 #[allow(type_alias_bounds)]
@@ -171,25 +170,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             left_application_ky.enforce_equal(dr, &error_n.left_application_ky)?;
             right_application_ky.enforce_equal(dr, &error_n.right_application_ky)?;
 
-            preamble
-                .left
-                .unified_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.left_unified_ky)?;
+            let (left_unified_ky, left_unified_bridge_ky) =
+                preamble.left.unified_ky_values(dr, &y)?;
+            let (right_unified_ky, right_unified_bridge_ky) =
+                preamble.right.unified_ky_values(dr, &y)?;
 
-            preamble
-                .right
-                .unified_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.right_unified_ky)?;
-
-            preamble
-                .left
-                .unified_bridge_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.left_unified_bridge_ky)?;
-
-            preamble
-                .right
-                .unified_bridge_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.right_unified_bridge_ky)?;
+            left_unified_ky.enforce_equal(dr, &error_n.left_unified_ky)?;
+            right_unified_ky.enforce_equal(dr, &error_n.right_unified_ky)?;
+            left_unified_bridge_ky.enforce_equal(dr, &error_n.left_unified_bridge_ky)?;
+            right_unified_bridge_ky.enforce_equal(dr, &error_n.right_unified_bridge_ky)?;
         }
 
         // Absorb nested_error_m_commitment and verify saved sponge state

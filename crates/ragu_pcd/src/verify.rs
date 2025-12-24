@@ -97,8 +97,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let proof_inputs =
                     ProofInputs::<_, C, HEADER_SIZE>::alloc_for_verify::<R, H>(dr, proof, data)?;
 
-                let unified_ky = *proof_inputs.unified_ky(dr, &y)?.value().take();
-                let unified_bridge_ky = *proof_inputs.unified_bridge_ky(dr, &y)?.value().take();
+                let (unified_ky, unified_bridge_ky) = proof_inputs.unified_ky_values(dr, &y)?;
+                let unified_ky = *unified_ky.value().take();
+                let unified_bridge_ky = *unified_bridge_ky.value().take();
                 let application_ky = *proof_inputs.application_ky(dr, &y)?.value().take();
 
                 Ok((unified_ky, unified_bridge_ky, application_ky))
