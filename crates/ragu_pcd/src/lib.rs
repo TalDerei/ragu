@@ -192,14 +192,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 #[cfg(test)]
 mod constraint_benchmark_tests {
     use super::*;
-    use internal_circuits::InternalCircuitIndex;
+    use internal_circuits::stages::native::{error_m, error_n, eval, preamble, query};
+    use internal_circuits::{InternalCircuitIndex, NativeParameters};
     use ragu_circuits::polynomials::R;
+    use ragu_circuits::staging::{Stage, StageExt};
     use ragu_pasta::Pasta;
 
     // When changing HEADER_SIZE, update the constraint counts by running:
     //   cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture
     // Then copy-paste the output into the check_constraints! calls in the test below.
     const HEADER_SIZE: usize = 38;
+
+    type Preamble = preamble::Stage<Pasta, R<13>, HEADER_SIZE>;
+    type ErrorM = error_m::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
+    type ErrorN = error_n::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
+    type Query = query::Stage<Pasta, R<13>, HEADER_SIZE>;
+    type Eval = eval::Stage<Pasta, R<13>, HEADER_SIZE>;
 
     #[rustfmt::skip]
     #[test]
@@ -249,16 +257,6 @@ mod constraint_benchmark_tests {
     #[rustfmt::skip]
     #[test]
     fn test_internal_stage_parameters() {
-        use internal_circuits::stages::native::{error_m, error_n, eval, preamble, query};
-        use internal_circuits::NativeParameters;
-        use ragu_circuits::staging::{Stage, StageExt};
-
-        type Preamble = preamble::Stage<Pasta, R<13>, HEADER_SIZE>;
-        type ErrorM = error_m::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
-        type ErrorN = error_n::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
-        type Query = query::Stage<Pasta, R<13>, HEADER_SIZE>;
-        type Eval = eval::Stage<Pasta, R<13>, HEADER_SIZE>;
-
         macro_rules! check_stage {
             ($Stage:ty, skip = $skip:expr, num = $num:expr) => {{
                 assert_eq!(<$Stage>::skip_multiplications(), $skip, "{}: skip", stringify!($Stage));
@@ -313,16 +311,6 @@ mod constraint_benchmark_tests {
     /// Run with: `cargo test -p ragu_pcd --release print_internal_stage -- --nocapture`
     #[test]
     fn print_internal_stage_parameters() {
-        use internal_circuits::NativeParameters;
-        use internal_circuits::stages::native::{error_m, error_n, eval, preamble, query};
-        use ragu_circuits::staging::{Stage, StageExt};
-
-        type Preamble = preamble::Stage<Pasta, R<13>, HEADER_SIZE>;
-        type ErrorM = error_m::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
-        type ErrorN = error_n::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
-        type Query = query::Stage<Pasta, R<13>, HEADER_SIZE>;
-        type Eval = eval::Stage<Pasta, R<13>, HEADER_SIZE>;
-
         macro_rules! print_stage {
             ($Stage:ty) => {{
                 let skip = <$Stage>::skip_multiplications();
