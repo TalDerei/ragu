@@ -42,6 +42,15 @@ pub enum InternalCircuitIndex {
 /// and the number of variants in [`InternalCircuitIndex`].
 pub const NUM_INTERNAL_CIRCUITS: usize = 16;
 
+/// Compute the total circuit count and log2 domain size from the number of
+/// application-defined steps.
+pub(crate) fn total_circuit_counts(num_application_steps: usize) -> (usize, u32) {
+    let total_circuits =
+        num_application_steps + super::step::NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+    let log2_circuits = total_circuits.next_power_of_two().trailing_zeros();
+    (total_circuits, log2_circuits)
+}
+
 impl InternalCircuitIndex {
     pub fn circuit_index(self, num_application_steps: usize) -> CircuitIndex {
         CircuitIndex::new(num_application_steps + super::step::NUM_INTERNAL_STEPS + self as usize)

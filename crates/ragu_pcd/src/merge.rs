@@ -16,9 +16,9 @@ use rand::Rng;
 use alloc::vec;
 
 use crate::{
-    Application, circuit_counts,
+    Application,
     components::fold_revdot::{self, NativeParameters},
-    internal_circuits::{self, stages, unified},
+    internal_circuits::{self, stages, total_circuit_counts, unified},
     proof::{
         ABProof, ApplicationProof, ErrorProof, EvalProof, FProof, InternalCircuits, MeshWyProof,
         MeshXyProof, Pcd, PreambleProof, Proof, QueryProof, SPrimeProof,
@@ -943,7 +943,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let (hashes_1_rx, _) =
             internal_circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
                 self.params,
-                circuit_counts(self.num_application_steps).1,
+                total_circuit_counts(self.num_application_steps).1,
             )
             .rx::<R>(
                 internal_circuits::hashes_1::Witness {
