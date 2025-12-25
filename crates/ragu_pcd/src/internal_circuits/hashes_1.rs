@@ -1,17 +1,74 @@
-//! First hash circuit for Fiat-Shamir derivations (claim-side challenges).
+//! First hash circuit for Fiat-Shamir derivations.
 //!
-//! This circuit derives the first part of the Fiat-Shamir transcript:
-//! - `w = H(nested_preamble_commitment)`
-//! - `(y, z) = H(w, nested_s_prime_commitment)`
-//! - Absorbs `nested_error_m_commitment` and verifies saved sponge state
+//! ## Operations
 //!
-//! The remaining challenges (mu, nu, mu_prime, nu_prime, x, alpha, u, beta) are
-//! derived in hashes_2 by resuming from the saved sponge state.
+//! ### Hashes
 //!
-//! This circuit also provides the bridge binding between ApplicationProof headers
-//! and preamble output headers by including headers in its output. The verifier
-//! computes k(y) from ApplicationProof headers, and verification ensures these
-//! match the preamble headers output by the circuit.
+//! This circuit performs the first portion of the Fiat-Shamir transcript,
+//! invoking $3$ Poseidon permutations:
+//! - Initialize the sponge.
+//! - Absorb [`nested_preamble_commitment`].
+//! - Squeeze [$w$] challenge.
+//! - Absorb [`nested_s_prime_commitment`].
+//! - Squeeze [$y$] and [$z$] challenges.
+//! - Absorb [`nested_error_m_commitment`].
+//! - Move to squeeze mode using a permutation.
+//! - Save the sponge state and verify it matches the witnessed value.
+//!
+//! The squeezed $w, y, z$ challenges are set in the unified instance by this
+//! circuit. **The rest of the transcript computations are performed in the
+//! [`hashes_2`][super::hashes_2] circuit.** The sponge state is witnessed in
+//! the [`error_n`][super::stages::native::error_n] stage and verified here to
+//! enable resumption in `hashes_2`.
+//!
+//! ### $k(y)$ evaluations
+//!
+//! This circuit also is responsible for using the derived $y$ value to compute
+//! the $k(y)$ (public input polynomial evaluations) for the child proofs. These
+//! are witnessed in the [`error_n`][super::stages::native::error_n] stage and
+//! enforced to be consistent by this circuit.
+//!
+//! ### Valid circuit IDs
+//!
+//! The circuit IDs in the [`preamble`][super::stages::native::preamble] are
+//! enforced to be valid roots of unity in the mesh domain (the domain over
+//! which circuits are indexed). Other circuits can thus assume this check has
+//! been performed.
+//!
+//! ## Staging
+//!
+//! This circuit is a staged circuit based on the
+//! [`error_n`][super::stages::native::error_n] stage, which inherits in the
+//! following chain:
+//! - [`preamble`][super::stages::native::preamble] (unenforced)
+//! - [`error_m`][super::stages::native::error_m] (skipped)
+//! - [`error_n`][super::stages::native::error_n] (unenforced)
+//!
+//! ## Public Inputs
+//!
+//! The public inputs are special for this internal circuit: they contain a
+//! concatenation of the unified instance and the `left` and `right` child
+//! proofs' output headers from the [`preamble`][super::stages::native::preamble]
+//! stage (i.e., the headers that the
+//! child steps produced, not the headers they consumed). This allows the
+//! verifier to ensure consistency with the headers enforced on the application
+//! (step) circuit. The other internal circuits mainly use the unified instance
+//! only to avoid the extra overhead of witnessing the `left`/`right` output
+//! headers in circuits that do not use the preamble stage.
+//!
+//! The output is wrapped in a [`Suffix`] with a zero element appended. This
+//! ensures the public input serialization matches the $k(y)$ computation for
+//! `unified_ky`, which is defined as $k(y)$ over `(unified, 0)`. The trailing
+//! zero aligns the internal circuit's public inputs with the expected format
+//! for $k(y)$ verification.
+//!
+//! [`nested_preamble_commitment`]: unified::Output::nested_preamble_commitment
+//! [`nested_s_prime_commitment`]: unified::Output::nested_s_prime_commitment
+//! [`nested_error_m_commitment`]: unified::Output::nested_error_m_commitment
+//! [$w$]: unified::Output::w
+//! [$y$]: unified::Output::y
+//! [$z$]: unified::Output::z
+//! [`Suffix`]: crate::components::suffix::Suffix
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -44,21 +101,39 @@ use crate::components::{fold_revdot, root_of_unity, suffix::Suffix};
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Circuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Staged as STAGED_ID;
 
-/// Output: headers + unified instance for bridge binding.
+/// Public output of the first hash circuit.
+///
+/// This circuit uniquely includes the `left` and `right` output headers from
+/// the child proofs alongside the unified instance. The headers are needed as
+/// public inputs so the verifier can check consistency with the application
+/// (step) circuit's headers.
+///
+/// Other internal circuits use only the [`unified::Output`] to avoid the
+/// overhead of witnessing headers in circuits that do not require them.
 #[derive(Gadget, Write)]
 pub struct Output<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
+    /// The unified instance shared across internal circuits.
     #[ragu(gadget)]
     pub unified: unified::Output<'dr, D, C>,
+    /// The left child proof's output header.
     #[ragu(gadget)]
     pub left_header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>,
+    /// The right child proof's output header.
     #[ragu(gadget)]
     pub right_header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>,
 }
 
+/// [`GadgetKind`] for the [`Output`] type, with a [`Suffix`] wrapper.
 #[allow(type_alias_bounds)]
 pub type OutputKind<C: Cycle, const HEADER_SIZE: usize> =
     Kind![C::CircuitField; Suffix<'_, _, Output<'_, _, C, HEADER_SIZE>>];
 
+/// First hash circuit for Fiat-Shamir challenge derivation.
+///
+/// See the [module-level documentation] for details on the operations
+/// performed by this circuit.
+///
+/// [module-level documentation]: self
 pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     params: &'params C,
     log2_circuits: u32,
@@ -68,6 +143,13 @@ pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revd
 impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     Circuit<'params, C, R, HEADER_SIZE, FP>
 {
+    /// Creates a new staged circuit.
+    ///
+    /// # Parameters
+    ///
+    /// - `params`: Curve cycle parameters providing Poseidon configuration.
+    /// - `log2_circuits`: Log₂ of the mesh domain size (number of circuits).
+    ///   Used to verify circuit IDs are valid roots of unity.
     pub fn new(params: &'params C, log2_circuits: u32) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             params,
@@ -77,9 +159,23 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Para
     }
 }
 
+/// Witness data for the first hash circuit.
+///
+/// Combines the unified instance with stage witnesses needed to perform
+/// the Fiat-Shamir derivations and $k(y)$ consistency checks.
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
+    /// The unified instance containing expected challenge values.
     pub unified_instance: &'a unified::Instance<C>,
+    /// Witness for the [`preamble`](super::stages::native::preamble) stage
+    /// (unenforced).
+    ///
+    /// Provides output headers and data for computing $k(y)$ evaluations.
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
+    /// Witness for the [`error_n`](super::stages::native::error_n) stage
+    /// (unenforced).
+    ///
+    /// Provides the saved sponge state and pre-computed $k(y)$ values
+    /// for consistency verification.
     pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
@@ -179,7 +275,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         }
 
         // Absorb nested_error_m_commitment and verify saved sponge state
-        // (mu, nu, mu_prime, nu_prime derivation moved to hashes_2)
         {
             let nested_error_m_commitment = unified_output
                 .nested_error_m_commitment
@@ -187,6 +282,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             nested_error_m_commitment.write(dr, &mut sponge)?;
 
             // Save state and verify it matches the witnessed state from error_n
+            // This performs a permutation and converts the sponge into squeeze
+            // mode.
             sponge
                 .save_state(dr)
                 .expect("save_state should succeed after absorbing")
