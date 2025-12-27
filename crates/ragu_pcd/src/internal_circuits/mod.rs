@@ -6,8 +6,8 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
-pub mod compute_c;
 pub mod compute_v;
+pub mod full_collapse;
 pub mod hashes_1;
 pub mod hashes_2;
 pub mod partial_collapse;
@@ -32,7 +32,7 @@ pub enum InternalCircuitIndex {
     Hashes1Circuit = 7,
     Hashes2Circuit = 8,
     PartialCollapseCircuit = 9,
-    ComputeCCircuit = 10,
+    FullCollapseCircuit = 10,
     ComputeVCircuit = 11,
 }
 
@@ -136,9 +136,11 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
             NativeParameters,
         >::new())?;
 
-        // compute_c
-        mesh = mesh
-            .register_circuit(compute_c::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?;
+        // full_collapse
+        mesh =
+            mesh.register_circuit(
+                full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(),
+            )?;
 
         // compute_v
         mesh = mesh.register_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new())?;
@@ -220,7 +222,7 @@ mod test_params {
         check_constraints!(Hashes1Circuit,         mul = 1937, lin = 2815);
         check_constraints!(Hashes2Circuit,         mul = 2047, lin = 2952);
         check_constraints!(PartialCollapseCircuit, mul = 1891, lin = 2650);
-        check_constraints!(ComputeCCircuit,        mul = 1870, lin = 2607);
+        check_constraints!(FullCollapseCircuit,    mul = 1870, lin = 2607);
         check_constraints!(ComputeVCircuit,        mul = 266,  lin = 248);
     }
 
@@ -262,7 +264,10 @@ mod test_params {
                 "PartialCollapseCircuit",
                 InternalCircuitIndex::PartialCollapseCircuit,
             ),
-            ("ComputeCCircuit", InternalCircuitIndex::ComputeCCircuit),
+            (
+                "FullCollapseCircuit",
+                InternalCircuitIndex::FullCollapseCircuit,
+            ),
             ("ComputeVCircuit", InternalCircuitIndex::ComputeVCircuit),
         ];
 

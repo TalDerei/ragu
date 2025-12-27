@@ -273,8 +273,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             right_application: right.application.commitment,
             left_partial_collapse: left.circuits.partial_collapse_commitment,
             right_partial_collapse: right.circuits.partial_collapse_commitment,
-            left_compute_c: left.circuits.compute_c_commitment,
-            right_compute_c: right.circuits.compute_c_commitment,
+            left_full_collapse: left.circuits.full_collapse_commitment,
+            right_full_collapse: right.circuits.full_collapse_commitment,
             left_compute_v: left.circuits.compute_v_commitment,
             right_compute_v: right.circuits.compute_v_commitment,
             left_hashes_1: left.circuits.hashes_1_commitment,
@@ -792,11 +792,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             v,
         };
 
-        // compute_c staged circuit.
-        let (compute_c_rx, _) =
-            internal_circuits::compute_c::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
+        // full_collapse staged circuit.
+        let (full_collapse_rx, _) =
+            internal_circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
                 .rx::<R>(
-                    internal_circuits::compute_c::Witness {
+                    internal_circuits::full_collapse::Witness {
                         unified_instance,
                         preamble_witness,
                         error_m_witness,
@@ -804,9 +804,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     },
                     self.circuit_mesh.get_key(),
                 )?;
-        let compute_c_rx_blind = C::CircuitField::random(&mut *rng);
-        let compute_c_rx_commitment =
-            compute_c_rx.commit(C::host_generators(self.params), compute_c_rx_blind);
+        let full_collapse_rx_blind = C::CircuitField::random(&mut *rng);
+        let full_collapse_rx_commitment =
+            full_collapse_rx.commit(C::host_generators(self.params), full_collapse_rx_blind);
 
         // compute_v staged circuit.
         let (compute_v_rx, _) = internal_circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new()
@@ -872,9 +872,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             partial_collapse_rx.commit(C::host_generators(self.params), partial_collapse_rx_blind);
 
         Ok(CircuitCommitments {
-            compute_c_rx,
-            compute_c_blind: compute_c_rx_blind,
-            compute_c_commitment: compute_c_rx_commitment,
+            full_collapse_rx,
+            full_collapse_blind: full_collapse_rx_blind,
+            full_collapse_commitment: full_collapse_rx_commitment,
             compute_v_rx,
             compute_v_blind: compute_v_rx_blind,
             compute_v_commitment: compute_v_rx_commitment,

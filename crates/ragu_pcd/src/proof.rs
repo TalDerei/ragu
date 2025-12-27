@@ -236,12 +236,12 @@ impl<C: Cycle> Challenges<C> {
     }
 }
 
-/// Circuit polynomial commitments (compute_c, compute_v, hashes, partial_collapse).
+/// Circuit polynomial commitments (full_collapse, compute_v, hashes, partial_collapse).
 #[derive(Clone)]
 pub(crate) struct CircuitCommitments<C: Cycle, R: Rank> {
-    pub(crate) compute_c_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) compute_c_blind: C::CircuitField,
-    pub(crate) compute_c_commitment: C::HostCurve,
+    pub(crate) full_collapse_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) full_collapse_blind: C::CircuitField,
+    pub(crate) full_collapse_commitment: C::HostCurve,
     pub(crate) compute_v_rx: structured::Polynomial<C::CircuitField, R>,
     pub(crate) compute_v_blind: C::CircuitField,
     pub(crate) compute_v_commitment: C::HostCurve,
@@ -398,9 +398,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
             challenges: Challenges::trivial(),
             circuits: CircuitCommitments {
-                compute_c_rx: zero_structured_host.clone(),
-                compute_c_blind: host_blind,
-                compute_c_commitment: host_commitment,
+                full_collapse_rx: zero_structured_host.clone(),
+                full_collapse_blind: host_blind,
+                full_collapse_commitment: host_commitment,
                 compute_v_rx: zero_structured_host.clone(),
                 compute_v_blind: host_blind,
                 compute_v_commitment: host_commitment,

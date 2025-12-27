@@ -58,10 +58,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::stages::native::eval::STAGING_ID,
         );
 
-        // Internal circuit compute_c verification
-        let c_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.compute_c_rx,
-            internal_circuits::compute_c::STAGED_ID,
+        // Internal circuit full_collapse verification
+        let full_collapse_stage_valid = verifier.check_stage(
+            &pcd.proof.circuits.full_collapse_rx,
+            internal_circuits::full_collapse::STAGED_ID,
         );
 
         // Internal circuit compute_v verification
@@ -150,16 +150,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )
         };
 
-        // See `internal_circuits::compute_c` documentation.
-        let c_circuit_valid = {
-            let mut rx = pcd.proof.circuits.compute_c_rx.clone();
+        // See `internal_circuits::full_collapse` documentation.
+        let full_collapse_circuit_valid = {
+            let mut rx = pcd.proof.circuits.full_collapse_rx.clone();
             rx.add_assign(&pcd.proof.preamble.stage_rx);
             rx.add_assign(&pcd.proof.error_m.stage_rx);
             rx.add_assign(&pcd.proof.error_n.stage_rx);
 
             verifier.check_internal_circuit(
                 &rx,
-                internal_circuits::compute_c::CIRCUIT_ID,
+                internal_circuits::full_collapse::CIRCUIT_ID,
                 unified_ky,
             )
         };
@@ -190,12 +190,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             && error_n_valid
             && query_valid
             && eval_valid
-            && c_stage_valid
+            && full_collapse_stage_valid
             && v_stage_valid
             && partial_collapse_stage_valid
             && hashes_1_stage_valid
             && hashes_2_stage_valid
-            && c_circuit_valid
+            && full_collapse_circuit_valid
             && v_circuit_valid
             && hashes_1_circuit_valid
             && hashes_2_circuit_valid
