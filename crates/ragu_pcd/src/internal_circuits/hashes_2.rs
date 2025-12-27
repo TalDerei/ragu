@@ -1,13 +1,56 @@
-//! Second hash circuit for Fiat-Shamir derivations (continuation of transcript).
+//! Second hash circuit for Fiat-Shamir derivations.
 //!
-//! This circuit resumes the Fiat-Shamir transcript from the saved sponge state
-//! (after hashes_1 absorbed nested_error_m_commitment) and derives:
-//! - `(mu, nu)` - squeezed from saved state (error_m already absorbed)
-//! - `(mu_prime, nu_prime) = H(nested_error_n_commitment)`
-//! - `x = H(nested_ab_commitment)`
-//! - `alpha = H(nested_query_commitment)`
-//! - `u = H(nested_f_commitment)`
-//! - `beta = H(nested_eval_commitment)`
+//! ## Operations
+//!
+//! ### Hashes
+//!
+//! This circuit completes the Fiat-Shamir transcript started in
+//! [`hashes_1`][super::hashes_1], invoking $5$ Poseidon permutations:
+//! - Resume sponge from saved state (after `hashes_1` absorbed
+//!   [`nested_error_m_commitment`] and applied the permutation to move it into
+//!   squeeze mode).
+//! - Squeeze [$\mu$] and [$\nu$] challenges.
+//! - Absorb [`nested_error_n_commitment`].
+//! - Squeeze [$\mu'$] and [$\nu'$] challenges.
+//! - Absorb [`nested_ab_commitment`].
+//! - Squeeze [$x$] challenge.
+//! - Absorb [`nested_query_commitment`].
+//! - Squeeze [$\alpha$] challenge.
+//! - Absorb [`nested_f_commitment`].
+//! - Squeeze [$u$] challenge.
+//! - Absorb [`nested_eval_commitment`].
+//! - Squeeze [$\beta$] challenge.
+//!
+//! The squeezed $\mu, \nu, \mu', \nu', x, \alpha, u, \beta$ challenges are set
+//! in the unified instance by this circuit.
+//!
+//! ## Staging
+//!
+//! This circuit is a staged circuit based on the
+//! [`error_n`][super::stages::native::error_n] stage, which inherits in the
+//! following chain:
+//! - [`preamble`][super::stages::native::preamble] (skipped)
+//! - [`error_m`][super::stages::native::error_m] (skipped)
+//! - [`error_n`][super::stages::native::error_n] (unenforced)
+//!
+//! ## Public Inputs
+//!
+//! This circuit uses the [`unified::Output`] as its public inputs.
+//!
+//! [`nested_error_m_commitment`]: unified::Output::nested_error_m_commitment
+//! [$\mu$]: unified::Output::mu
+//! [$\nu$]: unified::Output::nu
+//! [`nested_error_n_commitment`]: unified::Output::nested_error_n_commitment
+//! [$\mu'$]: unified::Output::mu_prime
+//! [$\nu'$]: unified::Output::nu_prime
+//! [`nested_ab_commitment`]: unified::Output::nested_ab_commitment
+//! [$x$]: unified::Output::x
+//! [`nested_query_commitment`]: unified::Output::nested_query_commitment
+//! [$\alpha$]: unified::Output::alpha
+//! [`nested_f_commitment`]: unified::Output::nested_f_commitment
+//! [$u$]: unified::Output::u
+//! [`nested_eval_commitment`]: unified::Output::nested_eval_commitment
+//! [$\beta$]: unified::Output::beta
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -35,6 +78,12 @@ use crate::components::fold_revdot;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes2Circuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes2Staged as STAGED_ID;
 
+/// Second hash circuit for Fiat-Shamir challenge derivation.
+///
+/// See the [module-level documentation] for details on the operations
+/// performed by this circuit.
+///
+/// [module-level documentation]: self
 pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     params: &'params C,
     _marker: PhantomData<(R, FP)>,
@@ -43,6 +92,11 @@ pub struct Circuit<'params, C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revd
 impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     Circuit<'params, C, R, HEADER_SIZE, FP>
 {
+    /// Creates a new staged circuit.
+    ///
+    /// # Parameters
+    ///
+    /// - `params`: Curve cycle parameters providing Poseidon configuration.
     pub fn new(params: &'params C) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             params,
@@ -51,8 +105,18 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Para
     }
 }
 
+/// Witness data for the second hash circuit.
+///
+/// Combines the unified instance with the
+/// [`error_n`](super::stages::native::error_n) stage witness needed to resume
+/// the Fiat-Shamir transcript from the saved sponge state.
 pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
+    /// The unified instance containing expected challenge values.
     pub unified_instance: &'a unified::Instance<C>,
+    /// Witness for the [`error_n`](super::stages::native::error_n) stage
+    /// (unenforced).
+    ///
+    /// Provides the saved sponge state for transcript resumption.
     pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 

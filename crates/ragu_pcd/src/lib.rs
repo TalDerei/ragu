@@ -10,9 +10,9 @@
 extern crate alloc;
 
 mod components;
+mod fuse;
 pub mod header;
 mod internal_circuits;
-mod merge;
 mod proof;
 pub mod step;
 mod verify;
@@ -31,15 +31,6 @@ use core::{any::TypeId, marker::PhantomData};
 use header::Header;
 pub use proof::{Pcd, Proof};
 use step::{Step, adapter::Adapter};
-
-/// Compute the total circuit count and log2 domain size from the number of
-/// application-defined steps.
-pub(crate) fn circuit_counts(num_application_steps: usize) -> (usize, u32) {
-    let total_circuits =
-        num_application_steps + step::NUM_INTERNAL_STEPS + internal_circuits::NUM_INTERNAL_CIRCUITS;
-    let log2_circuits = total_circuits.next_power_of_two().trailing_zeros();
-    (total_circuits, log2_circuits)
-}
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
@@ -88,6 +79,50 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         Ok(self)
     }
 
+    /// Perform finalization and optimization steps to produce the
+    /// [`Application`].
+    pub fn finalize(
+        mut self,
+        params: &'params C,
+    ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
+        // First, insert all of the internal steps.
+        self.circuit_mesh =
+            self.circuit_mesh
+                .register_circuit(Adapter::<C, _, R, HEADER_SIZE>::new(
+                    step::rerandomize::Rerandomize::<()>::new(),
+                ))?;
+
+        // Then, insert all of the internal circuits used for recursion plumbing.
+        {
+            let (total_circuits, log2_circuits) =
+                internal_circuits::total_circuit_counts(self.num_application_steps);
+
+            self.circuit_mesh = internal_circuits::register_all::<C, R, HEADER_SIZE>(
+                self.circuit_mesh,
+                params,
+                log2_circuits,
+            )?;
+
+            assert_eq!(
+                self.circuit_mesh.log2_circuits(),
+                log2_circuits,
+                "log2_circuits mismatch"
+            );
+            assert_eq!(
+                self.circuit_mesh.num_circuits(),
+                total_circuits,
+                "final circuit count mismatch"
+            );
+        }
+
+        Ok(Application {
+            circuit_mesh: self.circuit_mesh.finalize(params.circuit_poseidon())?,
+            params,
+            num_application_steps: self.num_application_steps,
+            _marker: PhantomData,
+        })
+    }
+
     fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
         match self.header_map.get(&H::SUFFIX) {
             Some(ty) => {
@@ -103,49 +138,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         }
 
         Ok(())
-    }
-
-    /// Perform finalization and optimization steps to produce the
-    /// [`Application`].
-    pub fn finalize(
-        mut self,
-        params: &'params C,
-    ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
-        // First, insert all of the internal steps.
-        self.circuit_mesh =
-            self.circuit_mesh
-                .register_circuit(Adapter::<C, _, R, HEADER_SIZE>::new(
-                    step::rerandomize::Rerandomize::<()>::new(),
-                ))?;
-
-        // Compute circuit counts from known constants.
-        let (total_circuits, log2_circuits) = circuit_counts(self.num_application_steps);
-
-        // Then, insert all of the internal circuits used for recursion plumbing.
-        self.circuit_mesh = internal_circuits::register_all::<C, R, HEADER_SIZE>(
-            self.circuit_mesh,
-            params,
-            log2_circuits,
-        )?;
-
-        // Verify circuit count matches expectation.
-        assert_eq!(
-            self.circuit_mesh.log2_circuits(),
-            log2_circuits,
-            "log2_circuits mismatch"
-        );
-        assert_eq!(
-            self.circuit_mesh.num_circuits(),
-            total_circuits,
-            "final circuit count mismatch"
-        );
-
-        Ok(Application {
-            circuit_mesh: self.circuit_mesh.finalize(params.circuit_poseidon())?,
-            params,
-            num_application_steps: self.num_application_steps,
-            _marker: PhantomData,
-        })
     }
 }
 
@@ -194,59 +186,5 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
 
         Ok(rerandomized_proof.0.carry(data))
-    }
-}
-
-#[cfg(test)]
-mod constraint_benchmark_tests {
-    use super::*;
-    use internal_circuits::InternalCircuitIndex;
-    use ragu_circuits::polynomials::R;
-    use ragu_pasta::Pasta;
-
-    #[rustfmt::skip]
-    #[test]
-    fn test_internal_circuit_constraint_counts() {
-        let pasta = Pasta::baked();
-
-        const HEADER_SIZE: usize = 10;
-        let app = ApplicationBuilder::<Pasta, R<13>, HEADER_SIZE>::new()
-            .finalize(pasta)
-            .unwrap();
-
-        let circuits = app.circuit_mesh.circuits();
-        const NUM_APP_STEPS: usize = 0;
-
-        macro_rules! check_constraints {
-            ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
-                let idx =
-                    NUM_APP_STEPS + step::NUM_INTERNAL_STEPS + InternalCircuitIndex::$variant as usize;
-                let circuit = &circuits[idx];
-                let (actual_mul, actual_lin) = circuit.constraint_counts();
-                assert_eq!(
-                    actual_mul,
-                    $mul,
-                    "{}: multiplication constraints: expected {}, got {}",
-                    stringify!($variant),
-                    $mul,
-                    actual_mul
-                );
-                assert_eq!(
-                    actual_lin,
-                    $lin,
-                    "{}: linear constraints: expected {}, got {}",
-                    stringify!($variant),
-                    $lin,
-                    actual_lin
-                );
-            }};
-        }
-
-        check_constraints!(DummyCircuit,    mul = 1,    lin = 3);
-        check_constraints!(Hashes1Circuit,  mul = 2030, lin = 3192);
-        check_constraints!(Hashes2Circuit,  mul = 1931, lin = 2951);
-        check_constraints!(FoldCircuit,     mul = 1704, lin = 2506);
-        check_constraints!(ComputeCCircuit, mul = 1074, lin = 1229);
-        check_constraints!(ComputeVCircuit, mul = 184,  lin = 247);
     }
 }

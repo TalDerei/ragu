@@ -42,6 +42,15 @@ pub enum InternalCircuitIndex {
 /// and the number of variants in [`InternalCircuitIndex`].
 pub const NUM_INTERNAL_CIRCUITS: usize = 16;
 
+/// Compute the total circuit count and log2 domain size from the number of
+/// application-defined steps.
+pub(crate) fn total_circuit_counts(num_application_steps: usize) -> (usize, u32) {
+    let total_circuits =
+        num_application_steps + super::step::NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+    let log2_circuits = total_circuits.next_power_of_two().trailing_zeros();
+    (total_circuits, log2_circuits)
+}
+
 impl InternalCircuitIndex {
     pub fn circuit_index(self, num_application_steps: usize) -> CircuitIndex {
         CircuitIndex::new(num_application_steps + super::step::NUM_INTERNAL_STEPS + self as usize)
@@ -113,4 +122,148 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     );
 
     Ok(mesh)
+}
+
+#[cfg(test)]
+mod test_params {
+    use super::*;
+    use crate::*;
+    use ragu_circuits::polynomials::R;
+    use ragu_circuits::staging::{Stage, StageExt};
+    use ragu_pasta::Pasta;
+    use stages::native::{error_m, error_n, eval, preamble, query};
+
+    // When changing HEADER_SIZE, update the constraint counts by running:
+    //   cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture
+    // Then copy-paste the output into the check_constraints! calls in the test below.
+    const HEADER_SIZE: usize = 38;
+
+    type Preamble = preamble::Stage<Pasta, R<13>, HEADER_SIZE>;
+    type ErrorM = error_m::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
+    type ErrorN = error_n::Stage<Pasta, R<13>, HEADER_SIZE, NativeParameters>;
+    type Query = query::Stage<Pasta, R<13>, HEADER_SIZE>;
+    type Eval = eval::Stage<Pasta, R<13>, HEADER_SIZE>;
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_internal_circuit_constraint_counts() {
+        let pasta = Pasta::baked();
+
+        let app = ApplicationBuilder::<Pasta, R<13>, HEADER_SIZE>::new()
+            .finalize(pasta)
+            .unwrap();
+
+        let circuits = app.circuit_mesh.circuits();
+        const NUM_APP_STEPS: usize = 0;
+
+        macro_rules! check_constraints {
+            ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
+                let idx =
+                    NUM_APP_STEPS + step::NUM_INTERNAL_STEPS + InternalCircuitIndex::$variant as usize;
+                let circuit = &circuits[idx];
+                let (actual_mul, actual_lin) = circuit.constraint_counts();
+                assert_eq!(
+                    actual_mul,
+                    $mul,
+                    "{}: multiplication constraints: expected {}, got {}",
+                    stringify!($variant),
+                    $mul,
+                    actual_mul
+                );
+                assert_eq!(
+                    actual_lin,
+                    $lin,
+                    "{}: linear constraints: expected {}, got {}",
+                    stringify!($variant),
+                    $lin,
+                    actual_lin
+                );
+            }};
+        }
+
+        check_constraints!(DummyCircuit,    mul = 1   , lin = 3);
+        check_constraints!(Hashes1Circuit,  mul = 1931, lin = 2800);
+        check_constraints!(Hashes2Circuit,  mul = 2048, lin = 2951);
+        check_constraints!(FoldCircuit,     mul = 1892, lin = 2649);
+        check_constraints!(ComputeCCircuit, mul = 1873, lin = 2610);
+        check_constraints!(ComputeVCircuit, mul = 268 , lin = 247);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_internal_stage_parameters() {
+        macro_rules! check_stage {
+            ($Stage:ty, skip = $skip:expr, num = $num:expr) => {{
+                assert_eq!(<$Stage>::skip_multiplications(), $skip, "{}: skip", stringify!($Stage));
+                assert_eq!(<$Stage as StageExt<_, _>>::num_multiplications(), $num, "{}: num", stringify!($Stage));
+            }};
+        }
+
+        check_stage!(Preamble, skip =   0, num = 143);
+        check_stage!(ErrorM,   skip = 143, num = 270);
+        check_stage!(ErrorN,   skip = 413, num = 168);
+        check_stage!(Query,    skip = 143, num =   3);
+        check_stage!(Eval,     skip = 146, num =   3);
+    }
+
+    /// Helper test to print current constraint counts in copy-pasteable format.
+    /// Run with: `cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture`
+    #[test]
+    fn print_internal_circuit_constraint_counts() {
+        let pasta = Pasta::baked();
+
+        let app = ApplicationBuilder::<Pasta, R<13>, HEADER_SIZE>::new()
+            .finalize(pasta)
+            .unwrap();
+
+        let circuits = app.circuit_mesh.circuits();
+        const NUM_APP_STEPS: usize = 0;
+
+        let variants = [
+            ("DummyCircuit", InternalCircuitIndex::DummyCircuit),
+            ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),
+            ("Hashes2Circuit", InternalCircuitIndex::Hashes2Circuit),
+            ("FoldCircuit", InternalCircuitIndex::FoldCircuit),
+            ("ComputeCCircuit", InternalCircuitIndex::ComputeCCircuit),
+            ("ComputeVCircuit", InternalCircuitIndex::ComputeVCircuit),
+        ];
+
+        println!("\n// Copy-paste the following into test_internal_circuit_constraint_counts:");
+        for (name, variant) in variants {
+            let idx = NUM_APP_STEPS + step::NUM_INTERNAL_STEPS + variant as usize;
+            let circuit = &circuits[idx];
+            let (mul, lin) = circuit.constraint_counts();
+            println!(
+                "        check_constraints!({:<16} mul = {:<4}, lin = {});",
+                format!("{},", name),
+                mul,
+                lin
+            );
+        }
+    }
+
+    /// Helper test to print current stage parameters in copy-pasteable format.
+    /// Run with: `cargo test -p ragu_pcd --release print_internal_stage -- --nocapture`
+    #[test]
+    fn print_internal_stage_parameters() {
+        macro_rules! print_stage {
+            ($Stage:ty) => {{
+                let skip = <$Stage>::skip_multiplications();
+                let num = <$Stage as StageExt<_, _>>::num_multiplications();
+                println!(
+                    "        check_stage!({:<8} skip = {:>3}, num = {:>3});",
+                    format!("{},", stringify!($Stage)),
+                    skip,
+                    num
+                );
+            }};
+        }
+
+        println!("\n// Copy-paste the following into test_internal_stage_parameters:");
+        print_stage!(Preamble);
+        print_stage!(ErrorM);
+        print_stage!(ErrorN);
+        print_stage!(Query);
+        print_stage!(Eval);
+    }
 }

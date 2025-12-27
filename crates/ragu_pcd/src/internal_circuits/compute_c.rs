@@ -35,8 +35,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     }
 }
 
-pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
+pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
+    pub preamble_witness: &'a preamble::Witness<'a, C, R, HEADER_SIZE>,
+    pub error_m_witness: &'a native_error_m::Witness<C, FP>,
     pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
@@ -46,7 +48,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, FP>;
+    type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -72,13 +74,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     where
         Self: 'dr,
     {
-        let builder = builder.skip_stage::<preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
+        let (preamble, builder) = builder.add_stage::<preamble::Stage<C, R, HEADER_SIZE>>()?;
+        let (error_m, builder) =
+            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
             builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
-        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        // These two stages are enforced here because spare constraints are
+        // available, but we don't actually use them for anything.
+        let _preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
+        let _error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
+
+        let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();

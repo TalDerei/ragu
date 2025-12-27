@@ -16,9 +16,9 @@ use rand::Rng;
 use alloc::vec;
 
 use crate::{
-    Application, circuit_counts,
+    Application,
     components::fold_revdot::{self, NativeParameters},
-    internal_circuits::{self, stages, unified},
+    internal_circuits::{self, stages, total_circuit_counts, unified},
     proof::{
         ABProof, ApplicationProof, ErrorProof, EvalProof, FProof, InternalCircuits, MeshWyProof,
         MeshXyProof, Pcd, PreambleProof, Proof, QueryProof, SPrimeProof,
@@ -285,7 +285,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// handles encoding for us, so that we can use the resulting (encoded)
     /// headers to construct the proof. We can also then use the encoded
     /// headers later to construct witnesses for other internal circuits
-    /// constructed during the merge step.
+    /// constructed during the fuse operation.
     ///
     /// Returns the enclosed left/right `Proof` structures along with the
     /// application proof and auxiliary data.
@@ -330,7 +330,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// Compute the preamble proof.
     ///
     /// The preamble stage commits to all of the `C::CircuitField` elements
-    /// used as public inputs to the circuits being merged together. This
+    /// used as public inputs to the circuits being fused together. This
     /// includes the unified instance values for both proofs, but also their
     /// circuit IDs (the ω^j value that corresponds to each element of
     /// the mesh domain that corresponds to the Step circuit being checked).
@@ -364,7 +364,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // contains all of the `C::HostCurve` points. This includes the
         // native_preamble_commitment we just computed, but also contains
         // commitments to circuit and stage polynomials that were created in the
-        // merge operations that produced each of the two input proofs.
+        // fuse operations that produced each of the two input proofs.
         let nested_preamble_witness = stages::nested::preamble::Witness {
             native_preamble: native_preamble_commitment,
             left_application: left.application.commitment,
@@ -924,6 +924,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 .rx::<R>(
                     internal_circuits::compute_c::Witness {
                         unified_instance,
+                        preamble_witness,
+                        error_m_witness,
                         error_n_witness,
                     },
                     self.circuit_mesh.get_key(),
@@ -943,13 +945,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let (hashes_1_rx, _) =
             internal_circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
                 self.params,
-                circuit_counts(self.num_application_steps).1,
+                total_circuit_counts(self.num_application_steps).1,
             )
             .rx::<R>(
                 internal_circuits::hashes_1::Witness {
                     unified_instance,
                     preamble_witness,
-                    error_m_witness,
                     error_n_witness,
                 },
                 self.circuit_mesh.get_key(),

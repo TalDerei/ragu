@@ -27,7 +27,7 @@ pub trait Parameters: 'static + Send + Sync + Clone + Copy + Default {
 pub struct NativeParameters;
 
 impl Parameters for NativeParameters {
-    type N = ConstLen<17>;
+    type N = ConstLen<18>;
     type M = ConstLen<6>;
 }
 
