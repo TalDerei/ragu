@@ -60,19 +60,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Internal circuit compute_c verification
         let c_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.c_rx,
+            &pcd.proof.circuits.compute_c_rx,
             internal_circuits::compute_c::STAGED_ID,
         );
 
         // Internal circuit compute_v verification
         let v_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.v_rx,
+            &pcd.proof.circuits.compute_v_rx,
             internal_circuits::compute_v::STAGED_ID,
         );
 
         // Internal circuit fold stage verification
         let fold_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.ky_rx,
+            &pcd.proof.circuits.fold_rx,
             internal_circuits::fold::STAGED_ID,
         );
 
@@ -138,7 +138,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // See `internal_circuits::fold` documentation.
         let fold_circuit_valid = {
-            let mut rx = pcd.proof.circuits.ky_rx.clone();
+            let mut rx = pcd.proof.circuits.fold_rx.clone();
             // NB: pcd.proof.preamble.stage_rx is skipped.
             rx.add_assign(&pcd.proof.error_m.stage_rx);
             rx.add_assign(&pcd.proof.error_n.stage_rx);
@@ -148,7 +148,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // See `internal_circuits::compute_c` documentation.
         let c_circuit_valid = {
-            let mut rx = pcd.proof.circuits.c_rx.clone();
+            let mut rx = pcd.proof.circuits.compute_c_rx.clone();
             rx.add_assign(&pcd.proof.preamble.stage_rx);
             rx.add_assign(&pcd.proof.error_m.stage_rx);
             rx.add_assign(&pcd.proof.error_n.stage_rx);
@@ -162,7 +162,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // See `internal_circuits::compute_v` documentation.
         let v_circuit_valid = {
-            let rx = pcd.proof.circuits.v_rx.clone();
+            let rx = pcd.proof.circuits.compute_v_rx.clone();
             // NB: pcd.proof.preamble.stage_rx is skipped.
             // NB: pcd.proof.error_m.stage_rx is skipped.
             // NB: pcd.proof.error_n.stage_rx is skipped.

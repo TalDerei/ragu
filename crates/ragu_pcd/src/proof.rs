@@ -236,24 +236,24 @@ impl<C: Cycle> Challenges<C> {
     }
 }
 
-/// Circuit polynomial commitments (C, V, hashes, ky).
+/// Circuit polynomial commitments (compute_c, compute_v, hashes, fold).
 #[derive(Clone)]
 pub(crate) struct CircuitCommitments<C: Cycle, R: Rank> {
-    pub(crate) c_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) c_blind: C::CircuitField,
-    pub(crate) c_commitment: C::HostCurve,
-    pub(crate) v_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) v_blind: C::CircuitField,
-    pub(crate) v_commitment: C::HostCurve,
+    pub(crate) compute_c_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) compute_c_blind: C::CircuitField,
+    pub(crate) compute_c_commitment: C::HostCurve,
+    pub(crate) compute_v_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) compute_v_blind: C::CircuitField,
+    pub(crate) compute_v_commitment: C::HostCurve,
     pub(crate) hashes_1_rx: structured::Polynomial<C::CircuitField, R>,
     pub(crate) hashes_1_blind: C::CircuitField,
     pub(crate) hashes_1_commitment: C::HostCurve,
     pub(crate) hashes_2_rx: structured::Polynomial<C::CircuitField, R>,
     pub(crate) hashes_2_blind: C::CircuitField,
     pub(crate) hashes_2_commitment: C::HostCurve,
-    pub(crate) ky_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) ky_blind: C::CircuitField,
-    pub(crate) ky_commitment: C::HostCurve,
+    pub(crate) fold_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) fold_blind: C::CircuitField,
+    pub(crate) fold_commitment: C::HostCurve,
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
@@ -405,21 +405,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
             challenges: Challenges::trivial(),
             circuits: CircuitCommitments {
-                c_rx: dummy_rx.clone(),
-                c_blind: host_blind,
-                c_commitment: dummy_commitment,
-                v_rx: dummy_rx.clone(),
-                v_blind: host_blind,
-                v_commitment: dummy_commitment,
+                compute_c_rx: dummy_rx.clone(),
+                compute_c_blind: host_blind,
+                compute_c_commitment: dummy_commitment,
+                compute_v_rx: dummy_rx.clone(),
+                compute_v_blind: host_blind,
+                compute_v_commitment: dummy_commitment,
                 hashes_1_rx: dummy_rx.clone(),
                 hashes_1_blind: host_blind,
                 hashes_1_commitment: dummy_commitment,
                 hashes_2_rx: dummy_rx.clone(),
                 hashes_2_blind: host_blind,
                 hashes_2_commitment: dummy_commitment,
-                ky_rx: dummy_rx.clone(),
-                ky_blind: host_blind,
-                ky_commitment: dummy_commitment,
+                fold_rx: dummy_rx.clone(),
+                fold_blind: host_blind,
+                fold_commitment: dummy_commitment,
             },
             c: C::CircuitField::ZERO,
         }

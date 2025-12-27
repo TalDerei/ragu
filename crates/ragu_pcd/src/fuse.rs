@@ -285,12 +285,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native_preamble: stage_commitment,
             left_application: left.application.commitment,
             right_application: right.application.commitment,
-            left_ky: left.circuits.ky_commitment,
-            right_ky: right.circuits.ky_commitment,
-            left_c: left.circuits.c_commitment,
-            right_c: right.circuits.c_commitment,
-            left_v: left.circuits.v_commitment,
-            right_v: right.circuits.v_commitment,
+            left_fold: left.circuits.fold_commitment,
+            right_fold: right.circuits.fold_commitment,
+            left_compute_c: left.circuits.compute_c_commitment,
+            right_compute_c: right.circuits.compute_c_commitment,
+            left_compute_v: left.circuits.compute_v_commitment,
+            right_compute_v: right.circuits.compute_v_commitment,
             left_hashes_1: left.circuits.hashes_1_commitment,
             right_hashes_1: right.circuits.hashes_1_commitment,
             left_hashes_2: left.circuits.hashes_2_commitment,
@@ -789,7 +789,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
 
         // compute_c staged circuit.
-        let (c_rx, _) =
+        let (compute_c_rx, _) =
             internal_circuits::compute_c::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
                 .rx::<R>(
                     internal_circuits::compute_c::Witness {
@@ -800,16 +800,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     },
                     self.circuit_mesh.get_key(),
                 )?;
-        let c_rx_blind = C::CircuitField::random(&mut *rng);
-        let c_rx_commitment = c_rx.commit(C::host_generators(self.params), c_rx_blind);
+        let compute_c_rx_blind = C::CircuitField::random(&mut *rng);
+        let compute_c_rx_commitment =
+            compute_c_rx.commit(C::host_generators(self.params), compute_c_rx_blind);
 
         // compute_v staged circuit.
-        let (v_rx, _) = internal_circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx::<R>(
+        let (compute_v_rx, _) = internal_circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new()
+            .rx::<R>(
             internal_circuits::compute_v::Witness { unified_instance },
             self.circuit_mesh.get_key(),
         )?;
-        let v_rx_blind = C::CircuitField::random(&mut *rng);
-        let v_rx_commitment = v_rx.commit(C::host_generators(self.params), v_rx_blind);
+        let compute_v_rx_blind = C::CircuitField::random(&mut *rng);
+        let compute_v_rx_commitment =
+            compute_v_rx.commit(C::host_generators(self.params), compute_v_rx_blind);
 
         // Hashes_1 staged circuit.
         let (hashes_1_rx, _) =
@@ -846,7 +849,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             hashes_2_rx.commit(C::host_generators(self.params), hashes_2_rx_blind);
 
         // fold staged circuit (layer 1 folding verification).
-        let (ky_rx, _) =
+        let (fold_rx, _) =
             internal_circuits::fold::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
                 .rx::<R>(
                     internal_circuits::fold::Witness {
@@ -856,25 +859,25 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     },
                     self.circuit_mesh.get_key(),
                 )?;
-        let ky_rx_blind = C::CircuitField::random(&mut *rng);
-        let ky_rx_commitment = ky_rx.commit(C::host_generators(self.params), ky_rx_blind);
+        let fold_rx_blind = C::CircuitField::random(&mut *rng);
+        let fold_rx_commitment = fold_rx.commit(C::host_generators(self.params), fold_rx_blind);
 
         Ok(CircuitCommitments {
-            c_rx,
-            c_blind: c_rx_blind,
-            c_commitment: c_rx_commitment,
-            v_rx,
-            v_blind: v_rx_blind,
-            v_commitment: v_rx_commitment,
+            compute_c_rx,
+            compute_c_blind: compute_c_rx_blind,
+            compute_c_commitment: compute_c_rx_commitment,
+            compute_v_rx,
+            compute_v_blind: compute_v_rx_blind,
+            compute_v_commitment: compute_v_rx_commitment,
             hashes_1_rx,
             hashes_1_blind: hashes_1_rx_blind,
             hashes_1_commitment: hashes_1_rx_commitment,
             hashes_2_rx,
             hashes_2_blind: hashes_2_rx_blind,
             hashes_2_commitment: hashes_2_rx_commitment,
-            ky_rx,
-            ky_blind: ky_rx_blind,
-            ky_commitment: ky_rx_commitment,
+            fold_rx,
+            fold_blind: fold_rx_blind,
+            fold_commitment: fold_rx_commitment,
         })
     }
 }
