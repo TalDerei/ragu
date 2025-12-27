@@ -8,7 +8,6 @@ use ragu_core::Result;
 
 pub mod compute_c;
 pub mod compute_v;
-pub mod dummy;
 pub mod fold;
 pub mod hashes_1;
 pub mod hashes_2;
@@ -30,17 +29,16 @@ pub enum InternalCircuitIndex {
     ErrorNFinalStaged = 5,
     EvalFinalStaged = 6,
     // Actual circuits
-    DummyCircuit = 7,
-    Hashes1Circuit = 8,
-    Hashes2Circuit = 9,
-    FoldCircuit = 10,
-    ComputeCCircuit = 11,
-    ComputeVCircuit = 12,
+    Hashes1Circuit = 7,
+    Hashes2Circuit = 8,
+    FoldCircuit = 9,
+    ComputeCCircuit = 10,
+    ComputeVCircuit = 11,
 }
 
 /// The number of internal circuits registered by [`register_all`],
 /// and the number of variants in [`InternalCircuitIndex`].
-pub const NUM_INTERNAL_CIRCUITS: usize = 13;
+pub const NUM_INTERNAL_CIRCUITS: usize = 12;
 
 /// Compute the total circuit count and log2 domain size from the number of
 /// application-defined steps.
@@ -120,9 +118,6 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
 
     // Insert the internal circuits.
     {
-        // dummy
-        mesh = mesh.register_circuit(dummy::Circuit)?;
-
         // hashes_1
         mesh = mesh.register_circuit(
             hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits),
@@ -211,7 +206,6 @@ mod test_params {
             }};
         }
 
-        check_constraints!(DummyCircuit,    mul = 1   , lin = 3);
         check_constraints!(Hashes1Circuit,  mul = 1929, lin = 2796);
         check_constraints!(Hashes2Circuit,  mul = 2048, lin = 2951);
         check_constraints!(FoldCircuit,     mul = 1892, lin = 2649);
@@ -250,7 +244,6 @@ mod test_params {
         const NUM_APP_STEPS: usize = 0;
 
         let variants = [
-            ("DummyCircuit", InternalCircuitIndex::DummyCircuit),
             ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),
             ("Hashes2Circuit", InternalCircuitIndex::Hashes2Circuit),
             ("FoldCircuit", InternalCircuitIndex::FoldCircuit),

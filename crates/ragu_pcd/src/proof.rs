@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use arithmetic::{Cycle, FixedGenerators};
+use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{
-    CircuitExt,
     mesh::CircuitIndex,
     polynomials::{Rank, structured, unstructured},
 };
@@ -16,7 +15,7 @@ use ragu_primitives::Element;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::{Application, header::Header, internal_circuits::dummy};
+use crate::{Application, header::Header};
 
 /// Represents a recursive proof for the correctness of some computation.
 #[derive(Clone)]
@@ -301,125 +300,118 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let host_blind = C::CircuitField::ONE;
         let nested_blind = C::ScalarField::ONE;
 
-        // Generator points
-        let host_g = C::host_generators(self.params).g()[0];
-        let nested_g = C::nested_generators(self.params).g()[0];
-
-        // Zero polynomials
+        // Zero polynomials and their commitments
         let zero_structured_host = structured::Polynomial::<C::CircuitField, R>::new();
         let zero_structured_nested = structured::Polynomial::<C::ScalarField, R>::new();
         let zero_unstructured = unstructured::Polynomial::<C::CircuitField, R>::new();
 
-        // Dummy circuit rx for application field
-        let dummy_rx = dummy::Circuit
-            .rx((), self.circuit_mesh.get_key())
-            .expect("dummy circuit rx should not fail")
-            .0;
-        let dummy_commitment = dummy_rx.commit(C::host_generators(self.params), host_blind);
-        let dummy_circuit_id = dummy::CIRCUIT_ID.circuit_index(self.num_application_steps);
+        let host_commitment =
+            zero_structured_host.commit(C::host_generators(self.params), host_blind);
+        let nested_commitment =
+            zero_structured_nested.commit(C::nested_generators(self.params), nested_blind);
 
         Proof {
             application: ApplicationProof {
-                circuit_id: dummy_circuit_id,
+                circuit_id: CircuitIndex::new(0),
                 left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
                 right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-                rx: dummy_rx.clone(),
+                rx: zero_structured_host.clone(),
                 blind: host_blind,
-                commitment: dummy_commitment,
+                commitment: host_commitment,
             },
             preamble: PreambleProof {
                 stage_rx: zero_structured_host.clone(),
                 stage_blind: host_blind,
-                stage_commitment: host_g,
+                stage_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             s_prime: SPrimeProof {
                 mesh_wx0_poly: zero_unstructured.clone(),
                 mesh_wx0_blind: host_blind,
-                mesh_wx0_commitment: host_g,
+                mesh_wx0_commitment: host_commitment,
                 mesh_wx1_poly: zero_unstructured.clone(),
                 mesh_wx1_blind: host_blind,
-                mesh_wx1_commitment: host_g,
+                mesh_wx1_commitment: host_commitment,
                 nested_s_prime_rx: zero_structured_nested.clone(),
                 nested_s_prime_blind: nested_blind,
-                nested_s_prime_commitment: nested_g,
+                nested_s_prime_commitment: nested_commitment,
             },
             error_m: ErrorMProof {
                 mesh_wy_poly: zero_structured_host.clone(),
                 mesh_wy_blind: host_blind,
-                mesh_wy_commitment: host_g,
+                mesh_wy_commitment: host_commitment,
                 stage_rx: zero_structured_host.clone(),
                 stage_blind: host_blind,
-                stage_commitment: host_g,
+                stage_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             error_n: ErrorNProof {
                 stage_rx: zero_structured_host.clone(),
                 stage_blind: host_blind,
-                stage_commitment: host_g,
+                stage_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             ab: ABProof {
                 a_poly: zero_structured_host.clone(),
                 a_blind: host_blind,
-                a_commitment: host_g,
+                a_commitment: host_commitment,
                 b_poly: zero_structured_host.clone(),
                 b_blind: host_blind,
-                b_commitment: host_g,
+                b_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             query: QueryProof {
                 mesh_xy_poly: zero_unstructured.clone(),
                 mesh_xy_blind: host_blind,
-                mesh_xy_commitment: host_g,
+                mesh_xy_commitment: host_commitment,
                 stage_rx: zero_structured_host.clone(),
                 stage_blind: host_blind,
-                stage_commitment: host_g,
+                stage_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             f: FProof {
                 poly: zero_structured_host.clone(),
                 blind: host_blind,
-                commitment: host_g,
+                commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             eval: EvalProof {
                 stage_rx: zero_structured_host.clone(),
                 stage_blind: host_blind,
-                stage_commitment: host_g,
+                stage_commitment: host_commitment,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
-                nested_commitment: nested_g,
+                nested_commitment,
             },
             challenges: Challenges::trivial(),
             circuits: CircuitCommitments {
-                compute_c_rx: dummy_rx.clone(),
+                compute_c_rx: zero_structured_host.clone(),
                 compute_c_blind: host_blind,
-                compute_c_commitment: dummy_commitment,
-                compute_v_rx: dummy_rx.clone(),
+                compute_c_commitment: host_commitment,
+                compute_v_rx: zero_structured_host.clone(),
                 compute_v_blind: host_blind,
-                compute_v_commitment: dummy_commitment,
-                hashes_1_rx: dummy_rx.clone(),
+                compute_v_commitment: host_commitment,
+                hashes_1_rx: zero_structured_host.clone(),
                 hashes_1_blind: host_blind,
-                hashes_1_commitment: dummy_commitment,
-                hashes_2_rx: dummy_rx.clone(),
+                hashes_1_commitment: host_commitment,
+                hashes_2_rx: zero_structured_host.clone(),
                 hashes_2_blind: host_blind,
-                hashes_2_commitment: dummy_commitment,
-                fold_rx: dummy_rx.clone(),
+                hashes_2_commitment: host_commitment,
+                fold_rx: zero_structured_host,
                 fold_blind: host_blind,
-                fold_commitment: dummy_commitment,
+                fold_commitment: host_commitment,
             },
             c: C::CircuitField::ZERO,
         }
