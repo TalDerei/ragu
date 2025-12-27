@@ -85,13 +85,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *transcript.squeeze(&mut dr)?.value().take();
         let z = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 4: Simulate k(y) values for the folding claims.
-        let ky_values = self.compute_ky_values(&preamble_witness, y)?;
-
-        // Phase 5: Compute m(w, X, y).
+        // Phase 4: Compute m(w, X, y).
         let mesh_wy = self.compute_mesh_wy(rng, w, y);
 
-        // Phase 6: Error M (Layer 1: N instances of M-sized reductions).
+        // Phase 5: Error M (Layer 1: N instances of M-sized reductions).
         let (
             (native_error_m_rx, native_error_m_blind, native_error_m_commitment),
             (nested_error_m_rx, nested_error_m_blind, nested_error_m_commitment),
@@ -114,10 +111,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = *transcript.squeeze(&mut dr)?.value().take();
         let nu = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 7: Collapsed values (layer 1 folding).
+        // Phase 6: Collapsed values (layer 1 folding).
+        let ky_values = self.compute_ky_values(&preamble_witness, y)?;
         let collapsed = self.compute_collapsed(&error_m_witness, &ky_values, mu, nu)?;
 
-        // Phase 8: Error N (Layer 2: Single N-sized reduction).
+        // Phase 7: Error N (Layer 2: Single N-sized reduction).
         let (
             (native_error_n_rx, native_error_n_blind, native_error_n_commitment),
             (nested_error_n_rx, nested_error_n_blind, nested_error_n_commitment),
@@ -129,41 +127,41 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime = *transcript.squeeze(&mut dr)?.value().take();
         let nu_prime = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 9: Compute C, the folded revdot product claim.w
+        // Phase 8: Compute C, the folded revdot product claim.
         let c = self.compute_c(mu_prime, nu_prime, &error_n_witness)?;
 
-        // Phase 10: A/B polynomials.
+        // Phase 9: A/B polynomials.
         let ab = self.compute_ab(rng)?;
 
         // Derive x = H(nested_ab_commitment).
         Point::constant(&mut dr, ab.nested_ab_commitment)?.write(&mut dr, &mut transcript)?;
         let x = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 11: Mesh XY.
+        // Phase 10: Mesh XY.
         let mesh_xy = self.compute_mesh_xy(rng, x, y);
 
-        // Phase 12: Query.
+        // Phase 11: Query.
         let query = self.compute_query(rng, mesh_xy.mesh_xy_commitment)?;
 
         // Derive alpha = H(nested_query_commitment).
         Point::constant(&mut dr, query.nested_query_commitment)?.write(&mut dr, &mut transcript)?;
         let alpha = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 13: F polynomial.
+        // Phase 12: F polynomial.
         let f = self.compute_f(rng)?;
 
         // Derive u = H(nested_f_commitment).
         Point::constant(&mut dr, f.nested_f_commitment)?.write(&mut dr, &mut transcript)?;
         let u = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 14: Eval.
+        // Phase 13: Eval.
         let eval = self.compute_eval(rng)?;
 
         // Derive beta = H(nested_eval_commitment).
         Point::constant(&mut dr, eval.nested_eval_commitment)?.write(&mut dr, &mut transcript)?;
         let beta = *transcript.squeeze(&mut dr)?.value().take();
 
-        // Phase 15: Unified instance.
+        // Phase 14: Unified instance.
         let unified_instance = &unified::Instance {
             nested_preamble_commitment: preamble.nested_preamble_commitment,
             w,
@@ -187,7 +185,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             beta,
         };
 
-        // Phase 16: Internal circuits.
+        // Phase 15: Internal circuits.
         let internal_circuits = self.compute_internal_circuits(
             rng,
             unified_instance,
