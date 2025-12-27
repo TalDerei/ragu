@@ -70,10 +70,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::compute_v::STAGED_ID,
         );
 
-        // Internal circuit fold stage verification
-        let fold_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.fold_rx,
-            internal_circuits::fold::STAGED_ID,
+        // Internal circuit partial collapse stage verification
+        let partial_collapse_stage_valid = verifier.check_stage(
+            &pcd.proof.circuits.partial_collapse_rx,
+            internal_circuits::partial_collapse::STAGED_ID,
         );
 
         // Internal circuit hashes_1 stage verification
@@ -136,14 +136,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )
         };
 
-        // See `internal_circuits::fold` documentation.
-        let fold_circuit_valid = {
-            let mut rx = pcd.proof.circuits.fold_rx.clone();
+        // See `internal_circuits::partial_collapse` documentation.
+        let partial_collapse_circuit_valid = {
+            let mut rx = pcd.proof.circuits.partial_collapse_rx.clone();
             // NB: pcd.proof.preamble.stage_rx is skipped.
             rx.add_assign(&pcd.proof.error_m.stage_rx);
             rx.add_assign(&pcd.proof.error_n.stage_rx);
 
-            verifier.check_internal_circuit(&rx, internal_circuits::fold::CIRCUIT_ID, unified_ky)
+            verifier.check_internal_circuit(
+                &rx,
+                internal_circuits::partial_collapse::CIRCUIT_ID,
+                unified_ky,
+            )
         };
 
         // See `internal_circuits::compute_c` documentation.
@@ -188,14 +192,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             && eval_valid
             && c_stage_valid
             && v_stage_valid
-            && fold_stage_valid
+            && partial_collapse_stage_valid
             && hashes_1_stage_valid
             && hashes_2_stage_valid
             && c_circuit_valid
             && v_circuit_valid
             && hashes_1_circuit_valid
             && hashes_2_circuit_valid
-            && fold_circuit_valid
+            && partial_collapse_circuit_valid
             && application_circuit_valid)
     }
 }

@@ -271,8 +271,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native_preamble: stage_commitment,
             left_application: left.application.commitment,
             right_application: right.application.commitment,
-            left_fold: left.circuits.fold_commitment,
-            right_fold: right.circuits.fold_commitment,
+            left_partial_collapse: left.circuits.partial_collapse_commitment,
+            right_partial_collapse: right.circuits.partial_collapse_commitment,
             left_compute_c: left.circuits.compute_c_commitment,
             right_compute_c: right.circuits.compute_c_commitment,
             left_compute_v: left.circuits.compute_v_commitment,
@@ -852,19 +852,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let hashes_2_rx_commitment =
             hashes_2_rx.commit(C::host_generators(self.params), hashes_2_rx_blind);
 
-        // fold staged circuit (layer 1 folding verification).
-        let (fold_rx, _) =
-            internal_circuits::fold::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
-                .rx::<R>(
-                    internal_circuits::fold::Witness {
-                        unified_instance,
-                        error_m_witness,
-                        error_n_witness,
-                    },
-                    self.circuit_mesh.get_key(),
-                )?;
-        let fold_rx_blind = C::CircuitField::random(&mut *rng);
-        let fold_rx_commitment = fold_rx.commit(C::host_generators(self.params), fold_rx_blind);
+        // partial_collapse staged circuit (layer 1 folding verification).
+        let (partial_collapse_rx, _) = internal_circuits::partial_collapse::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            NativeParameters,
+        >::new()
+        .rx::<R>(
+            internal_circuits::partial_collapse::Witness {
+                unified_instance,
+                error_m_witness,
+                error_n_witness,
+            },
+            self.circuit_mesh.get_key(),
+        )?;
+        let partial_collapse_rx_blind = C::CircuitField::random(&mut *rng);
+        let partial_collapse_rx_commitment =
+            partial_collapse_rx.commit(C::host_generators(self.params), partial_collapse_rx_blind);
 
         Ok(CircuitCommitments {
             compute_c_rx,
@@ -879,9 +884,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             hashes_2_rx,
             hashes_2_blind: hashes_2_rx_blind,
             hashes_2_commitment: hashes_2_rx_commitment,
-            fold_rx,
-            fold_blind: fold_rx_blind,
-            fold_commitment: fold_rx_commitment,
+            partial_collapse_rx,
+            partial_collapse_blind: partial_collapse_rx_blind,
+            partial_collapse_commitment: partial_collapse_rx_commitment,
         })
     }
 }

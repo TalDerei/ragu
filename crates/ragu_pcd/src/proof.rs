@@ -236,7 +236,7 @@ impl<C: Cycle> Challenges<C> {
     }
 }
 
-/// Circuit polynomial commitments (compute_c, compute_v, hashes, fold).
+/// Circuit polynomial commitments (compute_c, compute_v, hashes, partial_collapse).
 #[derive(Clone)]
 pub(crate) struct CircuitCommitments<C: Cycle, R: Rank> {
     pub(crate) compute_c_rx: structured::Polynomial<C::CircuitField, R>,
@@ -251,9 +251,9 @@ pub(crate) struct CircuitCommitments<C: Cycle, R: Rank> {
     pub(crate) hashes_2_rx: structured::Polynomial<C::CircuitField, R>,
     pub(crate) hashes_2_blind: C::CircuitField,
     pub(crate) hashes_2_commitment: C::HostCurve,
-    pub(crate) fold_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) fold_blind: C::CircuitField,
-    pub(crate) fold_commitment: C::HostCurve,
+    pub(crate) partial_collapse_rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) partial_collapse_blind: C::CircuitField,
+    pub(crate) partial_collapse_commitment: C::HostCurve,
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
@@ -410,9 +410,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 hashes_2_rx: zero_structured_host.clone(),
                 hashes_2_blind: host_blind,
                 hashes_2_commitment: host_commitment,
-                fold_rx: zero_structured_host,
-                fold_blind: host_blind,
-                fold_commitment: host_commitment,
+                partial_collapse_rx: zero_structured_host,
+                partial_collapse_blind: host_blind,
+                partial_collapse_commitment: host_commitment,
             },
             c: C::CircuitField::ZERO,
             v: C::CircuitField::ZERO,

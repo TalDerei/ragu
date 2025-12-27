@@ -8,9 +8,9 @@ use ragu_core::Result;
 
 pub mod compute_c;
 pub mod compute_v;
-pub mod fold;
 pub mod hashes_1;
 pub mod hashes_2;
+pub mod partial_collapse;
 pub mod stages;
 pub mod unified;
 
@@ -31,7 +31,7 @@ pub enum InternalCircuitIndex {
     // Actual circuits
     Hashes1Circuit = 7,
     Hashes2Circuit = 8,
-    FoldCircuit = 9,
+    PartialCollapseCircuit = 9,
     ComputeCCircuit = 10,
     ComputeVCircuit = 11,
 }
@@ -128,8 +128,13 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
             hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params),
         )?;
 
-        // fold
-        mesh = mesh.register_circuit(fold::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?;
+        // partial_collapse
+        mesh = mesh.register_circuit(partial_collapse::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            NativeParameters,
+        >::new())?;
 
         // compute_c
         mesh = mesh
@@ -212,11 +217,11 @@ mod test_params {
             }};
         }
 
-        check_constraints!(Hashes1Circuit,  mul = 1937, lin = 2815);
-        check_constraints!(Hashes2Circuit,  mul = 2047, lin = 2952);
-        check_constraints!(FoldCircuit,     mul = 1891, lin = 2650);
-        check_constraints!(ComputeCCircuit, mul = 1870, lin = 2607);
-        check_constraints!(ComputeVCircuit, mul = 266 , lin = 248);
+        check_constraints!(Hashes1Circuit,         mul = 1937, lin = 2815);
+        check_constraints!(Hashes2Circuit,         mul = 2047, lin = 2952);
+        check_constraints!(PartialCollapseCircuit, mul = 1891, lin = 2650);
+        check_constraints!(ComputeCCircuit,        mul = 1870, lin = 2607);
+        check_constraints!(ComputeVCircuit,        mul = 266,  lin = 248);
     }
 
     #[rustfmt::skip]
@@ -253,7 +258,10 @@ mod test_params {
         let variants = [
             ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),
             ("Hashes2Circuit", InternalCircuitIndex::Hashes2Circuit),
-            ("FoldCircuit", InternalCircuitIndex::FoldCircuit),
+            (
+                "PartialCollapseCircuit",
+                InternalCircuitIndex::PartialCollapseCircuit,
+            ),
             ("ComputeCCircuit", InternalCircuitIndex::ComputeCCircuit),
             ("ComputeVCircuit", InternalCircuitIndex::ComputeVCircuit),
         ];
@@ -264,7 +272,7 @@ mod test_params {
             let circuit = &circuits[idx];
             let (mul, lin) = circuit.constraint_counts();
             println!(
-                "        check_constraints!({:<16} mul = {:<4}, lin = {});",
+                "        check_constraints!({:<24} mul = {:<4}, lin = {});",
                 format!("{},", name),
                 mul,
                 lin
