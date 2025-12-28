@@ -55,7 +55,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     pub fn not(&self, dr: &mut D) -> Self {
         // The wire w is transformed into 1 - w, its logical NOT.
         let wire = dr.add(|lc| lc.add(&D::ONE).sub(self.wire()));
-        let value = D::just(|| !self.value.snag());
+        let value = self.value().not();
         Boolean { wire, value }
     }
 
@@ -81,6 +81,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
 
     /// Selects between two elements based on this boolean's value.
     /// Returns `a` when false, `b` when true.
+    ///
     /// This costs one multiplication constraint and two linear constraints.
     pub fn conditional_select(
         &self,
@@ -128,33 +129,36 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     dr: &mut D,
     x: &Element<'dr, D>,
 ) -> Result<Boolean<'dr, D>> {
-    let is_zero_witness = D::just(|| *x.value().take() == D::F::ZERO);
-    let x_inv = D::just(|| x.value().take().invert().unwrap_or(D::F::ZERO));
-
-    let is_zero_fe = is_zero_witness.fe::<D::F>();
-    let x_coeff = || Coeff::Arbitrary(*x.value().take());
+    let is_zero = x.value().map(|v| *v == D::F::ZERO);
 
     // Constraint 1: x * is_zero = 0.
-    // The b term of this multiplication is the authoritative is_zero wire.
-    let (x_wire, is_zero_wire, zero_product) =
-        dr.mul(|| Ok((x_coeff(), Coeff::Arbitrary(*is_zero_fe.snag()), Coeff::Zero)))?;
+    let (x_wire, is_zero_wire, zero_product) = dr.mul(|| {
+        Ok((
+            x.value().arbitrary().take(),
+            is_zero.coeff().take(),
+            Coeff::Zero,
+        ))
+    })?;
     dr.enforce_equal(&x_wire, x.wire())?;
     dr.enforce_zero(|lc| lc.add(&zero_product))?;
 
     // Constraint 2: x * inv = 1 - is_zero.
-    let (x_wire, _, one_minus_is_zero) = dr.mul(|| {
+    let (x_wire, _, is_not_zero) = dr.mul(|| {
         Ok((
-            x_coeff(),
-            Coeff::Arbitrary(*x_inv.snag()),
-            Coeff::Arbitrary(D::F::ONE - *is_zero_fe.snag()),
+            x.value().arbitrary().take(),
+            x.value()
+                .map(|x| x.invert().unwrap_or(D::F::ZERO))
+                .arbitrary()
+                .take(),
+            is_zero.not().coeff().take(),
         ))
     })?;
     dr.enforce_equal(&x_wire, x.wire())?;
-    dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&one_minus_is_zero).sub(&is_zero_wire))?;
+    dr.enforce_zero(|lc| lc.add(&is_not_zero).sub(&D::ONE).add(&is_zero_wire))?;
 
     Ok(Boolean {
         wire: is_zero_wire,
-        value: is_zero_witness,
+        value: is_zero,
     })
 }
 
