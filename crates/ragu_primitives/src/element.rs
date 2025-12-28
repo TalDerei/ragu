@@ -10,8 +10,10 @@ use ragu_core::{
 
 use alloc::vec::Vec;
 
-use crate::Boolean;
-use crate::io::{Buffer, Write};
+use crate::{
+    Boolean,
+    io::{Buffer, Write},
+};
 
 /// Represents a wire and its corresponding field element value, but generally
 /// does not guarantee any particular constraint has been imposed on the wire.
