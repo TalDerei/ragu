@@ -60,6 +60,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Circuit checks.
         {
+            // ABProof raw claim (a revdot b = c)
+            verifier.raw_claim(&pcd.proof.ab.a_poly, &pcd.proof.ab.b_poly);
+
             verifier.circuit(pcd.proof.application.circuit_id, &pcd.proof.application.rx);
             verifier.internal_circuit(
                 internal_circuits::hashes_1::CIRCUIT_ID,
@@ -77,6 +80,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 internal_circuits::partial_collapse::CIRCUIT_ID,
                 &[
                     &pcd.proof.circuits.partial_collapse_rx,
+                    &pcd.proof.preamble.stage_rx,
                     &pcd.proof.error_m.stage_rx,
                     &pcd.proof.error_n.stage_rx,
                 ],
@@ -138,7 +142,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Check all revdot claims.
         let revdot_claims = {
-            let ky_values = once(application_ky)
+            let ky_values = once(pcd.proof.ab.c)
+                .chain(once(application_ky))
                 .chain(once(unified_bridge_ky))
                 .chain(repeat_n(unified_ky, 4))
                 .chain(repeat(C::CircuitField::ZERO));
@@ -229,5 +234,17 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
 
         self.lhs.push(lhs);
         self.rhs.push(sy);
+    }
+
+    /// Add a raw claim without any mesh polynomial transformation.
+    ///
+    /// Used for ABProof claims where k(y) = c (the revdot product).
+    fn raw_claim(
+        &mut self,
+        a: &'rx structured::Polynomial<F, R>,
+        b: &'rx structured::Polynomial<F, R>,
+    ) {
+        self.lhs.push(Cow::Borrowed(a));
+        self.rhs.push(b.clone());
     }
 }

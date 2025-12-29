@@ -116,6 +116,18 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
         self.a.push(a);
         self.b.push(sy);
     }
+
+    /// Add a raw claim without any mesh polynomial transformation.
+    ///
+    /// Used for ABProof claims where k(y) = c (the revdot product).
+    fn raw_claim(
+        &mut self,
+        a: &'rx structured::Polynomial<F, R>,
+        b: &'rx structured::Polynomial<F, R>,
+    ) {
+        self.a.push(Cow::Borrowed(a));
+        self.b.push(b.clone());
+    }
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -477,6 +489,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Assemble a/b polynomials from both proofs for error term computation.
         let mut ctx = ProverContext::new(&self.circuit_mesh, self.num_application_steps, y, z);
         for proof in [left, right] {
+            // Child ABProof claim (k(y) = child's c)
+            ctx.raw_claim(&proof.ab.a_poly, &proof.ab.b_poly);
+
             // Application circuit (uses application k(y))
             ctx.circuit(proof.application.circuit_id, &proof.application.rx);
 
@@ -499,6 +514,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 internal_circuits::partial_collapse::CIRCUIT_ID,
                 &[
                     &proof.circuits.partial_collapse_rx,
+                    &proof.preamble.stage_rx,
                     &proof.error_m.stage_rx,
                     &proof.error_n.stage_rx,
                 ],
@@ -663,12 +679,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let nu = Element::alloc(dr, nu)?;
 
                 // k(y) values in order matching the partial_collapse circuit
-                let mut ky_elements = once(left_application_ky.clone())
+                let mut ky_elements = once(preamble.left.unified.c.clone())
+                    .chain(once(left_application_ky.clone()))
                     .chain(once(left_unified_bridge_ky.clone()))
                     .chain(repeat_n(
                         left_unified_ky.clone(),
                         crate::internal_circuits::partial_collapse::NUM_UNIFIED_CIRCUITS,
                     ))
+                    .chain(once(preamble.right.unified.c.clone()))
                     .chain(once(right_application_ky.clone()))
                     .chain(once(right_unified_bridge_ky.clone()))
                     .chain(repeat_n(
@@ -1016,6 +1034,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         >::new()
         .rx::<R>(
             internal_circuits::partial_collapse::Witness {
+                preamble_witness,
                 unified_instance,
                 error_m_witness,
                 error_n_witness,
