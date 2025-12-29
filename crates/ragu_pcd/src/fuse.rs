@@ -84,7 +84,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = transcript.squeeze(&mut dr)?;
         let z = transcript.squeeze(&mut dr)?;
 
-        let (error_m, error_m_witness) = self.compute_error_m(rng, &w, &y)?;
+        let (error_m, error_m_witness) = self.compute_errors_m(rng, &w, &y)?;
         Point::constant(&mut dr, error_m.nested_commitment)?.write(&mut dr, &mut transcript)?;
 
         // Save a copy of the transcript state. This is used as part of the
@@ -102,7 +102,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = transcript.squeeze(&mut dr)?;
         let nu = transcript.squeeze(&mut dr)?;
 
-        let (error_n, error_n_witness) = self.compute_error_n(
+        let (error_n, error_n_witness) = self.compute_errors_n(
             rng,
             &preamble_witness,
             &error_m_witness,
@@ -115,7 +115,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime = transcript.squeeze(&mut dr)?;
         let nu_prime = transcript.squeeze(&mut dr)?;
 
-        let c = self.compute_c(&mu_prime, &nu_prime, &error_n_witness)?;
+        let c = self.fold_products(&mu_prime, &nu_prime, &error_n_witness)?;
 
         let ab = self.compute_ab(rng)?;
         Point::constant(&mut dr, ab.nested_commitment)?.write(&mut dr, &mut transcript)?;
@@ -358,11 +358,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         })
     }
 
-    /// Compute error_m stage with mesh_wy bundled (Layer 1: N instances of M-sized reductions).
+    /// Compute errors_m stage with mesh_wy bundled (Layer 1: N instances of M-sized reductions).
     ///
     /// Given (w, y), computes m(w, X, y), commits to it, then creates the error_m
     /// stage with the mesh_wy commitment bundled into the nested layer.
-    fn compute_error_m<'dr, D, RNG: Rng>(
+    fn compute_errors_m<'dr, D, RNG: Rng>(
         &self,
         rng: &mut RNG,
         w: &Element<'dr, D>,
@@ -419,12 +419,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ))
     }
 
-    /// Compute error_n stage (Layer 2: Single N-sized reduction).
+    /// Compute errors_n stage (Layer 2: Single N-sized reduction).
     ///
     /// Computes k(y) values from the preamble witness, performs layer 1 folding
     /// to get collapsed values, then builds the error_n stage witness and
     /// commitments.
-    fn compute_error_n<'dr, D, RNG: Rng>(
+    fn compute_errors_n<'dr, D, RNG: Rng>(
         &self,
         rng: &mut RNG,
         preamble_witness: &stages::native::preamble::Witness<'_, C, R, HEADER_SIZE>,
@@ -479,7 +479,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 ]
                 .into_iter();
 
-                let fold_c = fold_revdot::FoldC::new(dr, &mu, &nu)?;
+                let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 
                 let collapsed = FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {
@@ -489,7 +489,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                         ky_elements.next().unwrap_or_else(|| Element::zero(dr))
                     });
 
-                    let v = fold_c.compute_m::<NativeParameters>(dr, &errors, &ky_values)?;
+                    let v = fold_products
+                        .fold_products_m::<NativeParameters>(dr, &errors, &ky_values)?;
                     Ok(*v.value().take())
                 })?;
 
@@ -541,11 +542,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ))
     }
 
-    /// Compute c, the folded revdot product claim (layer 2 only).
+    /// Fold products (layer 2 only).
     ///
     /// Performs a single N-sized reduction using the collapsed values from
     /// layer 1 as the k(y) values.
-    fn compute_c<'dr, D>(
+    fn fold_products<'dr, D>(
         &self,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
@@ -578,8 +579,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     FixedVec::try_from_fn(|i| Element::alloc(dr, collapsed.view().map(|c| c[i])))?;
 
                 // Layer 2: Single N-sized reduction using collapsed as ky_values
-                let fold_c = fold_revdot::FoldC::new(dr, &mu_prime, &nu_prime)?;
-                let c = fold_c.compute_n::<NativeParameters>(dr, &error_terms_n, &collapsed)?;
+                let fold_products = fold_revdot::FoldProducts::new(dr, &mu_prime, &nu_prime)?;
+                let c = fold_products.fold_products_n::<NativeParameters>(
+                    dr,
+                    &error_terms_n,
+                    &collapsed,
+                )?;
 
                 Ok(*c.value().take())
             },

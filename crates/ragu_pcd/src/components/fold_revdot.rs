@@ -55,12 +55,12 @@ impl<L: Len> Len for ErrorTermsLen<L> {
 ///
 /// Computing `munu` and `mu_inv` once and reusing across multiple calls
 /// saves 2*(N-1) multiplications in the two-layer reduction.
-pub struct FoldC<'dr, D: Driver<'dr>> {
+pub struct FoldProducts<'dr, D: Driver<'dr>> {
     munu: Element<'dr, D>,
     mu_inv: Element<'dr, D>,
 }
 
-impl<'dr, D: Driver<'dr>> FoldC<'dr, D> {
+impl<'dr, D: Driver<'dr>> FoldProducts<'dr, D> {
     /// Create a folding context from mu and nu.
     pub fn new(dr: &mut D, mu: &Element<'dr, D>, nu: &Element<'dr, D>) -> Result<Self> {
         let munu = mu.mul(dr, nu)?;
@@ -69,7 +69,7 @@ impl<'dr, D: Driver<'dr>> FoldC<'dr, D> {
     }
 
     /// Compute folded revdot claim `c` for layer 1 (M-sized reduction).
-    pub fn compute_m<P: Parameters>(
+    pub fn fold_products_m<P: Parameters>(
         &self,
         dr: &mut D,
         error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<P::M>>,
@@ -79,7 +79,7 @@ impl<'dr, D: Driver<'dr>> FoldC<'dr, D> {
     }
 
     /// Compute folded revdot claim `c` for layer 2 (N-sized reduction).
-    pub fn compute_n<P: Parameters>(
+    pub fn fold_products_n<P: Parameters>(
         &self,
         dr: &mut D,
         error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<P::N>>,
@@ -201,8 +201,8 @@ mod tests {
             .collect_fixed()
             .unwrap();
 
-        let fold_c = FoldC::new(dr, &mu, &nu)?;
-        let result = fold_c.compute_n::<P>(dr, &error_terms, &ky_values)?;
+        let fold_c = FoldProducts::new(dr, &mu, &nu)?;
+        let result = fold_c.fold_products_n::<P>(dr, &error_terms, &ky_values)?;
         let computed_c = result.value().take();
 
         assert_eq!(
@@ -222,8 +222,8 @@ mod tests {
                 let error_terms = FixedVec::from_fn(|_| Element::constant(dr, Fp::random(OsRng)));
                 let ky_values = FixedVec::from_fn(|_| Element::constant(dr, Fp::random(OsRng)));
 
-                let fold_c = FoldC::new(dr, &mu, &nu)?;
-                fold_c.compute_n::<P>(dr, &error_terms, &ky_values)?;
+                let fold_c = FoldProducts::new(dr, &mu, &nu)?;
+                fold_c.fold_products_n::<P>(dr, &error_terms, &ky_values)?;
                 Ok(())
             })?;
 
@@ -250,7 +250,7 @@ mod tests {
                 let nu_prime = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
 
                 // Layer 1: N instances of M-sized reductions (uses mu, nu)
-                let fold_c_layer1 = FoldC::new(dr, &mu, &nu)?;
+                let fold_c_layer1 = FoldProducts::new(dr, &mu, &nu)?;
                 let error_terms_m =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
                 let ky_values_m =
@@ -258,17 +258,17 @@ mod tests {
 
                 let mut collapsed = vec![];
                 for _ in 0..P::N::len() {
-                    let v = fold_c_layer1.compute_m::<P>(dr, &error_terms_m, &ky_values_m)?;
+                    let v = fold_c_layer1.fold_products_m::<P>(dr, &error_terms_m, &ky_values_m)?;
                     collapsed.push(v);
                 }
                 let collapsed = FixedVec::new(collapsed)?;
 
-                // Layer 2: Single N-sized reduction (uses mu', nu' - separate FoldC)
-                let fold_c_layer2 = FoldC::new(dr, &mu_prime, &nu_prime)?;
+                // Layer 2: Single N-sized reduction (uses mu', nu' - separate FoldProducts)
+                let fold_c_layer2 = FoldProducts::new(dr, &mu_prime, &nu_prime)?;
                 let error_terms_n =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
 
-                fold_c_layer2.compute_n::<P>(dr, &error_terms_n, &collapsed)?;
+                fold_c_layer2.fold_products_n::<P>(dr, &error_terms_n, &collapsed)?;
 
                 Ok(())
             })?;
@@ -324,7 +324,7 @@ mod tests {
                 let nu_prime = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
 
                 // Layer 1: N instances of M-sized reductions (uses mu, nu).
-                let fold_c_layer1 = FoldC::new(dr, &mu, &nu)?;
+                let fold_c_layer1 = FoldProducts::new(dr, &mu, &nu)?;
                 let all_error_terms_m: FixedVec<
                     FixedVec<_, ErrorTermsLen<ConstLen<M>>>,
                     ConstLen<N>,
@@ -339,19 +339,23 @@ mod tests {
                     })?;
 
                 let collapsed: FixedVec<_, ConstLen<N>> = FixedVec::try_from_fn(|i| {
-                    fold_c_layer1.compute_m::<TestParams<N, M>>(
+                    fold_c_layer1.fold_products_m::<TestParams<N, M>>(
                         dr,
                         &all_error_terms_m[i],
                         &all_ky_values_m[i],
                     )
                 })?;
 
-                // Layer 2: Single N-sized reduction (uses mu', nu' - separate FoldC).
-                let fold_c_layer2 = FoldC::new(dr, &mu_prime, &nu_prime)?;
+                // Layer 2: Single N-sized reduction (uses mu', nu' - separate FoldProducts).
+                let fold_c_layer2 = FoldProducts::new(dr, &mu_prime, &nu_prime)?;
                 let error_terms_n: FixedVec<_, ErrorTermsLen<ConstLen<N>>> =
                     FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
 
-                fold_c_layer2.compute_n::<TestParams<N, M>>(dr, &error_terms_n, &collapsed)?;
+                fold_c_layer2.fold_products_n::<TestParams<N, M>>(
+                    dr,
+                    &error_terms_n,
+                    &collapsed,
+                )?;
                 Ok(())
             })?;
 
