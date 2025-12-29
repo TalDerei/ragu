@@ -1,7 +1,7 @@
 //! This module provides the [`Application::verify`] method implementation.
 
 use arithmetic::Cycle;
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use ragu_circuits::{
     mesh::{CircuitIndex, Mesh},
     polynomials::{Rank, structured},
@@ -9,6 +9,9 @@ use ragu_circuits::{
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::Rng;
+
+use alloc::{borrow::Cow, vec::Vec};
+use core::iter::{once, repeat, repeat_n};
 
 use crate::{
     Application, Pcd,
@@ -23,75 +26,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: &Pcd<'_, C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
-        // The `Verifier` helper struct holds onto a verification context to
-        // simplify performing revdot claims on different polynomials in the
-        // proof.
-        let verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, &mut rng);
+        // Sample verification challenges y and z.
+        let y = C::CircuitField::random(&mut rng);
+        let z = C::CircuitField::random(&mut rng);
 
-        // Preamble verification
-        let preamble_valid = verifier.check_stage(
-            &pcd.proof.preamble.stage_rx,
-            internal_circuits::stages::native::preamble::STAGING_ID,
-        );
+        // Validate that the application circuit_id is within the mesh domain.
+        // (Internal circuit IDs are constants and don't need this check.)
+        if !self
+            .circuit_mesh
+            .circuit_in_domain(pcd.proof.application.circuit_id)
+        {
+            return Ok(false);
+        }
 
-        // Error_m stage verification (Layer 1).
-        let error_m_valid = verifier.check_stage(
-            &pcd.proof.error_m.stage_rx,
-            internal_circuits::stages::native::error_m::STAGING_ID,
-        );
-
-        // Error_n stage verification (Layer 2).
-        let error_n_valid = verifier.check_stage(
-            &pcd.proof.error_n.stage_rx,
-            internal_circuits::stages::native::error_n::STAGING_ID,
-        );
-
-        // Query verification.
-        let query_valid = verifier.check_stage(
-            &pcd.proof.query.stage_rx,
-            internal_circuits::stages::native::query::STAGING_ID,
-        );
-
-        // Eval verification.
-        let eval_valid = verifier.check_stage(
-            &pcd.proof.eval.stage_rx,
-            internal_circuits::stages::native::eval::STAGING_ID,
-        );
-
-        // Internal circuit hashes_1 stage verification
-        let hashes_1_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.hashes_1_rx,
-            internal_circuits::hashes_1::STAGED_ID,
-        );
-
-        // Internal circuit hashes_2 stage verification
-        let hashes_2_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.hashes_2_rx,
-            internal_circuits::hashes_2::STAGED_ID,
-        );
-
-        // Internal circuit partial_collapse stage verification
-        let partial_collapse_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.partial_collapse_rx,
-            internal_circuits::partial_collapse::STAGED_ID,
-        );
-
-        // Internal circuit full_collapse verification
-        let full_collapse_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.full_collapse_rx,
-            internal_circuits::full_collapse::STAGED_ID,
-        );
-
-        // Internal circuit compute_v verification
-        let v_stage_valid = verifier.check_stage(
-            &pcd.proof.circuits.compute_v_rx,
-            internal_circuits::compute_v::STAGED_ID,
-        );
-
-        // Compute unified k(Y), unified_bridge k(Y), and application k(Y).
-        let (unified_ky, unified_bridge_ky, application_ky) = Emulator::emulate_wireless(
-            (&pcd.proof, pcd.data.clone(), verifier.y),
-            |dr, witness| {
+        // Compute unified k(y), unified_bridge k(y), and application k(y).
+        let (unified_ky, unified_bridge_ky, application_ky) =
+            Emulator::emulate_wireless((&pcd.proof, pcd.data.clone(), y), |dr, witness| {
                 let (proof, data, y) = witness.cast();
                 let y = Element::alloc(dr, y)?;
                 let proof_inputs =
@@ -103,174 +53,181 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let application_ky = *proof_inputs.application_ky(dr, &y)?.value().take();
 
                 Ok((unified_ky, unified_bridge_ky, application_ky))
-            },
-        )?;
+            })?;
 
-        // See `internal_circuits::hashes_1` documentation.
-        let hashes_1_circuit_valid = {
-            let mut rx = pcd.proof.circuits.hashes_1_rx.clone();
-            rx.add_assign(&pcd.proof.preamble.stage_rx);
-            // NB: pcd.proof.error_m.stage_rx is skipped.
-            rx.add_assign(&pcd.proof.error_n.stage_rx);
+        // Build LHS and RHS polynomials for each revdot claim.
+        let mut verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, y, z);
 
-            verifier.check_internal_circuit(
-                &rx,
+        // Circuit checks.
+        {
+            verifier.circuit(pcd.proof.application.circuit_id, &pcd.proof.application.rx);
+            verifier.internal_circuit(
                 internal_circuits::hashes_1::CIRCUIT_ID,
-                // Note: The hashes_1 circuit uses unified_bridge_ky, unlike the
-                // other internal circuits.
-                unified_bridge_ky,
-            )
-        };
-
-        // See `internal_circuits::hashes_2` documentation.
-        let hashes_2_circuit_valid = {
-            let mut rx = pcd.proof.circuits.hashes_2_rx.clone();
-            // NB: pcd.proof.preamble.stage_rx is skipped.
-            // NB: pcd.proof.error_m.stage_rx is skipped.
-            rx.add_assign(&pcd.proof.error_n.stage_rx);
-
-            verifier.check_internal_circuit(
-                &rx,
+                &[
+                    &pcd.proof.circuits.hashes_1_rx,
+                    &pcd.proof.preamble.stage_rx,
+                    &pcd.proof.error_n.stage_rx,
+                ],
+            );
+            verifier.internal_circuit(
                 internal_circuits::hashes_2::CIRCUIT_ID,
-                unified_ky,
-            )
-        };
-
-        // See `internal_circuits::partial_collapse` documentation.
-        let partial_collapse_circuit_valid = {
-            let mut rx = pcd.proof.circuits.partial_collapse_rx.clone();
-            // NB: pcd.proof.preamble.stage_rx is skipped.
-            rx.add_assign(&pcd.proof.error_m.stage_rx);
-            rx.add_assign(&pcd.proof.error_n.stage_rx);
-
-            verifier.check_internal_circuit(
-                &rx,
+                &[&pcd.proof.circuits.hashes_2_rx, &pcd.proof.error_n.stage_rx],
+            );
+            verifier.internal_circuit(
                 internal_circuits::partial_collapse::CIRCUIT_ID,
-                unified_ky,
-            )
-        };
-
-        // See `internal_circuits::full_collapse` documentation.
-        let full_collapse_circuit_valid = {
-            let mut rx = pcd.proof.circuits.full_collapse_rx.clone();
-            rx.add_assign(&pcd.proof.preamble.stage_rx);
-            rx.add_assign(&pcd.proof.error_m.stage_rx);
-            rx.add_assign(&pcd.proof.error_n.stage_rx);
-
-            verifier.check_internal_circuit(
-                &rx,
+                &[
+                    &pcd.proof.circuits.partial_collapse_rx,
+                    &pcd.proof.error_m.stage_rx,
+                    &pcd.proof.error_n.stage_rx,
+                ],
+            );
+            verifier.internal_circuit(
                 internal_circuits::full_collapse::CIRCUIT_ID,
-                unified_ky,
-            )
-        };
-
-        // See `internal_circuits::compute_v` documentation.
-        let v_circuit_valid = {
-            let rx = pcd.proof.circuits.compute_v_rx.clone();
-            // NB: pcd.proof.preamble.stage_rx is skipped.
-            // NB: pcd.proof.query.stage_rx is skipped.
-            // NB: pcd.proof.eval.stage_rx is skipped.
-
-            verifier.check_internal_circuit(
-                &rx,
+                &[
+                    &pcd.proof.circuits.full_collapse_rx,
+                    &pcd.proof.preamble.stage_rx,
+                    &pcd.proof.error_m.stage_rx,
+                    &pcd.proof.error_n.stage_rx,
+                ],
+            );
+            verifier.internal_circuit(
                 internal_circuits::compute_v::CIRCUIT_ID,
-                unified_ky,
-            )
+                &[&pcd.proof.circuits.compute_v_rx],
+            );
+        }
+
+        // Stage checks.
+        {
+            // Circuit masks:
+            verifier.stage(
+                InternalCircuitIndex::ErrorNFinalStaged,
+                &[
+                    &pcd.proof.circuits.hashes_1_rx,
+                    &pcd.proof.circuits.hashes_2_rx,
+                    &pcd.proof.circuits.partial_collapse_rx,
+                    &pcd.proof.circuits.full_collapse_rx,
+                ],
+            );
+            verifier.stage(
+                InternalCircuitIndex::EvalFinalStaged,
+                &[&pcd.proof.circuits.compute_v_rx],
+            );
+
+            // Stage masks:
+            verifier.stage(
+                internal_circuits::stages::native::preamble::STAGING_ID,
+                &[&pcd.proof.preamble.stage_rx],
+            );
+            verifier.stage(
+                internal_circuits::stages::native::error_m::STAGING_ID,
+                &[&pcd.proof.error_m.stage_rx],
+            );
+            verifier.stage(
+                internal_circuits::stages::native::error_n::STAGING_ID,
+                &[&pcd.proof.error_n.stage_rx],
+            );
+            verifier.stage(
+                internal_circuits::stages::native::query::STAGING_ID,
+                &[&pcd.proof.query.stage_rx],
+            );
+            verifier.stage(
+                internal_circuits::stages::native::eval::STAGING_ID,
+                &[&pcd.proof.eval.stage_rx],
+            );
+        }
+
+        // Check all revdot claims.
+        let revdot_claims = {
+            let ky_values = once(application_ky)
+                .chain(once(unified_bridge_ky))
+                .chain(repeat_n(unified_ky, 4))
+                .chain(repeat(C::CircuitField::ZERO));
+
+            ky_values
+                .zip(verifier.lhs.iter().zip(verifier.rhs.iter()))
+                .all(|(ky, (lhs, rhs))| lhs.revdot(rhs) == ky)
         };
 
-        // Application (Step circuit) verification.
-        let application_circuit_valid = verifier.check_circuit(
-            &pcd.proof.application.rx,
-            pcd.proof.application.circuit_id,
-            application_ky,
-        );
-
-        Ok(preamble_valid
-            && error_m_valid
-            && error_n_valid
-            && query_valid
-            && eval_valid
-            && hashes_1_stage_valid
-            && hashes_2_stage_valid
-            && partial_collapse_stage_valid
-            && full_collapse_stage_valid
-            && v_stage_valid
-            && hashes_1_circuit_valid
-            && hashes_2_circuit_valid
-            && partial_collapse_circuit_valid
-            && full_collapse_circuit_valid
-            && v_circuit_valid
-            && application_circuit_valid)
+        Ok(revdot_claims)
     }
 }
 
-struct Verifier<'a, F: PrimeField, R: Rank> {
-    circuit_mesh: &'a Mesh<'a, F, R>,
+struct Verifier<'m, 'rx, F: PrimeField, R: Rank> {
+    circuit_mesh: &'m Mesh<'m, F, R>,
     num_application_steps: usize,
     y: F,
     z: F,
     tz: structured::Polynomial<F, R>,
+    lhs: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
+    rhs: Vec<structured::Polynomial<F, R>>,
 }
 
-impl<'a, F: PrimeField, R: Rank> Verifier<'a, F, R> {
-    fn new<RNG: Rng>(
-        circuit_mesh: &'a Mesh<'a, F, R>,
-        num_application_steps: usize,
-        rng: &mut RNG,
-    ) -> Self {
-        let y = F::random(&mut *rng);
-        let z = F::random(&mut *rng);
-        let tz = R::tz(z);
+impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
+    fn new(circuit_mesh: &'m Mesh<'m, F, R>, num_application_steps: usize, y: F, z: F) -> Self {
         Self {
             circuit_mesh,
             num_application_steps,
             y,
             z,
-            tz,
+            tz: R::tz(z),
+            lhs: Vec::new(),
+            rhs: Vec::new(),
         }
     }
 
-    /// Check an rx polynomial for a stage (empty ky).
-    fn check_stage(
-        &self,
-        rx: &structured::Polynomial<F, R>,
-        staging_id: InternalCircuitIndex,
-    ) -> bool {
-        let circuit_id = staging_id.circuit_index(self.num_application_steps);
-        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
-
-        rx.revdot(&sy) == F::ZERO
+    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
+        self.circuit_cow(circuit_id, Cow::Borrowed(rx));
     }
 
-    /// Check an rx polynomial for an internal circuit with computed ky.
-    fn check_internal_circuit(
-        &self,
-        rx: &structured::Polynomial<F, R>,
-        internal_id: InternalCircuitIndex,
-        ky: F,
-    ) -> bool {
-        let circuit_id = internal_id.circuit_index(self.num_application_steps);
-        self.check_circuit(rx, circuit_id, ky)
-    }
-
-    /// Check an rx polynomial for a circuit with computed ky.
-    fn check_circuit(
-        &self,
-        rx: &structured::Polynomial<F, R>,
+    fn circuit_cow(
+        &mut self,
         circuit_id: CircuitIndex,
-        ky: F,
-    ) -> bool {
-        if !self.circuit_mesh.circuit_in_domain(circuit_id) {
-            return false;
-        }
-
+        rx: Cow<'rx, structured::Polynomial<F, R>>,
+    ) {
         let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
-
-        let mut rhs = rx.clone();
+        let mut rhs = rx.as_ref().clone();
         rhs.dilate(self.z);
         rhs.add_assign(&sy);
         rhs.add_assign(&self.tz);
 
-        rx.revdot(&rhs) == ky
+        self.lhs.push(rx);
+        self.rhs.push(rhs);
+    }
+
+    fn internal_circuit(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: &[&'rx structured::Polynomial<F, R>],
+    ) {
+        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+        let circuit_id = id.circuit_index(self.num_application_steps);
+
+        let rx = if rxs.len() == 1 {
+            Cow::Borrowed(rxs[0])
+        } else {
+            let mut sum = rxs[0].clone();
+            for rx in &rxs[1..] {
+                sum.add_assign(rx);
+            }
+            Cow::Owned(sum)
+        };
+
+        self.circuit_cow(circuit_id, rx);
+    }
+
+    fn stage(&mut self, id: InternalCircuitIndex, rxs: &[&'rx structured::Polynomial<F, R>]) {
+        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+
+        let circuit_id = id.circuit_index(self.num_application_steps);
+        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
+
+        let lhs = if rxs.len() == 1 {
+            Cow::Borrowed(rxs[0])
+        } else {
+            Cow::Owned(structured::Polynomial::fold(rxs.iter().copied(), self.z))
+        };
+
+        self.lhs.push(lhs);
+        self.rhs.push(sy);
     }
 }

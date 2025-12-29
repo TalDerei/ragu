@@ -98,7 +98,6 @@ use super::{
 };
 use crate::components::{fold_revdot, root_of_unity, suffix::Suffix};
 
-pub use crate::internal_circuits::InternalCircuitIndex::ErrorNFinalStaged as STAGED_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Circuit as CIRCUIT_ID;
 
 /// Public output of the first hash circuit.

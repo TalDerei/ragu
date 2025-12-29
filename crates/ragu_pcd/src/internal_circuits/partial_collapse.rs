@@ -31,7 +31,6 @@ use super::{
 };
 use crate::components::fold_revdot;
 
-pub use crate::internal_circuits::InternalCircuitIndex::ErrorNFinalStaged as STAGED_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::PartialCollapseCircuit as CIRCUIT_ID;
 
 /// Circuit that verifies layer 1 revdot folding.
