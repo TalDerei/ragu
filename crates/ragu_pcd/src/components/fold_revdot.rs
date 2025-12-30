@@ -58,6 +58,11 @@ fn off_diagonal_pairs(n: usize) -> impl Iterator<Item = (usize, usize)> {
     (0..n).flat_map(move |i| (0..n).filter_map(move |j| (i != j).then_some((i, j))))
 }
 
+/// Returns an iterator over all (i, j) pairs with a boolean indicating if diagonal.
+fn matrix_pairs(n: usize) -> impl Iterator<Item = (usize, usize, bool)> {
+    (0..n).flat_map(move |i| (0..n).map(move |j| (i, j, i == j)))
+}
+
 /// Reduction step for polynomials in the first layer of revdot folding.
 ///
 /// This takes a slice of polynomials (less than or equal to M * N in length)
@@ -123,6 +128,7 @@ fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
             // Computed using the cartesian product of indices, filtering out
             // diagonal entries.
             off_diagonal_pairs(Inner::len())
+                // Missing entries are zero polynomials, producing zero revdot products.
                 .map(|(i, j)| {
                     a_chunk
                         .get(i)
@@ -209,29 +215,25 @@ fn fold_products_impl<'dr, D: Driver<'dr>, S: Len>(
 
     let mut result = Element::zero(dr);
     let mut row_power = Element::one();
+    let mut col_power = row_power.clone();
 
     let n = S::len();
-    for i in 0..n {
-        let mut col_power = row_power.clone();
-        for j in 0..n {
-            let term = if i == j {
-                ky_values.next().expect("should exist")
-            } else {
-                error_terms.next().expect("should exist")
-            };
+    for (i, j, is_diagonal) in matrix_pairs(n) {
+        let term = if is_diagonal {
+            ky_values.next().expect("should exist")
+        } else {
+            error_terms.next().expect("should exist")
+        };
 
-            let contribution = col_power.mul(dr, term)?;
-            result = result.add(dr, &contribution);
+        let contribution = col_power.mul(dr, term)?;
+        result = result.add(dr, &contribution);
 
-            // Skip last column (col_power won't be used again)
-            if j < n - 1 {
-                col_power = col_power.mul(dr, munu)?;
-            }
-        }
-
-        // Skip last row (row_power won't be used again)
-        if i < n - 1 {
+        // Update powers for next iteration.
+        if j < n - 1 {
+            col_power = col_power.mul(dr, munu)?;
+        } else if i < n - 1 {
             row_power = row_power.mul(dr, mu_inv)?;
+            col_power = row_power.clone();
         }
     }
 
