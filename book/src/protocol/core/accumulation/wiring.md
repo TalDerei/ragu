@@ -1,30 +1,44 @@
 # Split-accumulation for Wiring Consistency
 
+## The Problem
+
 In our [Polynomial IOP](../nark.md#polynomial-iop), the wiring polynomial
-$s(X,Y)$ that encodes the wiring among wires of `mul` gate is fixed and publicly
-accessible before any online proving. During the
-[verification](../nark.md#the-verification-checks), the verifier must conduct
-$O(n)$ amount of work to locally compute $s(x,y)$. Theoretically, the IOP prover
-can send a polynomial oracle for $s(X,Y)$ to the verifier for opening at any
-$(x,y)$ evaluation point cheaply. However, this would necessitate a bivariate PCS
--- a complexity Ragu tries to avoid. Ragu only relies on simple univariate PCS.
+$s(X,Y)$ encodes how the wires of multiplication gates connect to each other.
+This polynomial is fixed and publicly known before proving begins. During
+[verification](../nark.md#the-verification-checks), the verifier needs to
+evaluate $s(x,y)$ at random challenge points—but computing this directly
+requires $O(n)$ work, where $n$ is the circuit size.
 
-Instead, in [step 3 of our NARK](../nark.md#nark), the NARK prover sends over the
-commitment $S\in\G$ of the univariate $s(X,y)$ fixated at the challenge $y\in\F$.
-Then, in step 4, the prover starts a _wiring consistency_ protocol to convince
-the verifier that $S$ is indeed a valid commitment to $s(X,y)$ rather than some
-arbitrary circuits $s'(X,y)$.
+We could avoid this cost by having the prover commit to the full bivariate
+polynomial $s(X,Y)$ and open it at any point $(x,y)$ the verifier requests.
+However, this approach would require a bivariate polynomial commitment scheme
+(PCS), adding significant complexity. Ragu's design philosophy is to rely only
+on simple univariate PCS.
 
-[Halo paper](https://eprint.iacr.org/2019/1021) proposed one construction for
-a [single fixed circuit](#single-circuit-consistency). Ragu extends it to support
-proving $s_i(X,Y)$ belongs to a [fixed set of circuits](#mesh-concistency)
-$\set{s_j(X,Y)}$. Such extension allows consistency checks on different step
-circuits (and even more granular sub-step circuits) as long as they are from a
-[_mesh_](../../extensions/mesh.md) of pre-registered circuits.
+## Our Solution
+
+Instead, in [step 3 of our NARK](../nark.md#nark), the prover commits to a
+univariate restriction $s(X,y)$ after the verifier provides the challenge
+$y\in\F$. The prover sends a commitment $S\in\G$ to this univariate polynomial.
+But now we have a new problem: how does the verifier know that $S$ actually
+commits to the correct $s(X,y)$ from the fixed wiring polynomial, and not some
+arbitrary polynomial $s'(X,y)$ that the prover made up?
+
+This is where _wiring consistency_ comes in. We need a protocol that lets the
+prover convince the verifier that their commitment is consistent with the known
+wiring structure, without the verifier doing $O(n)$ work.
+
+The [Halo paper](https://eprint.iacr.org/2019/1021) introduced a clever
+solution for [single fixed circuits](#single-circuit-consistency). Ragu extends
+this to handle a [mesh of multiple circuits](#mesh-consistency)—allowing us to
+verify that $s_i(X,Y)$ belongs to a fixed set of circuits $\set{s_j(X,Y)}$.
+This extension is crucial for proof-carrying data (PCD), where different steps
+might use different circuits from a pre-registered
+[_mesh_](../../extensions/mesh.md).
 
 ## Intuition
 
-A fundamental property of multivariate polynomials is that two degree-bounded polynomials are equal if and only if they agree at all points in their domain. Our protocol exploits this to verify polynomial equality probabilistically through random challenge points. 
+A fundamental property of multivariate polynomials is that two degree-bounded polynomials are equal if and only if they agree at all points in their domain. Our protocol exploits this to verify polynomial equality probabilistically through random challenge points.
 
 Given two representations of a polynomial $p(W, X, Y)$, we verify consistency by evaluating at random challenge points. By the Schwartz-Zippel lemma, if two distinct polynomials of degree $d$ are evaluated at a random point, they agree with probability at most $d/|\mathbb{F}|$.
 
@@ -39,41 +53,106 @@ The protocol uses *partial evaluations* to reduce the dimensionality of the poly
 
 This mirrors the technique used in the [sumcheck](https://people.cs.georgetown.edu/jthaler/sumcheck.pdf) protocol: within a protocol, we alternate between (univariate) restrictions of a polynomial using random challenges to prove equality, probabilistically reducing a claim about many different evaluations of a polynomial to a single polynomial evaluation.
 
-If independent parties claim to hold evaluations of the same mesh polynomial $m(W, X, Y)$ at different points $(w_i, x_i, y_i)$ and $(w_z, x_z, y_z)$, we can verify they share the same underlying polynomial by:
+### Linking Claims Through Restrictions
 
-1. Sampling random challenges $w^*, x^*, y^*$,
-2. Evaluating the claimed polynomials at restrictions like $m(w^*, X, Y)$, $m(W, x^*, Y)$, etc,
-3. Checking that the restricted polynomials agree at further challenge points
+If independent parties claim to hold evaluations of the same mesh polynomial $m(W, X, Y)$ at different points $(w_0, x_0, y_0)$ and $(w_1, x_1, y_1)$, we verify they share the same underlying polynomial by sampling random challenges and creating a chain of restrictions:
+1. Sample $w$; compute $m(w, x_0, Y)$ and $m(w, x_1, Y)$
+2. Sample $y$; compute $m(w, X, y)$ merging both branches
+3. Sample $x$; compute $m(W, x, y)$ as the new accumulator
 
-This ensures that claimed evaluations at different points are derived from the same underlying mesh $m(W, X, Y)$.
+Each restriction bridges different evaluation points through shared challenge points. By Schwartz-Zippel, if the prover uses inconsistent polynomials at any step, verification fails with overwhelming probability.
 
-## Single-circuit consistency
+## Single-circuit Consistency
 
-Instantiating the intuition above for a single fixed $s(X,Y)$. Let the accumulator 
-$\acc.\inst=(S_{old}\in\G, y_{old}\in\F)$ be the folded previous claims.
-Accordingly, the witness is $\acc.\wit=s_{old}(X,y_{old})\in\F[X]$.
+Instantiating the intuition above for a single fixed $s(X,Y)$. Consider folding
+two accumulators into one:
+- $\acc_0.\inst=(S_0\in\G, y_0\in\F)$ with witness $\acc_0.\wit=s(X,y_0)\in\F[X]$
+- $\acc_1.\inst=(S_1\in\G, y_1\in\F)$ with witness $\acc_1.\wit=s(X,y_1)\in\F[X]$
 
-Given a new claim $(S, y)$ (i.e. "$S=\com(s(X,y))$ with the challenge $y$"),
-the prover further folds it into the accumulator as follows:
+The protocol folds these into a single new accumulator as follows:
 
-1. Prover sends the new commitment $S$
-2. Verifier samples $x_{new}\sample\F$
-3. Prover sends the commitment to the restriction $S'\leftarrow \com(s(x_{new},Y))$
+1. Prover commits to both existing accumulators $S_0, S_1$
+2. Verifier samples $x\sample\F$
+3. Prover sends the commitment to the restriction $S'\leftarrow \com(s(x,Y))$
 4. Verifier samples $y_{new}\sample\F$
-5. Prover sends the updated accumulator $\acc'.S=S_{new}:= \com(s(X, y_{new}))$
+5. Prover sends the new accumulator $S_{new}:= \com(s(X, y_{new}))$
 6. Prover and Verifier engage in a [batched PCS evaluation](./pcs.md) protocol
-   for claims: $(S_{old}, x, v_1), (S', y_{old}, v_1), (S_{new}, x, v_2),
-   (S',y_{new}, v_2)$
+   for claims: $(S_0, x, v_0), (S', y_0, v_0), (S_1, x, v_1), (S', y_1, v_1),
+   (S_{new}, x, v_2), (S', y_{new}, v_2)$
 
-The partial evaluation $s'(x,Y)$ restricted at $x$ bridges the bivariate claims.
-The completeness property holds because:
+The partial evaluation $s(x,Y)$ restricted at $x$ bridges the two old
+accumulators to the new one. The completeness property holds because:
 $$
 \begin{cases}
-s_{old}(x_{new})=S(x_{new}, y_{old})=s'(y_{old})\\
-s_{new}(x_{new})=S(x_{new}, y_{new})=s'(y_{new})
+S_0(x)=s(x, y_0)=S'(y_0)\\
+S_1(x)=s(x, y_1)=S'(y_1)\\
+S_{new}(x)=s(x, y_{new})=S'(y_{new})
 \end{cases}
 $$
 
 ## Mesh Consistency
 
-Given the definition of [mesh polynomials](../../extensions/mesh.md), we now
+Recall the definition of [mesh polynomials](../../extensions/mesh.md#construction):
+
+$$
+m(W, X, Y) = \sum_{i=0}^{2^k-1} \ell_i(W) \cdot s_i(X, Y)
+$$
+
+where $\ell_i(W)$ is the Lagrange basis polynomials and $2^k$ is the domain size
+(namely total number of registered circuits in the mesh).
+The $i$-th circuit is $s_i(X,Y)=m(\omega^i, X, Y)$ where $\omega$ is the $2^k$-th
+primitive root of unity that generates the entire Lagrange domain[^simplify].
+
+[^simplify]: To disentangle orthogonal ideas and simplify presentation, we ignore
+the domain element remapping used to support
+[rolling domain extension](../../extensions/mesh.md#flexible-mesh-sizes-via-domain-extension),
+and use the naive $i\mapsto\omega^i$ mapping here.
+
+Extending the consistency check for bivariate $s(X,Y)$ to multivariate $m(W,X,Y)$.
+Consider folding two accumulators (e.g., from two child proofs in a binary PCD tree):
+
+$$
+\begin{align*}
+\acc_0.\inst&=(S_0\in\G, x_0, y_0\in\F) \text{ with witness } m(W, x_0, y_0)\in\F[W]\\
+\acc_1.\inst&=(S_1\in\G, x_1, y_1\in\F) \text{ with witness } m(W, x_1, y_1)\in\F[W]
+\end{align*}
+$$
+
+The split-accumulation for mesh consistency proceeds as follows:
+
+1. Prover commits to both existing accumulators $S_0, S_1$
+2. Verifier samples $w\sample\F$
+3. Prover sends commitment $S'$ containing:
+   - $S'_0 \leftarrow \com(m(w, x_0, Y))$
+   - $S'_1 \leftarrow \com(m(w, x_1, Y))$
+4. Verifier samples $y\sample\F$
+5. Prover sends the commitment to the merged restriction:
+   $S''\leftarrow \com(m(w, X, y))$
+6. Verifier samples $x\sample\F$
+7. Prover sends the new accumulator:
+   $S_{new}:=\com(m(W, x, y))$
+8. Prover and Verifier engage in a [batched PCS evaluation](./pcs.md) protocol
+   for claims:
+   $$
+   \begin{align*}
+   &(S_0, w, v_0), (S'_0, y_0, v_0),\\
+   &(S_1, w, v_1), (S'_1, y_1, v_1),\\
+   &(S'_0, y, v_2), (S'', x_0, v_2),\\
+   &(S'_1, y, v_3), (S'', x_1, v_3),\\
+   &(S'', x, v_4), (S_{new}, w, v_4)
+   \end{align*}
+   $$
+
+The partial evaluations $m(w, x_i, Y)$ restricted at challenge $w$ bridge the
+two old accumulators to the merged restriction $m(w, X, y)$, which then bridges
+to the new accumulator. The completeness property holds because:
+$$
+\begin{cases}
+S_0(w) = m(w, x_0, y_0) = S'_0(y_0)\\
+S_1(w) = m(w, x_1, y_1) = S'_1(y_1)\\
+S'_0(y) = m(w, x_0, y) = S''(x_0)\\
+S'_1(y) = m(w, x_1, y) = S''(x_1)\\
+S''(x) = m(w, x, y) = S_{new}(w)
+\end{cases}
+$$
+
