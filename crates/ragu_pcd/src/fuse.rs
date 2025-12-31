@@ -1102,6 +1102,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 query.mesh_xy_poly.iter_coeffs(),
                 right.application.circuit_id.omega_j(),
             ),
+            // Child A/B polynomial queries at current x
+            factor_iter(left.ab.a_poly.iter_coeffs(), x),
+            factor_iter(left.ab.b_poly.iter_coeffs(), x),
+            factor_iter(right.ab.a_poly.iter_coeffs(), x),
+            factor_iter(right.ab.b_poly.iter_coeffs(), x),
         ];
 
         let mut coeffs = Vec::new();

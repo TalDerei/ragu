@@ -261,6 +261,11 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
         // Verify new_mesh_xy at child proof circuit_ids
         (&eval.mesh_xy,            &query.left.new_mesh_xy_at_old_circuit_id,  &d.left_circuit_id),
         (&eval.mesh_xy,            &query.right.new_mesh_xy_at_old_circuit_id, &d.right_circuit_id),
+        // Child A/B polynomial queries at current x
+        (&eval.left.a_poly,        &query.left.a_poly_at_x,                    &d.x),
+        (&eval.left.b_poly,        &query.left.b_poly_at_x,                    &d.x),
+        (&eval.right.a_poly,       &query.right.a_poly_at_x,                   &d.x),
+        (&eval.right.b_poly,       &query.right.b_poly_at_x,                   &d.x),
     ]
     .into_iter()
 }
