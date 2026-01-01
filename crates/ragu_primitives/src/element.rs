@@ -9,6 +9,7 @@ use ragu_core::{
 };
 
 use alloc::vec::Vec;
+use core::borrow::Borrow;
 
 use crate::{
     Boolean,
@@ -312,17 +313,14 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
     /// Folds an iterator of elements into a single element with successive
     /// powers of the provided scale factor.
-    pub fn fold<'a>(
+    pub fn fold<E: Borrow<Element<'dr, D>>>(
         dr: &mut D,
-        elements: impl DoubleEndedIterator<Item = &'a Element<'dr, D>>,
+        elements: impl DoubleEndedIterator<Item = E>,
         scale: &Element<'dr, D>,
-    ) -> Result<Self>
-    where
-        'dr: 'a,
-        D: 'a,
-    {
+    ) -> Result<Self> {
         elements.rev().try_fold(Element::zero(dr), |acc, elem| {
-            acc.mul(dr, scale).map(|scaled| scaled.add(dr, elem))
+            acc.mul(dr, scale)
+                .map(|scaled| scaled.add(dr, elem.borrow()))
         })
     }
 
@@ -330,14 +328,13 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// This is more efficient than [`Element::fold`] with scale=1 because it
     /// avoids multiplication constraints.
-    pub fn sum<'a>(dr: &mut D, elements: impl IntoIterator<Item = &'a Element<'dr, D>>) -> Self
-    where
-        'dr: 'a,
-        D: 'a,
-    {
+    pub fn sum<E: Borrow<Element<'dr, D>>>(
+        dr: &mut D,
+        elements: impl IntoIterator<Item = E>,
+    ) -> Self {
         elements
             .into_iter()
-            .fold(Element::zero(dr), |acc, elem| acc.add(dr, elem))
+            .fold(Element::zero(dr), |acc, elem| acc.add(dr, elem.borrow()))
     }
 }
 
