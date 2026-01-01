@@ -156,4 +156,41 @@ pub mod native {
     pub mod eval;
     pub mod preamble;
     pub mod query;
+
+    #[cfg(test)]
+    pub(crate) mod tests {
+        use ff::PrimeField;
+        use ragu_circuits::{polynomials::Rank, staging::Stage};
+        use ragu_core::{
+            drivers::emulator::{Emulator, Wireless},
+            gadgets::{Gadget, GadgetKind},
+            maybe::Empty,
+        };
+
+        pub(crate) type TestR = ragu_circuits::polynomials::R<13>;
+
+        pub(crate) use crate::internal_circuits::test_params::HEADER_SIZE as TEST_HEADER_SIZE;
+
+        pub(crate) use crate::components::fold_revdot::NativeParameters;
+
+        pub(crate) fn assert_stage_values<F, R, S>(stage: &S)
+        where
+            F: PrimeField,
+            R: Rank,
+            S: Stage<F, R>,
+            for<'dr> <S::OutputKind as GadgetKind<F>>::Rebind<'dr, Emulator<Wireless<Empty, F>>>:
+                Gadget<'dr, Emulator<Wireless<Empty, F>>>,
+        {
+            let mut emulator = Emulator::<Wireless<Empty, F>>::wireless();
+            let output = stage
+                .witness(&mut emulator, Empty)
+                .expect("allocation should succeed");
+
+            assert_eq!(
+                output.num_wires(),
+                S::values(),
+                "Stage::values() does not match actual wire count"
+            );
+        }
+    }
 }

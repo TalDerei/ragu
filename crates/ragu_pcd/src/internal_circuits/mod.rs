@@ -160,7 +160,7 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
 }
 
 #[cfg(test)]
-mod test_params {
+pub(crate) mod test_params {
     use super::*;
     use crate::*;
     use ragu_circuits::polynomials::R;
@@ -171,7 +171,7 @@ mod test_params {
     // When changing HEADER_SIZE, update the constraint counts by running:
     //   cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture
     // Then copy-paste the output into the check_constraints! calls in the test below.
-    const HEADER_SIZE: usize = 37;
+    pub(crate) const HEADER_SIZE: usize = 37;
 
     // Number of dummy application circuits to register before testing internal
     // circuits. This ensures the tests work correctly even when application

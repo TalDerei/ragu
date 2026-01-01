@@ -20,9 +20,6 @@ use crate::{Proof, internal_circuits::NUM_INTERNAL_CIRCUITS};
 
 pub use crate::internal_circuits::InternalCircuitIndex::QueryStage as STAGING_ID;
 
-/// Number of polynomial evaluations per child proof.
-const NUM_EVALS_PER_CHILD: usize = 27;
-
 /// Pre-computed evaluations of mesh_xy at each internal circuit's omega^j.
 pub struct FixedMeshWitness<F> {
     pub preamble_stage: F,
@@ -325,7 +322,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        NUM_INTERNAL_CIRCUITS + 1 + 2 * NUM_EVALS_PER_CHILD
+        // FixedMeshEvaluations (12) + mesh_wxy (1) + 2 * ChildEvaluations (27 each)
+        NUM_INTERNAL_CIRCUITS + 1 + 2 * 27
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -346,5 +344,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
             left,
             right,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internal_circuits::stages::native::tests::{
+        TEST_HEADER_SIZE, TestR, assert_stage_values,
+    };
+    use ragu_pasta::Pasta;
+
+    #[test]
+    fn stage_values_matches_wire_count() {
+        assert_stage_values(&Stage::<Pasta, TestR, { TEST_HEADER_SIZE }>::default());
     }
 }

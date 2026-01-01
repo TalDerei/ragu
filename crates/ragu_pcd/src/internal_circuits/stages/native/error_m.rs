@@ -76,3 +76,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         Ok(Output { error_terms })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internal_circuits::stages::native::tests::{
+        NativeParameters, TEST_HEADER_SIZE, TestR, assert_stage_values,
+    };
+    use ragu_pasta::Pasta;
+
+    #[test]
+    fn stage_values_matches_wire_count() {
+        assert_stage_values(
+            &Stage::<Pasta, TestR, { TEST_HEADER_SIZE }, NativeParameters>::default(),
+        );
+    }
+}

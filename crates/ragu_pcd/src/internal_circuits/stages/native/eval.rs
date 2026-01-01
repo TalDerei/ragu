@@ -77,13 +77,6 @@ pub struct Witness<F> {
     pub current: CurrentStepWitness<F>,
 }
 
-/// The number of elements inside of a `ChildEvaluations` gadget, representing
-/// the number of evaluations at `u` per child proof.
-const NUM_EVALS_PER_CHILD_PROOF: usize = 15;
-
-/// The number of evaluations at `u` for the current fuse step's polynomials.
-const NUM_EVALS_FOR_CURRENT_STEP: usize = 6;
-
 /// Committed (claimed) polynomial evaluations at $u$ (from the parent fuse
 /// operation) for an individual child proof.
 ///
@@ -186,7 +179,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        NUM_EVALS_PER_CHILD_PROOF * 2 + NUM_EVALS_FOR_CURRENT_STEP
+        // 2 * ChildEvaluations (15 each) + current step elements (6)
+        2 * 15 + 6
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -199,14 +193,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     {
         let left = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.left))?;
         let right = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.right))?;
-
         let mesh_wx0 = Element::alloc(dr, witness.view().map(|w| w.current.mesh_wx0))?;
         let mesh_wx1 = Element::alloc(dr, witness.view().map(|w| w.current.mesh_wx1))?;
         let mesh_wy = Element::alloc(dr, witness.view().map(|w| w.current.mesh_wy))?;
         let a_poly = Element::alloc(dr, witness.view().map(|w| w.current.a_poly))?;
         let b_poly = Element::alloc(dr, witness.view().map(|w| w.current.b_poly))?;
         let mesh_xy = Element::alloc(dr, witness.view().map(|w| w.current.mesh_xy))?;
-
         Ok(Output {
             left,
             right,
@@ -217,5 +209,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
             b_poly,
             mesh_xy,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internal_circuits::stages::native::tests::{
+        TEST_HEADER_SIZE, TestR, assert_stage_values,
+    };
+    use ragu_pasta::Pasta;
+
+    #[test]
+    fn stage_values_matches_wire_count() {
+        assert_stage_values(&Stage::<Pasta, TestR, { TEST_HEADER_SIZE }>::default());
     }
 }
