@@ -26,7 +26,7 @@ use ragu_core::{Error, Result};
 use rand::Rng;
 
 use alloc::collections::BTreeMap;
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
 use header::Header;
 pub use proof::{Pcd, Proof};
@@ -141,6 +141,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
             circuit_mesh: self.circuit_mesh.finalize(C::circuit_poseidon(params))?,
             params,
             num_application_steps: self.num_application_steps,
+            seeded_trivial: OnceCell::new(),
             _marker: PhantomData,
         })
     }
@@ -168,6 +169,8 @@ pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
     circuit_mesh: Mesh<'params, C::CircuitField, R>,
     params: &'params C::Params,
     num_application_steps: usize,
+    /// Cached seeded trivial proof for rerandomization.
+    seeded_trivial: OnceCell<Proof<C, R>>,
     _marker: PhantomData<[(); HEADER_SIZE]>,
 }
 
@@ -186,13 +189,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         self.fuse(rng, step, witness, self.trivial_pcd(), self.trivial_pcd())
     }
 
+    /// Returns a seeded trivial proof for use in rerandomization.
+    ///
+    /// A seeded trivial is a trivial proof that has been through `seed()`
+    /// (folded with itself). This gives it valid proof structure, avoiding
+    /// base case detection issues.
+    ///
+    /// The proof is lazily created on first use and cached. *Importantly*,
+    /// note that this may return the same proof on subsequent calls, and
+    /// is not random.
+    fn seeded_trivial_pcd<'source, RNG: Rng>(&self, rng: &mut RNG) -> Pcd<'source, C, R, ()> {
+        let proof = self.seeded_trivial.get_or_init(|| {
+            self.seed(rng, step::trivial::Trivial::new(), ())
+                .expect("seeded trivial seed should not fail")
+                .0
+        });
+        proof.clone().carry(())
+    }
+
     /// Rerandomize proof-carrying data.
     ///
-    /// This will internally fold the [`Pcd`] with a random proof instance using
-    /// an internal rerandomization step, such that the resulting proof is valid
-    /// for the same [`Header`] but reveals nothing else about the original
-    /// proof. As a result, [`Application::verify`] should produce the same
-    /// result on the provided `pcd` as it would the output of this method.
+    /// This will internally fold the [`Pcd`] with a seeded trivial proof
+    /// using an internal rerandomization step, such that the resulting proof
+    /// is valid for the same [`Header`] but reveals nothing else about the
+    /// original proof. As a result, [`Application::verify`] should produce the
+    /// same result on the provided `pcd` as it would the output of this method.
     pub fn rerandomize<'source, RNG: Rng, H: Header<C::CircuitField>>(
         &self,
         pcd: Pcd<'source, C, R, H>,
@@ -202,14 +223,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Seed a trivial proof for rerandomization.
         // TODO: this is a temporary hack that allows the base case logic to be simple
-        let seeded_trivial = self.seed(rng, step::trivial::Trivial::new(), ())?.0;
-
+        let seeded_trivial = self.seeded_trivial_pcd(rng);
         let rerandomized_proof = self.fuse(
             rng,
             step::rerandomize::Rerandomize::new(),
             (),
             pcd,
-            seeded_trivial.carry(()),
+            seeded_trivial,
         )?;
 
         Ok(rerandomized_proof.0.carry(data))
