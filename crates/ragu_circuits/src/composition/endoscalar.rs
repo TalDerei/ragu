@@ -108,9 +108,9 @@ pub struct EndoscalingInstance<C: CurveAffine, const NUM_SLOTS: usize> {
 #[derive(Gadget, Write)]
 pub struct EndoscalingOutput<'dr, D: Driver<'dr>, C: CurveAffine> {
     #[ragu(gadget)]
-    input: Point<'dr, D, C>,
+    pub input: Point<'dr, D, C>,
     #[ragu(gadget)]
-    output: Point<'dr, D, C>,
+    pub output: Point<'dr, D, C>,
 }
 
 impl<C: CurveAffine, R: Rank, const NUM_SLOTS: usize> StagedCircuit<C::Base, R>
