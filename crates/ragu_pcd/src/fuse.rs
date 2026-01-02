@@ -185,6 +185,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &x, &alpha, &u, &beta,
         );
 
+        // Compute the internal circuits that certify the correctness of the
+        // transcript simultated thus far.
         let circuits = self.compute_internal_circuits(
             rng,
             &preamble,
