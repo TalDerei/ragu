@@ -80,12 +80,28 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         Point::constant(&mut dr, preamble.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let w = transcript.squeeze(&mut dr)?;
 
+        // After the `w` challenge is selected, we can evaluate m(w, x_i, Y) for
+        // both x_i (old proof challenges) and commit to them, to later
+        // reduce/fold their consistency checks together.
         let s_prime = self.compute_s_prime(rng, &w, &left, &right)?;
         Point::constant(&mut dr, s_prime.nested_s_prime_commitment)?
             .write(&mut dr, &mut transcript)?;
         let y = transcript.squeeze(&mut dr)?;
         let z = transcript.squeeze(&mut dr)?;
 
+        // After the `y` and `z` challenges are selected, we can evaluate the
+        // `error_m` stage which commits to:
+        // 1. m(w, X, y) (mesh_wy)
+        // 2. The first layer of the error terms for revdot products
+        // 3. The k(y) evaluations for the left and right proofs
+        //
+        // Crucially, by now every component of every revdot product claim being
+        // folded has been committed to the transcript. Each proof's circuits
+        // (via commitments) have been committed in the preamble stage (as part
+        // of the `nested_preamble_commitment`) and nested commitments to the
+        // remaining components (stage commitments, interstitial polynomials for
+        // things like s_prime or f(X)) are committed in the native preamble
+        // stage because they are also part of the unified instance.
         let (error_m, error_m_witness, prover_context) =
             self.compute_errors_m(rng, &w, &y, &z, &left, &right)?;
         Point::constant(&mut dr, error_m.nested_commitment)?.write(&mut dr, &mut transcript)?;
@@ -105,6 +121,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = transcript.squeeze(&mut dr)?;
         let nu = transcript.squeeze(&mut dr)?;
 
+        // Once we have `mu` and `nu`, we can perform the next layer of the
+        // revdot product reduction. This requires the prover to commit to a new
+        // set of error terms.
         let (error_n, error_n_witness, a, b) = self.compute_errors_n(
             rng,
             &preamble_witness,
@@ -119,30 +138,49 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime = transcript.squeeze(&mut dr)?;
         let nu_prime = transcript.squeeze(&mut dr)?;
 
+        // The final revdot claim can now be computed, folding everything into a
+        // single claim of the form << a, b >> = c. We can now construct the A/B
+        // polynomials and commit to their revdot product; the circuits will
+        // later impose the necessary constraints on the value of `c` when not
+        // in the base case.
         let ab = self.compute_ab(rng, a, b, &mu_prime, &nu_prime)?;
         Point::constant(&mut dr, ab.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let x = transcript.squeeze(&mut dr)?;
 
+        // We can now commit to s(W, x, y), and the evaluations at x, xz, etc.
+        // that are needed to recompute the expected evaluation of the claimed
+        // A/B polynomials.
         let (query, query_witness) =
             self.compute_query(rng, &w, &x, &y, &z, &error_m, &left, &right)?;
         Point::constant(&mut dr, query.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let alpha = transcript.squeeze(&mut dr)?;
 
+        // The `alpha` challenge is used to keep the query (quotient)
+        // polynomials linearly independent. We can now commit to f(X).
         let f = self.compute_f(
             rng, &w, &y, &z, &x, &alpha, &s_prime, &error_m, &ab, &query, &left, &right,
         )?;
         Point::constant(&mut dr, f.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let u = transcript.squeeze(&mut dr)?;
 
+        // We can now commit to the `eval` stage containing the claimed
+        // evaluations of every polynomial at `u`, used to enforce the query
+        // stage claimed evaluations, derived evaluations, or reductions of
+        // claims by the child proofs.
         let (eval, eval_witness) =
             self.compute_eval(rng, &u, &left, &right, &s_prime, &error_m, &ab, &query)?;
         Point::constant(&mut dr, eval.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let beta = transcript.squeeze(&mut dr)?;
 
+        // We can now compute the expected value of p(X) and the claimed
+        // evaluation at u; the circuit imposes the expected evaluation.
         let p = self.compute_p(
             rng, &beta, &u, &left, &right, &s_prime, &error_m, &ab, &query, &f,
         )?;
 
+        // These values are needed by the circuits in the next (parent) fuse
+        // step in order to assemble the unified instance, and because they
+        // encode details about accumulators.
         let challenges = proof::Challenges::new(
             &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &x, &alpha, &u, &beta,
         );
