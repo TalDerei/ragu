@@ -179,8 +179,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
 /// Denominators for a single child proof evaluation points.
 struct ChildDenominators<'dr, D: Driver<'dr>> {
     u: Element<'dr, D>,
-    old_y: Element<'dr, D>,
-    old_x: Element<'dr, D>,
+    y: Element<'dr, D>,
+    x: Element<'dr, D>,
     circuit_id: Element<'dr, D>,
 }
 
@@ -245,14 +245,14 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         Ok(Denominators {
             left: ChildDenominators {
                 u:          u.sub(dr, &preamble.left.unified.u).invert(dr)?,
-                old_y:      u.sub(dr, &preamble.left.unified.y).invert(dr)?,
-                old_x:      u.sub(dr, &preamble.left.unified.x).invert(dr)?,
+                y:          u.sub(dr, &preamble.left.unified.y).invert(dr)?,
+                x:          u.sub(dr, &preamble.left.unified.x).invert(dr)?,
                 circuit_id: u.sub(dr, &preamble.left.circuit_id).invert(dr)?,
             },
             right: ChildDenominators {
                 u:          u.sub(dr, &preamble.right.unified.u).invert(dr)?,
-                old_y:      u.sub(dr, &preamble.right.unified.y).invert(dr)?,
-                old_x:      u.sub(dr, &preamble.right.unified.x).invert(dr)?,
+                y:          u.sub(dr, &preamble.right.unified.y).invert(dr)?,
+                x:          u.sub(dr, &preamble.right.unified.x).invert(dr)?,
                 circuit_id: u.sub(dr, &preamble.right.circuit_id).invert(dr)?,
             },
             challenges: ChallengeDenominators {
@@ -340,8 +340,8 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
 
     fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
         [
-            &self.left.new_mesh_xy_at_old_circuit_id,
-            &self.right.new_mesh_xy_at_old_circuit_id,
+            &self.left.current_mesh_xy_at_child_circuit_id,
+            &self.right.current_mesh_xy_at_child_circuit_id,
         ]
         .into_iter()
     }
@@ -471,6 +471,7 @@ fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
 /// The queries must be ordered exactly as in the prover's computation of $f(X)$
 /// in [`crate::Application::compute_f`], since the ordering affects the weight
 /// (with respect to $\alpha$) of each quotient polynomial.
+#[rustfmt::skip]
 fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
     eval: &'a native_eval::Output<'dr, D>,
     query: &'a native_query::Output<'dr, D>,
@@ -478,162 +479,71 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
     d: &'a Denominators<'dr, D>,
     computed_ax: &'a Element<'dr, D>,
     computed_bx: &'a Element<'dr, D>,
-) -> impl Iterator<
-    Item = (
-        &'a Element<'dr, D>,
-        &'a Element<'dr, D>,
-        &'a Element<'dr, D>,
-    ),
-> {
+) -> impl Iterator<Item = (&'a Element<'dr, D>, &'a Element<'dr, D>, &'a Element<'dr, D>)> {
     [
         // Check p(u) = v for each child proof.
-        (&eval.left.p_poly, &preamble.left.unified.v, &d.left.u),
-        (&eval.right.p_poly, &preamble.right.unified.v, &d.right.u),
+        (&eval.left.p_poly,        &preamble.left.unified.v,                     &d.left.u),
+        (&eval.right.p_poly,       &preamble.right.unified.v,                    &d.right.u),
         // m(W, x_i, y_i) -> m(w, x_i, Y)
-        (
-            &eval.left.mesh_xy_poly,
-            &query.left.old_mesh_xy_at_new_w,
-            &d.challenges.w,
-        ),
-        (
-            &eval.right.mesh_xy_poly,
-            &query.right.old_mesh_xy_at_new_w,
-            &d.challenges.w,
-        ),
-        (
-            &eval.mesh_wx0,
-            &query.left.old_mesh_xy_at_new_w,
-            &d.left.old_y,
-        ),
-        (
-            &eval.mesh_wx1,
-            &query.right.old_mesh_xy_at_new_w,
-            &d.right.old_y,
-        ),
+        (&eval.left.mesh_xy_poly,  &query.left.child_mesh_xy_at_current_w,       &d.challenges.w),
+        (&eval.right.mesh_xy_poly, &query.right.child_mesh_xy_at_current_w,      &d.challenges.w),
+        (&eval.mesh_wx0,           &query.left.child_mesh_xy_at_current_w,       &d.left.y),
+        (&eval.mesh_wx1,           &query.right.child_mesh_xy_at_current_w,      &d.right.y),
         // m(w, x_i, Y) -> m(w, X, y)
-        (
-            &eval.mesh_wx0,
-            &query.left.new_mesh_wy_at_old_x,
-            &d.challenges.y,
-        ),
-        (
-            &eval.mesh_wx1,
-            &query.right.new_mesh_wy_at_old_x,
-            &d.challenges.y,
-        ),
-        (
-            &eval.mesh_wy,
-            &query.left.new_mesh_wy_at_old_x,
-            &d.left.old_x,
-        ),
-        (
-            &eval.mesh_wy,
-            &query.right.new_mesh_wy_at_old_x,
-            &d.right.old_x,
-        ),
+        (&eval.mesh_wx0,           &query.left.current_mesh_wy_at_child_x,       &d.challenges.y),
+        (&eval.mesh_wx1,           &query.right.current_mesh_wy_at_child_x,      &d.challenges.y),
+        (&eval.mesh_wy,            &query.left.current_mesh_wy_at_child_x,       &d.left.x),
+        (&eval.mesh_wy,            &query.right.current_mesh_wy_at_child_x,      &d.right.x),
         // m(w, X, y) -> s(W, x, y)
-        (&eval.mesh_wy, &query.mesh_wxy, &d.challenges.x),
-        (&eval.mesh_xy, &query.mesh_wxy, &d.challenges.w),
-    ]
-    .into_iter()
+        (&eval.mesh_wy,            &query.mesh_wxy,                              &d.challenges.x),
+        (&eval.mesh_xy,            &query.mesh_wxy,                              &d.challenges.w),
+    ].into_iter()
     // m(\omega^j, x, y) evaluations for each internal index j
-    .chain(
-        [
-            (&query.fixed_mesh.preamble_stage, &d.internal.preamble_stage),
-            (&query.fixed_mesh.error_m_stage, &d.internal.error_m_stage),
-            (&query.fixed_mesh.error_n_stage, &d.internal.error_n_stage),
-            (&query.fixed_mesh.query_stage, &d.internal.query_stage),
-            (&query.fixed_mesh.eval_stage, &d.internal.eval_stage),
-            (
-                &query.fixed_mesh.error_n_final_staged,
-                &d.internal.error_n_final_staged,
-            ),
-            (
-                &query.fixed_mesh.eval_final_staged,
-                &d.internal.eval_final_staged,
-            ),
-            (
-                &query.fixed_mesh.hashes_1_circuit,
-                &d.internal.hashes_1_circuit,
-            ),
-            (
-                &query.fixed_mesh.hashes_2_circuit,
-                &d.internal.hashes_2_circuit,
-            ),
-            (
-                &query.fixed_mesh.partial_collapse_circuit,
-                &d.internal.partial_collapse_circuit,
-            ),
-            (
-                &query.fixed_mesh.full_collapse_circuit,
-                &d.internal.full_collapse_circuit,
-            ),
-            (
-                &query.fixed_mesh.compute_v_circuit,
-                &d.internal.compute_v_circuit,
-            ),
-        ]
-        .into_iter()
-        .map(|(v, denom)| (&eval.mesh_xy, v, denom)),
-    )
+    .chain([
+        (&query.fixed_mesh.preamble_stage,           &d.internal.preamble_stage),
+        (&query.fixed_mesh.error_m_stage,            &d.internal.error_m_stage),
+        (&query.fixed_mesh.error_n_stage,            &d.internal.error_n_stage),
+        (&query.fixed_mesh.query_stage,              &d.internal.query_stage),
+        (&query.fixed_mesh.eval_stage,               &d.internal.eval_stage),
+        (&query.fixed_mesh.error_n_final_staged,     &d.internal.error_n_final_staged),
+        (&query.fixed_mesh.eval_final_staged,        &d.internal.eval_final_staged),
+        (&query.fixed_mesh.hashes_1_circuit,         &d.internal.hashes_1_circuit),
+        (&query.fixed_mesh.hashes_2_circuit,         &d.internal.hashes_2_circuit),
+        (&query.fixed_mesh.partial_collapse_circuit, &d.internal.partial_collapse_circuit),
+        (&query.fixed_mesh.full_collapse_circuit,    &d.internal.full_collapse_circuit),
+        (&query.fixed_mesh.compute_v_circuit,        &d.internal.compute_v_circuit),
+    ].into_iter().map(|(v, denom)| (&eval.mesh_xy, v, denom)))
     .chain([
         // m(circuit_id_i, x, y) evaluations for the ith child proof
-        (
-            &eval.mesh_xy,
-            &query.left.new_mesh_xy_at_old_circuit_id,
-            &d.left.circuit_id,
-        ),
-        (
-            &eval.mesh_xy,
-            &query.right.new_mesh_xy_at_old_circuit_id,
-            &d.right.circuit_id,
-        ),
+        (&eval.mesh_xy,            &query.left.current_mesh_xy_at_child_circuit_id,  &d.left.circuit_id),
+        (&eval.mesh_xy,            &query.right.current_mesh_xy_at_child_circuit_id, &d.right.circuit_id),
         // a_i(x), b_i(x) polynomial queries at x for each child proof
-        (&eval.left.a_poly, &query.left.a_poly_at_x, &d.challenges.x),
-        (&eval.left.b_poly, &query.left.b_poly_at_x, &d.challenges.x),
-        (
-            &eval.right.a_poly,
-            &query.right.a_poly_at_x,
-            &d.challenges.x,
-        ),
-        (
-            &eval.right.b_poly,
-            &query.right.b_poly_at_x,
-            &d.challenges.x,
-        ),
+        (&eval.left.a_poly,        &query.left.a_poly_at_x,                          &d.challenges.x),
+        (&eval.left.b_poly,        &query.left.b_poly_at_x,                          &d.challenges.x),
+        (&eval.right.a_poly,       &query.right.a_poly_at_x,                         &d.challenges.x),
+        (&eval.right.b_poly,       &query.right.b_poly_at_x,                         &d.challenges.x),
         // a(x), b(x) polynomial queries for the new accumulator; crucially, these evaluations
         // are computed by the verifier based on the other evaluations, NOT witnessed by the
         // prover.
-        (&eval.a_poly, computed_ax, &d.challenges.x),
-        (&eval.b_poly, computed_bx, &d.challenges.x),
+        (&eval.a_poly,             computed_ax,                                      &d.challenges.x),
+        (&eval.b_poly,             computed_bx,                                      &d.challenges.x),
     ])
     // Stage and circuit evaluations for each child proof at both x and xz
     // Note: both points are needed to perform circuit checks, which take
     // the form << r, r \circ z + s_y + t_z >> = k_y.
-    .chain(
-        [(&eval.left, &query.left), (&eval.right, &query.right)]
-            .into_iter()
-            .flat_map(|(eval, query)| {
-                [
-                    (&eval.preamble, &query.preamble),
-                    (&eval.error_m, &query.error_m),
-                    (&eval.error_n, &query.error_n),
-                    (&eval.query, &query.query),
-                    (&eval.eval, &query.eval),
-                    (&eval.application, &query.application),
-                    (&eval.hashes_1, &query.hashes_1),
-                    (&eval.hashes_2, &query.hashes_2),
-                    (&eval.partial_collapse, &query.partial_collapse),
-                    (&eval.full_collapse, &query.full_collapse),
-                    (&eval.compute_v, &query.compute_v),
-                ]
-                .into_iter()
-                .flat_map(|(e, q)| {
-                    [
-                        (e, &q.at_x, &d.challenges.x),
-                        (e, &q.at_xz, &d.challenges.xz),
-                    ]
-                })
-            }),
-    )
+    .chain([(&eval.left, &query.left), (&eval.right, &query.right)]
+        .into_iter()
+        .flat_map(|(eval, query)| [
+            (&eval.preamble,         &query.preamble),
+            (&eval.error_m,          &query.error_m),
+            (&eval.error_n,          &query.error_n),
+            (&eval.query,            &query.query),
+            (&eval.eval,             &query.eval),
+            (&eval.application,      &query.application),
+            (&eval.hashes_1,         &query.hashes_1),
+            (&eval.hashes_2,         &query.hashes_2),
+            (&eval.partial_collapse, &query.partial_collapse),
+            (&eval.full_collapse,    &query.full_collapse),
+            (&eval.compute_v,        &query.compute_v),
+        ].into_iter().flat_map(|(e, q)| [(e, &q.at_x, &d.challenges.x), (e, &q.at_xz, &d.challenges.xz)])))
 }
