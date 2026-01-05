@@ -1,7 +1,9 @@
-//! Common abstraction for building revdot claim polynomial vectors.
+//! Common abstraction for orchestrating revdot claims.
 //!
-//! This module provides a unified interface for assembling `a` and `b` polynomial
-//! vectors for revdot claim verification, used by both verification and proving.
+//! This module provides a unified interface for assembling `a` and `b`
+//! polynomial vectors for revdot claim verification, used by both verification
+//! and proving. The same abstraction is used to handle consistency evaluation
+//! logic in the recursive circuit.
 //!
 //! The abstraction separates:
 //! - [`ClaimSource`]: Provides rx values from proof sources
@@ -290,20 +292,21 @@ impl<'m, 'rx, F: PrimeField, R: Rank>
     fn internal_circuit(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+        mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) {
         let circuit_id = id.circuit_index(self.num_application_steps);
-        let rxs: Vec<_> = rxs.collect();
-        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+        let first = rxs.next().expect("must provide at least one rx polynomial");
 
-        let rx = if rxs.len() == 1 {
-            Cow::Borrowed(rxs[0])
-        } else {
-            let mut sum = rxs[0].clone();
-            for rx in &rxs[1..] {
-                sum.add_assign(rx);
+        let rx = match rxs.next() {
+            None => Cow::Borrowed(first),
+            Some(second) => {
+                let mut sum = first.clone();
+                sum.add_assign(second);
+                for rx in rxs {
+                    sum.add_assign(rx);
+                }
+                Cow::Owned(sum)
             }
-            Cow::Owned(sum)
         };
 
         self.circuit_impl(circuit_id, rx);
@@ -312,18 +315,21 @@ impl<'m, 'rx, F: PrimeField, R: Rank>
     fn stage(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+        mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) -> Result<()> {
-        let rxs: Vec<_> = rxs.collect();
-        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+        let first = rxs.next().expect("must provide at least one rx polynomial");
 
         let circuit_id = id.circuit_index(self.num_application_steps);
         let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
 
-        let a = if rxs.len() == 1 {
-            Cow::Borrowed(rxs[0])
-        } else {
-            Cow::Owned(structured::Polynomial::fold(rxs, self.z))
+        let a = match rxs.next() {
+            None => Cow::Borrowed(first),
+            Some(second) => Cow::Owned(structured::Polynomial::fold(
+                core::iter::once(first)
+                    .chain(core::iter::once(second))
+                    .chain(rxs),
+                self.z,
+            )),
         };
 
         self.a.push(a);

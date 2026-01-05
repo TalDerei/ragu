@@ -12,7 +12,7 @@ use ragu_core::{
 use ragu_primitives::{Element, GadgetExt};
 
 use alloc::vec::Vec;
-use core::{iter, marker::PhantomData};
+use core::marker::PhantomData;
 
 use crate::components::claim_builder::{self, ClaimProcessor, ClaimSource, RxComponent};
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
@@ -265,10 +265,6 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     }
 }
 
-// ============================================================================
-// Evaluation Context Implementation (for compute_v circuit)
-// ============================================================================
-
 /// Rx type for evaluation context: (at_x, at_xz) tuple.
 type RxEval<'a, 'dr, D> = (&'a Element<'dr, D>, &'a Element<'dr, D>);
 
@@ -433,18 +429,21 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = RxEval<'a, 'dr, D>>,
     ) {
-        let (ax_evals, bx_evals): (Vec<_>, Vec<_>) = rxs.unzip();
         let mesh = self.fixed_mesh.circuit_mesh(id);
 
+        let mut a_sum = Element::zero(self.dr);
+        let mut b_sum = Element::zero(self.dr);
+
+        for (ax, bx) in rxs {
+            a_sum = a_sum.add(self.dr, ax);
+            b_sum = b_sum.add(self.dr, bx);
+        }
+
         // a(x) = sum of all rx(x)
-        self.ax.push(Element::sum(self.dr, ax_evals));
+        self.ax.push(a_sum);
         // b(x) = sum of all rx(xz) + mesh + t(xz)
-        self.bx.push(Element::sum(
-            self.dr,
-            bx_evals
-                .into_iter()
-                .chain(iter::once(mesh).chain(iter::once(self.txz))),
-        ));
+        self.bx
+            .push(b_sum.add(self.dr, mesh).add(self.dr, self.txz));
     }
 
     fn stage(
@@ -452,11 +451,11 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = RxEval<'a, 'dr, D>>,
     ) -> Result<()> {
-        let ax_evals: Vec<_> = rxs.map(|(ax, _)| ax).collect();
         let mesh = self.fixed_mesh.circuit_mesh(id);
 
         // a(x) = fold of all rx(x) with z (Horner's rule)
-        self.ax.push(Element::fold(self.dr, ax_evals, self.z)?);
+        self.ax
+            .push(Element::fold(self.dr, rxs.map(|(ax, _)| ax), self.z)?);
         // b(x) = mesh (s_y evaluated at circuit's omega^j)
         self.bx.push(mesh.clone());
         Ok(())
