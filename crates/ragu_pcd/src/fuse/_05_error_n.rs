@@ -1,3 +1,11 @@
+//! Commit to the error (off-diagonal) terms of the second revdot folding
+//! reduction.
+//!
+//! This creates the [`proof::ErrorN`] component of the proof, which commits to
+//! the `error_n` stage. The stage contains the error terms and is used to store
+//! the $k(Y)$ evaluations for the child proofs, as well as the temporary sponge
+//! state used to split the hashing operations across two circuits.
+
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{

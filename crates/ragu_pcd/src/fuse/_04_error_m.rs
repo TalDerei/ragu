@@ -1,3 +1,12 @@
+//! Commit to the error (off-diagonal) terms of the first revdot folding
+//! reductions.
+//!
+//! This creates the [`proof::ErrorM`] component of the proof, which commits to
+//! the `error_m` stage.
+//!
+//! This phase of the fuse operation is also used to commit to the $m(w, X, y)$
+//! restriction.
+
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
