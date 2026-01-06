@@ -9,7 +9,7 @@ the entire computational history, not just the latest step.
 
 The challenge is recursion. Building these proofs requires proving that the
 previous proof was valid. If verification is expensive, then proving you
-verified becomes prohibitively expensive—a bootstrapping problem that makes
+verified becomes prohibitively expensive: a bootstrapping problem that makes
 efficient recursion nearly impossible with traditional proof systems.
 
 Accumulation schemes solve this by deferring expensive checks. Instead of fully
@@ -66,7 +66,7 @@ remaining expensive operations into an _accumulator_ $\acc_i$ which will be
 batch-checked by a _decider_ down the IVC/PCD tree. Now, the IVC verifier, on
 top of verifying the IVC proof $\pi_{i+1}$, will further invoke
 $\mathsf{Acc.Decide}(\acc_{i+1})$ subroutine which could contain linear-time
-operations—but this is fine since the cost is amortized across all prior steps
+operations, but this is fine since the cost is amortized across all prior steps
 and the per-step recursion overhead is massively reduced to sublinear.
 
 Ragu implements **split accumulation**, a variant formalized in
@@ -101,14 +101,14 @@ In fact, Ragu also does "pure instance folding" and we subsequently use
 
 ## IVC on a Cycle of Curves
 
-Accumulation requires folding commitments through random linear combinations -- a
-group operation. As explained [earlier](../../prelim/nested_commitment.md),
+Accumulation requires folding commitments through random linear combinations (a
+group operation). As explained [earlier](../../prelim/nested_commitment.md),
 constraining non-native group operations is prohibitively expensive. The
 solution: implement IVC over a 2-cycle of elliptic curves, where each curve's
 group operations are native to the other curve's scalar field.
 
-This creates a ping-pong pattern. We alternate between two circuits—$CS^{(1)}$
-over field $\F_p$ and $CS^{(2)}$ over field $\F_q$—where commitments in one
+This creates a ping-pong pattern. We alternate between two circuits ($CS^{(1)}$
+over field $\F_p$ and $CS^{(2)}$ over field $\F_q$) where commitments in one
 circuit's group $\G^{(1)}$ are accumulated in the other circuit, and vice versa.
 The application state and accumulator become tuples: $z_i = (z_i^{(1)}, z_i^{(2)})$
 and $\acc_i = (\acc_i^{(1)}, \acc_i^{(2)})$. Furthermore, there is the NARK
@@ -128,13 +128,13 @@ Each future IVC step now consists of two halves working in tandem:
 **Primary circuits** $CS^{(1)}$:
 - **App Circuit**: Advances application state $z_i^{(1)} \to z_{i+1}^{(1)}$,
   producing new NARK public instance $\inst_{app,i+1}^{(1)}$
-- **Merge Circuit**: Folds (relevant part of) the previous step's instance into
+- **Fuse Circuit**: Folds (relevant part of) the previous step's instance into
   the accumulator
   - **base case**: if $i=0$, set $\acc'_{i+1}=\acc_0=\acc_\bot$ and skip the rest
   - folds scalars in the last step instances $\inst_{app,i}^{(1)}$ and
-    $\inst_{merge,i}^{(1)}$ into accumulator $\acc_i^{(1)}$ 
+    $\inst_{fuse,i}^{(1)}$ into accumulator $\acc_i^{(1)}$ 
   - folds groups in the last step instances $\inst_{app,i}^{(2)}$ and
-    $\inst_{merge,i}^{(2)}$ into accumulator $\acc_i^{(2)}$
+    $\inst_{fuse,i}^{(2)}$ into accumulator $\acc_i^{(2)}$
   - enforces [deferred operations](../../prelim/nested_commitment.md#deferreds)
     captured in $\inst_i^{(2)}$ from $CS^{(2)}$ of the last step (whose group
     operations are native here)
@@ -143,14 +143,14 @@ Each future IVC step now consists of two halves working in tandem:
 **Secondary circuits** $CS^{(2)}$:
 - **App Circuit**: Advances application state $z_i^{(2)} \to z_{i+1}^{(2)}$,
   producing new NARK public instance $\inst_{app,i+1}^{(2)}$
-- **Merge Circuit**: Folds (relevant part of) the current step's instance into
+- **Fuse Circuit**: Folds (relevant part of) the current step's instance into
   the accumulator
   - **base case**: if $i=0$, set $\acc_{i+1}=\acc'_{i+1}$ without any folding
     and skip the rest
   - folds scalars in the last step instances $\inst_{app,i}^{(2)}$
-    and $\inst_{merge,i}^{(2)}$ into accumulator $\acc_i^{(2)}$ (further update it)
+    and $\inst_{fuse,i}^{(2)}$ into accumulator $\acc_i^{(2)}$ (further update it)
   - folds groups in the last step instances $\inst_{app,i}^{(1)}$ and
-    $\inst_{merge,i}^{(1)}$ into accumulator $\acc_i^{(1)}$ (further update it)
+    $\inst_{fuse,i}^{(1)}$ into accumulator $\acc_i^{(1)}$ (further update it)
   - enforces deferred operations captured in $\inst_{i}^{(1)}$ from $CS^{(1)}$
     of _the last step_
   - produces a NARK instance $\inst_{i+1}^{(2)}$ to be folded in _the next step_
@@ -169,30 +169,30 @@ parts of the NARK instance and accumulator managed by the prover.
 
 ```admonish note title="Split-up of the folding work"
 
-- NARK instances for both the application circuit and merge circuits in step $i$
+- NARK instances for both the application circuit and fuse circuits in step $i$
   is **only folded in the step $i+1$**.
 - The NARK instance for the application circuit is first committed via
   [nested commitment](../../prelim/nested_commitment.md) outside the circuit
-  before being accumulated inside the merge circuit in the next recursion step.
+  before being accumulated inside the fuse circuit in the next recursion step.
 - The accumulator for one curve contains both group and field elements. E.g.,
   $\acc^{(1)}=(S,\bar{A},\bar{B},c,\bar{P},u,v)$ where
   $S,\bar{A},\bar{B},P\in\G^{(1)}$ and $c,u,v\in\F^{(1)}\equiv\F_p$.
   To avoid all non-native arithmetic, scalars are folded natively while
   commitments are folded on the other circuit. E.g. $c,v\in\F_p$ are folded in
-  $CS_{merge}^{(1)}$ (of the next step), and $\bar{A},\bar{B},\bar{P}$ are
-  folded in $CS_{merge}^{(2)}$ (of the next step); vice versa for $\acc^{(2)}$.
+  $CS_{fuse}^{(1)}$ (of the next step), and $\bar{A},\bar{B},\bar{P}$ are
+  folded in $CS_{fuse}^{(2)}$ (of the next step); vice versa for $\acc^{(2)}$.
 ```
 
 ## 2-arity PCD
 
 IVC proves linear chains of computation. But what if your computation is a tree?
-Consider a distributed system where multiple branches of computation merge—each
+Consider a distributed system where multiple branches of computation fuse: each
 node needs to verify that both its children's states are valid before producing
 its own output.
 
 This is where proof-carrying data (PCD) generalizes IVC. Instead of a single
 parent, each step takes inputs from two branches: data and proofs from both left
-and right. The step function merges them: $F_i(z_{i,L}, z_{i,R}) = z_{i+1}$,
+and right. The step function fuses them: $F_i(z_{i,L}, z_{i,R}) = z_{i+1}$,
 and the accumulation verifiers fold both parent accumulators $\set{\acc_{i,L},
 \acc_{i,R}}$ into a single $\acc_{i+1}$. This natural extension gives us
 **2-arity PCD**, supporting trees of computational traces:
@@ -203,13 +203,13 @@ and the accumulation verifiers fold both parent accumulators $\set{\acc_{i,L},
 
 Two implementation details carry over from IVC on cycles:
 
-1. **Cycling curves**: Each side's data and accumulator contains a pair—one per
-   field—due to the ping-pong pattern [explained earlier](#ivc-on-a-cycle-of-curves).
+1. **Cycling curves**: Each side's data and accumulator contains a pair (one per
+   field) due to the ping-pong pattern [explained earlier](#ivc-on-a-cycle-of-curves).
 
 2. **Init state tracking**: Unlike IVC's single $z_0$, PCD must track all
    initial states from the tree's leaves. We maintain a Merkle root of init
    states $z_0^{(1)} \in \F_p$ (and similarly $z_0^{(2)} \in \F_q$), updated
-   efficiently in-circuit when branches merge. This ensures the final proof
+   efficiently in-circuit when branches fuse. This ensures the final proof
    attests to a valid tree rooted at a specific set of initial states.
 
 Zooming into the first half of a PCD step (the second half mirrors this
