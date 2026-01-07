@@ -157,18 +157,18 @@ impl<'dr, D: Driver<'dr>, C: Cycle> Output<'dr, D, C> {
     /// This is useful when the Output is obtained from stage wires (via `unenforced()`)
     /// rather than allocated fresh. Unlike allocation which includes curve equation
     /// constraints automatically, this must be called explicitly.
-    pub fn verify_points_on_curve(&self, dr: &mut D) -> Result<()>
+    pub fn enforce_on_curve(&self, dr: &mut D) -> Result<()>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        self.nested_preamble_commitment.verify_on_curve(dr)?;
-        self.nested_s_prime_commitment.verify_on_curve(dr)?;
-        self.nested_error_m_commitment.verify_on_curve(dr)?;
-        self.nested_error_n_commitment.verify_on_curve(dr)?;
-        self.nested_ab_commitment.verify_on_curve(dr)?;
-        self.nested_query_commitment.verify_on_curve(dr)?;
-        self.nested_f_commitment.verify_on_curve(dr)?;
-        self.nested_eval_commitment.verify_on_curve(dr)?;
+        self.nested_preamble_commitment.enforce_on_curve(dr)?;
+        self.nested_s_prime_commitment.enforce_on_curve(dr)?;
+        self.nested_error_m_commitment.enforce_on_curve(dr)?;
+        self.nested_error_n_commitment.enforce_on_curve(dr)?;
+        self.nested_ab_commitment.enforce_on_curve(dr)?;
+        self.nested_query_commitment.enforce_on_curve(dr)?;
+        self.nested_f_commitment.enforce_on_curve(dr)?;
+        self.nested_eval_commitment.enforce_on_curve(dr)?;
         Ok(())
     }
 

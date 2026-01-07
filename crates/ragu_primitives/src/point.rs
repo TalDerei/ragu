@@ -99,7 +99,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 
     /// Verifies that this point lies on the curve by enforcing the curve equation.
-    pub fn verify_on_curve(&self, dr: &mut D) -> Result<()> {
+    pub fn enforce_on_curve(&self, dr: &mut D) -> Result<()> {
         let x2 = self.x.square(dr)?;
         let x3 = self.x.mul(dr, &x2)?;
         let y2 = self.y.square(dr)?;

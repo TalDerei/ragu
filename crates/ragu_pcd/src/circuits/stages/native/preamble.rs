@@ -229,12 +229,12 @@ impl<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> Output<'dr, D, C, 
         left_is_trivial.and(dr, &right_is_trivial)
     }
 
-    pub fn verify_points_on_curve(&self, dr: &mut D) -> Result<()>
+    pub fn enforce_on_curve(&self, dr: &mut D) -> Result<()>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        self.left.unified.verify_points_on_curve(dr)?;
-        self.right.unified.verify_points_on_curve(dr)?;
+        self.left.unified.enforce_on_curve(dr)?;
+        self.right.unified.enforce_on_curve(dr)?;
         Ok(())
     }
 }
