@@ -169,4 +169,4 @@ pub(crate) fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 }
 
 #[cfg(test)]
-pub(crate) mod test_params;
+pub(crate) mod tests;
