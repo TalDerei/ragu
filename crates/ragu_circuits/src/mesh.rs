@@ -308,6 +308,10 @@ impl<F: PrimeField, R: Rank> Mesh<'_, F, R> {
             let mut y = F::from(5u64);
 
             let mut sponge = Sponge::<'_, _, P>::new(dr, poseidon);
+            // FIXME(security): 6 iterations is insufficient to fully bind the mesh
+            // polynomial. This should be increased to a value that overdetermines the
+            // polynomial (exceeds the degrees of freedom an adversary could exploit).
+            // Currently limited by mesh evaluation performance; See #78 and #316.
             for _ in 0..6 {
                 let eval = Element::constant(dr, self.wxy(w, x, y));
                 sponge.absorb(dr, &eval)?;
