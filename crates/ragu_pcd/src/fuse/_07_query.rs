@@ -50,7 +50,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let xz = x * *z.value().take();
 
-        let mesh_xy_poly = self.circuit_mesh.xy(x, y);
+        let mesh_xy_poly = self.native_mesh.xy(x, y);
         let mesh_xy_blind = C::CircuitField::random(&mut *rng);
         let mesh_xy_commitment =
             mesh_xy_poly.commit(C::host_generators(self.params), mesh_xy_blind);

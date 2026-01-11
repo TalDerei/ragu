@@ -36,7 +36,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Validate that the application circuit_id is within the mesh domain.
         // (Internal circuit IDs are constants and don't need this check.)
         if !self
-            .circuit_mesh
+            .native_mesh
             .circuit_in_domain(pcd.proof.application.circuit_id)
         {
             return Ok(false);
@@ -69,7 +69,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Build a and b polynomials for each revdot claim.
         let source = SingleProofSource { proof: &pcd.proof };
-        let mut builder = ClaimBuilder::new(&self.circuit_mesh, self.num_application_steps, y, z);
+        let mut builder = ClaimBuilder::new(&self.native_mesh, self.num_application_steps, y, z);
         claim_builder::build_claims(&source, &mut builder)?;
 
         // Check all revdot claims.
@@ -103,7 +103,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let x = pcd.proof.challenges.x;
             let y = pcd.proof.challenges.y;
             let poly_eval = pcd.proof.query.mesh_xy_poly.eval(w);
-            let expected = self.circuit_mesh.wxy(w, x, y);
+            let expected = self.native_mesh.wxy(w, x, y);
             poly_eval == expected
         };
 

@@ -51,13 +51,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let z = *z.value().take();
 
-        let mesh_wy_poly = self.circuit_mesh.wy(w, y);
+        let mesh_wy_poly = self.native_mesh.wy(w, y);
         let mesh_wy_blind = C::CircuitField::random(&mut *rng);
         let mesh_wy_commitment =
             mesh_wy_poly.commit(C::host_generators(self.params), mesh_wy_blind);
 
         let source = FuseProofSource { left, right };
-        let mut builder = ClaimBuilder::new(&self.circuit_mesh, self.num_application_steps, y, z);
+        let mut builder = ClaimBuilder::new(&self.native_mesh, self.num_application_steps, y, z);
         claim_builder::build_claims(&source, &mut builder)?;
 
         let error_terms =

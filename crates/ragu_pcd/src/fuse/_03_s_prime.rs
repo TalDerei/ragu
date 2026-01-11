@@ -31,11 +31,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let x0 = left.challenges.x;
         let x1 = right.challenges.x;
 
-        let mesh_wx0_poly = self.circuit_mesh.wx(w, x0);
+        let mesh_wx0_poly = self.native_mesh.wx(w, x0);
         let mesh_wx0_blind = C::CircuitField::random(&mut *rng);
         let mesh_wx0_commitment =
             mesh_wx0_poly.commit(C::host_generators(self.params), mesh_wx0_blind);
-        let mesh_wx1_poly = self.circuit_mesh.wx(w, x1);
+        let mesh_wx1_poly = self.native_mesh.wx(w, x1);
         let mesh_wx1_blind = C::CircuitField::random(&mut *rng);
         let mesh_wx1_commitment =
             mesh_wx1_poly.commit(C::host_generators(self.params), mesh_wx1_blind);
