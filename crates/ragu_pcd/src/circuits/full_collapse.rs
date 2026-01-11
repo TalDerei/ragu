@@ -1,3 +1,51 @@
+//! Circuit for verifying layer 2 of the two-layer revdot reduction.
+//!
+//! ## Operations
+//!
+//! ### Layer 2 verification
+//!
+//! This circuit verifies layer 2 of the two-layer reduction, completing the
+//! folding process started by [`partial_collapse`]:
+//! - Retrieves [$\mu'$] and [$\nu'$] challenges from the unified instance.
+//!   These are distinct from the layer 1 challenges ([$\mu$], [$\nu$]) used in
+//!   [`partial_collapse`].
+//! - Uses the collapsed values from layer 1 (verified by [`partial_collapse`])
+//!   as the $k(y)$ inputs.
+//! - Computes the final folded revdot claim [$c$] using
+//!   [`FoldProducts::fold_products_n`].
+//! - Enforces that the computed [$c$] matches the witnessed value from the
+//!   unified instance (with base case exception below).
+//!
+//! ### Base case handling
+//!
+//! When both child proofs are trivial (the "base case"), the prover may witness
+//! any [$c$] value without constraint. This allows seeding the recursion with
+//! initial proofs that don't yet carry meaningful revdot claims. The constraint
+//! is enforced only when [`is_base_case`] returns false.
+//!
+//! ## Staging
+//!
+//! This circuit is a staged circuit based on the [`error_n`] stage, which
+//! inherits in the following chain:
+//! - [`preamble`] (unenforced)
+//! - [`error_n`] (unenforced)
+//!
+//! ## Public Inputs
+//!
+//! This circuit uses the standard [`unified::InternalOutputKind`] as its public
+//! inputs, providing the unified instance fields needed for verification.
+//!
+//! [`partial_collapse`]: super::partial_collapse
+//! [$\mu'$]: unified::Output::mu_prime
+//! [$\nu'$]: unified::Output::nu_prime
+//! [$\mu$]: unified::Output::mu
+//! [$\nu$]: unified::Output::nu
+//! [$c$]: unified::Output::c
+//! [`error_n`]: super::stages::native::error_n
+//! [`preamble`]: super::stages::native::preamble
+//! [`FoldProducts::fold_products_n`]: fold_revdot::FoldProducts::fold_products_n
+//! [`is_base_case`]: super::stages::native::preamble::Output::is_base_case
+
 use arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
@@ -20,6 +68,12 @@ use crate::components::fold_revdot;
 
 pub(crate) use crate::circuits::InternalCircuitIndex::FullCollapseCircuit as CIRCUIT_ID;
 
+/// Circuit that verifies layer 2 of the two-layer revdot reduction.
+///
+/// See the [module-level documentation] for details on the operations
+/// performed by this circuit.
+///
+/// [module-level documentation]: self
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     _marker: PhantomData<(C, R, FP)>,
 }
@@ -27,6 +81,7 @@ pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Param
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     Circuit<C, R, HEADER_SIZE, FP>
 {
+    /// Creates a new staged circuit for layer 2 revdot verification.
     pub fn new() -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             _marker: PhantomData,
@@ -34,9 +89,26 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     }
 }
 
+/// Witness data for the full collapse circuit.
+///
+/// Combines the unified instance with stage witnesses needed to perform the
+/// layer 2 revdot verification and base case check.
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
+    /// The unified instance containing expected challenge values and the
+    /// witnessed [$c$](unified::Output::c) claim.
     pub unified_instance: &'a unified::Instance<C>,
+
+    /// Witness for the [`preamble`](super::stages::native::preamble) stage
+    /// (unenforced).
+    ///
+    /// Provides access to [`is_base_case`](super::stages::native::preamble::Output::is_base_case)
+    /// for conditional constraint enforcement.
     pub preamble_witness: &'a preamble::Witness<'a, C, R, HEADER_SIZE>,
+
+    /// Witness for the [`error_n`](super::stages::native::error_n) stage
+    /// (unenforced).
+    ///
+    /// Provides layer 2 error terms and collapsed values from layer 1.
     pub error_n_witness: &'a error_n::Witness<C, FP>,
 }
 
@@ -82,14 +154,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
-        // Get mu_prime, nu_prime from unified instance
+        // Get layer 2 folding challenges. These are distinct from the layer 1
+        // challenges (mu, nu) used in partial_collapse.
         let mu_prime = unified_output.mu_prime.get(dr, unified_instance)?;
         let nu_prime = unified_output.nu_prime.get(dr, unified_instance)?;
 
-        // Compute c, the folded revdot product claim.
-        // Layer 1 folding is verified by circuit_ky; we use error_n.collapsed directly.
+        // Compute the final folded revdot claim c via layer 2 reduction.
+        // The collapsed values from layer 1 (verified by partial_collapse) serve
+        // as the k(y) inputs for this final fold.
         {
-            // Layer 2: Single N-sized reduction using collapsed from error_n as ky_values
             let fold_products = fold_revdot::FoldProducts::new(dr, &mu_prime, &nu_prime)?;
             let computed_c = fold_products.fold_products_n::<FP>(
                 dr,
@@ -97,11 +170,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 &error_n.collapsed,
             )?;
 
-            // Get the witnessed C from the instance (fills the slot).
+            // Retrieve the witnessed c from the unified instance.
             let witnessed_c = unified_output.c.get(dr, unified_instance)?;
 
-            // When NOT in base case, enforce witnessed_c == computed_c.
-            // In base case (both children trivial), prover may witness any c value.
+            // Enforce witnessed_c == computed_c, but only when NOT in base case.
+            // In base case (both children are trivial proofs), the prover may
+            // witness any c value to seed the recursion.
             preamble
                 .is_base_case(dr)?
                 .not(dr)

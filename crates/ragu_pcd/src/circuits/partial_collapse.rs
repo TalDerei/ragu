@@ -1,12 +1,57 @@
-//! Circuit for verifying the first layer of the revdot reductions.
+//! Circuit for verifying layer 1 of the two-layer revdot reduction.
 //!
-//! This circuit verifies that the collapsed values in error_n match the result
-//! of folding the error_m terms with the k(y) values (which are computed and
-//! verified in hashes_1).
+//! ## Operations
 //!
-//! This circuit is built using the preamble, error_m (for layer 1 error terms),
-//! and error_n (for layer 2 error terms, collapsed values, and k(y) values)
-//! native stages.
+//! ### Two-layer revdot folding
+//!
+//! The PCD system uses a two-layer reduction to fold many revdot claims into a
+//! single claim (see [`Parameters`] for the folding structure). Layer 1 groups
+//! claims and folds each group into an intermediate "collapsed" value. Layer 2
+//! (handled by [`full_collapse`]) then reduces those collapsed values into the
+//! final claim [$c$].
+//!
+//! ### Layer 1 verification
+//!
+//! This circuit verifies layer 1 of the two-layer reduction:
+//! - Retrieves [$\mu$] and [$\nu$] challenges from the unified instance.
+//! - For each group of claims, folds the [`error_m`] terms with the $k(y)$
+//!   values using [`FoldProducts::fold_products_m`].
+//! - Enforces that each computed result equals the corresponding collapsed
+//!   value witnessed in [`error_n`].
+//!
+//! ### $k(y)$ values
+//!
+//! The $k(y)$ values used as inputs to the folding operation come from multiple
+//! sources, assembled via [`TwoProofKySource`]:
+//! - Child [$c$] values from the [`preamble`] (representing the children's
+//!   final revdot claims).
+//! - Application and unified $k(y)$ evaluations from [`error_n`] (computed and
+//!   verified in [`hashes_1`]).
+//!
+//! ## Staging
+//!
+//! This circuit is a staged circuit based on the [`error_m`] stage, which
+//! inherits in the following chain:
+//! - [`preamble`] (unenforced)
+//! - [`error_n`] (unenforced)
+//! - [`error_m`] (unenforced)
+//!
+//! ## Public Inputs
+//!
+//! This circuit uses the standard [`unified::InternalOutputKind`] as its public
+//! inputs, providing the unified instance fields needed for verification.
+//!
+//! [`Parameters`]: fold_revdot::Parameters
+//! [`full_collapse`]: super::full_collapse
+//! [$c$]: unified::Output::c
+//! [$\mu$]: unified::Output::mu
+//! [$\nu$]: unified::Output::nu
+//! [`error_m`]: super::stages::native::error_m
+//! [`error_n`]: super::stages::native::error_n
+//! [`preamble`]: super::stages::native::preamble
+//! [`hashes_1`]: super::hashes_1
+//! [`FoldProducts::fold_products_m`]: fold_revdot::FoldProducts::fold_products_m
+//! [`TwoProofKySource`]: crate::components::claim_builder::TwoProofKySource
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -36,7 +81,12 @@ use crate::components::{
 
 pub(crate) use crate::circuits::InternalCircuitIndex::PartialCollapseCircuit as CIRCUIT_ID;
 
-/// Circuit that verifies layer 1 revdot folding.
+/// Circuit that verifies layer 1 of the two-layer revdot reduction.
+///
+/// See the [module-level documentation] for details on the operations
+/// performed by this circuit.
+///
+/// [module-level documentation]: self
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     _marker: PhantomData<(C, R, FP)>,
 }
@@ -44,7 +94,7 @@ pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Param
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     Circuit<C, R, HEADER_SIZE, FP>
 {
-    /// Create a new partial collapse circuit.
+    /// Creates a new staged circuit for layer 1 revdot verification.
     pub fn new() -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             _marker: PhantomData,
@@ -114,13 +164,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
-        // Get mu, nu from unified instance
+        // Get layer 1 folding challenges from the unified instance.
         let mu = unified_output.mu.get(dr, unified_instance)?;
         let nu = unified_output.nu.get(dr, unified_instance)?;
         let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 
-        // Read k(y) values from error_n stage, plus child c values from
-        // preamble. Ordering must match claim_builder.
+        // Assemble k(y) values from multiple sources. The ordering must match
+        // claim_builder's iteration order for correct folding correspondence.
+        // Sources include:
+        // - Child c values from preamble (the children's final revdot claims)
+        // - Application and unified k(y) evaluations from error_n
         let ky = TwoProofKySource {
             left_raw_c: preamble.left.unified.c.clone(),
             right_raw_c: preamble.right.unified.c.clone(),
@@ -134,6 +187,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         };
         let mut ky = ky_values(&ky);
 
+        // Verify each group's layer 1 reduction. For each group, fold the
+        // error_m terms with the corresponding k(y) values and enforce the
+        // result matches the collapsed value witnessed in error_n.
         for (i, error_terms) in error_m.error_terms.iter().enumerate() {
             let ky = FixedVec::from_fn(|_| ky.next().unwrap());
 
