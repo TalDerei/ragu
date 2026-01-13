@@ -9,7 +9,7 @@ This working PCD application shows how to:
 - Combine leaf proofs into internal nodes
 - Verify the entire proof tree
 
-The example illustrates the core power of PCD: **data that carries its own proof of correctness**.
+The example illustrates the core functions of PCD: **data that carries its own proof of correctness**.
 
 ## Prerequisites
 
@@ -26,6 +26,18 @@ arithmetic = "0.1"
 ff = "0.13"
 rand = "0.8"
 ```
+
+## Configuration at a Glance
+
+This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
+
+| Parameter | Value | Meaning |
+|-----------|-------|---------|
+| **Cycle** | `Pasta` | Elliptic curve cycle for proof recursion (standard choice) |
+| **Rank** | `R<13>` | Circuit capacity: 2^13 = 8,192 constraints |
+| **Header Size** | `4` | Each proof carries 4 field elements of data |
+
+These defaults work for most applications. See [Configuration](configuration.md) for guidance on choosing different values.
 
 ## Overview: Building a Merkle Tree with Proofs
 
@@ -154,7 +166,7 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
 
 **What's happening:**
 1. Convert witness to circuit element (creates constraint)
-2. Hash using Poseidon (~140 constraints)
+2. Hash using Poseidon (288 constraints)
 3. Extract hash value to return to caller
 4. Package as encoded proof
 5. Return proof tuple + auxiliary output
@@ -214,7 +226,7 @@ impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
 }
 ```
 
-**Critical insight:** The `.encode(dr)?` call **verifies the input proofs in-circuit**. This is PCD in action - we're proving that we correctly combined two already-proven values.
+**What `.encode(dr)?` does:** The `Header::encode` call converts the header data into a circuit gadget by allocating field elements. This makes the input proof's header data available for use in the circuit logic (e.g., hashing the two headers together).
 
 ## Step 4: Build the Application
 
@@ -247,11 +259,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 ```
-
-**Configuration explained:**
-- `Pasta`: Curve cycle for efficient recursion (see [Configuration](configuration.md))
-- `R<13>`: Circuit can handle 2^13 = 8,192 constraints
-- `4`: Each proof carries 4 field elements in its header
 
 ## Step 5: Create and Verify Proofs
 
@@ -315,12 +322,6 @@ The proof creation and verification process follows these steps:
    - Header data matches claimed computation
 
 This is **Proof-Carrying Data**: each node carries a proof that it was correctly computed from its children, all the way down to the leaves.
-
-## Complete Example
-
-The complete, runnable code can be found in:
-`crates/ragu_pcd/examples/hello_pcd.rs`
-- The code snippets above can also be combined to reconstruct the full example
 
 ## Related Topics
 

@@ -74,21 +74,6 @@ ApplicationBuilder::<Pasta, R<13>, ...>::new()
 | `R<14>` | 16,384 | Large circuits |
 | `R<15>` | 32,768 | Very large circuits |
 
-### Constraint Types
-
-Circuits have two types of constraints:
-- **Multiplication constraints**: Cost ~1 each (finite, limited by rank)
-- **Linear constraints**: Nearly free (additions, subtractions)
-
-Common operations and their costs:
-```rust
-let a = Element::alloc(dr, value)?;        // 0 multiplications
-let b = a.add(dr, &c);                     // 0 multiplications
-let d = a.mul(dr, &b)?;                    // 1 multiplication
-let e = a.invert(dr)?;                     // ~1 multiplication
-sponge.absorb(dr, &a)?;                    // ~140 multiplications (Poseidon)
-```
-
 ### Choosing the Right Rank
 
 **For development/testing**: Start with `R<11>` or `R<12>`
