@@ -23,20 +23,23 @@ impl<F: Field> ValueAccumulator<F> {
 
     /// Insert a value into the accumulator.
     /// Performs O(n) ops per insertion where n is the current size of the accumulator
-    pub fn accumulate_value(&mut self, value: F) {
+    /// Each value inserted performs:
+    /// (x - value) * polynomial(x)
+    /// resulting in a new polynomial with the degree increased by 1
+    pub fn insert_value(&mut self, value: F) {
         let neg_value = value.neg();
-        let mut new_coeffs: Vec<F> = vec![];
-
-        let mut poly_iter = self.polynomial.iter_coeffs();
-        let Some(mut prev) = poly_iter.next() else { return };
-        new_coeffs.push(prev.mul(&neg_value));
-
-        for curr in poly_iter.take(self.current_size.saturating_sub(1) as usize) {
-            new_coeffs.push(prev.add(&curr.mul(&neg_value)));
-            prev = curr;
+        let coeffs = self.polynomial.coeffs_mut();
+        let len = self.current_size as usize;
+        
+        for i in (1..len).rev() {
+            coeffs[i] = coeffs[i - 1] + coeffs[i] * neg_value;
         }
+        
+        if len > 0 {
+            coeffs[0] = coeffs[0] * neg_value;
+        }
+        
         self.current_size += 1;
-        self.polynomial = Polynomial::from_coeffs(new_coeffs);
     }
 
     pub fn check_membership(&self, value: F) -> bool {
@@ -47,9 +50,9 @@ impl<F: Field> ValueAccumulator<F> {
         self.polynomial.eval(value) != F::ZERO
     }
 
-    pub fn commit<C: CurveAffine<ScalarExt = F>>(&self, generators: &impl arithmetic::FixedGenerators<C>, blind: F) -> C {
+    /*pub fn commit<C: CurveAffine<ScalarExt = F>>(&self, generators: &impl arithmetic::FixedGenerators<C>, blind: F) -> C {
         self.polynomial.commit(C::host_generators(self.params), blind);
-    }
+    }*/
 
 }
 
@@ -62,11 +65,16 @@ fn test_accumulator() {
 
     let values = vec![Fp::random(thread_rng()); 10];
     for value in &values {
-        accumulator.accumulate_value(*value);
+        accumulator.insert_value(*value);
     }
 
     for i in 0..10 {
         assert!(accumulator.check_membership(values[i]));
+    }
+
+    let non_value = vec![Fp::random(thread_rng()); 10];
+    for value in &non_value {
+        assert!(!accumulator.check_non_membership(*value));
     }
 
     assert_eq!(accumulator.current_size, 10);
