@@ -43,9 +43,11 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, H::Data<'source>>,
-        right: DriverValue<D, ()>,
+        (_, left, right): (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
+            DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,

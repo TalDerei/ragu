@@ -150,9 +150,11 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        witness: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
-        right: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
+        input: (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
+            DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,

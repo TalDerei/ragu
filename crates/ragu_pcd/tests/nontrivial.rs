@@ -61,9 +61,11 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, C::CircuitField>,
-        right: DriverValue<D, C::CircuitField>,
+        (_, left, right): (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, Self::Left::Data<'source>>,
+            DriverValue<D, Self::Right::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -104,9 +106,11 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        witness: DriverValue<D, Self::Witness<'source>>,
-        _left: DriverValue<D, ()>,
-        _right: DriverValue<D, ()>,
+        (witness, _, _): (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, Self::Left::Data<'source>>,
+            DriverValue<D, Self::Right::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,

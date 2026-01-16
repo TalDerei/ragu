@@ -42,9 +42,11 @@ impl<C: Cycle> Step<C> for Step0 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        (_, left, right): (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, Self::Left::Data<'source>>,
+            DriverValue<D, Self::Right::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -71,9 +73,11 @@ impl<C: Cycle> Step<C> for Step1 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        (_, left, right): (
+            DriverValue<D, Self::Witness<'source>>,
+            DriverValue<D, Self::Left::Data<'source>>,
+            DriverValue<D, Self::Right::Data<'source>>,
+        ),
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
