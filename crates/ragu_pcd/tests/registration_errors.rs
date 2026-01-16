@@ -1,6 +1,9 @@
 use ff::Field;
 use ragu_circuits::polynomials::R;
-use ragu_core::{Result, drivers::Driver};
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue},
+};
 use ragu_pasta::Pasta;
 use ragu_pcd::step::{Encoded, Index, Step, StepInput, StepOutput};
 use ragu_pcd::{
@@ -63,8 +66,12 @@ impl<C: arithmetic::Cycle> Step<C> for Step0 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
+        _: DriverValue<D, Self::Witness<'source>>,
+        (left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
@@ -85,8 +92,12 @@ impl<C: arithmetic::Cycle> Step<C> for Step1 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
+        _: DriverValue<D, Self::Witness<'source>>,
+        (left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
@@ -107,8 +118,12 @@ impl<C: arithmetic::Cycle> Step<C> for Step1Dup {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
+        _: DriverValue<D, Self::Witness<'source>>,
+        (left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());

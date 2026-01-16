@@ -1,7 +1,12 @@
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::polynomials::R;
-use ragu_core::{Result, drivers::Driver, gadgets::Kind, maybe::Maybe};
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue},
+    gadgets::Kind,
+    maybe::Maybe,
+};
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
@@ -56,8 +61,12 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>>
+        _: DriverValue<D, Self::Witness<'source>>,
+        (left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )>
     where
         Self: 'dr,
     {
@@ -90,8 +99,12 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (witness, _, _): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>>
+        witness: DriverValue<D, Self::Witness<'source>>,
+        (_, _): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )>
     where
         Self: 'dr,
     {

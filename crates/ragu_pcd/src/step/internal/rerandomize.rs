@@ -6,7 +6,10 @@
 //! left header is, we use a _uniform_ encoding of the left header.
 
 use arithmetic::Cycle;
-use ragu_core::{Result, drivers::Driver};
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue},
+};
 
 use core::marker::PhantomData;
 
@@ -42,8 +45,12 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
-    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
+        _: DriverValue<D, Self::Witness<'source>>,
+        (left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<(
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
+        DriverValue<D, Self::Aux<'source>>,
+    )> {
         // Use uniform encoding for left to ensure circuit uniformity across header types
         let left = Encoded::new_uniform(dr, left)?;
         // Use standard encoding for right (trivial header)
