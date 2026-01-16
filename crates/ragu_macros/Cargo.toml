@@ -27,8 +27,9 @@ proc-macro-crate = "3.3.0"
 
 [dependencies.syn]
 version = "2.0.101"
+features = ["full"]
 # Helpful for debugging:
-# features = ["full", "extra-traits"]
+# features = ["extra-traits"]
 
 [dev-dependencies]
 
@@ -36,6 +37,11 @@ version = "2.0.101"
 # when building doc tests that invoke derive macros inside the derive macro's
 # actual documentation. Also, this allows us to have compilation errors if paths
 # change where macros are ultimately re-exported downstream.
+ff = "0.13"
+rand = "0.8"
 ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0" }
+ragu_circuits = { path = "../ragu_circuits", version = "0.0.0" }
 ragu_core = { path = "../ragu_core", version = "0.0.0" }
+ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
+ragu_pcd = { path = "../ragu_pcd", version = "0.0.0" }
 ragu_primitives = { path = "../ragu_primitives", version = "0.0.0" }

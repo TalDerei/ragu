@@ -379,14 +379,19 @@ version = "0.0.0"
 name = "ragu_macros"
 version = "0.0.0"
 dependencies = [
+ "ff",
  "num-bigint",
  "num-traits",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
  "ragu_arithmetic",
+ "ragu_circuits",
  "ragu_core",
+ "ragu_pasta",
+ "ragu_pcd",
  "ragu_primitives",
+ "rand 0.8.5",
  "syn",
 ]
 

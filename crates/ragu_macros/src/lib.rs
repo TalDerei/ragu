@@ -17,7 +17,7 @@ mod proc;
 mod substitution;
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, LitInt, parse_macro_input};
+use syn::{DeriveInput, ItemMod, LitInt, parse_macro_input};
 
 use helpers::macro_body;
 
@@ -93,4 +93,44 @@ use ragu_core::maybe::MaybeCast as _;
 pub fn impl_maybe_cast_tuple(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitInt);
     macro_body(|| proc::maybe_cast::evaluate(input))
+}
+
+/// Define a PCD application with declarative step and header definitions.
+///
+/// This attribute macro transforms a module containing `#[step]` and `#[header]`
+/// annotated structs into a complete application definition with:
+/// - Generated `Header<F>` trait implementations for headers
+/// - Generated `Step<C>` trait implementations for steps
+/// - A `build()` function that registers all steps with `ApplicationBuilder`
+///
+/// # Example
+///
+/// ```ignore
+/// #[define_application]
+/// pub mod my_app {
+///     use super::*;
+///
+///     #[header(data = F, output = Element<'_, _>)]
+///     pub struct LeafNode;
+///
+///     #[step(witness = C::CircuitField, aux = C::CircuitField, left = (), right = (), output = LeafNode)]
+///     pub struct WitnessLeaf<'params, C: Cycle> {
+///         poseidon_params: &'params C::CircuitPoseidon,
+///     }
+/// }
+/// ```
+///
+/// Users must implement:
+/// - `Header::encode(dr, witness)` as an inherent method on header structs
+/// - `Step::witness((dr, witness, left, right))` as an inherent method on step structs
+/// - `Step::new(params)` constructor for each step
+#[proc_macro_attribute]
+pub fn define_application(_attr: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as ItemMod);
+    macro_body(|| {
+        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
+        let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
+        let ragu_pcd_path = path_resolution::RaguPcdPath::resolve()?;
+        proc::application::evaluate(input, ragu_arithmetic_path, ragu_core_path, ragu_pcd_path)
+    })
 }
