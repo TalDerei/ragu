@@ -31,9 +31,9 @@ use crate::circuits::{self, InternalCircuitIndex};
 // TODO: this constant seems brittle because it may vary between the two fields.
 pub const NUM_UNIFIED_CIRCUITS: usize = 4;
 
-/// Enum identifying which rx polynomial to retrieve from a proof.
+/// Enum identifying which native field rx polynomial to retrieve from a proof.
 #[derive(Clone, Copy, Debug)]
-pub enum RxComponent {
+pub enum NativeRxComponent {
     /// The `a` polynomial from the AB proof (revdot claim).
     AbA,
     /// The `b` polynomial from the AB proof (revdot claim).
@@ -50,16 +50,38 @@ pub enum RxComponent {
     FullCollapse,
     /// The compute_v internal circuit rx polynomial.
     ComputeV,
-    /// The preamble stage rx polynomial.
-    PreambleStage,
-    /// The error_m stage rx polynomial.
-    ErrorMStage,
-    /// The error_n stage rx polynomial.
-    ErrorNStage,
-    /// The query stage rx polynomial.
-    QueryStage,
-    /// The eval stage rx polynomial.
-    EvalStage,
+    /// The preamble native rx polynomial.
+    Preamble,
+    /// The error_m native rx polynomial.
+    ErrorM,
+    /// The error_n native rx polynomial.
+    ErrorN,
+    /// The query native rx polynomial.
+    Query,
+    /// The eval native rx polynomial.
+    Eval,
+}
+
+/// Enum identifying which nested field rx polynomial to retrieve from a proof.
+#[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
+pub enum NestedRxComponent {
+    /// The preamble nested rx polynomial.
+    Preamble,
+    /// The s_prime nested rx polynomial.
+    SPrime,
+    /// The error_m nested rx polynomial.
+    ErrorM,
+    /// The error_n nested rx polynomial.
+    ErrorN,
+    /// The ab nested rx polynomial.
+    Ab,
+    /// The query nested rx polynomial.
+    Query,
+    /// The f nested rx polynomial.
+    F,
+    /// The eval nested rx polynomial.
+    Eval,
 }
 
 /// Trait for providing claim component values from sources.
@@ -83,7 +105,7 @@ pub trait ClaimSource {
     type AppCircuitId;
 
     /// Get an iterator over rx values for all proofs for the given component.
-    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx>;
+    fn rx(&self, component: NativeRxComponent) -> impl Iterator<Item = Self::Rx>;
 
     /// Get an iterator over application circuit info for all proofs.
     fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId>;
@@ -122,7 +144,7 @@ where
     S: ClaimSource,
     P: ClaimProcessor<S::Rx, S::AppCircuitId>,
 {
-    use RxComponent::*;
+    use NativeRxComponent::*;
 
     // Raw claims (interleaved: iterate over all proofs for AbA/AbB)
     for (a, b) in source.rx(AbA).zip(source.rx(AbB)) {
@@ -134,53 +156,59 @@ where
         processor.circuit(app_id, rx);
     }
 
-    // hashes_1: needs Hashes1 + PreambleStage + ErrorNStage for each proof
+    // hashes_1: needs Hashes1 + Preamble + ErrorN for each proof
     for ((h1, pre), en) in source
         .rx(Hashes1)
-        .zip(source.rx(PreambleStage))
-        .zip(source.rx(ErrorNStage))
-    {
-        processor.internal_circuit(circuits::hashes_1::CIRCUIT_ID, [h1, pre, en].into_iter());
-    }
-
-    // hashes_2: needs Hashes2 + ErrorNStage for each proof
-    for (h2, en) in source.rx(Hashes2).zip(source.rx(ErrorNStage)) {
-        processor.internal_circuit(circuits::hashes_2::CIRCUIT_ID, [h2, en].into_iter());
-    }
-
-    // partial_collapse: needs PartialCollapse + PreambleStage + ErrorMStage + ErrorNStage
-    for (((pc, pre), em), en) in source
-        .rx(PartialCollapse)
-        .zip(source.rx(PreambleStage))
-        .zip(source.rx(ErrorMStage))
-        .zip(source.rx(ErrorNStage))
+        .zip(source.rx(Preamble))
+        .zip(source.rx(ErrorN))
     {
         processor.internal_circuit(
-            circuits::partial_collapse::CIRCUIT_ID,
+            circuits::native::hashes_1::CIRCUIT_ID,
+            [h1, pre, en].into_iter(),
+        );
+    }
+
+    // hashes_2: needs Hashes2 + ErrorN for each proof
+    for (h2, en) in source.rx(Hashes2).zip(source.rx(ErrorN)) {
+        processor.internal_circuit(circuits::native::hashes_2::CIRCUIT_ID, [h2, en].into_iter());
+    }
+
+    // partial_collapse: needs PartialCollapse + Preamble + ErrorM + ErrorN
+    for (((pc, pre), em), en) in source
+        .rx(PartialCollapse)
+        .zip(source.rx(Preamble))
+        .zip(source.rx(ErrorM))
+        .zip(source.rx(ErrorN))
+    {
+        processor.internal_circuit(
+            circuits::native::partial_collapse::CIRCUIT_ID,
             [pc, pre, em, en].into_iter(),
         );
     }
 
-    // full_collapse: needs FullCollapse + PreambleStage + ErrorNStage (no ErrorMStage)
+    // full_collapse: needs FullCollapse + Preamble + ErrorN (no ErrorM)
     for ((fc, pre), en) in source
         .rx(FullCollapse)
-        .zip(source.rx(PreambleStage))
-        .zip(source.rx(ErrorNStage))
+        .zip(source.rx(Preamble))
+        .zip(source.rx(ErrorN))
     {
         processor.internal_circuit(
-            circuits::full_collapse::CIRCUIT_ID,
+            circuits::native::full_collapse::CIRCUIT_ID,
             [fc, pre, en].into_iter(),
         );
     }
 
-    // compute_v: needs ComputeV + PreambleStage + QueryStage + EvalStage
+    // compute_v: needs ComputeV + Preamble + Query + Eval
     for (((cv, pre), q), e) in source
         .rx(ComputeV)
-        .zip(source.rx(PreambleStage))
-        .zip(source.rx(QueryStage))
-        .zip(source.rx(EvalStage))
+        .zip(source.rx(Preamble))
+        .zip(source.rx(Query))
+        .zip(source.rx(Eval))
     {
-        processor.internal_circuit(circuits::compute_v::CIRCUIT_ID, [cv, pre, q, e].into_iter());
+        processor.internal_circuit(
+            circuits::native::compute_v::CIRCUIT_ID,
+            [cv, pre, q, e].into_iter(),
+        );
     }
 
     // Stages (aggregated: collect all proofs' rxs together)
@@ -205,29 +233,26 @@ where
 
     // Native stages (aggregated across all proofs)
     processor.stage(
-        circuits::stages::native::preamble::STAGING_ID,
-        source.rx(PreambleStage),
+        circuits::native::stages::preamble::STAGING_ID,
+        source.rx(Preamble),
     )?;
 
     processor.stage(
-        circuits::stages::native::error_m::STAGING_ID,
-        source.rx(ErrorMStage),
+        circuits::native::stages::error_m::STAGING_ID,
+        source.rx(ErrorM),
     )?;
 
     processor.stage(
-        circuits::stages::native::error_n::STAGING_ID,
-        source.rx(ErrorNStage),
+        circuits::native::stages::error_n::STAGING_ID,
+        source.rx(ErrorN),
     )?;
 
     processor.stage(
-        circuits::stages::native::query::STAGING_ID,
-        source.rx(QueryStage),
+        circuits::native::stages::query::STAGING_ID,
+        source.rx(Query),
     )?;
 
-    processor.stage(
-        circuits::stages::native::eval::STAGING_ID,
-        source.rx(EvalStage),
-    )?;
+    processor.stage(circuits::native::stages::eval::STAGING_ID, source.rx(Eval))?;
 
     Ok(())
 }

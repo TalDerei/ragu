@@ -34,7 +34,8 @@ use step::{Step, internal::adapter::Adapter};
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
-    circuit_mesh: MeshBuilder<'params, C::CircuitField, R>,
+    native_mesh: MeshBuilder<'params, C::CircuitField, R>,
+    nested_mesh: MeshBuilder<'params, C::ScalarField, R>,
     num_application_steps: usize,
     header_map: BTreeMap<header::Suffix, TypeId>,
     _marker: PhantomData<[(); HEADER_SIZE]>,
@@ -54,7 +55,8 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     /// Create an empty [`ApplicationBuilder`] for proof-carrying data.
     pub fn new() -> Self {
         ApplicationBuilder {
-            circuit_mesh: MeshBuilder::new(),
+            native_mesh: MeshBuilder::new(),
+            nested_mesh: MeshBuilder::new(),
             num_application_steps: 0,
             header_map: BTreeMap::new(),
             _marker: PhantomData,
@@ -71,8 +73,8 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         self.prevent_duplicate_suffixes::<S::Left>()?;
         self.prevent_duplicate_suffixes::<S::Right>()?;
 
-        self.circuit_mesh = self
-            .circuit_mesh
+        self.native_mesh = self
+            .native_mesh
             .register_circuit(Adapter::<C, S, R, HEADER_SIZE>::new(step))?;
         self.num_application_steps += 1;
 
@@ -88,7 +90,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     #[cfg(test)]
     pub(crate) fn register_dummy_circuits(mut self, count: usize) -> Result<Self> {
         for _ in 0..count {
-            self.circuit_mesh = self.circuit_mesh.register_circuit(())?;
+            self.native_mesh = self.native_mesh.register_circuit(())?;
             self.num_application_steps += 1;
         }
         Ok(self)
@@ -102,14 +104,14 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
         // First, insert all of the internal steps.
         {
-            self.circuit_mesh =
-                self.circuit_mesh
+            self.native_mesh =
+                self.native_mesh
                     .register_circuit(Adapter::<C, _, R, HEADER_SIZE>::new(
                         step::internal::rerandomize::Rerandomize::<()>::new(),
                     ))?;
 
-            self.circuit_mesh =
-                self.circuit_mesh
+            self.native_mesh =
+                self.native_mesh
                     .register_circuit(Adapter::<C, _, R, HEADER_SIZE>::new(
                         step::internal::trivial::Trivial::new(),
                     ))?;
@@ -120,27 +122,31 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
             let (total_circuits, log2_circuits) =
                 circuits::total_circuit_counts(self.num_application_steps);
 
-            self.circuit_mesh = circuits::register_all::<C, R, HEADER_SIZE>(
-                self.circuit_mesh,
+            self.native_mesh = circuits::register_all_native::<C, R, HEADER_SIZE>(
+                self.native_mesh,
                 params,
                 log2_circuits,
                 self.num_application_steps,
             )?;
 
             assert_eq!(
-                self.circuit_mesh.log2_circuits(),
+                self.native_mesh.log2_circuits(),
                 log2_circuits,
                 "log2_circuits mismatch"
             );
             assert_eq!(
-                self.circuit_mesh.num_circuits(),
+                self.native_mesh.num_circuits(),
                 total_circuits,
                 "final circuit count mismatch"
             );
         }
 
+        // Register nested internal circuits (no application steps, no headers).
+        self.nested_mesh = circuits::register_all_nested::<C, R>(self.nested_mesh)?;
+
         Ok(Application {
-            circuit_mesh: self.circuit_mesh.finalize(C::circuit_poseidon(params))?,
+            native_mesh: self.native_mesh.finalize(C::circuit_poseidon(params))?,
+            _nested_mesh: self.nested_mesh.finalize(C::scalar_poseidon(params))?,
             params,
             num_application_steps: self.num_application_steps,
             seeded_trivial: OnceCell::new(),
@@ -168,7 +174,8 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 
 /// The recursion context that is used to create and verify proof-carrying data.
 pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
-    circuit_mesh: Mesh<'params, C::CircuitField, R>,
+    native_mesh: Mesh<'params, C::CircuitField, R>,
+    _nested_mesh: Mesh<'params, C::ScalarField, R>,
     params: &'params C::Params,
     num_application_steps: usize,
     /// Cached seeded trivial proof for rerandomization.

@@ -6,9 +6,10 @@
 //!
 //! This circuit completes the Fiat-Shamir transcript started in
 //! [`hashes_1`][super::hashes_1], invoking $5$ Poseidon permutations:
-//! - Resume sponge from saved state (after `hashes_1` absorbed
-//!   [`nested_error_m_commitment`] and applied the permutation to move it into
-//!   squeeze mode).
+//! - Resume sponge from saved state via [`Sponge::resume_and_squeeze`] using
+//!   the state witnessed in [`error_n`]. (This state was computed by `hashes_1`
+//!   after absorbing [`nested_error_m_commitment`] and applying the permutation
+//!   to move into squeeze mode.)
 //! - Squeeze [$\mu$] and [$\nu$] challenges.
 //! - Absorb [`nested_error_n_commitment`].
 //! - Squeeze [$\mu'$] and [$\nu'$] challenges.
@@ -27,14 +28,17 @@
 //! ## Staging
 //!
 //! This circuit is a staged circuit based on the
-//! [`error_n`][super::stages::native::error_n] stage, which inherits in the
+//! [`error_n`][super::stages::error_n] stage, which inherits in the
 //! following chain:
-//! - [`preamble`][super::stages::native::preamble] (skipped)
-//! - [`error_n`][super::stages::native::error_n] (unenforced)
+//! - [`preamble`][super::stages::preamble] (skipped)
+//! - [`error_n`][super::stages::error_n] (unenforced)
 //!
 //! ## Public Inputs
 //!
-//! This circuit uses the [`unified::Output`] as its public inputs.
+//! This circuit uses the [`unified::Output`] as its public inputs, wrapped in a
+//! [`WithSuffix`] with a zero element appended. This matches the format used by
+//! [`hashes_1`][super::hashes_1] and ensures the public input serialization
+//! aligns with the $k(y)$ computation for `unified_ky`.
 //!
 //! [`nested_error_m_commitment`]: unified::Output::nested_error_m_commitment
 //! [$\mu$]: unified::Output::mu
@@ -50,6 +54,9 @@
 //! [$u$]: unified::Output::u
 //! [`nested_eval_commitment`]: unified::Output::nested_eval_commitment
 //! [$\beta$]: unified::Output::beta
+//! [`error_n`]: super::stages::error_n
+//! [`WithSuffix`]: crate::components::suffix::WithSuffix
+//! [`Sponge::resume_and_squeeze`]: ragu_primitives::poseidon::Sponge::resume_and_squeeze
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -67,7 +74,7 @@ use ragu_primitives::{GadgetExt, poseidon::Sponge};
 use core::marker::PhantomData;
 
 use super::{
-    stages::native::{error_n as native_error_n, preamble as native_preamble},
+    stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
 use crate::components::fold_revdot;
@@ -104,13 +111,13 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Para
 /// Witness data for the second hash circuit.
 ///
 /// Combines the unified instance with the
-/// [`error_n`](super::stages::native::error_n) stage witness needed to resume
+/// [`error_n`](super::stages::error_n) stage witness needed to resume
 /// the Fiat-Shamir transcript from the saved sponge state.
 pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
     /// The unified instance containing expected challenge values.
     pub unified_instance: &'a unified::Instance<C>,
 
-    /// Witness for the [`error_n`](super::stages::native::error_n) stage
+    /// Witness for the [`error_n`](super::stages::error_n) stage
     /// (unenforced).
     ///
     /// Provides the saved sponge state for transcript resumption.

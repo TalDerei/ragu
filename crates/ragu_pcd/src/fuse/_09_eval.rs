@@ -17,7 +17,7 @@ use rand::Rng;
 
 use crate::{
     Application, Proof,
-    circuits::stages::{self, native::eval},
+    circuits::{native::stages::eval, nested},
     proof,
 };
 
@@ -54,22 +54,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 mesh_xy: query.mesh_xy_poly.eval(u),
             },
         };
-        let stage_rx = eval::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;
-        let stage_blind = C::CircuitField::random(&mut *rng);
-        let stage_commitment = stage_rx.commit(C::host_generators(self.params), stage_blind);
+        let native_rx = eval::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;
+        let native_blind = C::CircuitField::random(&mut *rng);
+        let native_commitment = native_rx.commit(C::host_generators(self.params), native_blind);
 
-        let nested_eval_witness = stages::nested::eval::Witness {
-            native_eval: stage_commitment,
+        let nested_eval_witness = nested::stages::eval::Witness {
+            native_eval: native_commitment,
         };
-        let nested_rx = stages::nested::eval::Stage::<C::HostCurve, R>::rx(&nested_eval_witness)?;
+        let nested_rx = nested::stages::eval::Stage::<C::HostCurve, R>::rx(&nested_eval_witness)?;
         let nested_blind = C::ScalarField::random(&mut *rng);
         let nested_commitment = nested_rx.commit(C::nested_generators(self.params), nested_blind);
 
         Ok((
             proof::Eval {
-                stage_rx,
-                stage_blind,
-                stage_commitment,
+                native_rx,
+                native_blind,
+                native_commitment,
                 nested_rx,
                 nested_blind,
                 nested_commitment,

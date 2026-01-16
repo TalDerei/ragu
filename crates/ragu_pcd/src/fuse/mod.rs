@@ -21,7 +21,7 @@ use rand::Rng;
 
 use crate::{
     Application, Pcd, Proof,
-    components::claim_builder::{ClaimSource, RxComponent},
+    components::claim_builder::{ClaimSource, NativeRxComponent},
     proof,
     step::Step,
 };
@@ -119,7 +119,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let beta = transcript.squeeze(&mut dr)?;
 
         let p = self.compute_p(
-            rng, &beta, &u, &left, &right, &s_prime, &error_m, &ab, &query, &f,
+            &beta, &u, &left, &right, &s_prime, &error_m, &ab, &query, &f,
         )?;
 
         let challenges = proof::Challenges::new(
@@ -174,38 +174,45 @@ impl<'rx, C: Cycle, R: Rank> ClaimSource for FuseProofSource<'rx, C, R> {
     type Rx = &'rx structured::Polynomial<C::CircuitField, R>;
     type AppCircuitId = CircuitIndex;
 
-    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+    fn rx(&self, component: NativeRxComponent) -> impl Iterator<Item = Self::Rx> {
         let (left_poly, right_poly) = match component {
-            RxComponent::AbA => (&self.left.ab.a_poly, &self.right.ab.a_poly),
-            RxComponent::AbB => (&self.left.ab.b_poly, &self.right.ab.b_poly),
-            RxComponent::Application => (&self.left.application.rx, &self.right.application.rx),
-            RxComponent::Hashes1 => (
+            NativeRxComponent::AbA => (&self.left.ab.a_poly, &self.right.ab.a_poly),
+            NativeRxComponent::AbB => (&self.left.ab.b_poly, &self.right.ab.b_poly),
+            NativeRxComponent::Application => {
+                (&self.left.application.rx, &self.right.application.rx)
+            }
+            NativeRxComponent::Hashes1 => (
                 &self.left.circuits.hashes_1_rx,
                 &self.right.circuits.hashes_1_rx,
             ),
-            RxComponent::Hashes2 => (
+            NativeRxComponent::Hashes2 => (
                 &self.left.circuits.hashes_2_rx,
                 &self.right.circuits.hashes_2_rx,
             ),
-            RxComponent::PartialCollapse => (
+            NativeRxComponent::PartialCollapse => (
                 &self.left.circuits.partial_collapse_rx,
                 &self.right.circuits.partial_collapse_rx,
             ),
-            RxComponent::FullCollapse => (
+            NativeRxComponent::FullCollapse => (
                 &self.left.circuits.full_collapse_rx,
                 &self.right.circuits.full_collapse_rx,
             ),
-            RxComponent::ComputeV => (
+            NativeRxComponent::ComputeV => (
                 &self.left.circuits.compute_v_rx,
                 &self.right.circuits.compute_v_rx,
             ),
-            RxComponent::PreambleStage => {
-                (&self.left.preamble.stage_rx, &self.right.preamble.stage_rx)
+            NativeRxComponent::Preamble => (
+                &self.left.preamble.native_rx,
+                &self.right.preamble.native_rx,
+            ),
+            NativeRxComponent::ErrorM => {
+                (&self.left.error_m.native_rx, &self.right.error_m.native_rx)
             }
-            RxComponent::ErrorMStage => (&self.left.error_m.stage_rx, &self.right.error_m.stage_rx),
-            RxComponent::ErrorNStage => (&self.left.error_n.stage_rx, &self.right.error_n.stage_rx),
-            RxComponent::QueryStage => (&self.left.query.stage_rx, &self.right.query.stage_rx),
-            RxComponent::EvalStage => (&self.left.eval.stage_rx, &self.right.eval.stage_rx),
+            NativeRxComponent::ErrorN => {
+                (&self.left.error_n.native_rx, &self.right.error_n.native_rx)
+            }
+            NativeRxComponent::Query => (&self.left.query.native_rx, &self.right.query.native_rx),
+            NativeRxComponent::Eval => (&self.left.eval.native_rx, &self.right.eval.native_rx),
         };
         [left_poly, right_poly].into_iter()
     }

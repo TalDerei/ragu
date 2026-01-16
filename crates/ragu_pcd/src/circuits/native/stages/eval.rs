@@ -42,14 +42,14 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank>(proof: &Proof<C, R>, u: F) -> Self {
         ChildEvaluationsWitness {
             application: proof.application.rx.eval(u),
-            preamble: proof.preamble.stage_rx.eval(u),
-            error_n: proof.error_n.stage_rx.eval(u),
-            error_m: proof.error_m.stage_rx.eval(u),
+            preamble: proof.preamble.native_rx.eval(u),
+            error_n: proof.error_n.native_rx.eval(u),
+            error_m: proof.error_m.native_rx.eval(u),
             a_poly: proof.ab.a_poly.eval(u),
             b_poly: proof.ab.b_poly.eval(u),
-            query: proof.query.stage_rx.eval(u),
+            query: proof.query.native_rx.eval(u),
             mesh_xy_poly: proof.query.mesh_xy_poly.eval(u),
-            eval: proof.eval.stage_rx.eval(u),
+            eval: proof.eval.native_rx.eval(u),
             p_poly: proof.p.poly.eval(u),
             hashes_1: proof.circuits.hashes_1_rx.eval(u),
             hashes_2: proof.circuits.hashes_2_rx.eval(u),
@@ -215,7 +215,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
+    use crate::circuits::native::stages::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
 
     #[test]

@@ -1,8 +1,8 @@
 use super::*;
 use crate::*;
+use native::stages::{error_m, error_n, eval, preamble, query};
 use ragu_circuits::staging::{Stage, StageExt};
 use ragu_pasta::Pasta;
-use stages::native::{error_m, error_n, eval, preamble, query};
 
 pub(crate) type R = ragu_circuits::polynomials::R<13>;
 
@@ -33,7 +33,7 @@ fn test_internal_circuit_constraint_counts() {
         .finalize(pasta)
         .unwrap();
 
-    let circuits = app.circuit_mesh.circuits();
+    let circuits = app.native_mesh.circuits();
 
     macro_rules! check_constraints {
         ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
@@ -96,7 +96,7 @@ fn print_internal_circuit_constraint_counts() {
         .finalize(pasta)
         .unwrap();
 
-    let circuits = app.circuit_mesh.circuits();
+    let circuits = app.native_mesh.circuits();
 
     let variants = [
         ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),

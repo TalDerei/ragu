@@ -12,25 +12,27 @@
 //! - Absorb [`nested_s_prime_commitment`].
 //! - Squeeze [$y$] and [$z$] challenges.
 //! - Absorb [`nested_error_m_commitment`].
-//! - Move to squeeze mode using a permutation.
-//! - Save the sponge state and verify it matches the witnessed value.
+//! - Call [`Sponge::save_state`] to capture the transcript state for resumption
+//!   in [`hashes_2`][super::hashes_2]. This applies a permutation (the third) since we're at the
+//!   absorb-to-squeeze boundary.
+//! - Verify the saved state matches the witnessed value from [`error_n`][super::stages::error_n].
 //!
 //! The squeezed $w, y, z$ challenges are set in the unified instance by this
 //! circuit. **The rest of the transcript computations are performed in the
 //! [`hashes_2`][super::hashes_2] circuit.** The sponge state is witnessed in
-//! the [`error_n`][super::stages::native::error_n] stage and verified here to
+//! the [`error_n`][super::stages::error_n] stage and verified here to
 //! enable resumption in `hashes_2`.
 //!
 //! ### $k(y)$ evaluations
 //!
 //! This circuit also is responsible for using the derived $y$ value to compute
 //! the $k(y)$ (public input polynomial evaluations) for the child proofs. These
-//! are witnessed in the [`error_n`][super::stages::native::error_n] stage and
+//! are witnessed in the [`error_n`][super::stages::error_n] stage and
 //! enforced to be consistent by this circuit.
 //!
 //! ### Valid circuit IDs
 //!
-//! The circuit IDs in the [`preamble`][super::stages::native::preamble] are
+//! The circuit IDs in the [`preamble`][super::stages::preamble] are
 //! enforced to be valid roots of unity in the mesh domain (the domain over
 //! which circuits are indexed). Other circuits can thus assume this check has
 //! been performed.
@@ -38,16 +40,16 @@
 //! ## Staging
 //!
 //! This circuit is a staged circuit based on the
-//! [`error_n`][super::stages::native::error_n] stage, which inherits in the
+//! [`error_n`][super::stages::error_n] stage, which inherits in the
 //! following chain:
-//! - [`preamble`][super::stages::native::preamble] (unenforced)
-//! - [`error_n`][super::stages::native::error_n] (unenforced)
+//! - [`preamble`][super::stages::preamble] (unenforced)
+//! - [`error_n`][super::stages::error_n] (unenforced)
 //!
 //! ## Public Inputs
 //!
 //! The public inputs are special for this internal circuit: they contain a
 //! concatenation of the unified instance and the `left` and `right` child
-//! proofs' output headers from the [`preamble`][super::stages::native::preamble]
+//! proofs' output headers from the [`preamble`][super::stages::preamble]
 //! stage (i.e., the headers that the
 //! child steps produced, not the headers they consumed). This allows the
 //! verifier to ensure consistency with the headers enforced on the application
@@ -68,6 +70,7 @@
 //! [$y$]: unified::Output::y
 //! [$z$]: unified::Output::z
 //! [`WithSuffix`]: crate::components::suffix::WithSuffix
+//! [`Sponge::save_state`]: ragu_primitives::poseidon::Sponge::save_state
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -90,7 +93,7 @@ use ragu_primitives::{
 use core::marker::PhantomData;
 
 use super::{
-    stages::native::{error_n as native_error_n, preamble as native_preamble},
+    stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
 use crate::components::{fold_revdot, root_of_unity, suffix::WithSuffix};
@@ -158,13 +161,13 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_rev
     /// The unified instance containing expected challenge values.
     pub unified_instance: &'a unified::Instance<C>,
 
-    /// Witness for the [`preamble`](super::stages::native::preamble) stage
+    /// Witness for the [`preamble`](super::stages::preamble) stage
     /// (unenforced).
     ///
     /// Provides output headers and data for computing $k(y)$ evaluations.
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
 
-    /// Witness for the [`error_n`](super::stages::native::error_n) stage
+    /// Witness for the [`error_n`](super::stages::error_n) stage
     /// (unenforced).
     ///
     /// Provides the saved sponge state and pre-computed $k(y)$ values for
@@ -273,9 +276,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 .get(dr, unified_instance)?;
             nested_error_m_commitment.write(dr, &mut sponge)?;
 
-            // Save state and verify it matches the witnessed state from error_n
-            // This performs a permutation and converts the sponge into squeeze
-            // mode.
+            // save_state() applies a permutation (since there's pending absorbed data)
+            // and returns the raw state, ready for squeeze-mode resumption in hashes_2.
             sponge
                 .save_state(dr)
                 .expect("save_state should succeed after absorbing")

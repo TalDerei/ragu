@@ -1,3 +1,7 @@
+//! Preamble stage for native fuse operations.
+//!
+//! Verifies child proof headers and computes the Ky term.
+
 use arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
@@ -14,7 +18,9 @@ use ragu_primitives::{
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::{Proof, circuits::unified, components::ky::Ky, header::Header, step::internal::padded};
+use crate::{
+    Proof, circuits::native::unified, components::ky::Ky, header::Header, step::internal::padded,
+};
 
 pub(crate) use crate::circuits::InternalCircuitIndex::PreambleStage as STAGING_ID;
 
@@ -40,7 +46,7 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
 }
 
 impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_SIZE> {
-    /// Create a witness from proof references and pre-computed output headers.
+    /// Create a witness from child proof references and pre-computed output headers.
     pub fn new(
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
@@ -274,7 +280,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
+    use crate::circuits::native::stages::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
 
     #[test]

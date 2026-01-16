@@ -1,3 +1,47 @@
+//! Circuit for computing and verifying the claimed evaluation value [$v$].
+//!
+//! ## Operations
+//!
+//! This circuit computes the claimed output value [$v$] and verifies it matches
+//! the unified instance.
+//!
+//! ### Revdot folding
+//! - Retrieve layer 1 challenges [$\mu$], [$\nu$] and layer 2 challenges [$\mu'$], [$\nu'$]
+//! - Compute $a(x)$ and $b(x)$ via two-layer revdot folding of evaluation claims
+//!
+//! ### $f(u)$ computation
+//! - Compute inverse denominators $(u - x_i)^{-1}$ for all evaluation points
+//! - Iterate polynomial queries $(p(u), v, (u - x_i)^{-1})$ in prover order
+//! - Accumulate $f(u) = \sum_i \alpha^{n-1-i} \cdot (p_i(u) - v_i) / (u - x_i)$ via Horner
+//!   (first query receives highest $\alpha$ power)
+//!
+//! ### $v$ computation
+//! - Compute $v = f(u) + \beta \cdot \text{eval}$ using [$\beta$] challenge
+//! - Set computed [$v$] in unified output, enforcing correctness
+//!
+//! ## Staging
+//!
+//! This circuit uses [`eval`] as its final stage, which inherits in the
+//! following chain:
+//! - [`preamble`] (enforced) - provides child proof data
+//! - [`query`] (unenforced) - provides mesh and polynomial evaluations
+//! - [`eval`] (unenforced) - provides evaluation component polynomials
+//!
+//! ## Public Inputs
+//!
+//! Uses [`unified::Output`] as public inputs via [`unified::InternalOutputKind`].
+//!
+//! [`preamble`]: super::stages::preamble
+//! [`query`]: super::stages::query
+//! [`eval`]: super::stages::eval
+//! [$v$]: unified::Output::v
+//! [$\alpha$]: unified::Output::alpha
+//! [$\beta$]: unified::Output::beta
+//! [$\mu$]: unified::Output::mu
+//! [$\nu$]: unified::Output::nu
+//! [$\mu'$]: unified::Output::mu_prime
+//! [$\nu'$]: unified::Output::nu_prime
+
 use arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, txz::Evaluate},
@@ -14,21 +58,28 @@ use ragu_primitives::{Element, GadgetExt};
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::components::claim_builder::{self, ClaimProcessor, ClaimSource, RxComponent};
+use crate::components::claim_builder::{self, ClaimProcessor, ClaimSource, NativeRxComponent};
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 
 use super::{
-    InternalCircuitIndex,
-    stages::native::{
+    stages::{
         eval as native_eval, preamble as native_preamble,
         query::{self as native_query, ChildEvaluations, FixedMeshEvaluations, RxEval},
     },
     unified::{self, OutputBuilder},
 };
+use crate::circuits::InternalCircuitIndex;
 use crate::components::horner::Horner;
 
 pub(crate) use crate::circuits::InternalCircuitIndex::ComputeVCircuit as CIRCUIT_ID;
 
+/// Circuit that computes and verifies the claimed evaluation value [$v$].
+///
+/// See the [module-level documentation] for details on the operations
+/// performed by this circuit.
+///
+/// [module-level documentation]: self
+/// [$v$]: unified::Output::v
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize> {
     num_application_steps: usize,
     _marker: PhantomData<(C, R)>,
@@ -43,10 +94,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Circuit<C, R, HEADER_SIZE> {
     }
 }
 
+/// Witness for the compute_v circuit.
+///
+/// Provides all staged data needed to compute [$v$]:
+/// - Child proof public inputs from preamble
+/// - Polynomial evaluations from query stage
+/// - Evaluation component polynomials from eval stage
+///
+/// [$v$]: unified::Output::v
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+    /// Reference to the unified instance shared across internal circuits.
     pub unified_instance: &'a unified::Instance<C>,
+    /// Witness for the preamble stage (provides child proof data).
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
+    /// Witness for the query stage (provides mesh and polynomial evaluations).
     pub query_witness: &'a native_query::Witness<C>,
+    /// Witness for the eval stage (provides evaluation component polynomials).
     pub eval_witness: &'a native_eval::Witness<C::CircuitField>,
 }
 
@@ -82,34 +145,42 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
     where
         Self: 'dr,
     {
+        // Set up staged circuit pipeline: preamble -> query -> eval.
+        // Each stage provides data needed for the v computation.
         let (preamble, builder) =
             builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
         let (query, builder) = builder.add_stage::<native_query::Stage<C, R, HEADER_SIZE>>()?;
         let (eval, builder) = builder.add_stage::<native_eval::Stage<C, R, HEADER_SIZE>>()?;
         let dr = builder.finish();
 
+        // Preamble is enforced because it contains child proof data that must
+        // be validated (Points, Booleans, etc.).
         let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
 
-        // TODO: these are unenforced for now, because query/eval stages aren't
-        // supposed to contain anything (yet) besides Elements, which require no
-        // enforcement logic. Re-evaluate this in the future.
+        // TODO: Query and eval stages are unenforced because they currently
+        // contain only Elements, which require no enforcement logic. Re-evaluate
+        // if additional gadget types are added in the future.
         let query = query.unenforced(dr, witness.view().map(|w| w.query_witness))?;
         let eval = eval.unenforced(dr, witness.view().map(|w| w.eval_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
+        // Retrieve Fiat-Shamir challenges from the unified instance.
         let w = unified_output.w.get(dr, unified_instance)?;
         let y = unified_output.y.get(dr, unified_instance)?;
         let z = unified_output.z.get(dr, unified_instance)?;
         let x = unified_output.x.get(dr, unified_instance)?;
 
+        // Compute t(xz), the vanishing polynomial evaluated at xz.
         let txz = dr.routine(Evaluate::<R>::new(), (x.clone(), z.clone()))?;
 
-        // Enforce the claimed value `v` in the unified instance is correctly
-        // computed based on committed evaluation claims and verifier
-        // challenges.
+        // Verify v: compute the expected value and constrain it to match the
+        // unified instance. This binds the prover's polynomial commitments to
+        // the claimed evaluation.
         {
+            // Step 1: Compute a(x) and b(x) via two-layer revdot folding.
+            // These aggregate all evaluation claims into a single pair.
             let (computed_ax, computed_bx) = {
                 let mu = unified_output.mu.get(dr, unified_instance)?;
                 let nu = unified_output.nu.get(dr, unified_instance)?;
@@ -132,7 +203,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
                 )?
             };
 
-            // Compute expected f(u)
+            // Step 2: Compute f(u) by accumulating quotient terms.
+            // f(u) = sum_i alpha^{n-1-i} * (p_i(u) - v_i) / (u - x_i)
+            // (Horner accumulation: first query receives highest alpha power)
             let fu = {
                 let alpha = unified_output.alpha.get(dr, unified_instance)?;
                 let u = unified_output.u.get(dr, unified_instance)?;
@@ -160,7 +233,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
                 horner.finish(dr)
             };
 
-            // Compute expected v = p(u)
+            // Step 3: Compute v = f(u) + beta * eval via Horner accumulation.
+            // This combines f(u) with the evaluation component polynomials.
             let computed_v = {
                 let beta = unified_output.beta.get(dr, unified_instance)?;
                 let mut horner = Horner::new(&beta);
@@ -169,6 +243,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
                 horner.finish(dr)
             };
 
+            // Constrain v: the computed value must equal the claimed v in the
+            // unified instance. This is enforced when finish() serializes the output.
             unified_output.v.set(computed_v);
         }
 
@@ -211,7 +287,14 @@ struct InternalCircuitDenominators<'dr, D: Driver<'dr>> {
 
 /// Denominator component of all quotient polynomial evaluations.
 ///
-/// Each represents some $(u - x_i)^{-1}$.
+/// Each denominator represents $(u - x_i)^{-1}$ where $x_i$ is an evaluation
+/// point. These are precomputed once and reused across all polynomial queries
+/// in the [`poly_queries`] iterator.
+///
+/// The denominators are organized by source:
+/// - `left`/`right`: Child proof evaluation points ($u$, $y$, $x$, circuit\_id)
+/// - `challenges`: Current step challenge points ($w$, $x$, $y$, $xz$)
+/// - `internal`: Internal circuit $\omega^j$ evaluation points
 struct Denominators<'dr, D: Driver<'dr>> {
     left: ChildDenominators<'dr, D>,
     right: ChildDenominators<'dr, D>,
@@ -234,7 +317,7 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     where
         D::F: ff::PrimeField,
     {
-        use super::InternalCircuitIndex::{self, *};
+        use crate::circuits::InternalCircuitIndex::{self, *};
 
         let internal_denom = |dr: &mut D, idx: InternalCircuitIndex| -> Result<Element<'dr, D>> {
             let omega_j = Element::constant(dr, idx.circuit_index(num_application_steps).omega_j());
@@ -281,7 +364,13 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     }
 }
 
-/// Source providing rx evaluations from query output.
+/// Source providing polynomial evaluations from child proofs for revdot folding.
+///
+/// Implements [`ClaimSource`] to provide evaluations in the canonical order
+/// required by [`build_claims`]. The ordering must match exactly
+/// to ensure correct folding correspondence with the prover's computation.
+///
+/// [`build_claims`]: claim_builder::build_claims
 struct EvaluationSource<'a, 'dr, D: Driver<'dr>> {
     left: &'a ChildEvaluations<'dr, D>,
     right: &'a ChildEvaluations<'dr, D>,
@@ -293,8 +382,8 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
     /// For app circuits: the mesh evaluation at the circuit's omega^j.
     type AppCircuitId = &'a Element<'dr, D>;
 
-    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
-        use RxComponent::*;
+    fn rx(&self, component: NativeRxComponent) -> impl Iterator<Item = Self::Rx> {
+        use NativeRxComponent::*;
         let (left, right) = match component {
             // Raw claims: only x evaluation is available
             AbA => (
@@ -324,11 +413,11 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
                 self.left.compute_v.to_eval(),
                 self.right.compute_v.to_eval(),
             ),
-            PreambleStage => (self.left.preamble.to_eval(), self.right.preamble.to_eval()),
-            ErrorMStage => (self.left.error_m.to_eval(), self.right.error_m.to_eval()),
-            ErrorNStage => (self.left.error_n.to_eval(), self.right.error_n.to_eval()),
-            QueryStage => (self.left.query.to_eval(), self.right.query.to_eval()),
-            EvalStage => (self.left.eval.to_eval(), self.right.eval.to_eval()),
+            Preamble => (self.left.preamble.to_eval(), self.right.preamble.to_eval()),
+            ErrorM => (self.left.error_m.to_eval(), self.right.error_m.to_eval()),
+            ErrorN => (self.left.error_n.to_eval(), self.right.error_n.to_eval()),
+            Query => (self.left.query.to_eval(), self.right.query.to_eval()),
+            Eval => (self.left.eval.to_eval(), self.right.eval.to_eval()),
         };
         [left, right].into_iter()
     }
@@ -342,7 +431,11 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
     }
 }
 
-/// Processor that builds evaluation vectors for revdot claims.
+/// Processor that builds evaluation vectors for two-layer revdot folding.
+///
+/// Collects evaluations into `ax` and `bx` vectors that will be folded to
+/// produce $a(x)$ and $b(x)$. Each claim type (raw, circuit, internal circuit,
+/// stage) has different formulas for computing its contribution to the vectors.
 struct EvaluationProcessor<'a, 'dr, D: Driver<'dr>> {
     dr: &'a mut D,
     z: &'a Element<'dr, D>,
@@ -428,11 +521,16 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr
 }
 
 /// Computes the expected value of $a(x), b(x)$ given the evaluations at $x$ of
-/// every constituent polynomial at $x, xz$. This function is the authoritative
-/// source of the protocol's (recursive) description of the revdot folding
-/// structure and is what fundamentally binds the prover's behavior in their
-/// choice of $a(X), b(X)$ and thus the correctness of their folded revdot
-/// claim.
+/// every constituent polynomial at $x, xz$.
+///
+/// This function is the authoritative source of the protocol's (recursive)
+/// description of the revdot folding structure. It fundamentally binds the
+/// prover's behavior in their choice of $a(X), b(X)$ and thus the correctness
+/// of their folded revdot claim.
+///
+/// The two-layer folding uses:
+/// - Layer 1: $\mu^{-1}$, $\mu'^{-1}$ for $a(x)$; $\mu\nu$, $\mu'\nu'$ for $b(x)$
+/// - Layer 2: Internal folding within each layer
 fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
     dr: &mut D,
     query: &native_query::Output<'dr, D>,
@@ -458,14 +556,29 @@ fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
     Ok((ax, bx))
 }
 
-/// Returns an iterator over the polynomial queries.
+/// Returns an iterator over the polynomial queries for computing $f(u)$.
 ///
-/// Each yielded element represents $(p(u), v, (u - x_i)^{-1})$ where $v =
-/// p(x_i)$ is the prover's claim given polynomial $p(X)$.
+/// Each yielded element represents $(p(u), v, (u - x_i)^{-1})$ where:
+/// - $p(u)$ is the polynomial evaluation at $u$ (from eval stage)
+/// - $v = p(x_i)$ is the prover's claimed evaluation (from query stage)
+/// - $(u - x_i)^{-1}$ is the precomputed inverse denominator
+///
+/// ## Query Categories
+///
+/// The queries are organized into groups:
+/// 1. **Child proof $p(u) = v$ checks** - Verify child proof evaluations
+/// 2. **Mesh polynomial transitions** - $m(W,x,y) \to m(w,x,Y) \to m(w,X,y) \to s(W,x,y)$
+/// 3. **Internal circuit mesh evaluations** - $m(\omega^j, x, y)$ for each internal index
+/// 4. **Application circuit mesh evaluations** - $m(\text{circuit\_id}, x, y)$
+/// 5. **$a(x), b(x)$ polynomial queries** - Including verifier-computed values
+/// 6. **Stage/circuit evaluations** - At both $x$ and $xz$ points
 ///
 /// The queries must be ordered exactly as in the prover's computation of $f(X)$
-/// in [`crate::Application::compute_f`], since the ordering affects the weight
-/// (with respect to $\alpha$) of each quotient polynomial.
+/// in [`compute_f`], since the ordering affects the weight
+/// (with respect to [$\alpha$]) of each quotient polynomial.
+///
+/// [`compute_f`]: crate::Application::compute_f
+/// [$\alpha$]: unified::Output::alpha
 #[rustfmt::skip]
 fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
     eval: &'a native_eval::Output<'dr, D>,
