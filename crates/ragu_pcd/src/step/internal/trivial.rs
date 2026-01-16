@@ -4,15 +4,9 @@
 //! can be folded with a valid proof without causing C value mismatches.
 
 use arithmetic::Cycle;
-use ragu_core::{
-    Result,
-    drivers::{Driver, DriverValue},
-};
+use ragu_core::{Result, drivers::Driver};
 
-use crate::{
-    header::Header,
-    step::{Encoded, Index, Step},
-};
+use crate::step::{Encoded, Index, Step, StepInput, StepOutput};
 
 pub(crate) use crate::step::InternalStepIndex::Trivial as INTERNAL_ID;
 
@@ -37,19 +31,8 @@ impl<C: Cycle> Step<C> for Trivial {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): (
-            DriverValue<D, Self::Witness<'source>>,
-            DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
-            DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
-        ),
-    ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
-        DriverValue<D, Self::Aux<'source>>,
-    )> {
+        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());

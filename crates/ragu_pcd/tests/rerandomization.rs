@@ -1,16 +1,12 @@
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::polynomials::R;
-use ragu_core::{
-    Result,
-    drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
-};
+use ragu_core::{Result, drivers::Driver};
 use ragu_pasta::Pasta;
 use ragu_pcd::{
     ApplicationBuilder,
-    header::{Header, Suffix},
-    step::{Encoded, Index, Step},
+    header::{Header, HeaderInput, HeaderOutput, Suffix},
+    step::{Encoded, Index, Step, StepInput, StepOutput},
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -24,8 +20,8 @@ impl<F: Field> Header<F> for HeaderA {
     type Output = ();
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        _: HeaderInput<'source, Self, F, D>,
+    ) -> Result<HeaderOutput<'dr, Self, F, D>> {
         Ok(())
     }
 }
@@ -42,19 +38,8 @@ impl<C: Cycle> Step<C> for Step0 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): (
-            DriverValue<D, Self::Witness<'source>>,
-            DriverValue<D, Self::Left::Data<'source>>,
-            DriverValue<D, Self::Right::Data<'source>>,
-        ),
-    ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
-        DriverValue<D, Self::Aux<'source>>,
-    )> {
+        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
@@ -73,19 +58,8 @@ impl<C: Cycle> Step<C> for Step1 {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): (
-            DriverValue<D, Self::Witness<'source>>,
-            DriverValue<D, Self::Left::Data<'source>>,
-            DriverValue<D, Self::Right::Data<'source>>,
-        ),
-    ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
-        DriverValue<D, Self::Aux<'source>>,
-    )> {
+        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());

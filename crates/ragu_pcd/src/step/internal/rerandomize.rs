@@ -6,15 +6,14 @@
 //! left header is, we use a _uniform_ encoding of the left header.
 
 use arithmetic::Cycle;
-use ragu_core::{
-    Result,
-    drivers::{Driver, DriverValue},
-};
+use ragu_core::{Result, drivers::Driver};
 
 use core::marker::PhantomData;
 
-use super::super::{Encoded, Index, Step};
-use crate::Header;
+use crate::{
+    Header,
+    step::{Encoded, Index, Step, StepInput, StepOutput},
+};
 
 pub(crate) use crate::step::InternalStepIndex::Rerandomize as INTERNAL_ID;
 
@@ -43,19 +42,8 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
-        (_, left, right): (
-            DriverValue<D, Self::Witness<'source>>,
-            DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
-            DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
-        ),
-    ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
-        DriverValue<D, Self::Aux<'source>>,
-    )> {
+        (_, left, right): StepInput<'source, Self, C, D, HEADER_SIZE>,
+    ) -> Result<StepOutput<'dr, 'source, Self, C, D, HEADER_SIZE>> {
         // Use uniform encoding for left to ensure circuit uniformity across header types
         let left = Encoded::new_uniform(dr, left)?;
         // Use standard encoding for right (trivial header)
@@ -76,14 +64,9 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
 
 #[test]
 fn test_rerandomize_consistency() {
-    use crate::header::{Header, Suffix};
+    use crate::header::{Header, HeaderInput, HeaderOutput, Suffix};
     use ragu_circuits::{CircuitExt, polynomials};
-    use ragu_core::{
-        Result,
-        drivers::{Driver, DriverValue},
-        gadgets::{GadgetKind, Kind},
-        maybe::Maybe,
-    };
+    use ragu_core::{Result, drivers::Driver, gadgets::Kind, maybe::Maybe};
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::Element;
 
@@ -97,8 +80,8 @@ fn test_rerandomize_consistency() {
         type Output = Kind![Fp; Element<'_, _>];
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
-            witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+            witness: HeaderInput<'source, Self, Fp, D>,
+        ) -> Result<HeaderOutput<'dr, Self, Fp, D>> {
             Element::alloc(dr, witness)
         }
     }
@@ -110,8 +93,8 @@ fn test_rerandomize_consistency() {
         type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
-            witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+            witness: HeaderInput<'source, Self, Fp, D>,
+        ) -> Result<HeaderOutput<'dr, Self, Fp, D>> {
             let (a, b) = witness.cast();
             let a = Element::alloc(dr, a)?;
             let b = Element::alloc(dr, b)?;
