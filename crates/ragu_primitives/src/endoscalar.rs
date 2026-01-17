@@ -208,6 +208,26 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 }
 
+/// Computes the effective scalar for an endoscalar.
+///
+/// This implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021)
+/// and is the native counterpart to [`Endoscalar::field_scale`].
+pub fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: Uendo) -> F {
+    let mut acc = (F::ZETA + F::ONE).double();
+    for i in 0..(Uendo::BITS as usize / 2) {
+        let bits = endo >> (i << 1);
+        let mut tmp = F::ONE;
+        if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
+            tmp = -tmp;
+        }
+        if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
+            tmp *= F::ZETA;
+        }
+        acc = acc.double() + tmp;
+    }
+    acc
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Element, Endoscalar, Maybe, Point};
@@ -245,18 +265,7 @@ mod tests {
 
         /// Implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021).
         pub fn compute_scalar<F: WithSmallOrderMulGroup<3>>(&self) -> F {
-            let mut acc = (F::ZETA + F::ONE).double();
-            for bits in (0..(Uendo::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
-                let mut tmp = F::ONE;
-                if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
-                    tmp = -tmp;
-                }
-                if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
-                    tmp *= F::ZETA;
-                }
-                acc = acc.double() + tmp;
-            }
-            acc
+            super::compute_endoscalar(self.value)
         }
     }
 
