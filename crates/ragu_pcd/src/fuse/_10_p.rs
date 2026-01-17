@@ -21,7 +21,14 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, compute_endoscalar, extract_endoscalar};
 
+use crate::components::endoscalar::PointsWitness;
 use crate::{Application, Proof, proof};
+
+/// Number of commitments accumulated in compute_p:
+/// - 2 proofs × 15 components = 30
+/// - 6 stage proof components
+/// - 1 f.commitment
+const NUM_P_COMMITMENTS: usize = 37;
 
 /// Accumulates polynomials with their blinds and commitments for MSM computation.
 struct Accumulator<'a, C: Cycle, R: Rank> {
@@ -196,6 +203,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Compute commitment via MSM: Σ scalar_i * base_i
         let commitment = arithmetic::mul(msm_scalars.iter(), msm_bases.iter());
+
+        // Check consistency with PointsWitness constructor
+        {
+            let mut points = Vec::with_capacity(NUM_P_COMMITMENTS);
+            points.push(f.commitment);
+            points.extend_from_slice(&msm_bases[..n]);
+
+            let witness = PointsWitness::<C::HostCurve, NUM_P_COMMITMENTS>::new(beta_endo, &points);
+            assert_eq!(*witness.interstitials.last().unwrap(), commitment.into());
+        }
 
         let v = poly.eval(*u.value().take());
 
