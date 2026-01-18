@@ -125,6 +125,12 @@ pub(crate) struct P<C: Cycle, R: Rank> {
     pub(crate) v: C::CircuitField,
 }
 
+/// Number of commitments accumulated in compute_p:
+/// - 2 proofs × 15 components = 30
+/// - 6 stage proof components
+/// - 1 f.commitment
+pub(crate) const NUM_P_COMMITMENTS: usize = 37;
+
 #[derive(Clone)]
 pub(crate) struct Challenges<C: Cycle> {
     pub(crate) w: C::CircuitField,

@@ -21,13 +21,8 @@ use ragu_core::{
 use ragu_primitives::{Element, compute_endoscalar, extract_endoscalar};
 
 use crate::components::endoscalar::PointsWitness;
+use crate::proof::NUM_P_COMMITMENTS;
 use crate::{Application, Proof, proof};
-
-/// Number of commitments accumulated in compute_p:
-/// - 2 proofs × 15 components = 30
-/// - 6 stage proof components
-/// - 1 f.commitment
-const NUM_P_COMMITMENTS: usize = 37;
 
 /// Accumulates polynomials with their blinds and commitments.
 struct Accumulator<'a, C: Cycle, R: Rank> {
