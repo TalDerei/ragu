@@ -286,6 +286,7 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
             let poly2_len = polys[2*i + 1].len();
             let new_degree = (poly1_len - 1) + (poly2_len - 1);
             let domain_size = (new_degree + 1).next_power_of_two();
+            // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
             let domain = Domain::new(domain_size.ilog2() as u32);
             let n = domain.n();
             
