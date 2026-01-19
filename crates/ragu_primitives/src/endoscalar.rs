@@ -208,6 +208,47 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 }
 
+/// Computes the effective scalar for an endoscalar.
+///
+/// This implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021)
+/// and is the native counterpart to [`Endoscalar::field_scale`].
+pub fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: Uendo) -> F {
+    let mut acc = (F::ZETA + F::ONE).double();
+    for i in 0..(Uendo::BITS as usize / 2) {
+        let bits = endo >> (i << 1);
+        let mut tmp = F::ONE;
+        if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
+            tmp = -tmp;
+        }
+        if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
+            tmp *= F::ZETA;
+        }
+        acc = acc.double() + tmp;
+    }
+    acc
+}
+
+/// Extracts an endoscalar from a random field element.
+///
+/// Given a random output of a secure algebraic hash function, this extracts
+/// `k` bits of "randomness" from the value by checking whether `value + i`
+/// is a quadratic residue for each bit position `i`.
+///
+/// This is the native counterpart to [`Endoscalar::extract`].
+pub fn extract_endoscalar<F: PrimeField>(value: F) -> Uendo {
+    // TODO: Consider iterating forward like the circuit implementation.
+    let mut endoscalar = Uendo::from(0u64);
+
+    for i in (0..Uendo::BITS).rev() {
+        endoscalar <<= 1;
+        if (value + F::from(i as u64)).sqrt().into_option().is_some() {
+            endoscalar |= Uendo::from(1u64);
+        }
+    }
+
+    endoscalar
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Element, Endoscalar, Maybe, Point};
@@ -245,39 +286,14 @@ mod tests {
 
         /// Implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021).
         pub fn compute_scalar<F: WithSmallOrderMulGroup<3>>(&self) -> F {
-            let mut acc = (F::ZETA + F::ONE).double();
-            for bits in (0..(Uendo::BITS as usize / 2)).map(|i| self.value >> (i << 1)) {
-                let mut tmp = F::ONE;
-                if bits & Uendo::from(0b01u64) != Uendo::from(0u64) {
-                    tmp = -tmp;
-                }
-                if bits & Uendo::from(0b10u64) != Uendo::from(0u64) {
-                    tmp *= F::ZETA;
-                }
-                acc = acc.double() + tmp;
-            }
-            acc
+            super::compute_endoscalar(self.value)
         }
     }
 
     pub fn extract_endoscalar<F: PrimeField>(value: F) -> EndoscalarTest {
-        // Given a random output of a secure algebraic hash function, we can
-        // extract k bits of "randomness" from the value without having to
-        // perform a complete decomposition. Instead, we'll witness k bits where
-        // each bit represents whether or not the value added to a fixed
-        // constant is a quadratic residue. This can be tested easily in the
-        // circuit.
-
-        let mut endoscalar = Uendo::from(0u64);
-
-        for i in (0..Uendo::BITS).rev() {
-            endoscalar <<= 1;
-            if (value + F::from(i as u64)).sqrt().into_option().is_some() {
-                endoscalar |= Uendo::from(1u64);
-            }
+        EndoscalarTest {
+            value: super::extract_endoscalar(value),
         }
-
-        EndoscalarTest { value: endoscalar }
     }
 
     #[test]
