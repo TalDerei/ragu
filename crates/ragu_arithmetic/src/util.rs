@@ -264,6 +264,7 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
     sum
 }
 
+#[allow(dead_code)]
 pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     if roots.is_empty() {
         return vec![F::ONE];
@@ -285,7 +286,7 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
             let new_degree = (poly1_len - 1) + (poly2_len - 1);
             let domain_size = (new_degree + 1).next_power_of_two();
             // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
-            let domain = Domain::new(domain_size.ilog2() as u32);
+            let domain = Domain::new(domain_size.ilog2());
             let n = domain.n();
 
             scratch1[..poly1_len].copy_from_slice(&polys[2 * i]);
