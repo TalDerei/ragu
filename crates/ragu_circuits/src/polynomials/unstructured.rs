@@ -76,12 +76,6 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         self.coeffs.iter().cloned()
     }
 
-    /// Get a mutable reference to the coefficients of the polynomial.
-    /// Useful for in-place operations on the coefficients.
-    pub fn coeffs_mut(&mut self) -> &mut [F] {
-        &mut self.coeffs
-    }
-
     /// Evaluate this polynomial at the given point.
     pub fn eval(&self, x: F) -> F {
         arithmetic::eval(&self.coeffs[..], x)

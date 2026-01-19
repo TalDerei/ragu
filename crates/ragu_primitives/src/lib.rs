@@ -26,6 +26,7 @@ pub mod promotion;
 mod simulator;
 mod util;
 pub mod vec;
+
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
 use io::{Buffer, Write};

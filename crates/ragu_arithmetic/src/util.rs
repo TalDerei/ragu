@@ -268,76 +268,74 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     if roots.is_empty() {
         return vec![F::ONE];
     }
-    
-    let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| {
-        vec![-root, F::ONE]
-    }).collect();
-    
+
+    let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
+
     let max_domain_size = (roots.len() + 1).next_power_of_two();
     let mut scratch1 = vec![F::ZERO; max_domain_size];
     let mut scratch2 = vec![F::ZERO; max_domain_size];
-    
+
     while polys.len() > 1 {
         let pairs = polys.len() / 2;
         let has_odd = polys.len() % 2 == 1;
-        
+
         for i in 0..pairs {
-            let poly1_len = polys[2*i].len();
-            let poly2_len = polys[2*i + 1].len();
+            let poly1_len = polys[2 * i].len();
+            let poly2_len = polys[2 * i + 1].len();
             let new_degree = (poly1_len - 1) + (poly2_len - 1);
             let domain_size = (new_degree + 1).next_power_of_two();
             // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
             let domain = Domain::new(domain_size.ilog2() as u32);
             let n = domain.n();
-            
-            scratch1[..poly1_len].copy_from_slice(&polys[2*i]);
+
+            scratch1[..poly1_len].copy_from_slice(&polys[2 * i]);
             scratch1[poly1_len..n].fill(F::ZERO);
             domain.fft(&mut scratch1[..n]);
-            
-            scratch2[..poly2_len].copy_from_slice(&polys[2*i + 1]);
+
+            scratch2[..poly2_len].copy_from_slice(&polys[2 * i + 1]);
             scratch2[poly2_len..n].fill(F::ZERO);
             domain.fft(&mut scratch2[..n]);
-            
+
             for j in 0..n {
                 scratch1[j] *= scratch2[j];
             }
-            
+
             domain.ifft(&mut scratch1[..n]);
-            
+
             polys[i].clear();
             polys[i].extend_from_slice(&scratch1[..new_degree + 1]);
         }
-        
+
         if has_odd {
             let last_idx = polys.len() - 1;
             if pairs < last_idx {
                 polys.swap(pairs, last_idx);
             }
         }
-        
+
         polys.truncate(pairs + if has_odd { 1 } else { 0 });
     }
-    
+
     polys.into_iter().next().unwrap()
 }
 
 #[test]
 fn test_poly_with_roots() {
     use pasta_curves::Fp as F;
-    
+
     let roots = vec![F::from(1), F::from(2), F::from(3)];
     let poly = poly_with_roots(&roots);
-    
+
     for &root in &roots {
         assert_eq!(eval(&poly, root), F::ZERO);
     }
-    
+
     let non_root = F::from(5);
     assert_ne!(eval(&poly, non_root), F::ZERO);
-    
+
     let expected_coeffs = vec![F::from(6).neg(), F::from(11), F::from(6).neg(), F::ONE];
     assert_eq!(poly, expected_coeffs);
-    
+
     let empty_roots: Vec<F> = vec![];
     let constant_poly = poly_with_roots(&empty_roots);
     assert_eq!(constant_poly, vec![F::ONE]);
