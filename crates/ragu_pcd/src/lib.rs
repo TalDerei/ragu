@@ -1,4 +1,19 @@
 //! # `ragu_pcd`
+//!
+//! Proof-Carrying Data (PCD) implementation for the Ragu proof system.
+//!
+//! This crate provides functionality for creating, folding, and verifying recursive
+//! proofs using an arity-2 PCD scheme where each step accepts two child proofs.
+//!
+//! ## Key Types
+//!
+//! - [`ApplicationBuilder`]: Configures and registers [`Step`]s to build an [`Application`].
+//! - [`Application`]: Context for proof operations ([`seed`](Application::seed),
+//!   [`fuse`](Application::fuse), [`verify`](Application::verify), [`rerandomize`](Application::rerandomize)).
+//! - [`Pcd`]: Proof bundled with application-defined data.
+//! - [`Proof`]: Cryptographic proof structure with accumulated claims.
+//! - [`Step`]: Trait defining a computation in the PCD graph.
+//! - [`Header`]: Trait for succinct encoding of public inputs.
 
 #![cfg_attr(not(test), no_std)]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
