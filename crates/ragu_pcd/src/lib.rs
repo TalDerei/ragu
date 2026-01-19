@@ -16,7 +16,6 @@ pub mod header;
 mod proof;
 pub mod step;
 mod verify;
-mod value_accumulator;
 
 use arithmetic::Cycle;
 use ragu_circuits::{
