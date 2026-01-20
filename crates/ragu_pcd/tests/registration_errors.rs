@@ -3,13 +3,12 @@ use ragu_circuits::polynomials::R;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
 };
 use ragu_pasta::Pasta;
-use ragu_pcd::step::{Encoded, Index, Step};
+use ragu_pcd::step::{Encoded, Index, Step, StepInput, StepOutput};
 use ragu_pcd::{
     ApplicationBuilder,
-    header::{Header, Suffix},
+    header::{Header, HeaderInput, HeaderOutput, Suffix},
 };
 
 // Header A with suffix 0
@@ -25,8 +24,8 @@ impl<F: Field> Header<F> for HSuffixA {
     type Output = ();
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        _: HeaderInput<'source, Self, F, D>,
+    ) -> Result<HeaderOutput<'dr, Self, F, D>> {
         Ok(())
     }
 }
@@ -37,8 +36,8 @@ impl<F: Field> Header<F> for HSuffixB {
     type Output = ();
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        _: HeaderInput<'source, Self, F, D>,
+    ) -> Result<HeaderOutput<'dr, Self, F, D>> {
         Ok(())
     }
 }
@@ -49,8 +48,8 @@ impl<F: Field> Header<F> for HSuffixAOther {
     type Output = ();
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        _: HeaderInput<'source, Self, F, D>,
+    ) -> Result<HeaderOutput<'dr, Self, F, D>> {
         Ok(())
     }
 }
@@ -68,14 +67,9 @@ impl<C: arithmetic::Cycle> Step<C> for Step0 {
         &self,
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        (left, right): StepInput<'source, Self, C, D>,
     ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let left = Encoded::new(dr, left)?;
@@ -99,14 +93,9 @@ impl<C: arithmetic::Cycle> Step<C> for Step1 {
         &self,
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        (left, right): StepInput<'source, Self, C, D>,
     ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let left = Encoded::new(dr, left)?;
@@ -130,14 +119,9 @@ impl<C: arithmetic::Cycle> Step<C> for Step1Dup {
         &self,
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        (left, right): StepInput<'source, Self, C, D>,
     ) -> Result<(
-        (
-            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
-            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
-        ),
+        StepOutput<'dr, Self, C, D, HEADER_SIZE>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let left = Encoded::new(dr, left)?;
