@@ -80,10 +80,10 @@ use ragu_primitives::GadgetExt;
 use alloc::{vec, vec::Vec};
 use core::cell::RefCell;
 
+use super::DriverExt;
 use crate::{
     Circuit,
     polynomials::{Rank, structured},
-    s::common::DriverExt,
 };
 
 /// An index identifying a wire in the evaluator.

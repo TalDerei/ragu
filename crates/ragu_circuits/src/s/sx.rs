@@ -83,7 +83,10 @@ use crate::{
     },
 };
 
-use super::common::{DriverExt, WireEval, WireEvalSum};
+use super::{
+    DriverExt,
+    common::{WireEval, WireEvalSum},
+};
 
 /// A [`Driver`] that computes the partial evaluation $s(x, Y)$.
 ///

@@ -63,7 +63,10 @@ use alloc::vec;
 
 use crate::{Circuit, polynomials::Rank};
 
-use super::common::{DriverExt, WireEval, WireEvalSum};
+use super::{
+    DriverExt,
+    common::{WireEval, WireEvalSum},
+};
 
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.
 ///
