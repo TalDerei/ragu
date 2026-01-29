@@ -6,7 +6,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, DriverValue, FromDriver},
-    gadgets::{Consistent, Gadget, GadgetKind},
+    gadgets::{Gadget, GadgetKind},
     maybe::Empty,
 };
 
@@ -101,6 +101,12 @@ impl<'dr, 'new_dr, D: Driver<'dr>, F: FromDriver<'dr, 'new_dr, D>>
 /// supporting this by implementing the [`Promotion`] trait so that users can
 /// then use the [`Demoted::promote`] method. Optionally, gadgets can offer
 /// their own custom promotion strategies.
+///
+/// # Consistency
+///
+/// `Demoted` intentionally does not implement [`Consistent`]. A demoted gadget
+/// has no witness data, so it cannot meaningfully enforce consistency. Promote
+/// the gadget first, then call [`Consistent::enforce_consistent`] on the result.
 pub struct Demoted<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> {
     gadget: <G::Kind as GadgetKind<D::F>>::Rebind<'dr, DemotedDriver<'dr, D>>,
 }
@@ -151,13 +157,6 @@ pub struct DemotedKind<F: Field, G: GadgetKind<F>> {
 
 impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Gadget<'dr, D> for Demoted<'dr, D, G> {
     type Kind = DemotedKind<D::F, G::Kind>;
-}
-
-impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Consistent<'dr, D> for Demoted<'dr, D, G> {
-    fn enforce_consistent(&self, _: &mut D) -> Result<()> {
-        // No-op: Consistency should be enforced after promotion.
-        Ok(())
-    }
 }
 
 unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
