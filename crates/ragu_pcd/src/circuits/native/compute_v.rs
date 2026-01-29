@@ -54,9 +54,7 @@ use ragu_core::{
     gadgets::GadgetKind,
     maybe::Maybe,
 };
-use ragu_primitives::{
-    BatchInverter, BatchInverterStatePending, BatchInverterToken, Element, Endoscalar, GadgetExt,
-};
+use ragu_primitives::{Element, Endoscalar, GadgetExt};
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -325,151 +323,74 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     where
         D::F: ff::PrimeField,
     {
-        use super::InternalCircuitIndex::{self, *};
-
-        let internal_circuit_ids = [
-            PreambleStage,
-            ErrorNStage,
-            ErrorMStage,
-            QueryStage,
-            EvalStage,
-            ErrorNFinalStaged,
-            ErrorMFinalStaged,
-            EvalFinalStaged,
-            Hashes1Circuit,
-            Hashes2Circuit,
-            PartialCollapseCircuit,
-            FullCollapseCircuit,
-            ComputeVCircuit,
-        ];
+        use super::InternalCircuitIndex::*;
 
         let xz = x.mul(dr, z)?;
 
-        // Compute all differences.
-        let left_u = u.sub(dr, &preamble.left.unified.u);
-        let left_y = u.sub(dr, &preamble.left.unified.y);
-        let left_x = u.sub(dr, &preamble.left.unified.x);
-        let left_circuit_id = u.sub(dr, &preamble.left.circuit_id);
-        let right_u = u.sub(dr, &preamble.right.unified.u);
-        let right_y = u.sub(dr, &preamble.right.unified.y);
-        let right_x = u.sub(dr, &preamble.right.unified.x);
-        let right_circuit_id = u.sub(dr, &preamble.right.circuit_id);
-        let challenges_w = u.sub(dr, w);
-        let challenges_x = u.sub(dr, x);
-        let challenges_y = u.sub(dr, y);
-        let challenges_xz = u.sub(dr, &xz);
-        let internals = internal_circuit_ids
-            .iter()
-            .map(|idx| {
-                let omega_j =
-                    Element::constant(dr, idx.circuit_index(num_application_steps).omega_j());
-                u.sub(dr, &omega_j)
-            })
-            .collect::<Vec<Element<'dr, D>>>();
+        let mut inverter = Inverter::with_base(u.clone(), num_application_steps);
 
-        // Reserve slots in the batch inverter.
-        let mut batch = BatchInverter::<D::F, BatchInverterStatePending>::new();
-        let t_left_u = batch.reserve();
-        let t_left_y = batch.reserve();
-        let t_left_x = batch.reserve();
-        let t_left_circuit_id = batch.reserve();
-        let t_right_u = batch.reserve();
-        let t_right_y = batch.reserve();
-        let t_right_x = batch.reserve();
-        let t_right_circuit_id = batch.reserve();
-        let t_challenges_w = batch.reserve();
-        let t_challenges_x = batch.reserve();
-        let t_challenges_y = batch.reserve();
-        let t_challenges_xz = batch.reserve();
-        let t_internals = internals
-            .iter()
-            .map(|_| batch.reserve())
-            .collect::<Vec<BatchInverterToken>>();
+        let left_u = inverter.add(dr, &preamble.left.unified.u)?;
+        let left_y = inverter.add(dr, &preamble.left.unified.y)?;
+        let left_x = inverter.add(dr, &preamble.left.unified.x)?;
+        let left_circuit_id = inverter.add(dr, &preamble.left.circuit_id)?;
+        let right_u = inverter.add(dr, &preamble.right.unified.u)?;
+        let right_y = inverter.add(dr, &preamble.right.unified.y)?;
+        let right_x = inverter.add(dr, &preamble.right.unified.x)?;
+        let right_circuit_id = inverter.add(dr, &preamble.right.circuit_id)?;
+        let challenges_w = inverter.add(dr, w)?;
+        let challenges_x = inverter.add(dr, x)?;
+        let challenges_y = inverter.add(dr, y)?;
+        let challenges_xz = inverter.add(dr, &xz)?;
 
-        // Fill the batch inverter and resolve only when the driver is not `Empty`.
-        let resolved = D::with(|| {
-            batch.fill(&t_left_u, *left_u.value().take());
-            batch.fill(&t_left_y, *left_y.value().take());
-            batch.fill(&t_left_x, *left_x.value().take());
-            batch.fill(&t_left_circuit_id, *left_circuit_id.value().take());
-            batch.fill(&t_right_u, *right_u.value().take());
-            batch.fill(&t_right_y, *right_y.value().take());
-            batch.fill(&t_right_x, *right_x.value().take());
-            batch.fill(&t_right_circuit_id, *right_circuit_id.value().take());
-            batch.fill(&t_challenges_w, *challenges_w.value().take());
-            batch.fill(&t_challenges_x, *challenges_x.value().take());
-            batch.fill(&t_challenges_y, *challenges_y.value().take());
-            batch.fill(&t_challenges_xz, *challenges_xz.value().take());
-            for (internal, t_internal) in internals.iter().zip(t_internals.iter()) {
-                batch.fill(t_internal, *internal.value().take());
-            }
+        let preamble_stage = inverter.add_circuit(dr, PreambleStage)?;
+        let error_n_stage = inverter.add_circuit(dr, ErrorNStage)?;
+        let error_m_stage = inverter.add_circuit(dr, ErrorMStage)?;
+        let query_stage = inverter.add_circuit(dr, QueryStage)?;
+        let eval_stage = inverter.add_circuit(dr, EvalStage)?;
+        let error_m_final_staged = inverter.add_circuit(dr, ErrorMFinalStaged)?;
+        let error_n_final_staged = inverter.add_circuit(dr, ErrorNFinalStaged)?;
+        let eval_final_staged = inverter.add_circuit(dr, EvalFinalStaged)?;
+        let hashes_1_circuit = inverter.add_circuit(dr, Hashes1Circuit)?;
+        let hashes_2_circuit = inverter.add_circuit(dr, Hashes2Circuit)?;
+        let partial_collapse_circuit = inverter.add_circuit(dr, PartialCollapseCircuit)?;
+        let full_collapse_circuit = inverter.add_circuit(dr, FullCollapseCircuit)?;
+        let compute_v_circuit = inverter.add_circuit(dr, ComputeVCircuit)?;
 
-            Ok(batch.resolve())
-        })?;
-
-        // Helper that retrieves the inverted value from the resolved batch inverted and uses it to
-        // invert the provided element with.
-        let retrieve_and_invert = |dr: &mut D,
-                                   element: &Element<'dr, D>,
-                                   token: &BatchInverterToken|
-         -> Result<Element<'dr, D>> {
-            let inv = resolved.view().map(|r| {
-                r.retrieve(token)
-                    .expect("token should not be out of bounds")
-            });
-            element.invert_with(dr, inv)
-        };
-
-        // Helper that given an internal circuit index, retrieves the inverted value from the
-        // resolved batch inverter and uses it to invert the element with.
-        let internal_retrieve_and_invert =
-            |dr: &mut D, idx: InternalCircuitIndex| -> Result<Element<'dr, D>> {
-                let i = internal_circuit_ids
-                    .iter()
-                    .position(|&i| i == idx)
-                    .expect("InternalCircuitIndex should exist");
-                let token = t_internals.get(i).expect("should not fail");
-                let element = internals.get(i).expect("should not fail");
-                let inv = resolved.view().map(|r| {
-                    r.retrieve(token)
-                        .expect("token should not be out of bounds")
-                });
-                element.invert_with(dr, inv)
-            };
+        let inverted = inverter.invert(dr)?;
 
         Ok(Denominators {
             left: ChildDenominators {
-                u:          retrieve_and_invert(dr, &left_u, &t_left_u)?,
-                y:          retrieve_and_invert(dr, &left_y, &t_left_y)?,
-                x:          retrieve_and_invert(dr, &left_x, &t_left_x)?,
-                circuit_id: retrieve_and_invert(dr, &left_circuit_id, &t_left_circuit_id)?,
+                u: inverted[left_u].clone(),
+                y: inverted[left_y].clone(),
+                x: inverted[left_x].clone(),
+                circuit_id: inverted[left_circuit_id].clone(),
             },
             right: ChildDenominators {
-                u:          retrieve_and_invert(dr, &right_u, &t_right_u)?,
-                y:          retrieve_and_invert(dr, &right_y, &t_right_y)?,
-                x:          retrieve_and_invert(dr, &right_x, &t_right_x)?,
-                circuit_id: retrieve_and_invert(dr, &right_circuit_id, &t_right_circuit_id)?,
+                u: inverted[right_u].clone(),
+                y: inverted[right_y].clone(),
+                x: inverted[right_x].clone(),
+                circuit_id: inverted[right_circuit_id].clone(),
             },
             challenges: ChallengeDenominators {
-                w:  retrieve_and_invert(dr, &challenges_w, &t_challenges_w)?,
-                x:  retrieve_and_invert(dr, &challenges_x, &t_challenges_x)?,
-                y:  retrieve_and_invert(dr, &challenges_y, &t_challenges_y)?,
-                xz: retrieve_and_invert(dr, &challenges_xz, &t_challenges_xz)?,
+                w: inverted[challenges_w].clone(),
+                x: inverted[challenges_x].clone(),
+                y: inverted[challenges_y].clone(),
+                xz: inverted[challenges_xz].clone(),
             },
             internal: InternalCircuitDenominators {
-                preamble_stage:           internal_retrieve_and_invert(dr, PreambleStage)?,
-                error_n_stage:            internal_retrieve_and_invert(dr, ErrorNStage)?,
-                error_m_stage:            internal_retrieve_and_invert(dr, ErrorMStage)?,
-                query_stage:              internal_retrieve_and_invert(dr, QueryStage)?,
-                eval_stage:               internal_retrieve_and_invert(dr, EvalStage)?,
-                error_m_final_staged:     internal_retrieve_and_invert(dr, ErrorMFinalStaged)?,
-                error_n_final_staged:     internal_retrieve_and_invert(dr, ErrorNFinalStaged)?,
-                eval_final_staged:        internal_retrieve_and_invert(dr, EvalFinalStaged)?,
-                hashes_1_circuit:         internal_retrieve_and_invert(dr, Hashes1Circuit)?,
-                hashes_2_circuit:         internal_retrieve_and_invert(dr, Hashes2Circuit)?,
-                partial_collapse_circuit: internal_retrieve_and_invert(dr, PartialCollapseCircuit)?,
-                full_collapse_circuit:    internal_retrieve_and_invert(dr, FullCollapseCircuit)?,
-                compute_v_circuit:        internal_retrieve_and_invert(dr, ComputeVCircuit)?,
+                preamble_stage: inverted[preamble_stage].clone(),
+                error_n_stage: inverted[error_n_stage].clone(),
+                error_m_stage: inverted[error_m_stage].clone(),
+                query_stage: inverted[query_stage].clone(),
+                eval_stage: inverted[eval_stage].clone(),
+                error_m_final_staged: inverted[error_m_final_staged].clone(),
+                error_n_final_staged: inverted[error_n_final_staged].clone(),
+                eval_final_staged: inverted[eval_final_staged].clone(),
+                hashes_1_circuit: inverted[hashes_1_circuit].clone(),
+                hashes_2_circuit: inverted[hashes_2_circuit].clone(),
+                partial_collapse_circuit: inverted[partial_collapse_circuit].clone(),
+                full_collapse_circuit: inverted[full_collapse_circuit].clone(),
+                compute_v_circuit: inverted[compute_v_circuit].clone(),
             },
         })
     }
@@ -766,4 +687,123 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HE
             (&eval.full_collapse,    &query.full_collapse),
             (&eval.compute_v,        &query.compute_v),
         ].into_iter().flat_map(|(e, q)| [(e, &q.at_x, &d.challenges.x), (e, &q.at_xz, &d.challenges.xz)])))
+}
+
+/// Batch inverter for computing denominators.
+///
+/// Computes differences `(base - value)` for each added value and accumulates
+/// their field representations for batch inversion. After calling
+/// [`invert`](Self::invert), the inverted differences can be retrieved using
+/// the returned indices.
+struct Inverter<'dr, D: Driver<'dr>> {
+    /// Base [`Element`] from which differences are computed.
+    ///
+    /// Each call to [`add`](Self::add) subtracts the provided value from this
+    /// base.
+    base: Element<'dr, D>,
+
+    /// Number of application steps, used for computing internal circuit
+    /// indices.
+    num_application_steps: usize,
+
+    /// Accumulated difference [`Element`]s: `(base - value)` for each added
+    /// value.
+    ///
+    /// These differences will be batch-inverted when [`invert`](Self::invert)
+    /// is called.
+    differences: Vec<Element<'dr, D>>,
+}
+
+impl<'dr, D: Driver<'dr, F: ff::PrimeField>> Inverter<'dr, D> {
+    /// Creates a batch inverter with the provided base [`Element`].
+    ///
+    /// The base represents a fixed evaluation point (e.g., $u$ or $y$
+    /// coordinate) from which all added values will be subtracted. This allows
+    /// efficient batch inversion of differences $(u - x_i)$ using Montgomery's
+    /// trick.
+    fn with_base(base: Element<'dr, D>, num_application_steps: usize) -> Self {
+        Self {
+            base,
+            num_application_steps,
+            differences: Vec::new(),
+        }
+    }
+
+    /// Adds a value to subtract from the base: computes `(base - value)`.
+    ///
+    /// Returns an index that can be used to retrieve the inverted difference
+    /// after calling [`invert`](Self::invert).
+    fn add(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<usize> {
+        let index = self.differences.len();
+        let diff = self.base.sub(dr, value);
+        self.differences.push(diff);
+        Ok(index)
+    }
+
+    /// Adds a constant field value to subtract from the base: computes `(base -
+    /// constant)`.
+    ///
+    /// This is a convenience method for adding known field values (such as
+    /// fixed points in the FFT domain) without first wrapping them in an
+    /// [`Element`]. It creates a constant [`Element`] internally and calls
+    /// [`add`](Self::add).
+    ///
+    /// Returns an index that can be used to retrieve the inverted difference
+    /// after calling [`invert`](Self::invert).
+    fn add_constant(&mut self, dr: &mut D, value: D::F) -> Result<usize> {
+        let constant = Element::constant(dr, value);
+        self.add(dr, &constant)
+    }
+
+    /// Adds an internal circuit's $\omega^j$ value to subtract from the base.
+    ///
+    /// This is a convenience method for adding the FFT domain element
+    /// corresponding to an internal circuit's index. The $\omega^j$ value is
+    /// computed from `circuit.circuit_index(num_application_steps).omega_j()`
+    /// using the stored `num_application_steps` field.
+    fn add_circuit(&mut self, dr: &mut D, circuit: InternalCircuitIndex) -> Result<usize> {
+        self.add_constant(
+            dr,
+            circuit.circuit_index(self.num_application_steps).omega_j(),
+        )
+    }
+
+    /// Performs batch inversion on all accumulated differences.
+    ///
+    /// Consumes the inverter and returns a vector of inverted [`Element`]s.
+    /// Each difference [`Element`] is inverted using [`Element::invert_with`]
+    /// with the batch-inverted field value as advice.
+    ///
+    /// During proving, this function batch inverts the accumulated field values
+    /// using Montgomery's trick and uses them as advice for constraint
+    /// generation. During verification, the field values are not available, but
+    /// the inversion constraints are still enforced through the [`Element`]
+    /// wiring.
+    fn invert(self, dr: &mut D) -> Result<Vec<Element<'dr, D>>> {
+        if self.differences.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let inverted_advice = D::just(|| {
+            let mut field_values = self
+                .differences
+                .iter()
+                .map(|diff| **diff.value().snag())
+                .collect::<Vec<_>>();
+
+            let mut scratch = field_values.clone();
+            ff::BatchInverter::invert_with_external_scratch(&mut field_values, &mut scratch);
+
+            field_values
+        });
+
+        let mut inverted_elements = Vec::with_capacity(self.differences.len());
+        for (i, diff) in self.differences.into_iter().enumerate() {
+            let advice = D::just(|| inverted_advice.snag()[i]);
+            let inv_elem = diff.invert_with(dr, advice)?;
+            inverted_elements.push(inv_elem);
+        }
+
+        Ok(inverted_elements)
+    }
 }
