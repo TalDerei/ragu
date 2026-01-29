@@ -1,3 +1,43 @@
+//! Multi-stage circuit witness computation with staged wire allocation.
+//!
+//! The staging system separates witness computation into explicit **stage
+//! polynomials** ($a(X)$, $b(X)$, ...) that can be committed independently,
+//! and an implicit **final witness** ($r'(X)$) that consumes their outputs.
+//! Together these form the full witness polynomial:
+//!
+//! $$
+//! r(X) = r'(X) + a(X) + b(X) + \cdots
+//! $$
+//!
+//!
+//! Staged polynomials enable the prover to commit to portions of the witness
+//! before computing the full circuit.
+//!
+//! ## Two-Phase Builder Pattern
+//!
+//! The [`StageBuilder`] uses a two-phase protocol:
+//!
+//! 1. **Wire reservation** — Call [`add_stage`](StageBuilder::add_stage) for
+//!    each stage polynomial. This reserves non-overlapping wire positions
+//!    without computing values yet, ensuring all provers agree on wire layout.
+//!
+//! 2. **Witness computation** — Call [`finish`](StageBuilder::finish) to get
+//!    the driver, then populate each stage via [`StageGuard::enforced`] or
+//!    [`StageGuard::unenforced`]. The remaining code computes $r'(X)$.
+//!
+//! After phase 1, the witness polynomial has a fixed structure:
+//!
+//! $$
+//! r(X) = \underbrace{a(X)}\_{\text{wires 0--99}} + \underbrace{b(X)}\_{\text{wires 100--101}} + \underbrace{r'(X)}\_{\text{wires 102+}}
+//! $$
+//!
+//! ## Example
+//!
+//! See the `compute_v` module in `ragu_pcd` crate for a real-world multi-stage
+//! circuit, or the [staging chapter] in the book.
+//!
+//! [staging chapter]: https://tachyon.z.cash/ragu/protocol/extensions/staging
+
 use arithmetic::Coeff;
 use ragu_core::{
     Result,
@@ -31,7 +71,7 @@ pub struct StageBuilder<
 impl<'a, 'dr, D: Driver<'dr>, R: Rank, Target: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, (), Target>
 {
-    /// Creates a new `StageBuilder` given an underlying `driver`.
+    /// Creates a new [`StageBuilder`] with the given [`Driver`].
     pub fn new(driver: &'a mut D) -> Self {
         StageBuilder {
             driver,
@@ -40,8 +80,8 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Target: Stage<D::F, R>>
     }
 }
 
-/// Injects pre-allocated stage wires into a gadget, and enforces equality
-/// between live wires and stage wires.
+/// Injects pre-allocated stage wires into a gadget and enforces equality
+/// between the live wires and the stage wires.
 struct EnforcingInjector<'a, 'dr, D: Driver<'dr>> {
     driver: &'a mut D,
     stage_wires: core::slice::Iter<'a, D::Wire>,
@@ -62,7 +102,7 @@ impl<'dr, D: Driver<'dr>> FromDriver<'dr, 'dr, D> for EnforcingInjector<'_, 'dr,
     }
 }
 
-/// Injects pre-allocated stage wires into a gadget, without enforcing constraints.
+/// Injects pre-allocated stage wires into a gadget without enforcing constraints.
 struct StageWireInjector<'a, 'dr, D: Driver<'dr>> {
     stage_wires: core::slice::Iter<'a, D::Wire>,
     _marker: PhantomData<&'dr ()>,
@@ -81,7 +121,8 @@ impl<'dr, D: Driver<'dr>> FromDriver<'_, 'dr, Emulator<Wireless<D::MaybeKind, D:
     }
 }
 
-/// Guard type returned by `add_stage` that holds pre-allocated stage wires.
+/// A guard type returned by [`add_stage`](StageBuilder::add_stage) that holds
+/// pre-allocated stage wires.
 ///
 /// The stage wires are allocated at the correct positions, but the actual
 /// witness computation is deferred until one of the consuming methods is called:
@@ -90,7 +131,7 @@ impl<'dr, D: Driver<'dr>> FromDriver<'_, 'dr, Emulator<Wireless<D::MaybeKind, D:
 /// - [`unenforced`](Self::unenforced) - run witness without constraints
 ///
 /// To skip a stage without producing a gadget, use [`StageBuilder::skip_stage`]
-/// instead of `add_stage`.
+/// instead of [`add_stage`](StageBuilder::add_stage).
 #[must_use = "StageGuard must be consumed via `enforced` or `unenforced`"]
 pub struct StageGuard<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R>> {
     stage: S,
@@ -99,7 +140,7 @@ pub struct StageGuard<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R>> {
 }
 
 impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R, S> {
-    /// Enforce constraints and inject stage wires.
+    /// Enforces constraints and injects stage wires.
     ///
     /// Runs the stage's witness method on the real driver (enforcing all
     /// internal constraints), then enforces equality between the computed
@@ -121,7 +162,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
         computed_gadget.map(&mut injector)
     }
 
-    /// Inject stage wires without enforcing constraints.
+    /// Injects stage wires without enforcing constraints.
     ///
     /// Runs the stage's witness method on a wireless emulator (not on the
     /// underlying driver), then substitutes the pre-allocated stage wires
@@ -196,7 +237,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         ))
     }
 
-    /// Add the next stage to the builder using [`Self::configure_stage`]
+    /// Adds the next stage to the builder using [`Self::configure_stage`],
     /// assuming the stage implements [`Default`].
     pub fn add_stage<Next>(
         self,
@@ -210,7 +251,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         self.configure_stage(Next::default())
     }
 
-    /// Skip the next stage without producing a gadget.
+    /// Skips the next stage without producing a gadget.
     ///
     /// This allocates the stage wire positions but does not return a guard,
     /// so it's used when you need to reserve the wire positions for a stage
@@ -226,7 +267,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
 impl<'a, 'dr, D: Driver<'dr>, R: Rank, Finished: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, Finished, Finished>
 {
-    /// Obtain the underlying driver after finishing the last stage.
+    /// Obtains the underlying driver after finishing the last stage.
     pub fn finish(self) -> &'a mut D {
         self.driver
     }
