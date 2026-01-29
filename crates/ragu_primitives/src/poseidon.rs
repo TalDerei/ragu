@@ -418,7 +418,6 @@ mod tests {
         );
         let shape = permutation.shape();
 
-        // Verify shape matches actual execution via Simulator
         let sim = Simulator::simulate(Fp::from(1), |dr, value| {
             let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
                 dr,
@@ -432,7 +431,6 @@ mod tests {
         })?;
 
         assert_eq!(sim.num_allocations(), 1);
-        // One permutation call (from squeeze) should match shape
         assert_eq!(sim.num_multiplications(), shape.num_multiplications);
         assert_eq!(sim.num_linear_constraints(), shape.num_constraints);
 
