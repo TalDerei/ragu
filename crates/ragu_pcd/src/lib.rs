@@ -108,10 +108,10 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         mut self,
         params: &'params C::Params,
     ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
-        // Build the native registry in the new order:
-        // 1. Internal steps (indices 0..2)
-        // 2. Internal circuits (indices 2..15)
-        // 3. Application circuits (indices 15+)
+        // Build the native registry:
+        // 1. Internal steps
+        // 2. Internal circuits
+        // 3. Application circuits
         let mut native_registry = RegistryBuilder::new();
         let (total_circuits, log2_circuits) =
             circuits::native::total_circuit_counts(self.num_application_steps);

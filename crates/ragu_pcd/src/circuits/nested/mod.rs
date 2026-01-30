@@ -32,20 +32,18 @@ pub(crate) const NUM_ENDOSCALING_POINTS: usize = 37;
 /// These correspond to the circuit objects registered in [`register_all`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum InternalCircuitIndex {
-    /// `EndoscalarStage` stage mask (index 0)
+    /// `EndoscalarStage` stage mask.
     EndoscalarStage,
-    /// `PointsStage` stage mask (index 1)
+    /// `PointsStage` stage mask.
     PointsStage,
-    /// `PointsStage` final staged mask (index 2)
+    /// `PointsStage` final staged mask.
     PointsFinalStaged,
-    /// `EndoscalingStep` circuit at given step (indices 3+)
+    /// `EndoscalingStep` circuit at given step.
     EndoscalingStep(u32),
 }
 
 impl InternalCircuitIndex {
     /// Convert to a [`CircuitIndex`] for registry lookup.
-    ///
-    /// All variants return compile-time constant indices.
     pub(crate) const fn circuit_index(self) -> CircuitIndex {
         match self {
             Self::EndoscalarStage => CircuitIndex::from_u32(0),

@@ -54,8 +54,8 @@ impl Index {
 
     /// Returns the circuit index for this step.
     ///
-    /// Internal steps occupy indices 0..NUM_INTERNAL_STEPS.
-    /// Application steps occupy indices (NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS)..(NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS + num_application_steps).
+    /// Internal steps are registered first, followed by internal circuits,
+    /// then application steps.
     ///
     /// Pass the known number of application steps to validate and compute the
     /// final index of this step. Returns an error if an application step index
@@ -114,7 +114,7 @@ fn test_index_map() -> Result<()> {
     let num_application_steps = 10;
     let app_offset = NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
 
-    // Internal steps occupy indices 0..NUM_INTERNAL_STEPS
+    // Internal steps are registered first
     assert_eq!(
         Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
         CircuitIndex::new(0)

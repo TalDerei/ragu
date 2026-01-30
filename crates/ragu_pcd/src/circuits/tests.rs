@@ -40,7 +40,6 @@ fn test_internal_circuit_constraint_counts() {
 
     macro_rules! check_constraints {
         ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
-            // Internal circuits now occupy fixed indices at the beginning of the registry
             let idx = step::NUM_INTERNAL_STEPS + InternalCircuitIndex::$variant as usize;
             let circuit = &circuits[idx];
             let (actual_mul, actual_lin) = circuit.constraint_counts();
@@ -117,7 +116,6 @@ fn print_internal_circuit_constraint_counts() {
 
     println!("\n// Copy-paste the following into test_internal_circuit_constraint_counts:");
     for (name, variant) in variants {
-        // Internal circuits now occupy fixed indices at the beginning of the registry
         let idx = step::NUM_INTERNAL_STEPS + variant as usize;
         let circuit = &circuits[idx];
         let (mul, lin) = circuit.constraint_counts();
