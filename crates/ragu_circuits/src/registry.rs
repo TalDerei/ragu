@@ -797,7 +797,6 @@ mod tests {
     /// wxy_combined produces identical results to wxy (both in and out of domain).
     #[test]
     fn test_wxy_combined_equals_wxy() -> Result<()> {
-        let poseidon = Pasta::circuit_poseidon(Pasta::baked());
         let registry = RegistryBuilder::<Fp, TestRank>::new()
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 5 })?
@@ -807,11 +806,11 @@ mod tests {
             .register_circuit(SquareCircuit { times: 19 })?
             .register_circuit(SquareCircuit { times: 19 })?
             .register_circuit(SquareCircuit { times: 19 })?
-            .finalize(poseidon)?;
+            .finalize()?;
 
-        let w = Fp::random(thread_rng());
-        let x = Fp::random(thread_rng());
-        let y = Fp::random(thread_rng());
+        let w = Fp::random(&mut rand::rng());
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
 
         assert_eq!(registry.wxy(w, x, y), registry.wxy_combined(w, x, y));
 

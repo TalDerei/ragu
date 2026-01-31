@@ -107,3 +107,7 @@ pub fn builder_simple<'a>() -> RegistryBuilder<'a, Fp, R<5>> {
 pub fn registry_simple<'a>() -> Registry<'a, Fp, R<5>> {
     builder_simple().finalize().unwrap()
 }
+
+pub fn registry_squares<'a>() -> Registry<'a, Fp, R<25>> {
+    builder_squares().finalize().unwrap()
+}

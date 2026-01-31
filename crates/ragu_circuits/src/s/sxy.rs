@@ -455,7 +455,6 @@ mod tests {
     };
     use ragu_pasta::Fp;
     use ragu_primitives::Element;
-    use rand::thread_rng;
 
     use crate::{Circuit, polynomials::R};
 
@@ -537,9 +536,9 @@ mod tests {
         type TestRank = R<16>;
         let circuit = RoutineCircuit { num_calls: 3 };
 
-        let x = Fp::random(thread_rng());
-        let y = Fp::random(thread_rng());
-        let key = registry::Key::new(Fp::random(thread_rng()));
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+        let key = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let mut registry = RoutineRegistry::new();
         registry.register::<SquareRoutine>(SquareRoutine.shape());
@@ -558,12 +557,12 @@ mod tests {
     fn sxy_eval_zero_x_returns_zero() {
         type TestRank = R<16>;
         let circuit = RoutineCircuit { num_calls: 2 };
-        let key = registry::Key::new(Fp::random(thread_rng()));
+        let key = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let result = eval::<Fp, _, TestRank>(
             &circuit,
             Fp::ZERO,
-            Fp::random(thread_rng()),
+            Fp::random(&mut rand::rng()),
             &key,
             &FloorPlan::default(),
         )
@@ -579,9 +578,9 @@ mod tests {
         let circuit1 = RoutineCircuit { num_calls: 3 };
         let circuit2 = RoutineCircuit { num_calls: 3 };
 
-        let x = Fp::random(thread_rng());
-        let y = Fp::random(thread_rng());
-        let key = registry::Key::new(Fp::random(thread_rng()));
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+        let key = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let mut registry = RoutineRegistry::new();
         registry.register::<SquareRoutine>(SquareRoutine.shape());
