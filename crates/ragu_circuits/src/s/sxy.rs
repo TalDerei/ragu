@@ -66,7 +66,7 @@ use crate::{Circuit, FreshB, polynomials::Rank, registry};
 
 use super::{
     DriverExt,
-    common::{WireEval, WireEvalSum},
+    common::{CachedRoutine, MemoCache, WireEval, WireEvalSum},
 };
 
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.
@@ -135,6 +135,12 @@ struct Evaluator<'fp, F, R> {
 
     /// Invocation counts per routine type for memoization.
     invocation_counts: BTreeMap<RoutineId, usize>,
+
+    /// Cache for memoized routine evaluations.
+    memo_cache: MemoCache<F>,
+
+    /// When true, `enforce_zero` skips accumulation (used during memoized replay).
+    skip_accumulation: bool,
 
     /// Marker for the rank type parameter.
     _marker: core::marker::PhantomData<R>,
@@ -226,6 +232,9 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     /// performs the Horner accumulation step. This processes constraints in
     /// reverse order so that the final result equals $s(x, y)$.
     ///
+    /// With `skip_accumulation`, only counts constraints; cached contribution
+    /// is added separately.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::LinearBoundExceeded`] if the constraint count reaches
@@ -237,17 +246,20 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         }
         self.linear_constraints += 1;
 
-        self.result *= self.y;
-        self.result += lc(WireEvalSum::new(self.one)).value;
+        // Skip accumulation when replaying a memoized routine
+        if !self.skip_accumulation {
+            self.result *= self.y;
+            self.result += lc(WireEvalSum::new(self.one)).value;
+        }
 
         Ok(())
     }
 
-    /// Executes a routine with isolated allocation state.
+    /// Executes a routine with memoization.
     ///
-    /// Tracks the routine's mesh position and invocation count for memoization.
-    /// The canonical position from the floor plan can be used to cache and reuse
-    /// polynomial evaluations across circuits.
+    /// Cache miss: execute and cache the contribution.
+    /// Cache hit: run `execute()` with `skip_accumulation=true`, then add
+    /// cached contribution directly.
     fn routine<Ro: Routine<Self::F> + 'dr>(
         &mut self,
         routine: Ro,
@@ -255,27 +267,78 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
         let routine_id = RoutineId::of::<Ro>();
 
-        // Track invocation count and get current mesh position
+        // Track invocation for floor plan lookup
         let invocation_index = *self.invocation_counts.get(&routine_id).unwrap_or(&0);
         self.invocation_counts
             .entry(routine_id)
             .and_modify(|c| *c += 1)
             .or_insert(1);
 
-        let _current_position =
-            MeshPosition::new(self.multiplication_constraints, self.linear_constraints);
-
-        // Look up canonical position from floor plan (for future memoization)
-        let _canonical_position = self
+        // Canonical position is the cache key
+        let canonical_position = self
             .floor_plan
-            .get_invocation(&routine_id, invocation_index);
+            .get_invocation(&routine_id, invocation_index)
+            .unwrap_or_else(|| {
+                // Fallback if not in floor plan
+                MeshPosition::new(self.multiplication_constraints, self.linear_constraints)
+            });
 
-        self.with_fresh_b(|this| {
+        let tmp = self.available_b.take();
+
+        // Check cache before execution
+        if let Some(cached) = self
+            .memo_cache
+            .get(&routine_id, canonical_position)
+            .cloned()
+        {
+            // Cache hit: skip constraint accumulation
+            let result_before = self.result;
+
+            // Execute to produce outputs, skip enforce_zero
+            self.skip_accumulation = true;
             let mut dummy = Emulator::wireless();
             let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
             let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
-            routine.execute(this, input, aux)
-        })
+            let output = routine.execute(self, input, aux)?;
+            self.skip_accumulation = false;
+
+            // Add cached contribution: result = result_before * y^k + contribution
+            let y_power = self.y.pow_vartime([cached.num_constraints as u64]);
+            self.result = result_before * y_power + cached.contribution;
+
+            self.available_b = tmp;
+            return Ok(output);
+        }
+
+        // Cache miss: execute and cache
+        let result_before = self.result;
+        let muls_before = self.multiplication_constraints;
+        let constraints_before = self.linear_constraints;
+
+        let mut dummy = Emulator::wireless();
+        let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
+        let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+        let output = routine.execute(self, input, aux)?;
+
+        // Extract contribution: C = result_after - result_before * y^k
+        let num_multiplications = self.multiplication_constraints - muls_before;
+        let num_constraints = self.linear_constraints - constraints_before;
+        let y_power = self.y.pow_vartime([num_constraints as u64]);
+        let contribution = self.result - result_before * y_power;
+
+        // Cache for reuse
+        self.memo_cache.insert(
+            routine_id,
+            canonical_position,
+            CachedRoutine {
+                contribution,
+                num_multiplications,
+                num_constraints,
+            },
+        );
+
+        self.available_b = tmp;
+        Ok(output)
     }
 }
 
@@ -301,6 +364,26 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     key: &registry::Key<F>,
     floor_plan: &FloorPlan,
 ) -> Result<F> {
+    eval_with_cache::<F, C, R>(circuit, x, y, key, floor_plan, &mut MemoCache::new())
+}
+
+/// Evaluates $s(x, y)$ with a shared memoization cache.
+///
+/// Routines at the same canonical position reuse cached contributions.
+///
+/// ```ignore
+/// let mut cache = MemoCache::new();
+/// let r1 = eval_with_cache(&circuit1, x, y, &key, &floor_plan, &mut cache)?;
+/// let r2 = eval_with_cache(&circuit2, x, y, &key, &floor_plan, &mut cache)?;
+/// ```
+pub fn eval_with_cache<F: Field, C: Circuit<F>, R: Rank>(
+    circuit: &C,
+    x: F,
+    y: F,
+    key: &registry::Key<F>,
+    floor_plan: &FloorPlan,
+    cache: &mut MemoCache<F>,
+) -> Result<F> {
     if x == F::ZERO {
         // The polynomial is zero if x is zero.
         return Ok(F::ZERO);
@@ -320,6 +403,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         return Ok(current_w_x);
     }
 
+    let owned_cache = core::mem::take(cache);
+
     let mut evaluator = Evaluator::<F, R> {
         result: F::ZERO,
         multiplication_constraints: 0,
@@ -334,6 +419,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         available_b: None,
         floor_plan,
         invocation_counts: BTreeMap::new(),
+        memo_cache: owned_cache,
+        skip_accumulation: false,
         _marker: core::marker::PhantomData,
     };
 
@@ -352,5 +439,164 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     evaluator.enforce_public_outputs(outputs.iter().map(|output| output.wire()))?;
     evaluator.enforce_one()?;
 
+    *cache = evaluator.memo_cache;
+
     Ok(evaluator.result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ff::Field;
+    use ragu_core::{
+        drivers::{Driver, DriverValue},
+        gadgets::{GadgetKind, Kind},
+        routines::{Prediction, Routine, RoutineRegistry, RoutineShape},
+    };
+    use ragu_pasta::Fp;
+    use ragu_primitives::Element;
+    use rand::thread_rng;
+
+    use crate::{Circuit, polynomials::R};
+
+    #[derive(Clone)]
+    struct SquareRoutine;
+
+    impl Routine<Fp> for SquareRoutine {
+        type Input = Kind![Fp; Element<'_, _>];
+        type Output = Kind![Fp; Element<'_, _>];
+        type Aux<'dr> = ();
+
+        fn shape(&self) -> RoutineShape {
+            RoutineShape::new(1, 0) // One multiplication, no extra constraints
+        }
+
+        fn execute<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            input: <Self::Input as GadgetKind<Fp>>::Rebind<'dr, D>,
+            _aux: DriverValue<D, Self::Aux<'dr>>,
+        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+            input.square(dr)
+        }
+
+        fn predict<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _input: &<Self::Input as GadgetKind<Fp>>::Rebind<'dr, D>,
+        ) -> Result<
+            Prediction<
+                <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
+                DriverValue<D, Self::Aux<'dr>>,
+            >,
+        > {
+            Ok(Prediction::Unknown(D::just(|| ())))
+        }
+    }
+
+    /// A circuit that uses routines multiple times.
+    struct RoutineCircuit {
+        num_calls: usize,
+    }
+
+    impl Circuit<Fp> for RoutineCircuit {
+        type Instance<'instance> = Fp;
+        type Output = Kind![Fp; Element<'_, _>];
+        type Witness<'witness> = Fp;
+        type Aux<'witness> = ();
+
+        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            instance: DriverValue<D, Self::Instance<'instance>>,
+        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+            Element::alloc(dr, instance)
+        }
+
+        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            witness: DriverValue<D, Self::Witness<'witness>>,
+        ) -> Result<(
+            <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
+            DriverValue<D, Self::Aux<'witness>>,
+        )> {
+            let mut value = Element::alloc(dr, witness)?;
+
+            for _ in 0..self.num_calls {
+                value = dr.routine(SquareRoutine, value)?;
+            }
+
+            Ok((value, D::just(|| ())))
+        }
+    }
+
+    /// Multiple evaluations of the same circuit produce identical results.
+    #[test]
+    fn sxy_eval_with_routines_is_consistent() {
+        type TestRank = R<16>;
+        let circuit = RoutineCircuit { num_calls: 3 };
+
+        let x = Fp::random(thread_rng());
+        let y = Fp::random(thread_rng());
+        let key = registry::Key::new(Fp::random(thread_rng()));
+
+        let mut registry = RoutineRegistry::new();
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        let floor_plan = FloorPlan::from_registries(&[&registry], TestRank::n());
+
+        let result1 = eval::<Fp, _, TestRank>(&circuit, x, y, &key, &floor_plan).unwrap();
+        let result2 = eval::<Fp, _, TestRank>(&circuit, x, y, &key, &floor_plan).unwrap();
+
+        assert_eq!(result1, result2);
+    }
+
+    /// Evaluation at x=0 returns zero (polynomial property).
+    #[test]
+    fn sxy_eval_zero_x_returns_zero() {
+        type TestRank = R<16>;
+        let circuit = RoutineCircuit { num_calls: 2 };
+        let key = registry::Key::new(Fp::random(thread_rng()));
+
+        let result = eval::<Fp, _, TestRank>(
+            &circuit,
+            Fp::ZERO,
+            Fp::random(thread_rng()),
+            &key,
+            &FloorPlan::default(),
+        )
+        .unwrap();
+        assert_eq!(result, Fp::ZERO);
+    }
+
+    /// Shared cache across circuits produces identical results.
+    #[test]
+    fn sxy_inter_circuit_memoization_shares_cache() {
+        type TestRank = R<16>;
+
+        let circuit1 = RoutineCircuit { num_calls: 3 };
+        let circuit2 = RoutineCircuit { num_calls: 3 };
+
+        let x = Fp::random(thread_rng());
+        let y = Fp::random(thread_rng());
+        let key = registry::Key::new(Fp::random(thread_rng()));
+
+        let mut registry = RoutineRegistry::new();
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        registry.register::<SquareRoutine>(SquareRoutine.shape());
+        let floor_plan = FloorPlan::from_registries(&[&registry, &registry], TestRank::n());
+
+        let mut cache = MemoCache::new();
+        let result1 =
+            eval_with_cache::<Fp, _, TestRank>(&circuit1, x, y, &key, &floor_plan, &mut cache)
+                .unwrap();
+        let result2 =
+            eval_with_cache::<Fp, _, TestRank>(&circuit2, x, y, &key, &floor_plan, &mut cache)
+                .unwrap();
+
+        assert_eq!(result1, result2);
+    }
 }
