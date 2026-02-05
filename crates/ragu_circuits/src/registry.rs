@@ -25,6 +25,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 use crate::{
     Circuit, CircuitExt, CircuitObject,
     polynomials::{Rank, structured, unstructured},
+    staging::{Stage, StageExt},
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
@@ -60,9 +61,26 @@ impl CircuitIndex {
     }
 }
 
-/// Builder for constructing a new [`Registry`].
+impl From<CircuitIndex> for usize {
+    fn from(idx: CircuitIndex) -> usize {
+        idx.0 as usize
+    }
+}
+
+/// A builder that constructs a [`Registry`].
+///
+/// Circuits are organized into three categories:
+/// - Internal masks: stage masks and final masks for internal stages
+/// - Internal circuits: system circuits and internal steps
+/// - Application steps: user-defined application step circuits
+///
+/// During finalization, circuits are concatenated in registration order,
+/// ensuring internal masks can be optimized separately from circuits
+/// while maintaining proper PCD indexing.
 pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
-    circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    internal_masks: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    internal_circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    application_steps: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
 }
 
 impl<F: PrimeField, R: Rank> Default for RegistryBuilder<'_, F, R> {
@@ -75,55 +93,96 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     /// Creates a new empty [`Registry`] builder.
     pub fn new() -> Self {
         Self {
-            circuits: Vec::new(),
+            internal_masks: Vec::new(),
+            internal_circuits: Vec::new(),
+            application_steps: Vec::new(),
         }
     }
 
-    /// Returns the number of circuits currently registered in this builder.
+    /// Returns the number of internal circuits (masks + circuits).
+    pub fn num_internal_circuits(&self) -> usize {
+        self.internal_masks.len() + self.internal_circuits.len()
+    }
+
+    /// Returns the total number of circuits across all categories.
     pub fn num_circuits(&self) -> usize {
-        self.circuits.len()
+        self.num_internal_circuits() + self.application_steps.len()
     }
 
     /// Returns the log2 of the smallest power-of-2 domain size that fits all circuits.
     pub fn log2_circuits(&self) -> u32 {
-        self.circuits.len().next_power_of_two().trailing_zeros()
+        self.num_circuits().next_power_of_two().trailing_zeros()
     }
 
-    /// Registers a new circuit.
-    pub fn register_circuit<C>(self, circuit: C) -> Result<Self>
+    /// Registers an application step circuit.
+    pub fn register_circuit<C>(mut self, circuit: C) -> Result<Self>
     where
         C: Circuit<F> + 'params,
     {
-        self.register_circuit_object(circuit.into_object()?)
-    }
-
-    /// Registers a new circuit using a bare circuit object.
-    pub fn register_circuit_object(
-        mut self,
-        circuit: Box<dyn CircuitObject<F, R> + 'params>,
-    ) -> Result<Self> {
-        let id = self.circuits.len();
-        if id >= R::num_coeffs() {
-            return Err(Error::CircuitBoundExceeded(id));
-        }
-
-        self.circuits.push(circuit);
-
+        self.application_steps.push(circuit.into_object()?);
         Ok(self)
     }
 
-    /// Builds the final [`Registry`].
+    /// Registers an internal circuit.
+    pub fn register_internal_circuit<C>(mut self, circuit: C) -> Result<Self>
+    where
+        C: Circuit<F> + 'params,
+    {
+        self.internal_circuits.push(circuit.into_object()?);
+        Ok(self)
+    }
+
+    /// Registers an internal stage mask.
+    pub fn register_internal_mask<S>(mut self) -> Result<Self>
+    where
+        S: Stage<F, R>,
+    {
+        self.internal_masks.push(S::mask()?);
+        Ok(self)
+    }
+
+    /// Registers an internal final stage mask.
+    pub fn register_internal_final_mask<S>(mut self) -> Result<Self>
+    where
+        S: Stage<F, R>,
+    {
+        self.internal_masks.push(S::final_mask()?);
+        Ok(self)
+    }
+
+    /// Builds the [`Registry`].
+    ///
+    /// Circuits are concatenated in the following order for proper indexing:
+    /// 1. Internal masks: Stage enforcement masks and final masks
+    /// 2. Internal circuits: System circuits and internal steps
+    /// 3. Application steps: User-defined step circuits
+    ///
+    /// This ordering ensures internal masks can be optimized separately while
+    /// maintaining proper PCD indexing where internal items occupy indices
+    /// $0 \ldots N$ and application steps occupy indices $N$ onward.
     pub fn finalize<P: PoseidonPermutation<F>>(
         self,
         poseidon: &P,
     ) -> Result<Registry<'params, F, R>> {
+        let total_circuits = self.num_circuits();
+        if total_circuits > R::num_coeffs() {
+            return Err(Error::CircuitBoundExceeded(total_circuits));
+        }
+
         let log2_circuits = self.log2_circuits();
         let domain = Domain::<F>::new(log2_circuits);
+
+        let circuits: Vec<_> = self
+            .internal_masks
+            .into_iter()
+            .chain(self.internal_circuits)
+            .chain(self.application_steps)
+            .collect();
 
         // Build omega^j -> i lookup table.
         let mut omega_lookup = BTreeMap::new();
 
-        for i in 0..self.circuits.len() {
+        for i in 0..circuits.len() {
             // Rather than assigning the `i`th circuit to `omega^i` in the final
             // domain, we will assign it to `omega^j` where `j` is the
             // `log2_circuits` bit-reversal of `i`. This has the property that
@@ -137,10 +196,10 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
             omega_lookup.insert(omega_j, i);
         }
 
-        // Create provisional registry (circuits still have placeholder K).
+        // Create provisional registry (circuits still have placeholder K)
         let mut registry = Registry {
             domain,
-            circuits: self.circuits,
+            circuits,
             omega_lookup,
             key: Key::default(),
         };
@@ -427,6 +486,9 @@ mod tests {
     use ragu_pasta::{Fp, Pasta};
     use rand::thread_rng;
 
+    type TestRank = R<8>;
+    type TestRegistryBuilder<'a> = RegistryBuilder<'a, Fp, TestRank>;
+
     #[test]
     fn test_omega_j_multiplicative_order() {
         /// Return the 2^k multiplicative order of f (assumes f is a 2^k root of unity).
@@ -450,13 +512,11 @@ mod tests {
         assert_eq!(order(CircuitIndex::new(7).omega_j::<Fp>()), 8);
     }
 
-    type TestRank = R<8>;
-
     #[test]
     fn test_registry_circuit_consistency() -> Result<()> {
         let poseidon = Pasta::circuit_poseidon(Pasta::baked());
 
-        let registry = RegistryBuilder::<Fp, TestRank>::new()
+        let registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 5 })?
             .register_circuit(SquareCircuit { times: 10 })?
@@ -535,7 +595,7 @@ mod tests {
         let poseidon = Pasta::circuit_poseidon(Pasta::baked());
 
         // Checks that a single circuit can be finalized without bit-shift overflows.
-        let _registry = RegistryBuilder::<Fp, TestRank>::new()
+        let _registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 1 })?
             .finalize(poseidon)?;
 
@@ -588,9 +648,8 @@ mod tests {
     fn test_non_power_of_two_registry_sizes() -> Result<()> {
         let poseidon = Pasta::circuit_poseidon(Pasta::baked());
 
-        type TestRank = crate::polynomials::R<8>;
         for num_circuits in 0..21 {
-            let mut builder = RegistryBuilder::<Fp, TestRank>::new();
+            let mut builder = TestRegistryBuilder::new();
 
             for i in 0..num_circuits {
                 builder = builder.register_circuit(SquareCircuit { times: i })?;
@@ -618,7 +677,7 @@ mod tests {
     fn test_circuit_in_domain() -> Result<()> {
         let poseidon = Pasta::circuit_poseidon(Pasta::baked());
 
-        let registry = RegistryBuilder::<Fp, TestRank>::new()
+        let registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 5 })?
             .register_circuit(SquareCircuit { times: 10 })?
@@ -654,5 +713,86 @@ mod tests {
     fn zero_registry_key_panics() {
         use ff::Field;
         let _ = super::Key::new(<Fp as Field>::ZERO);
+    }
+
+    #[test]
+    fn test_registry_with_internal_circuits() -> Result<()> {
+        let poseidon = Pasta::circuit_poseidon(Pasta::baked());
+
+        // Create a builder
+        let builder = TestRegistryBuilder::new();
+
+        // Verify initial state - no circuits registered yet
+        assert_eq!(
+            builder.num_circuits(),
+            0,
+            "should start with 0 registered circuits"
+        );
+        assert_eq!(
+            builder.num_internal_circuits(),
+            0,
+            "no internal circuits registered yet"
+        );
+
+        // Register 2 internal circuits
+        let builder = builder
+            .register_internal_circuit(SquareCircuit { times: 2 })?
+            .register_internal_circuit(SquareCircuit { times: 3 })?;
+
+        assert_eq!(
+            builder.num_internal_circuits(),
+            2,
+            "2 internal circuits registered"
+        );
+        assert_eq!(builder.num_circuits(), 2, "2 total registered circuits");
+
+        // Register 2 application steps
+        let builder = builder
+            .register_circuit(SquareCircuit { times: 4 })?
+            .register_circuit(SquareCircuit { times: 5 })?;
+
+        assert_eq!(
+            builder.num_internal_circuits(),
+            2,
+            "still 2 internal circuits"
+        );
+        assert_eq!(
+            builder.num_circuits(),
+            4,
+            "now 4 total registered circuits (2 internal + 2 application)"
+        );
+
+        // Finalize the registry
+        let registry = builder.finalize(poseidon)?;
+        assert_eq!(registry.circuits().len(), 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_internal_mixed_registration() -> Result<()> {
+        let poseidon = Pasta::circuit_poseidon(Pasta::baked());
+
+        // Test circuit count with sequential registration
+        let registry = TestRegistryBuilder::new()
+            .register_internal_circuit(SquareCircuit { times: 1 })?
+            .register_internal_circuit(SquareCircuit { times: 2 })?
+            .register_circuit(SquareCircuit { times: 3 })?
+            .register_circuit(SquareCircuit { times: 4 })?
+            .finalize(poseidon)?;
+
+        assert_eq!(registry.circuits().len(), 4);
+
+        // Test circuit count with interleaved registration
+        let registry2 = TestRegistryBuilder::new()
+            .register_circuit(SquareCircuit { times: 3 })?
+            .register_internal_circuit(SquareCircuit { times: 1 })?
+            .register_circuit(SquareCircuit { times: 4 })?
+            .register_internal_circuit(SquareCircuit { times: 2 })?
+            .finalize(poseidon)?;
+
+        assert_eq!(registry2.circuits().len(), 4);
+
+        Ok(())
     }
 }

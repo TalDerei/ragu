@@ -5,10 +5,9 @@
 
 use arithmetic::Cycle;
 use ragu_circuits::{
-    CircuitExt,
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
-    staging::{MultiStage, StageExt},
+    staging::MultiStage,
 };
 use ragu_core::Result;
 use ragu_primitives::vec::Len;
@@ -56,25 +55,26 @@ impl InternalCircuitIndex {
 
 pub mod stages;
 
-/// Register internal nested circuits into the provided registry.
+/// Registers internal nested circuits into the provided registry.
+///
+/// Circuits are registered as internal to ensure they occupy prefix indices
+/// before application steps.
 pub(crate) fn register_all<'params, C: Cycle, R: Rank>(
     mut registry: RegistryBuilder<'params, C::ScalarField, R>,
 ) -> Result<RegistryBuilder<'params, C::ScalarField, R>> {
-    registry = registry.register_circuit_object(EndoscalarStage::mask()?)?;
+    registry = registry.register_internal_mask::<EndoscalarStage>()?;
+
+    registry =
+        registry.register_internal_mask::<PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?;
 
     registry = registry
-        .register_circuit_object(PointsStage::<C::HostCurve, NUM_ENDOSCALING_POINTS>::mask()?)?;
-
-    registry = registry
-        .register_circuit_object(
-            PointsStage::<C::HostCurve, NUM_ENDOSCALING_POINTS>::final_mask()?,
-        )?;
+        .register_internal_final_mask::<PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?;
 
     let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
     for step in 0..num_steps {
         let step_circuit = EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
         let staged = MultiStage::new(step_circuit);
-        registry = registry.register_circuit_object(staged.into_object()?)?;
+        registry = registry.register_internal_circuit(staged)?;
     }
     Ok(registry)
 }
