@@ -135,7 +135,7 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     /// Registers an internal stage mask.
     pub fn register_internal_mask<S>(mut self) -> Result<Self>
     where
-        S: Stage<F, R> + 'params,
+        S: Stage<F, R>,
     {
         self.internal_masks.push(S::mask()?);
         Ok(self)
@@ -144,7 +144,7 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     /// Registers an internal final stage mask.
     pub fn register_internal_final_mask<S>(mut self) -> Result<Self>
     where
-        S: Stage<F, R> + 'params,
+        S: Stage<F, R>,
     {
         self.internal_masks.push(S::final_mask()?);
         Ok(self)
