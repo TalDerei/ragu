@@ -231,12 +231,12 @@ the correct commitment to partially evaluated univariate polynomial $s(X,y)$
      $\gamma_a,\gamma_b\in\F$ over
    - Verifier checks by recomputing the revdot product and re-commit $\bar{A},\bar{B}$
 6. Verifier sends back challenge $x\sample\F$
-7. Prover sends evaluations $evals=(a(x), a(xz), s(x,y), b(x))\in\F^4$ over
+7. Prover sends evaluations $evals=(a(xz), s(x, y), b(x))\in\F^3$ over
 8. Verifier locally computes $t(x,z)$ and checks $b(x)\iseq a(xz) + s(x,y) -t(x,z)$
 9. Prover and Verifier engage in a **batched evaluation protocol**, ensuring that
   the following (commitment, point, eval) evaluation claims are correct:
-  $(\bar{A}, 0, 1),(\bar{A}, x, a(x)), (\bar{A}, xz, a(xz)),
-  (\bar{B}, x, b(x)),(S, x, s(x,y)), (K, 0, 1), (K, y, c)$
+  $(\bar{A}, 0, 1),(\bar{A}, xz, a(xz)),
+  (\bar{B}, x, b(x)),(S, x, s(x, y)), (K, 0, 1), (K, y, c)$
    - they first run a [PCS aggregation](./accumulation/pcs.md#pcs-aggregation)
      subroutine to collectively reduce all claims to a single claim $(P, u, v)$
    - prover then sends the aggregated polynomial $\v{p}\in\F^{4n}$ and the

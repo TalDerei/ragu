@@ -90,9 +90,9 @@ accumulator $\acc_i$:
 $$
 \begin{cases}
 \pi.\inst = \Bigg(\begin{array}{l}
-  (\bar{A}, 0, 1),(\bar{A}, x, a(x)), (\bar{A}, xz, a(xz)),\\
+  (\bar{A}, 0, 1), (\bar{A}, xz, a(xz)),\\
   (\bar{B}, x, b(x)),\\
-  (S, x, s(x,y)),\\
+  (S, x, s(x, y)),\\
   (K, 0, 1), (K, y, c) \in\G\times\F^2
 \end{array}\Bigg)\\
 \pi.\wit = (\v{a},\v{b},\v{s},\v{k}\in\F^{4n})\\
