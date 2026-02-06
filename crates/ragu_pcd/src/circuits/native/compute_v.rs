@@ -429,11 +429,18 @@ impl<'a, 'dr, D: Driver<'dr>> Source for EvaluationSource<'a, 'dr, D> {
     }
 }
 
-/// Processor that builds evaluation vectors for two-layer revdot folding.
+/// A processor that builds evaluation vectors for two-layer revdot folding.
 ///
 /// Collects evaluations into `ax` and `bx` vectors that will be folded to
 /// produce $a(xz)$ and $b(x)$. Each claim type (raw, circuit, internal circuit,
-/// stage) has different formulas for computing its contribution to the vectors.
+/// stage) has a different formula for computing its contribution to the
+/// vectors.
+///
+/// All constituent (circuit, internal circuit, stage) `rx` evaluations are at
+/// $xz$. The `ax` vector uses them directly (since $A$ has no dilation); the
+/// `bx` vector adds circuit-specific terms ($s\_y + t(xz)$). The composite
+/// $a$/$b$ polynomial evaluations use $a(xz)$ and $b(x)$ respectively. See
+/// [`compute_axbx`] for details.
 struct EvaluationProcessor<'a, 'dr, D: Driver<'dr>> {
     dr: &'a mut D,
     z: &'a Element<'dr, D>,
@@ -517,17 +524,37 @@ impl<'a, 'dr, D: Driver<'dr>> Processor<&'a Element<'dr, D>, &'a Element<'dr, D>
     }
 }
 
-/// Computes the expected value of $a(xz), b(x)$ given the evaluations at $xz$ of
-/// every constituent polynomial at $x, xz$.
+/// Computes the expected values of $a(xz)$ and $b(x)$ by recomputing them from
+/// the individual `rx` polynomial evaluations witnessed in the query stage.
 ///
 /// This function is the authoritative source of the protocol's (recursive)
 /// description of the revdot folding structure. It fundamentally binds the
-/// prover's behavior in their choice of $a(X), b(X)$ and thus the correctness
+/// prover's behavior in their choice of $a(X),\, b(X)$ and thus the correctness
 /// of their folded revdot claim.
 ///
+/// # How evaluations flow into `ax` and `bx`
+///
+/// All constituent `rx` evaluations are at $xz$. For each claim type, the
+/// [`EvaluationProcessor`] builds the `ax` and `bx` vectors:
+///
+/// - **Circuit claims**: `ax` receives $r\_i(xz)$; `bx` receives
+///   $r\_i(xz) + s\_y + t(xz)$.
+/// - **Internal circuit claims**: `ax` receives $\sum r\_i(xz)$; `bx` receives
+///   $\sum r\_i(xz) + s\_y + t(xz)$.
+/// - **Stage claims**: `ax` receives $\text{fold}(r\_i(xz),\, z)$; `bx`
+///   receives $s\_y$.
+/// - **Raw $a$/$b$ claims**: `ax` receives $a(xz)$; `bx` receives $b(x)$.
+///
+/// # Shared evaluations
+///
+/// Because $A$'s constituents have no $Z$-dilation, $A$ can be checked at any
+/// point. By checking $A$ at $xz$ instead of $x$, both $A(xz)$ and $B(x)$ reuse
+/// the same $\{r\_i(xz)\}$ evaluations, eliminating the need for separate
+/// $r\_i(x)$ queries.
+///
 /// The two-layer folding uses:
-/// - Layer 1: $\mu^{-1}$, $\mu'^{-1}$ for $a(xz)$; $\mu\nu$, $\mu'\nu'$ for $b(x)$
-/// - Layer 2: Internal folding within each layer
+/// - Layer 1: $\mu^{-1}$, $\mu'^{-1}$ for `ax`; $\mu\nu$, $\mu'\nu'$ for `bx`
+/// - Layer 2: internal folding within each layer
 fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
     dr: &mut D,
     query: &native_query::Output<'dr, D>,
@@ -564,15 +591,22 @@ fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
 ///
 /// The queries are organized into groups:
 /// 1. **Child proof $p(u) = v$ checks** - Verify child proof evaluations
-/// 2. **Registry polynomial transitions** - $m(W,x,y) \to m(w,x,Y) \to m(w,X,y) \to s(W,x,y)$
-/// 3. **Internal circuit registry evaluations** - $m(\omega^j, x, y)$ for each internal index
-/// 4. **Application circuit registry evaluations** - $m(\text{circuit\_id}, x, y)$
-/// 5. **$a(xz), b(x)$ polynomial queries** - Including verifier-computed values
-/// 6. **Stage/circuit evaluations** - At $xz$ point only
+/// 2. **Registry polynomial transitions** -
+///    $m(W, x, y) \to m(w, x, Y) \to m(w, X, y) \to s(W, x, y)$
+/// 3. **Internal circuit registry evaluations** - $m(\omega^j, x, y)$ for each
+///    internal index
+/// 4. **Application circuit registry evaluations** -
+///    $m(\text{circuit\_id}, x, y)$
+/// 5. **$a(xz),\, b(x)$ polynomial queries** — $a$ at $xz$, $b$ at $x$,
+///    including verifier-computed values for each child and the current
+///    accumulator
+/// 6. **Stage/circuit `rx` evaluations** — each $r\_i$ queried at $xz$ for each
+///    child. The same $r\_i(xz)$ evaluations feed into both the $A(xz)$
+///    recomputation (undilated) and $B(x)$ ($Z$-dilated).
 ///
 /// The queries must be ordered exactly as in the prover's computation of $f(X)$
-/// in [`compute_f`], since the ordering affects the weight
-/// (with respect to [$\alpha$]) of each quotient polynomial.
+/// in [`compute_f`], since the ordering affects the weight (with respect to
+/// [$\alpha$]) of each quotient polynomial.
 ///
 /// [`compute_f`]: crate::Application::compute_f
 /// [$\alpha$]: unified::Output::alpha
@@ -634,8 +668,9 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HE
         (&eval.a_poly,             computed_ax,                                      &d.challenges.xz),
         (&eval.b_poly,             computed_bx,                                      &d.challenges.x),
     ])
-    // Stage and circuit evaluations for each child proof at xz only.
-    // The xz point suffices to bind rx polynomials via Schwartz-Zippel.
+    // Stage and circuit rx evaluations at xz for each child proof.
+    // The same r_i(xz) values feed into both A(xz) (undilated) and
+    // B(x) (Z-dilated) recomputations.
     .chain([(&eval.left, &query.left), (&eval.right, &query.right)]
         .into_iter()
         .flat_map(|(eval, query)| [

@@ -1,4 +1,18 @@
 //! Query stage for fuse operations.
+//!
+//! Witnesses the claimed polynomial evaluations needed for the `compute_v`
+//! circuit to verify the $f(u)$ quotient polynomial. Each child proof's `rx`
+//! polynomials are evaluated at $xz$:
+//!
+//! - $r\_i(xz)$ — used to recompute both $A(xz)$ (undilated) and $B(x)$ (since
+//!   $b\_i(x) = r\_i(xz) + s\_y + t\_z$).
+//!
+//! Because $A$ has no $Z$-dilation, checking it at $xz$ instead of $x$ lets
+//! both $A$ and $B$ share the same $\{r\_i(xz)\}$ evaluations, eliminating the
+//! need for separate $r\_i(x)$ queries.
+//!
+//! Additionally witnesses the $a$/$b$ polynomial evaluations and registry
+//! transition evaluations needed for mesh consistency checks.
 
 use arithmetic::Cycle;
 use ff::PrimeField;
@@ -39,44 +53,59 @@ pub struct FixedRegistryWitness<F> {
     pub compute_v_circuit: F,
 }
 
-/// Witness for a child proof's polynomial evaluations at xz.
+/// Witness for a child proof's polynomial evaluations.
 pub struct ChildEvaluationsWitness<F> {
-    /// Preamble stage rx polynomial evaluation at xz.
+    /// Preamble stage `rx` polynomial evaluation at $xz$.
     pub preamble: F,
-    /// Error N stage rx polynomial evaluation at xz.
+
+    /// Error N stage `rx` polynomial evaluation at $xz$.
     pub error_n: F,
-    /// Error M stage rx polynomial evaluation at xz.
+
+    /// Error M stage `rx` polynomial evaluation at $xz$.
     pub error_m: F,
-    /// Query stage rx polynomial evaluation at xz.
+
+    /// Query stage `rx` polynomial evaluation at $xz$.
     pub query: F,
-    /// Eval stage rx polynomial evaluation at xz.
+
+    /// Eval stage `rx` polynomial evaluation at $xz$.
     pub eval: F,
-    /// Application circuit rx polynomial evaluation at xz.
+
+    /// Application circuit `rx` polynomial evaluation at $xz$.
     pub application: F,
-    /// Hashes 1 circuit rx polynomial evaluation at xz.
+
+    /// Hashes 1 circuit `rx` polynomial evaluation at $xz$.
     pub hashes_1: F,
-    /// Hashes 2 circuit rx polynomial evaluation at xz.
+
+    /// Hashes 2 circuit `rx` polynomial evaluation at $xz$.
     pub hashes_2: F,
-    /// Partial collapse circuit rx polynomial evaluation at xz.
+
+    /// Partial collapse circuit `rx` polynomial evaluation at $xz$.
     pub partial_collapse: F,
-    /// Full collapse circuit rx polynomial evaluation at xz.
+
+    /// Full collapse circuit `rx` polynomial evaluation at $xz$.
     pub full_collapse: F,
-    /// Compute V circuit rx polynomial evaluation at xz.
+
+    /// Compute V circuit `rx` polynomial evaluation at $xz$.
     pub compute_v: F,
-    /// A polynomial evaluation at xz.
+
+    /// $A$ polynomial evaluation at $xz$.
     pub a_poly_at_xz: F,
-    /// B polynomial evaluation at x.
+
+    /// $B$ polynomial evaluation at $x$.
     pub b_poly_at_x: F,
-    /// Child's registry_xy polynomial evaluated at current step's w.
+
+    /// Child's `registry_xy` polynomial evaluated at current step's $w$.
     pub child_registry_xy_at_current_w: F,
-    /// Current registry_xy polynomial evaluated at child's circuit_id.
+
+    /// Current `registry_xy` polynomial evaluated at child's `circuit_id`.
     pub current_registry_xy_at_child_circuit_id: F,
-    /// Current registry_wy polynomial evaluated at child's x.
+
+    /// Current `registry_wy` polynomial evaluated at child's $x$.
     pub current_registry_wy_at_child_x: F,
 }
 
 impl<F: PrimeField> ChildEvaluationsWitness<F> {
-    /// Create child evaluations witness from a proof evaluated at xz.
+    /// Creates a child evaluations witness from a proof evaluated at the given points.
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank>(
         proof: &Proof<C, R>,
         w: F,
@@ -203,55 +232,70 @@ impl<'dr, D: Driver<'dr>> FixedRegistryEvaluations<'dr, D> {
     }
 }
 
-/// Gadget for a child proof's polynomial evaluations at xz.
+/// Gadget for a child proof's polynomial evaluations.
 #[derive(Gadget)]
 pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
-    /// Preamble stage rx polynomial evaluation at xz.
+    /// Preamble stage `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub preamble: Element<'dr, D>,
-    /// Error N stage rx polynomial evaluation at xz.
+
+    /// Error N stage `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub error_n: Element<'dr, D>,
-    /// Error M stage rx polynomial evaluation at xz.
+
+    /// Error M stage `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub error_m: Element<'dr, D>,
-    /// Query stage rx polynomial evaluation at xz.
+
+    /// Query stage `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub query: Element<'dr, D>,
-    /// Eval stage rx polynomial evaluation at xz.
+
+    /// Eval stage `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub eval: Element<'dr, D>,
-    /// Application circuit rx polynomial evaluation at xz.
+
+    /// Application circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub application: Element<'dr, D>,
-    /// Hashes 1 circuit rx polynomial evaluation at xz.
+
+    /// Hashes 1 circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub hashes_1: Element<'dr, D>,
-    /// Hashes 2 circuit rx polynomial evaluation at xz.
+
+    /// Hashes 2 circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub hashes_2: Element<'dr, D>,
-    /// Partial collapse circuit rx polynomial evaluation at xz.
+
+    /// Partial collapse circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub partial_collapse: Element<'dr, D>,
-    /// Full collapse circuit rx polynomial evaluation at xz.
+
+    /// Full collapse circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub full_collapse: Element<'dr, D>,
-    /// Compute V circuit rx polynomial evaluation at xz.
+
+    /// Compute V circuit `rx` polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub compute_v: Element<'dr, D>,
-    /// A polynomial evaluation at xz.
+
+    /// $A$ polynomial evaluation at $xz$.
     #[ragu(gadget)]
     pub a_poly_at_xz: Element<'dr, D>,
-    /// B polynomial evaluation at x.
+
+    /// $B$ polynomial evaluation at $x$.
     #[ragu(gadget)]
     pub b_poly_at_x: Element<'dr, D>,
-    /// Child's registry_xy polynomial evaluated at current step's w.
+
+    /// Child's `registry_xy` polynomial evaluated at current step's $w$.
     #[ragu(gadget)]
     pub child_registry_xy_at_current_w: Element<'dr, D>,
-    /// Current registry_xy polynomial evaluated at child's circuit_id.
+
+    /// Current `registry_xy` polynomial evaluated at child's `circuit_id`.
     #[ragu(gadget)]
     pub current_registry_xy_at_child_circuit_id: Element<'dr, D>,
-    /// Current registry_wy polynomial evaluated at child's x.
+
+    /// Current `registry_wy` polynomial evaluated at child's $x$.
     #[ragu(gadget)]
     pub current_registry_wy_at_child_x: Element<'dr, D>,
 }
