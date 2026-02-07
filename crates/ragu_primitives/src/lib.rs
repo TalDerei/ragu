@@ -31,7 +31,7 @@ use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 use io::{Buffer, Write};
 use promotion::Demoted;
 
-pub use boolean::{Boolean, multipack};
+pub use boolean::{Boolean, BooleanVec, BooleanVecKind, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{Endoscalar, compute_endoscalar, extract_endoscalar};
 pub use point::Point;
