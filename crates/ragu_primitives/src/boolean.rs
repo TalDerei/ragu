@@ -3,19 +3,25 @@
 //! Provides the [`Boolean`] type representing a wire constrained to be zero or
 //! one, with logical operations implemented as circuit constraints.
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
 
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
+
 use ragu_core::{
     Result,
+    convert::WireMap,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{Gadget, Kind},
+    gadgets::{Bound, Gadget, GadgetKind, Kind},
     maybe::Maybe,
 };
 
+use crate::vec::{CollectFixed, FixedVec, Len};
+
 #[cfg(test)]
 use crate::allocator::{PoolAllocator, SimpleAllocator};
+
 use crate::{
     Element, GadgetExt,
     consistent::Consistent,
@@ -257,6 +263,105 @@ pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
 impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         Self::alloc(dr, &mut (), self.value())?.enforce_equal(dr, self)
+    }
+}
+
+/// A fixed-length boolean vector with single-constraint equality checking,
+/// using a fixed-linear combination technique.
+pub struct BooleanVec<'dr, D: Driver<'dr>, L: Len> {
+    inner: FixedVec<Boolean<'dr, D>, L>,
+}
+
+impl<'dr, D: Driver<'dr>, L: Len> BooleanVec<'dr, D, L> {
+    /// Creates a new `BooleanVec` from a `FixedVec` of booleans.
+    pub fn new(inner: FixedVec<Boolean<'dr, D>, L>) -> Self {
+        Self { inner }
+    }
+
+    /// Consumes this `BooleanVec` and returns the inner `FixedVec`.
+    pub fn into_inner(self) -> FixedVec<Boolean<'dr, D>, L> {
+        self.inner
+    }
+
+    /// Allocates a `BooleanVec` from witness values.
+    pub fn alloc(dr: &mut D, values: FixedVec<DriverValue<D, bool>, L>) -> Result<Self> {
+        let inner = values
+            .into_iter()
+            .map(|v| Boolean::alloc(dr, &mut (), v))
+            .try_collect_fixed()?;
+        Ok(Self { inner })
+    }
+}
+
+impl<'dr, D: Driver<'dr>, L: Len> core::ops::Deref for BooleanVec<'dr, D, L> {
+    type Target = [Boolean<'dr, D>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<'dr, D: Driver<'dr>, L: Len> Clone for BooleanVec<'dr, D, L> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<'dr, D: Driver<'dr>, L: Len> Gadget<'dr, D> for BooleanVec<'dr, D, L> {
+    type Kind = BooleanVecKind<L>;
+}
+
+/// The [`GadgetKind`] for [`BooleanVec`].
+pub struct BooleanVecKind<L: Len> {
+    _marker: PhantomData<L>,
+}
+
+// Safety: `BooleanVec` contains only `Boolean` gadgets which satisfy the `Send`
+// requirement when `D::Wire` is `Send`.
+unsafe impl<F: Field, L: Len> GadgetKind<F> for BooleanVecKind<L> {
+    type Rebind<'dr, D: Driver<'dr, F = F>> = BooleanVec<'dr, D, L>;
+
+    fn map_gadget<'src, 'dst, WM: WireMap<F>>(
+        this: &Bound<'src, WM::Src, Self>,
+        wm: &mut WM,
+    ) -> Result<Bound<'dst, WM::Dst, Self>>
+    where
+        WM::Src: Driver<'src, F = F>,
+        WM::Dst: Driver<'dst, F = F>,
+    {
+        assert_eq!(this.inner.len(), L::len());
+        let inner = this.inner.iter().map(|b| b.map(wm)).try_collect_fixed()?;
+        Ok(BooleanVec { inner })
+    }
+
+    fn enforce_equal_gadget<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &Bound<'dr, D2, Self>,
+        b: &Bound<'dr, D2, Self>,
+    ) -> Result<()> {
+        // Uses fixed linear combination with powers of two instead of N constraints.
+        dr.enforce_zero(|mut lc| {
+            for (a_bit, b_bit) in a.iter().zip(b.iter()) {
+                lc = lc.add(a_bit.wire()).sub(b_bit.wire());
+                lc = lc.gain(Coeff::Two);
+            }
+            lc
+        })
+    }
+}
+
+impl<'dr, D: Driver<'dr>, L: Len> Consistent<'dr, D> for BooleanVec<'dr, D, L> {
+    fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
+        for b in self.iter() {
+            b.enforce_consistent(dr)?;
+        }
+        Ok(())
     }
 }
 
@@ -569,6 +674,37 @@ fn test_multipack_vector() -> Result<()> {
 
         Ok(())
     })?;
+
+    Ok(())
+}
+
+#[test]
+fn test_boolean_vec_equality() -> Result<()> {
+    use crate::vec::ConstLen;
+    use ragu_core::gadgets::Gadget;
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let bits = vec![true, false, true, true, false, false, true, true];
+    let sim = Simulator::simulate((bits.clone(), bits), |dr, witness| {
+        let (a_bits, b_bits) = witness.cast();
+        let a: BooleanVec<_, ConstLen<8>> = BooleanVec::new(
+            (0..8)
+                .map(|i| Boolean::alloc(dr, &mut (), a_bits.as_ref().map(|b| b[i])))
+                .try_collect_fixed()?,
+        );
+        let b: BooleanVec<_, ConstLen<8>> = BooleanVec::new(
+            (0..8)
+                .map(|i| Boolean::alloc(dr, &mut (), b_bits.as_ref().map(|b| b[i])))
+                .try_collect_fixed()?,
+        );
+        dr.reset();
+        a.enforce_equal(dr, &b)?;
+
+        Ok(())
+    })?;
+
+    assert_eq!(sim.num_linear_constraints(), 1);
 
     Ok(())
 }
