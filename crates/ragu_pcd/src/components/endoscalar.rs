@@ -16,9 +16,9 @@
 //! will vary in the number of steps and points, the code is generic over the
 //! curve type and number of points.
 
-use arithmetic::{CurveAffine, Uendo};
 use ff::{Field, WithSmallOrderMulGroup};
 use pasta_curves::group::{Curve, prime::PrimeCurveAffine};
+use ragu_arithmetic::{CurveAffine, Uendo};
 use ragu_circuits::{
     polynomials::Rank,
     staging::{MultiStageCircuit, Stage, StageBuilder},
@@ -324,9 +324,9 @@ mod tests {
         ENDOSCALINGS_PER_STEP, EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, InputsLen,
         NumStepsLen, PointsStage, PointsWitness,
     };
-    use arithmetic::Uendo;
     use ff::Field;
     use pasta_curves::group::{Curve, Group, prime::PrimeCurveAffine};
+    use ragu_arithmetic::Uendo;
     use ragu_circuits::{
         CircuitExt,
         polynomials::{self},
@@ -464,7 +464,10 @@ mod tests {
             let mut lhs = final_rx.clone();
             lhs.add_assign(&endoscalar_rx);
             lhs.add_assign(&points_rx);
-            assert_eq!(lhs.revdot(&staged_s.sy(y, &key)), arithmetic::eval(&ky, y));
+            assert_eq!(
+                lhs.revdot(&staged_s.sy(y, &key)),
+                ragu_arithmetic::eval(&ky, y)
+            );
         }
 
         Ok(())
@@ -526,7 +529,10 @@ mod tests {
             let mut lhs = final_rx.clone();
             lhs.add_assign(&endoscalar_rx);
             lhs.add_assign(&points_rx);
-            assert_eq!(lhs.revdot(&staged_s.sy(y, &key)), arithmetic::eval(&ky, y));
+            assert_eq!(
+                lhs.revdot(&staged_s.sy(y, &key)),
+                ragu_arithmetic::eval(&ky, y)
+            );
         }
 
         Ok(())

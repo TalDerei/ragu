@@ -1,4 +1,4 @@
-use arithmetic::CurveExt;
+use ragu_arithmetic::CurveExt;
 use group::{Curve, prime::PrimeCurveAffine};
 use pasta_curves::{
     EpAffine,

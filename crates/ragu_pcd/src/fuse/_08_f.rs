@@ -9,8 +9,8 @@
 //! $(p\_i(X) - v\_i) / (X - x\_i)$ for a single query. The total number of
 //! terms must match `poly_queries` in the `compute_v` circuit exactly.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, unstructured},
     staging::StageExt,
@@ -49,7 +49,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
         use InternalCircuitIndex::*;
-        use arithmetic::factor_iter;
+        use ragu_arithmetic::factor_iter;
 
         let w = *w.value().take();
         let y = *y.value().take();

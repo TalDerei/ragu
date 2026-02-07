@@ -1,7 +1,7 @@
 //! Nontrivial test fixtures with Poseidon hashing.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},

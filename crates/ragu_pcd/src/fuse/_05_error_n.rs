@@ -6,8 +6,8 @@
 //! the $k(Y)$ evaluations for the child proofs, as well as the temporary sponge
 //! state used to split the hashing operations across two circuits.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured},
     staging::{Stage as StageTrait, StageExt},

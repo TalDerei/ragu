@@ -1,6 +1,6 @@
 //! Native curve circuits for recursive verification.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},

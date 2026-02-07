@@ -87,8 +87,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             let v = y2 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
             let u = y3 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
 
-            let plus = arithmetic::geosum::<F>(x_y3, len);
-            let minus = arithmetic::geosum::<F>(xinv_y3, len);
+            let plus = ragu_arithmetic::geosum::<F>(x_y3, len);
+            let minus = ragu_arithmetic::geosum::<F>(xinv_y3, len);
 
             w * plus + v * minus + u * plus
         };
@@ -218,10 +218,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 mod tests {
     use core::marker::PhantomData;
 
-    use arithmetic::{Coeff, Uendo};
     use ff::Field;
     use group::prime::PrimeCurveAffine;
     use proptest::prelude::*;
+    use ragu_arithmetic::{Coeff, Uendo};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},

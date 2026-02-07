@@ -43,7 +43,7 @@
 //! [$\mu'$]: unified::Output::mu_prime
 //! [$\nu'$]: unified::Output::nu_prime
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, txz::Evaluate},
     staging::{MultiStage, MultiStageCircuit, StageBuilder},

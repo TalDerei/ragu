@@ -4,8 +4,8 @@ mod setup;
 
 use std::hint::black_box;
 
-use arithmetic::Cycle;
 use gungraun::{library_benchmark, library_benchmark_group, main};
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::{R, structured, unstructured};
 use ragu_circuits::registry::{Key, Registry, RegistryBuilder};
 use ragu_circuits::test_fixtures::{MySimpleCircuit, SquareCircuit};

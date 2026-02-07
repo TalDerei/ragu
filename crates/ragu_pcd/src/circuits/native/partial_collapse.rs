@@ -53,7 +53,7 @@
 //! [`FoldProducts::fold_products_m`]: fold_revdot::FoldProducts::fold_products_m
 //! [`TwoProofKySource`]: crate::components::claims::native::TwoProofKySource
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},

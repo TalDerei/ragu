@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! fp {
     ( $x:expr ) => {
-        $crate::Fp::from_raw(arithmetic::repr256!($x))
+        $crate::Fp::from_raw(ragu_arithmetic::repr256!($x))
     };
 }
 
@@ -10,6 +10,6 @@ macro_rules! fp {
 #[macro_export]
 macro_rules! fq {
     ( $x:expr ) => {
-        $crate::Fq::from_raw(arithmetic::repr256!($x))
+        $crate::Fq::from_raw(ragu_arithmetic::repr256!($x))
     };
 }

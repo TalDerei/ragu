@@ -48,8 +48,8 @@ pub mod emulator;
 mod linexp;
 mod phantom;
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 
 use crate::{
     Result,

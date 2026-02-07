@@ -15,7 +15,7 @@ mod _09_eval;
 mod _10_p;
 mod _11_circuits;
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured},
     registry::CircuitIndex,

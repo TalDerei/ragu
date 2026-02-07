@@ -6,7 +6,7 @@ pub struct PoseidonFq;
 // sage generate_parameters_grain.sage 1 0 255 5 8 56 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001
 // which has the correct round constants (8 and 56) given the output of calc_round_numbers.py for the state size 5 and the
 // use of x^5 for the sbox, for the prime q
-impl arithmetic::PoseidonPermutation<pasta_curves::Fq> for PoseidonFq {
+impl ragu_arithmetic::PoseidonPermutation<pasta_curves::Fq> for PoseidonFq {
     const T: usize = 5;
     const RATE: usize = 4;
     const FULL_ROUNDS: usize = 8;

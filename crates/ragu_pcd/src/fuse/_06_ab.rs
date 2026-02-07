@@ -27,8 +27,8 @@
 //! evaluations that $B(x)$ already needs, eliminating separate
 //! $r\_i(x)$ queries.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured},
     staging::StageExt,

@@ -38,7 +38,7 @@
 //!
 //! [staging chapter]: https://tachyon.z.cash/ragu/protocol/extensions/staging
 
-use arithmetic::Coeff;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{

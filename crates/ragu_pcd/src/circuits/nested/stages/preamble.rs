@@ -2,7 +2,7 @@
 //!
 //! Collects child proof commitments for cross-curve accumulation.
 
-use arithmetic::{CurveAffine, Cycle};
+use ragu_arithmetic::{CurveAffine, Cycle};
 use ragu_circuits::polynomials::Rank;
 
 use crate::Proof;

@@ -23,9 +23,9 @@ use helpers::macro_body;
 
 #[cfg(test)]
 #[allow(unused_imports)]
-use ragu_arithmetic::repr256 as _;
+use ragu_ragu_arithmetic::repr256 as _;
 
-// Documentation for the `repr256` macro is in `macro@ragu_arithmetic::repr256`.
+// Documentation for the `repr256` macro is in `macro@ragu_ragu_arithmetic::repr256`.
 #[allow(missing_docs)]
 #[proc_macro]
 pub fn repr256(input: TokenStream) -> TokenStream {

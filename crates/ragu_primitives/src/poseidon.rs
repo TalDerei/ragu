@@ -4,8 +4,8 @@
 //! [Poseidon](https://eprint.iacr.org/2019/458) sponge construction for
 //! in-circuit hashing.
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -38,15 +38,17 @@ pub enum SaveError {
 ///
 /// This type implements [`Len`] and is used to parameterize [`FixedVec`]
 /// containers holding sponge state elements.
-pub struct PoseidonStateLen<F: Field, P: arithmetic::PoseidonPermutation<F>>(PhantomData<(F, P)>);
+pub struct PoseidonStateLen<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>>(
+    PhantomData<(F, P)>,
+);
 
-impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Len for PoseidonStateLen<F, P> {
+impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Len for PoseidonStateLen<F, P> {
     fn len() -> usize {
         P::T
     }
 }
 
-enum Mode<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
+enum Mode<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> {
     Squeeze {
         values: Vec<Element<'dr, D>>,
         state: SpongeState<'dr, D, P>,
@@ -57,7 +59,7 @@ enum Mode<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
     },
 }
 
-impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Clone for Mode<'dr, D, P> {
+impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Clone for Mode<'dr, D, P> {
     fn clone(&self) -> Self {
         match self {
             Mode::Squeeze { values, state } => Mode::Squeeze {
@@ -73,12 +75,14 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Clone for Mo
 }
 
 /// The [Poseidon](https://eprint.iacr.org/2019/458) sponge function.
-pub struct Sponge<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
+pub struct Sponge<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> {
     mode: Mode<'dr, D, P>,
     params: &'dr P,
 }
 
-impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Clone for Sponge<'dr, D, P> {
+impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Clone
+    for Sponge<'dr, D, P>
+{
     fn clone(&self) -> Self {
         Sponge {
             mode: self.mode.clone(),
@@ -87,7 +91,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Clone for Sp
     }
 }
 
-impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Buffer<'dr, D>
+impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Buffer<'dr, D>
     for Sponge<'dr, D, P>
 {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
@@ -95,7 +99,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Buffer<'dr, 
     }
 }
 
-impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, D, P> {
+impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, D, P> {
     /// Initialize the sponge in absorb mode with a fixed initial state.
     pub fn new(dr: &mut D, params: &'dr P) -> Self {
         Sponge {
@@ -246,12 +250,12 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
 /// of the sponge. It can be used to save and resume sponge progress via
 /// [`Sponge::save_state`] and [`Sponge::resume_and_squeeze`].
 #[derive(Gadget, Write, Consistent)]
-pub struct SpongeState<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
+pub struct SpongeState<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> {
     #[ragu(gadget)]
     values: FixedVec<Element<'dr, D>, PoseidonStateLen<D::F, P>>,
 }
 
-impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> SpongeState<'dr, D, P> {
+impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> SpongeState<'dr, D, P> {
     /// Create a [`SpongeState`] from a [`FixedVec`] of [`Element`]s.
     ///
     /// The vector must have exactly `P::T` elements (enforced by the
@@ -273,7 +277,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> SpongeState<
     }
 }
 
-fn sbox<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>>(
+fn sbox<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>>(
     dr: &mut D,
     input: &mut [Element<'dr, D>],
 ) -> Result<()> {
@@ -314,12 +318,14 @@ fn add_round_constants<'dr, D: Driver<'dr>>(
     }
 }
 
-struct Permutation<'a, F: Field, P: arithmetic::PoseidonPermutation<F>> {
+struct Permutation<'a, F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> {
     params: &'a P,
     _marker: PhantomData<F>,
 }
 
-impl<'a, F: Field, P: arithmetic::PoseidonPermutation<F>> From<&'a P> for Permutation<'a, F, P> {
+impl<'a, F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> From<&'a P>
+    for Permutation<'a, F, P>
+{
     fn from(params: &'a P) -> Self {
         Permutation {
             params,
@@ -328,7 +334,7 @@ impl<'a, F: Field, P: arithmetic::PoseidonPermutation<F>> From<&'a P> for Permut
     }
 }
 
-impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Clone for Permutation<'_, F, P> {
+impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Clone for Permutation<'_, F, P> {
     fn clone(&self) -> Self {
         Permutation {
             params: self.params,
@@ -337,7 +343,7 @@ impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Clone for Permutation<'_, 
     }
 }
 
-impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Routine<F> for Permutation<'_, F, P> {
+impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permutation<'_, F, P> {
     type Input = SpongeState<'static, PhantomData<F>, P>;
     type Output = SpongeState<'static, PhantomData<F>, P>;
     type Aux<'dr> = ();
@@ -384,7 +390,7 @@ impl<F: Field, P: arithmetic::PoseidonPermutation<F>> Routine<F> for Permutation
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arithmetic::Cycle;
+    use ragu_arithmetic::Cycle;
     use ragu_core::maybe::Maybe;
     use ragu_pasta::{Fp, Pasta};
 

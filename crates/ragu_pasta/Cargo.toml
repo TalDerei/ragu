@@ -24,7 +24,7 @@ default = []
 baked = ["lazy_static"]
 
 [build-dependencies]
-arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
+ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0" }
 ff = { workspace = true }
 group = { workspace = true }
 pasta_curves = { workspace = true }
@@ -33,7 +33,7 @@ pasta_curves = { workspace = true }
 bench = false
 
 [dependencies]
-arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
+ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0" }
 ff = { workspace = true }
 group = { workspace = true }
 pasta_curves = { workspace = true }

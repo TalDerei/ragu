@@ -1,7 +1,7 @@
 use ff::Field;
 use pasta_curves::group::prime::PrimeCurveAffine;
 use pasta_curves::{EpAffine, Fp, Fq};
-use ragu_arithmetic::Domain;
+use ragu_ragu_arithmetic::Domain;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 

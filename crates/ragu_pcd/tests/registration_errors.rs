@@ -57,7 +57,7 @@ impl<F: Field> Header<F> for HSuffixAOther {
 
 // Step 0 -> produces HSuffixA
 struct Step0;
-impl<C: arithmetic::Cycle> Step<C> for Step0 {
+impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = ();
     type Aux<'source> = ();
@@ -88,7 +88,7 @@ impl<C: arithmetic::Cycle> Step<C> for Step0 {
 
 // Step 1 -> consumes A and produces B
 struct Step1;
-impl<C: arithmetic::Cycle> Step<C> for Step1 {
+impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
     const INDEX: Index = Index::new(1);
     type Witness<'source> = ();
     type Aux<'source> = ();
@@ -119,7 +119,7 @@ impl<C: arithmetic::Cycle> Step<C> for Step1 {
 
 // Duplicate suffix step (index 1) producing different header with same suffix
 struct Step1Dup;
-impl<C: arithmetic::Cycle> Step<C> for Step1Dup {
+impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
     const INDEX: Index = Index::new(1);
     type Witness<'source> = ();
     type Aux<'source> = ();

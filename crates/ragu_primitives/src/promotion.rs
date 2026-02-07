@@ -1,8 +1,8 @@
 //! Strips away the witness data from a gadget while still preserving access to
 //! it.
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, DriverValue, FromDriver},

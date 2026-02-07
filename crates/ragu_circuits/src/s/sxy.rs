@@ -48,8 +48,8 @@
 //! [`sx`]: super::sx
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},

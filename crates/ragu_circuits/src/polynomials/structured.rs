@@ -1,7 +1,7 @@
 //! Polynomials with coefficients in a split structure arrangement.
 
-use arithmetic::CurveAffine;
 use ff::Field;
+use ragu_arithmetic::CurveAffine;
 use rand::CryptoRng;
 
 use alloc::vec::Vec;
@@ -44,7 +44,7 @@ pub struct Polynomial<F: Field, R: Rank> {
     _marker: core::marker::PhantomData<R>,
 }
 
-impl<F: Field, R: Rank> arithmetic::Ring for Polynomial<F, R> {
+impl<F: Field, R: Rank> ragu_arithmetic::Ring for Polynomial<F, R> {
     type R = Self;
     type F = F;
 
@@ -216,7 +216,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Compute a commitment to this polynomial using the provided generators.
     pub fn commit<C: CurveAffine<ScalarExt = F>>(
         &self,
-        generators: &impl arithmetic::FixedGenerators<C>,
+        generators: &impl ragu_arithmetic::FixedGenerators<C>,
         blind: F,
     ) -> C {
         self.assert_bounds();
@@ -228,7 +228,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         let u_start = &v_start[self.v.len()..];
         let d_start = &u_start[self.u.len() + self.second_padding()..];
 
-        arithmetic::mul(
+        ragu_arithmetic::mul(
             self.w
                 .iter()
                 .chain(self.v.iter().rev())
@@ -379,7 +379,7 @@ fn test_eval() {
         let x = Fp::random(&mut rand::rng());
 
         assert_eq!(
-            arithmetic::eval(&poly.unstructured().coeffs, x),
+            ragu_arithmetic::eval(&poly.unstructured().coeffs, x),
             poly.eval(x)
         );
     }
@@ -454,8 +454,8 @@ fn test_dilate() {
                     poly.dilate(z);
                     let vpoly = poly.unstructured();
                     assert_eq!(
-                        arithmetic::eval(&upoly.coeffs, x * z),
-                        arithmetic::eval(&vpoly.coeffs, x)
+                        ragu_arithmetic::eval(&upoly.coeffs, x * z),
+                        ragu_arithmetic::eval(&vpoly.coeffs, x)
                     );
                 }
             }
@@ -549,12 +549,12 @@ fn test_prod() {
     let mut b = rzx.unstructured().coeffs;
     b.reverse();
 
-    assert_eq!(arithmetic::dot(&a, &b), Fp::ZERO);
+    assert_eq!(ragu_arithmetic::dot(&a, &b), Fp::ZERO);
 }
 
 #[test]
 fn test_commit_consistency() {
-    use arithmetic::Cycle;
+    use ragu_arithmetic::Cycle;
     use ragu_pasta::{Fp, Pasta};
 
     type R = super::R<10>;
@@ -622,7 +622,7 @@ fn test_product_with_dot() {
 
     assert_eq!(
         poly1.revdot(&poly2),
-        arithmetic::dot(
+        ragu_arithmetic::dot(
             poly1.unstructured().iter(),
             poly2.unstructured().iter().rev(),
         )
@@ -637,8 +637,8 @@ fn ring_poly_test() {
 
     let rand = || Fp::random(&mut rand::rng());
 
-    let little = arithmetic::Domain::<Fp>::new(2);
-    let big = arithmetic::Domain::<Fp>::new(3);
+    let little = ragu_arithmetic::Domain::<Fp>::new(2);
+    let big = ragu_arithmetic::Domain::<Fp>::new(3);
 
     let mut a_polys = vec![];
     let mut b_polys = vec![];

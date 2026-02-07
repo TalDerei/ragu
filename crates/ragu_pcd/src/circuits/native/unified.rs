@@ -18,7 +18,7 @@
 //! [`hashes_1`]: super::hashes_1
 //! [`hashes_2`]: super::hashes_2
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     Result,

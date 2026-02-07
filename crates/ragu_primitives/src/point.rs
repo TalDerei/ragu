@@ -3,8 +3,8 @@
 //! Provides the [`Point`] type representing an affine curve point with
 //! constrained coordinates for in-circuit elliptic curve arithmetic.
 
-use arithmetic::{Coeff, CurveAffine};
 use ff::{Field, WithSmallOrderMulGroup};
+use ragu_arithmetic::{Coeff, CurveAffine};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -276,8 +276,8 @@ fn test_point_double() -> Result<()> {
 #[test]
 fn test_add_incomplete() -> Result<()> {
     use alloc::vec;
-    use arithmetic::CurveExt;
     use group::{Group, prime::PrimeCurveAffine};
+    use ragu_arithmetic::CurveExt;
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
@@ -328,8 +328,8 @@ fn test_add_incomplete() -> Result<()> {
 fn test_double_and_add_incomplete() -> Result<()> {
     use alloc::vec;
     use alloc::vec::Vec;
-    use arithmetic::CurveExt;
     use group::{Group, prime::PrimeCurveAffine};
+    use ragu_arithmetic::CurveExt;
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;

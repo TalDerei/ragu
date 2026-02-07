@@ -1,8 +1,8 @@
 //! This is an internal module used to store helper utilities that are not part
 //! of the public API (yet).
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::maybe::{Maybe, MaybeKind};
 
 use core::borrow::Borrow;

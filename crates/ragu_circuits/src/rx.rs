@@ -3,8 +3,8 @@
 //! The [`eval`] function in this module processes some witness data for a
 //! particular [`Circuit`] and assembles the corresponding $r(X)$ polynomial.
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},

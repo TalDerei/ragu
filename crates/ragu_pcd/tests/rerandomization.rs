@@ -1,5 +1,5 @@
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::R;
 use ragu_core::{
     Result,

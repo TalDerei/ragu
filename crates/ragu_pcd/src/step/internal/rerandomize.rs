@@ -5,7 +5,7 @@
 //! this rerandomization step synthesizes the same circuit no matter what the
 //! left header is, we use a _uniform_ encoding of the left header.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},

@@ -3,8 +3,8 @@
 //! Provides the [`Element`] type representing a wire and its field element
 //! assignment, the fundamental building block for circuit construction.
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},

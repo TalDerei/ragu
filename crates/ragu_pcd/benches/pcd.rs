@@ -2,8 +2,8 @@
 
 mod setup;
 
-use arithmetic::Cycle;
 use gungraun::{library_benchmark, library_benchmark_group, main};
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::R;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::test_fixtures::nontrivial;

@@ -36,7 +36,7 @@ mod common {
 mod poseidon_fp;
 mod poseidon_fq;
 
-use arithmetic::{Cycle, FixedGenerators};
+use ragu_arithmetic::{Cycle, FixedGenerators};
 
 pub use common::{PallasGenerators, PastaParams, VestaGenerators};
 pub use pasta_curves::{Ep, EpAffine, Eq, EqAffine, Fp, Fq};
@@ -165,7 +165,7 @@ mod baked {
 
     #[test]
     fn test_baked_params() {
-        use arithmetic::{Cycle, FixedGenerators};
+        use ragu_arithmetic::{Cycle, FixedGenerators};
 
         let params = Pasta::baked();
 

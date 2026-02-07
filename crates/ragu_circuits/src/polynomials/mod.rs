@@ -159,27 +159,27 @@ fn test_txz_consistency() {
     let t00 = DemoR::txz(Fp::ZERO, Fp::ZERO);
     assert_eq!(
         txz,
-        arithmetic::eval(&DemoR::tz::<Fp>(z).unstructured().coeffs, x)
+        ragu_arithmetic::eval(&DemoR::tz::<Fp>(z).unstructured().coeffs, x)
     );
     assert_eq!(
         tx0,
-        arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, x)
+        ragu_arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, x)
     );
     assert_eq!(
         txz,
-        arithmetic::eval(&DemoR::tx::<Fp>(x).unstructured().coeffs, z)
+        ragu_arithmetic::eval(&DemoR::tx::<Fp>(x).unstructured().coeffs, z)
     );
     assert_eq!(
         t0z,
-        arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, z)
+        ragu_arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, z)
     );
 
     assert_eq!(
         t00,
-        arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
+        ragu_arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
     );
     assert_eq!(
         t00,
-        arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
+        ragu_arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
     );
 }

@@ -2,7 +2,7 @@
 //!
 //! This stage handles the final N-sized revdot claim reduction.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Result,
@@ -82,7 +82,7 @@ pub struct Output<
     'dr,
     D: Driver<'dr>,
     FP: fold_revdot::Parameters,
-    Poseidon: arithmetic::PoseidonPermutation<D::F>,
+    Poseidon: ragu_arithmetic::PoseidonPermutation<D::F>,
 > {
     /// Error term elements for layer 2.
     #[ragu(gadget)]

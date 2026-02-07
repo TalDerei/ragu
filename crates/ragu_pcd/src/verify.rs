@@ -1,7 +1,7 @@
 //! This module provides the [`Application::verify`] method implementation.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured},
     registry::CircuitIndex,

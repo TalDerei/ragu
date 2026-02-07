@@ -1,4 +1,4 @@
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::R;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::test_fixtures::nontrivial;

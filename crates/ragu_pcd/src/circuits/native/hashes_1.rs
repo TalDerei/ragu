@@ -72,7 +72,7 @@
 //! [`WithSuffix`]: crate::components::suffix::WithSuffix
 //! [`Sponge::save_state`]: ragu_primitives::poseidon::Sponge::save_state
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},

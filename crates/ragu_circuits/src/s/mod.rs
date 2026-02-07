@@ -66,7 +66,7 @@
 //! [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 //! [wiring polynomials]: http://TODO
 
-use arithmetic::Coeff;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, LinearExpression},

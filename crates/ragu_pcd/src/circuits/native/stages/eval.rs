@@ -1,7 +1,7 @@
 //! Eval stage for fuse operations.
 
-use arithmetic::Cycle;
 use ff::PrimeField;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Result,

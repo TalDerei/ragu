@@ -2,7 +2,7 @@
 //!
 //! Verifies child proof headers and computes the Ky term.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Error, Result,

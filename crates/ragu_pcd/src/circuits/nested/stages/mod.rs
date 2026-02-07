@@ -27,7 +27,7 @@ macro_rules! define_nested_stage {
         }
     ) => {
         pub mod $mod_name {
-            use arithmetic::CurveAffine;
+            use ragu_arithmetic::CurveAffine;
             use ragu_circuits::polynomials::Rank;
             use ragu_core::{
                 Result,

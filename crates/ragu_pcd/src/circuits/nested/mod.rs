@@ -3,7 +3,7 @@
 //! These circuits operate over the scalar field and verify that the
 //! commitment accumulation was computed correctly via Horner's rule.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},

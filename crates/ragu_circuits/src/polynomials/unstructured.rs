@@ -1,8 +1,8 @@
 //! Polynomials with coefficients in an unstructured (monomial basis)
 //! arrangement.
 
-use arithmetic::CurveAffine;
 use ff::Field;
+use ragu_arithmetic::CurveAffine;
 use rand::CryptoRng;
 
 use alloc::{vec, vec::Vec};
@@ -78,7 +78,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Evaluate this polynomial at the given point.
     pub fn eval(&self, x: F) -> F {
-        arithmetic::eval(&self.coeffs[..], x)
+        ragu_arithmetic::eval(&self.coeffs[..], x)
     }
 
     /// Scale the coefficients of the polynomial by the given factor.
@@ -130,12 +130,12 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Compute a commitment to this polynomial using the provided generators.
     pub fn commit<C: CurveAffine<ScalarExt = F>>(
         &self,
-        generators: &impl arithmetic::FixedGenerators<C>,
+        generators: &impl ragu_arithmetic::FixedGenerators<C>,
         blind: F,
     ) -> C {
         assert!(generators.g().len() >= R::num_coeffs()); // TODO(ebfull)
 
-        arithmetic::mul(
+        ragu_arithmetic::mul(
             self.coeffs.iter().chain(Some(&blind)),
             generators
                 .g()

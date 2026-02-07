@@ -66,8 +66,8 @@
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
 //! [`structured::View`]: crate::polynomials::structured::View
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, LinearExpression, emulator::Emulator},

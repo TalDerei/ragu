@@ -14,8 +14,8 @@
 //! Additionally witnesses the $a$/$b$ polynomial evaluations and registry
 //! transition evaluations needed for mesh consistency checks.
 
-use arithmetic::Cycle;
 use ff::PrimeField;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured, unstructured},
     staging,

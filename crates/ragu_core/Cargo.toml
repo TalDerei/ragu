@@ -33,7 +33,7 @@ default = ["alloc"]
 bench = false
 
 [dependencies]
-arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
+ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0" }
 ff = { workspace = true }
 ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
 thiserror = "2.0.12"

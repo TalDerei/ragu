@@ -46,7 +46,7 @@
 //! [`FoldProducts::fold_products_n`]: fold_revdot::FoldProducts::fold_products_n
 //! [`is_base_case`]: super::stages::preamble::Output::is_base_case
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},

@@ -3,8 +3,8 @@
 //! Provides the [`Boolean`] type representing a wire constrained to be zero or
 //! one, with logical operations implemented as circuit constraints.
 
-use arithmetic::Coeff;
 use ff::{Field, PrimeField};
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},

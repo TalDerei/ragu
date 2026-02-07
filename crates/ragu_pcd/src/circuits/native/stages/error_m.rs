@@ -2,7 +2,7 @@
 //!
 //! This stage handles N separate M-sized revdot claim reductions.
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Result,

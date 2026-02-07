@@ -32,8 +32,8 @@
 //! [`sy`]: super::sy
 //! [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
 
-use arithmetic::Coeff;
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::drivers::LinearExpression;
 
 /// Represents a wire's evaluated monomial during polynomial synthesis.

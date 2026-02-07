@@ -1,4 +1,4 @@
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{Circuit, polynomials::Rank};
 use ragu_core::{
     Result,

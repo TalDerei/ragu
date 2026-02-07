@@ -13,8 +13,8 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
-use arithmetic::{Coeff, CurveAffine, Uendo};
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
+use ragu_arithmetic::{Coeff, CurveAffine, Uendo};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -252,9 +252,9 @@ pub fn extract_endoscalar<F: PrimeField>(value: F) -> Uendo {
 #[cfg(test)]
 mod tests {
     use super::{Element, Endoscalar, Maybe, Point};
-    use arithmetic::{CurveAffine, CurveExt, Uendo};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
+    use ragu_arithmetic::{CurveAffine, CurveExt, Uendo};
     use ragu_core::Result;
     use ragu_pasta::{EpAffine, Fp};
     use rand::Rng;

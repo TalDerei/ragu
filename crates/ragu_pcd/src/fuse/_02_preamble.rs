@@ -3,8 +3,8 @@
 //! This creates the [`proof::Preamble`] component of the proof, which commits
 //! to the public inputs and witness polynomials used in the fuse step.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::Result;
 use rand::CryptoRng;

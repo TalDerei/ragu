@@ -10,8 +10,8 @@
 //! The commitment is computed via [`PointsWitness`] Horner evaluation.
 
 use alloc::vec::Vec;
-use arithmetic::Cycle;
 use core::ops::AddAssign;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, unstructured},

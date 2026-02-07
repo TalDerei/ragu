@@ -1,6 +1,6 @@
-use arithmetic::{Cycle, Uendo};
 use ff::Field;
 use group::prime::PrimeCurveAffine;
+use ragu_arithmetic::{Cycle, Uendo};
 use ragu_core::drivers::Driver;
 use ragu_core::drivers::emulator::{Emulator, Wireless};
 use ragu_core::maybe::Always;

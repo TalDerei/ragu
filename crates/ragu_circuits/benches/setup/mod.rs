@@ -1,5 +1,5 @@
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::{R, structured, unstructured};
 use ragu_circuits::registry::{Key, Registry, RegistryBuilder};
 use ragu_circuits::test_fixtures::{MySimpleCircuit, SquareCircuit};

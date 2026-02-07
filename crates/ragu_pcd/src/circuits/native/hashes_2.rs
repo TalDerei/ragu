@@ -58,7 +58,7 @@
 //! [`WithSuffix`]: crate::components::suffix::WithSuffix
 //! [`Sponge::resume_and_squeeze`]: ragu_primitives::poseidon::Sponge::resume_and_squeeze
 
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},

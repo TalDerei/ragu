@@ -7,8 +7,8 @@
 //! This phase of the fuse operation is also used to commit to the $m(w, X, y)$
 //! restriction.
 
-use arithmetic::Cycle;
 use ff::Field;
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::{
     Result,
