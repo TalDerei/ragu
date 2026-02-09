@@ -312,6 +312,7 @@ pub struct Registry<'params, F: PrimeField, R: Rank> {
 ///
 /// Use [`Registry::cache_lagrange`] to create, then pass to
 /// [`Registry::wx_cached`] or [`Registry::wy_cached`] for evaluation.
+/// The cache is tied to the specific `w` value used to create it.
 pub enum LagrangeCache<F> {
     /// Must interpolate across circuits (w not in domain).
     Interpolate(Vec<F>),
