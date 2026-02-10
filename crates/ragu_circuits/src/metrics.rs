@@ -35,7 +35,7 @@ pub struct CircuitMetrics {
 pub struct TraceWireId(pub usize);
 
 impl TraceWireId {
-    /// The ONE wire (c wire from gate 0).
+    /// The ONE wire.
     pub const ONE: Self = Self(2);
 }
 
@@ -193,8 +193,7 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
 pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<(CircuitMetrics, SynthesisTrace<F>)> {
     let mut counter = Counter::default();
 
-    // Allocate the key_wire (wire 0) and ONE wire (wire 2).
-    // The key constraint is NOT recorded - it's handled at eval time.
+    // Allocate key and ONE wires; key constraint is inlined at eval time.
     let (_key_wire, _, _one) = counter.mul(|| unreachable!())?;
 
     let mut outputs = Vec::new();
@@ -213,7 +212,6 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<(CircuitMetrics, Syn
 
     let metrics = CircuitMetrics {
         num_multiplication_constraints: trace.mul_wire_ids.len(),
-        // +1 for the key constraint (handled separately at eval time)
         num_linear_constraints: trace.constraints.len() + 1,
     };
 
