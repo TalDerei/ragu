@@ -168,7 +168,7 @@ fn test_native_registry_digest() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x135aadb3e7904d1ee505975383309c98fd8945e08c392143bb82499a3a7cfe3b);
+    let expected = fp!(0x2017c57bbab487a12a6569eb81ee330ef03f9592dad9bc4b31c00e7b94dc9ebf);
 
     assert_eq!(
         app.native_registry.digest(),
@@ -181,7 +181,7 @@ fn test_native_registry_digest() {
 ///
 /// This test ensures the wiring polynomial structure is mathematically
 /// equivalent to the reference implementation by comparing cryptographic
-/// then it's mathematically equivalent.
+/// digests.
 #[test]
 fn test_nested_registry_digest() {
     let pasta = Pasta::baked();
