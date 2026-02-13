@@ -42,6 +42,35 @@ use alloc::{boxed::Box, vec::Vec};
 
 use polynomials::{Rank, structured, unstructured};
 
+/// Takes a value from a slot and restores it on drop.
+///
+/// Used to isolate allocation state within routines, ensuring restoration
+/// even on early `?` returns or panics.
+pub(crate) struct RestoreGuard<T> {
+    slot: *mut Option<T>,
+    value: Option<T>,
+}
+
+impl<T> RestoreGuard<T> {
+    /// Takes the value from `slot`, returning a guard that restores it on drop.
+    pub(crate) fn new(slot: &mut Option<T>) -> Self {
+        let value = slot.take();
+        // Raw pointer ends the borrow, allowing `&mut self` while guard exists.
+        Self {
+            slot: slot as *mut _,
+            value,
+        }
+    }
+}
+
+impl<T> Drop for RestoreGuard<T> {
+    fn drop(&mut self) {
+        // SAFETY: Guard is a local in a method of the struct owning the slot,
+        // so the pointer remains valid for the guard's lifetime.
+        unsafe { *self.slot = self.value.take() }
+    }
+}
+
 /// Core trait for arithmetic circuits.
 pub trait Circuit<F: Field>: Sized + Send + Sync {
     /// The type of data that is needed to construct the expected output of this

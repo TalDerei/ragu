@@ -74,18 +74,11 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
         routine: Ro,
         input: <Ro::Input as GadgetKind<Self::F>>::Rebind<'a, Self>,
     ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'a, Self>> {
-        // Temporarily store currently `available_b` to reset the allocation
-        // logic within the routine.
-        let tmp = self.available_b.take();
+        let _guard = crate::RestoreGuard::new(&mut self.available_b);
         let mut dummy = Emulator::wireless();
         let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
         let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
-        let result = routine.execute(self, input, aux)?;
-
-        // Restore the allocation logic state, discarding the state from within
-        // the routine.
-        self.available_b = tmp;
-        Ok(result)
+        routine.execute(self, input, aux)
     }
 }
 
