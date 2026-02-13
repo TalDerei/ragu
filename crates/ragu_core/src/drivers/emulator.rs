@@ -18,10 +18,9 @@
 //! The [`Wireless`] mode is parameterized by a [`MaybeKind`] to indicate
 //! witness availability:
 //!
-//! * `Wireless<Empty, F>`: used for counting operations and other static
-//!   structure analyses without requiring witness values. Constructed via
-//!   [`Emulator::counter`]. Operation counts are available via
-//!   [`Emulator::num_multiplications`] and [`Emulator::num_constraints`].
+//! * `Wireless<Empty, F>`: used mostly for wire counting and other static
+//!   structure analyses. Driver still executes natively, but with `Empty`
+//!   witness. Constructed via [`Emulator::counter`].
 //! * `Wireless<Always<()>, F>`: used for native witness execution/generation,
 //!   constructed via [`Emulator::execute`] or directly execute the logic with
 //!   [`Emulator::emulate_wireless`].
@@ -61,8 +60,8 @@
 //! * [`Emulator::execute`] creates a wireless [`Emulator`] for native witness
 //!   execution/generation. This is the common case of executing circuit code
 //!   natively.
-//! * [`Emulator::counter`] creates a wireless [`Emulator`] for counting
-//!   operations (multiplications and constraints) without witness data.
+//! * [`Emulator::counter`] creates a wireless [`Emulator`] for wire counting
+//!   and static analysis without witness data.
 //!
 //! In [`Wired`] mode, wire assignments can be extracted from a gadget using
 //! [`Emulator::wires`], which returns a `Vec<F>` of field elements.
@@ -256,8 +255,8 @@ impl<M: MaybeKind, F: Field> Emulator<Wireless<M, F>> {
 }
 
 impl<F: Field> Emulator<Wireless<Empty, F>> {
-    /// Creates a new [`Emulator`] driver in [`Wireless`] mode for static
-    /// analysis on the circuit structure.
+    /// Creates a new [`Emulator`] driver in [`Wireless`] mode, usually for
+    /// counting wires or other static analysis on the circuit structure.
     pub fn counter() -> Self {
         Self::wireless()
     }

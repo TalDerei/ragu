@@ -98,7 +98,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         Phantom,
     }
 
-    let fields: Vec<(Ident, FieldType, syn::Type)> = match data {
+    let fields: Vec<(Ident, FieldType)> = match data {
         Data::Struct(s) => {
             let fields = match &s.fields {
                 Fields::Named(named) => &named.named,
@@ -114,7 +114,6 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
             for f in fields {
                 let fid = f.ident.clone().expect("fields contains only named fields");
-                let fty = f.ty.clone();
                 let is_value = f.attrs.iter().any(|a| attr_is(a, "value"));
                 let is_wire = f.attrs.iter().any(|a| attr_is(a, "wire"));
                 let is_gadget = f.attrs.iter().any(|a| attr_is(a, "gadget"));
@@ -122,20 +121,20 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
                 match (is_value, is_wire, is_gadget, is_phantom) {
                     (true, false, false, false) => {
-                        res.push((fid, FieldType::Value, fty));
+                        res.push((fid, FieldType::Value));
                     }
                     (false, true, false, false) => {
-                        res.push((fid, FieldType::Wire, fty));
+                        res.push((fid, FieldType::Wire));
                     }
                     (false, false, true, false) => {
-                        res.push((fid, FieldType::Gadget, fty));
+                        res.push((fid, FieldType::Gadget));
                     }
                     (false, false, false, true) => {
-                        res.push((fid, FieldType::Phantom, fty));
+                        res.push((fid, FieldType::Phantom));
                     }
                     (false, false, false, false) => {
                         // Default to gadget when no annotation is present
-                        res.push((fid, FieldType::Gadget, fty));
+                        res.push((fid, FieldType::Gadget));
                     }
                     _ => {
                         return Err(Error::new(
@@ -156,7 +155,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         }
     };
 
-    let clone_impl_inits = fields.iter().map(|(id, ty, _field_ty)| {
+    let clone_impl_inits = fields.iter().map(|(id, ty)| {
         let init = match ty {
             FieldType::Value => {
                 let driver_id = &driver.ident;
@@ -181,7 +180,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         }
     };
 
-    let equality_calls = fields.iter().filter_map(|(id, ty, _field_ty)| match ty {
+    let equality_calls = fields.iter().filter_map(|(id, ty)| match ty {
         FieldType::Wire => {
             Some(quote! { #ragu_core_path::drivers::Driver::enforce_equal(dr, &a.#id, &b.#id)? })
         }
@@ -226,7 +225,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     let kind_subst_arguments = driver.kind_subst_arguments(&ty_generics);
     let rebind_arguments = driver.rebind_arguments(&ty_generics);
 
-    let gadget_impl_inits = fields.iter().map(|(id, ty, _field_ty)| {
+    let gadget_impl_inits = fields.iter().map(|(id, ty)| {
         let init = match ty {
             FieldType::Value => quote! {
                 {
