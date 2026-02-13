@@ -371,39 +371,12 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         coeffs
     }
 
-    /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
-    /// the registry polynomial unrestricted at $X$.
-    ///
-    /// Wraps [`Registry::wy`]. See [`CircuitIndex::omega_j`] for more details.
-    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
-        let w: F = i.omega_j();
-        self.wy(w, y)
-    }
-
     /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
     ///
     /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
     pub fn circuit_in_domain(&self, i: CircuitIndex) -> bool {
         let w: F = i.omega_j();
         self.domain.contains(w)
-    }
-
-    /// Evaluate the registry polynomial unrestricted at $X$.
-    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
-        let cache = self.cache_lagrange(w);
-        self.wy_cached(&cache, y)
-    }
-
-    /// Evaluate the registry polynomial unrestricted at $Y$.
-    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
-        let cache = self.cache_lagrange(w);
-        self.wx_cached(&cache, x)
-    }
-
-    /// Evaluate the registry polynomial at the provided point.
-    pub fn wxy(&self, w: F, x: F, y: F) -> F {
-        let cache = self.cache_lagrange(w);
-        self.wxy_cached(&cache, x, y)
     }
 
     /// Computes the polynomial restricted at $W$ based on the provided
@@ -440,48 +413,32 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
 
         result
     }
-}
 
-impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
-    /// Compute a digest of this registry using BLAKE2b.
-    fn compute_registry_digest(&self) -> F {
-        let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
+    /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
+    /// the registry polynomial unrestricted at $X$.
+    ///
+    /// Wraps [`Registry::wy`]. See [`CircuitIndex::omega_j`] for more details.
+    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
+        let w: F = i.omega_j();
+        self.wy(w, y)
+    }
 
-        let field_from_hash = |digest_state: &blake2b_simd::Hash, index: u8| {
-            F::from_uniform_bytes(
-                Params::new()
-                    .personal(b"ragu_registry___")
-                    .to_state()
-                    .update(digest_state.as_bytes())
-                    .update(&[index])
-                    .finalize()
-                    .as_array(),
-            )
-        };
+    /// Evaluate the registry polynomial unrestricted at $X$.
+    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
+        let cache = self.cache_lagrange(w);
+        self.wy_cached(&cache, y)
+    }
 
-        // Placeholder "nothing-up-my-sleeve challenges" (small primes).
-        let mut w = F::from(2u64);
-        let mut x = F::from(3u64);
-        let mut y = F::from(5u64);
+    /// Evaluate the registry polynomial unrestricted at $Y$.
+    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
+        let cache = self.cache_lagrange(w);
+        self.wx_cached(&cache, x)
+    }
 
-        // FIXME(security): 6 iterations is insufficient to fully bind the registry
-        // polynomial. This should be increased to a value that overdetermines the
-        // polynomial (exceeds the degrees of freedom an adversary could exploit).
-        // Currently limited by registry evaluation performance; See #78 and #316.
-        for _ in 0..6 {
-            let eval = self.wxy(w, x, y);
-            hasher.update(eval.to_repr().as_ref());
-
-            let digest_state = hasher.finalize();
-            w = field_from_hash(&digest_state, 0);
-            x = field_from_hash(&digest_state, 1);
-            y = field_from_hash(&digest_state, 2);
-
-            hasher = Params::new().personal(b"ragu_registry___").to_state();
-            hasher.update(digest_state.as_bytes());
-        }
-
-        field_from_hash(&hasher.finalize(), 0)
+    /// Evaluate the registry polynomial at the provided point.
+    pub fn wxy(&self, w: F, x: F, y: F) -> F {
+        let cache = self.cache_lagrange(w);
+        self.wxy_cached(&cache, x, y)
     }
 
     /// Cache Lagrange coefficients for evaluating at multiple X/Y points with fixed W.
@@ -533,6 +490,49 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
                 *result += circuit.sxy(x, y, &self.key) * coeff;
             },
         )
+    }
+}
+
+impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
+    /// Compute a digest of this registry using BLAKE2b.
+    fn compute_registry_digest(&self) -> F {
+        let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
+
+        let field_from_hash = |digest_state: &blake2b_simd::Hash, index: u8| {
+            F::from_uniform_bytes(
+                Params::new()
+                    .personal(b"ragu_registry___")
+                    .to_state()
+                    .update(digest_state.as_bytes())
+                    .update(&[index])
+                    .finalize()
+                    .as_array(),
+            )
+        };
+
+        // Placeholder "nothing-up-my-sleeve challenges" (small primes).
+        let mut w = F::from(2u64);
+        let mut x = F::from(3u64);
+        let mut y = F::from(5u64);
+
+        // FIXME(security): 6 iterations is insufficient to fully bind the registry
+        // polynomial. This should be increased to a value that overdetermines the
+        // polynomial (exceeds the degrees of freedom an adversary could exploit).
+        // Currently limited by registry evaluation performance; See #78 and #316.
+        for _ in 0..6 {
+            let eval = self.wxy(w, x, y);
+            hasher.update(eval.to_repr().as_ref());
+
+            let digest_state = hasher.finalize();
+            w = field_from_hash(&digest_state, 0);
+            x = field_from_hash(&digest_state, 1);
+            y = field_from_hash(&digest_state, 2);
+
+            hasher = Params::new().personal(b"ragu_registry___").to_state();
+            hasher.update(digest_state.as_bytes());
+        }
+
+        field_from_hash(&hasher.finalize(), 0)
     }
 }
 
@@ -622,14 +622,12 @@ mod tests {
 
     #[test]
     fn test_lagrange_cache_consistency() -> Result<()> {
-        let poseidon = Pasta::circuit_poseidon(Pasta::baked());
-
         let registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 5 })?
             .register_circuit(SquareCircuit { times: 10 })?
             .register_circuit(SquareCircuit { times: 11 })?
-            .finalize(poseidon)?;
+            .finalize()?;
 
         let w = Fp::random(&mut rand::rng());
         let x = Fp::random(&mut rand::rng());
