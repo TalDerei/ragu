@@ -42,7 +42,7 @@ use alloc::{boxed::Box, vec::Vec};
 
 use polynomials::{Rank, structured, unstructured};
 
-/// Saves a value and restores it on drop.
+/// RAII: saves a value and restores it on drop.
 ///
 /// Used to isolate allocation state within routines, ensuring restoration
 /// even on early `?` returns or panics.
