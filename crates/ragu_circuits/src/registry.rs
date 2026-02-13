@@ -486,12 +486,14 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 
     /// Cache Lagrange coefficients for evaluating at multiple X/Y points with fixed W.
     pub fn cache_lagrange(&self, w: F) -> LagrangeCache<F> {
-        // Compute the Lagrange coefficients for the provided `w`.
-        if let Some(coeffs) = self.domain.ell(w, self.domain.n()) {
-            LagrangeCache::Interpolate(coeffs)
-        } else if let Some(&i) = self.omega_lookup.get(&OmegaKey::from(w)) {
+        // Fast path: check if w is in the domain (O(1) lookup).
+        if let Some(&i) = self.omega_lookup.get(&OmegaKey::from(w)) {
             LagrangeCache::Direct(i)
+        } else if let Some(coeffs) = self.domain.ell(w, self.domain.n()) {
+            // Slow path: compute Lagrange coefficients for out-of-domain w.
+            LagrangeCache::Interpolate(coeffs)
         } else {
+            // w is in domain (omega^j) but no circuit registered at that index.
             LagrangeCache::Empty
         }
     }
@@ -644,6 +646,7 @@ mod tests {
             registry.wy_cached(&cache, y).eval(eval_point),
             registry.wy(w, y).eval(eval_point)
         );
+        assert_eq!(registry.wxy_cached(&cache, x, y), registry.wxy(w, x, y));
 
         // Test with w in domain (omega^j)
         let w_in_domain = registry.domain.omega();
@@ -656,6 +659,10 @@ mod tests {
         assert_eq!(
             registry.wy_cached(&cache_in_domain, y).eval(eval_point),
             registry.wy(w_in_domain, y).eval(eval_point)
+        );
+        assert_eq!(
+            registry.wxy_cached(&cache_in_domain, x, y),
+            registry.wxy(w_in_domain, x, y)
         );
 
         Ok(())
