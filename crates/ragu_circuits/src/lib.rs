@@ -6,6 +6,7 @@
 //! internally by Ragu.
 
 #![cfg_attr(not(test), no_std)]
+#![deny(unsafe_code)]
 #![allow(clippy::type_complexity)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
@@ -41,6 +42,26 @@ use ragu_primitives::io::Write;
 use alloc::{boxed::Box, vec::Vec};
 
 use polynomials::{Rank, structured, unstructured};
+
+/// A trait for drivers that stash a spare wire from paired allocation (see
+/// [`Driver::alloc`]).
+///
+/// Provides [`with_fresh_b`](Self::with_fresh_b), which saves [`available_b`](Self::available_b), resets it to its
+/// [`Default`], runs a closure with `&mut self`, then restores the original
+/// value. This isolates allocation state within routines.
+pub(crate) trait FreshB<B: Default> {
+    /// Returns a mutable reference to the `available_b` field.
+    fn available_b(&mut self) -> &mut B;
+
+    /// Runs `f` with [`available_b`](Self::available_b) temporarily reset to its default, then
+    /// restores the original value.
+    fn with_fresh_b<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let saved = core::mem::take(self.available_b());
+        let result = f(self);
+        *self.available_b() = saved;
+        result
+    }
+}
 
 /// Core trait for arithmetic circuits.
 pub trait Circuit<F: Field>: Sized + Send + Sync {
