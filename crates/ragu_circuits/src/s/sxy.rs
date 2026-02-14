@@ -61,7 +61,7 @@ use ragu_primitives::GadgetExt;
 
 use alloc::vec;
 
-use crate::{Circuit, polynomials::Rank, registry};
+use crate::{Circuit, FreshB, polynomials::Rank, registry};
 
 use super::{
     DriverExt,
@@ -131,6 +131,12 @@ struct Evaluator<F, R> {
 
     /// Marker for the rank type parameter.
     _marker: core::marker::PhantomData<R>,
+}
+
+impl<F: Field, R: Rank> FreshB<Option<WireEval<F>>> for Evaluator<F, R> {
+    fn available_b(&mut self) -> &mut Option<WireEval<F>> {
+        &mut self.available_b
+    }
 }
 
 /// Configures associated types for the [`Evaluator`] driver.
@@ -236,11 +242,12 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<F, R> {
         routine: Ro,
         input: <Ro::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
     ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
-        let _guard = crate::RestoreGuard::new(&mut self.available_b, None);
-        let mut dummy = Emulator::wireless();
-        let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
-        let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
-        routine.execute(self, input, aux)
+        self.with_fresh_b(|this| {
+            let mut dummy = Emulator::wireless();
+            let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
+            let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+            routine.execute(this, input, aux)
+        })
     }
 }
 

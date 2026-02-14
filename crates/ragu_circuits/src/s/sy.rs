@@ -82,7 +82,7 @@ use core::cell::RefCell;
 
 use super::DriverExt;
 use crate::{
-    Circuit,
+    Circuit, FreshB,
     polynomials::{Rank, structured},
     registry,
 };
@@ -472,6 +472,14 @@ impl<'table, 'sy, F: Field, R: Rank> LinearExpression<Wire<'table, 'sy, F, R>, F
     }
 }
 
+impl<'table, 'sy, F: Field, R: Rank> FreshB<Option<Wire<'table, 'sy, F, R>>>
+    for Evaluator<'table, 'sy, F, R>
+{
+    fn available_b(&mut self) -> &mut Option<Wire<'table, 'sy, F, R>> {
+        &mut self.available_b
+    }
+}
+
 /// Configures associated types for the [`Evaluator`] driver.
 ///
 /// - `MaybeKind = Empty`: No witness values are needed; we only compute
@@ -595,11 +603,12 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, F
         routine: Ro,
         input: <Ro::Input as GadgetKind<Self::F>>::Rebind<'table, Self>,
     ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'table, Self>> {
-        let _guard = crate::RestoreGuard::new(&mut self.available_b, None);
-        let mut dummy = Emulator::wireless();
-        let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
-        let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
-        routine.execute(self, input, aux)
+        self.with_fresh_b(|this| {
+            let mut dummy = Emulator::wireless();
+            let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
+            let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+            routine.execute(this, input, aux)
+        })
     }
 }
 

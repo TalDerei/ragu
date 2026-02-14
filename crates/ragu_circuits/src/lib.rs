@@ -42,33 +42,23 @@ use alloc::{boxed::Box, vec::Vec};
 
 use polynomials::{Rank, structured, unstructured};
 
-/// RAII: saves a value and restores it on drop.
+/// A trait for drivers that stash a spare wire from paired allocation (see
+/// [`Driver::alloc`]).
 ///
-/// Used to isolate allocation state within routines, ensuring restoration
-/// even on early `?` returns or panics.
-pub(crate) struct RestoreGuard<T> {
-    slot: *mut T,
-    value: T,
-}
+/// Provides [`with_fresh_b`], which saves [`available_b`], resets it to its
+/// [`Default`], runs a closure with `&mut self`, then restores the original
+/// value. This isolates allocation state within routines.
+pub(crate) trait FreshB<B: Default> {
+    /// Returns a mutable reference to the `available_b` field.
+    fn available_b(&mut self) -> &mut B;
 
-impl<T> RestoreGuard<T> {
-    /// Saves the current value of `slot`, sets it to `replacement`, and
-    /// returns a guard that restores the original value on drop.
-    pub(crate) fn new(slot: &mut T, replacement: T) -> Self {
-        let value = core::mem::replace(slot, replacement);
-        // Raw pointer ends the borrow, allowing `&mut self` while guard exists.
-        Self {
-            slot: slot as *mut _,
-            value,
-        }
-    }
-}
-
-impl<T> Drop for RestoreGuard<T> {
-    fn drop(&mut self) {
-        // SAFETY: Guard is a local in a method of the struct owning the slot,
-        // so the pointer remains valid for the guard's lifetime.
-        unsafe { core::ptr::swap(self.slot, &mut self.value) }
+    /// Runs `f` with [`available_b`] temporarily reset to its default, then
+    /// restores the original value.
+    fn with_fresh_b<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let saved = core::mem::take(self.available_b());
+        let result = f(self);
+        *self.available_b() = saved;
+        result
     }
 }
 

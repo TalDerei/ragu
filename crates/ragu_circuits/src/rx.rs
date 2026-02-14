@@ -14,11 +14,17 @@ use ragu_core::{
 };
 use ragu_primitives::GadgetExt;
 
-use super::{Circuit, Rank, registry, structured};
+use super::{Circuit, FreshB, Rank, registry, structured};
 
 struct Evaluator<'a, F: Field, R: Rank> {
     rx: structured::View<'a, F, R, structured::Forward>,
     available_b: Option<usize>,
+}
+
+impl<F: Field, R: Rank> FreshB<Option<usize>> for Evaluator<'_, F, R> {
+    fn available_b(&mut self) -> &mut Option<usize> {
+        &mut self.available_b
+    }
 }
 
 impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
@@ -74,11 +80,12 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
         routine: Ro,
         input: <Ro::Input as GadgetKind<Self::F>>::Rebind<'a, Self>,
     ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'a, Self>> {
-        let _guard = crate::RestoreGuard::new(&mut self.available_b, None);
-        let mut dummy = Emulator::wireless();
-        let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
-        let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
-        routine.execute(self, input, aux)
+        self.with_fresh_b(|this| {
+            let mut dummy = Emulator::wireless();
+            let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
+            let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+            routine.execute(this, input, aux)
+        })
     }
 }
 
