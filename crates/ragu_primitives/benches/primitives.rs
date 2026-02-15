@@ -51,7 +51,7 @@ fn element_is_zero((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))
 fn element_multiadd(
     (mut emu, (elements, coeffs)): (BenchEmu, (Vec<Element<'static, BenchEmu>>, Vec<Fp>)),
 ) {
-    black_box(multiadd(&mut emu, &elements, &coeffs)).unwrap();
+    black_box(multiadd(&mut emu, &elements, &coeffs));
 }
 
 library_benchmark_group!(

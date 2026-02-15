@@ -297,11 +297,11 @@ fn mds<'i, 'dr, D: Driver<'dr>>(
     matrix: impl ExactSizeIterator<Item = &'i [D::F]>,
 ) -> Result<()> {
     assert_eq!(state.len(), matrix.len());
-    let tmp = state
+    let tmp: Vec<_> = state
         .iter()
         .zip(matrix)
         .map(|(_, coeffs)| multiadd(dr, state, coeffs))
-        .collect::<Result<Vec<_>>>()?;
+        .collect();
     state.clone_from_slice(&tmp[..]);
 
     Ok(())

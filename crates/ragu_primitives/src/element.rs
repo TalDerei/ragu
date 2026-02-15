@@ -386,11 +386,15 @@ impl<'dr, D: Driver<'dr>, B: Buffer<'dr, D>> Buffer<'dr, D> for &mut B {
 }
 
 /// Computes a fixed linear combination of some allocated values.
+///
+/// # Panics
+///
+/// Panics if `values` and `coeffs` have different lengths.
 pub fn multiadd<'dr, D: Driver<'dr>>(
     dr: &mut D,
     values: &[Element<'dr, D>],
     coeffs: &[D::F],
-) -> Result<Element<'dr, D>> {
+) -> Element<'dr, D> {
     assert_eq!(values.len(), coeffs.len());
     let value = D::just(|| {
         let mut sum = D::F::ZERO;
@@ -406,7 +410,7 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
         lc
     });
 
-    Ok(Element::promote(wire, value))
+    Element::promote(wire, value)
 }
 
 #[test]
