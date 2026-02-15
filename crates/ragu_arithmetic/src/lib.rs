@@ -90,8 +90,13 @@ pub use util::{dot, eval, factor, factor_iter, geosum, mul, poly_with_roots};
 /// slightly more readable, but is not intended for use in other contexts.
 pub use ragu_macros::repr256;
 
-// TODO(ebfull): Use this if we need to increase the bit size of endoscalars.
-// pub use uendo::Uendo;
+/// TODO(ebfull): Use this if we need to increase the bit size of endoscalars.
+///
+/// The `uendo` module is a speculative implementation. We may need a
+/// flexible-width challenge space larger than 128 bits due to birthday bound /
+/// adversary advantage concerns. `Uendo` is a drop-in replacement for `u128`
+/// that's generic over bit length, in case the security proof demands something
+/// like 134-bit challenges. This may end up being removed if 128 bits suffices.
 pub use u128 as Uendo;
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
