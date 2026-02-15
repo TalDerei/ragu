@@ -96,7 +96,7 @@ fn point_double_and_add_incomplete(
 #[library_benchmark(setup = setup_emu)]
 #[bench::point_endo((alloc_point,))]
 fn point_endo((mut emu, (point,)): (BenchEmu, (Point<'static, BenchEmu, EpAffine>,))) {
-    black_box(point.endo(&mut emu)).unwrap();
+    black_box(point.endo(&mut emu));
 }
 
 library_benchmark_group!(

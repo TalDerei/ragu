@@ -152,7 +152,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         dr: &mut D,
         p: &Point<'dr, D, C>,
     ) -> Result<Point<'dr, D, C>> {
-        let mut acc = p.endo(dr)?.add_incomplete(dr, p, None)?.double(dr)?;
+        let mut acc = p.endo(dr).add_incomplete(dr, p, None)?.double(dr)?;
         let mut bits = self.bits();
 
         for _ in 0..(Uendo::BITS as usize / 2) {

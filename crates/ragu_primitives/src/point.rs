@@ -93,9 +93,9 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 
     /// Applies the endomorphism to this point.
-    pub fn endo(&self, dr: &mut D) -> Result<Self> {
+    pub fn endo(&self, dr: &mut D) -> Self {
         let x = self.x.scale(dr, Coeff::Arbitrary(C::Base::ZETA));
-        Ok(Point::new_unchecked(x, self.y.clone()))
+        Point::new_unchecked(x, self.y.clone())
     }
 
     /// Negates this point.
