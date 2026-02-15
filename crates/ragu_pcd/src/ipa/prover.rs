@@ -3,10 +3,10 @@
 //! Adapted from halo2's `halo2_proofs/src/poly/commitment/prover.rs`.
 
 use alloc::vec::Vec;
-use arithmetic::{Cycle, FixedGenerators, dot, eval, mul};
 use ff::Field;
 use pasta_curves::group::Curve;
 use pasta_curves::group::prime::PrimeCurveAffine;
+use ragu_arithmetic::{Cycle, FixedGenerators, dot, eval, mul};
 use rand::{CryptoRng, RngCore};
 
 use super::compress::IpaProof;

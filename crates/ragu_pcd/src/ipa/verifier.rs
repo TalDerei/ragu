@@ -4,9 +4,9 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use arithmetic::{Cycle, FixedGenerators, mul};
 use ff::{BatchInverter, Field, PrimeField};
 use pasta_curves::group::Group;
+use ragu_arithmetic::{Cycle, FixedGenerators, mul};
 
 use super::compress::IpaProof;
 use super::transcript::Transcript;

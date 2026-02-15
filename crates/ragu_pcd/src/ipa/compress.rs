@@ -1,8 +1,8 @@
 //! Compressed proof structures and operations.
 
 use alloc::vec::Vec;
-use arithmetic::{CurveAffine, Cycle, FixedGenerators, revdot_poly};
 use ff::{Field, PrimeField};
+use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, mul, revdot_poly};
 use ragu_circuits::polynomials::Rank;
 use ragu_core::Result;
 use rand::CryptoRng;
@@ -71,7 +71,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 
         // Commit to p_ab with fresh blinding factor
         let p_ab_blind = C::CircuitField::random(&mut *rng);
-        let p_ab_commitment = arithmetic::mul(
+        let p_ab_commitment = mul(
             p_ab_coeffs.iter().chain(Some(&p_ab_blind)),
             generators
                 .g()
@@ -181,7 +181,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 #[cfg(test)]
 mod tests {
     use crate::ApplicationBuilder;
-    use arithmetic::{Cycle, revdot_poly};
+    use ragu_arithmetic::{Cycle, revdot_poly};
     use ragu_circuits::polynomials::R;
     use ragu_pasta::Pasta;
     use rand::{SeedableRng, rngs::StdRng};

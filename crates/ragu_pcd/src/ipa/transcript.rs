@@ -1,7 +1,7 @@
 //! Fiat-Shamir transcript using Poseidon sponge.
 
-use arithmetic::{CurveAffine, Cycle, PoseidonPermutation};
 use ff::{Field, PrimeField};
+use ragu_arithmetic::{CurveAffine, Cycle, PoseidonPermutation};
 use ragu_core::drivers::emulator::{Emulator, Wireless};
 use ragu_core::maybe::{Always, Maybe};
 use ragu_primitives::{Element, poseidon::Sponge};
