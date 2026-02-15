@@ -270,10 +270,7 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> SpongeS
     }
 
     fn get_rate(&self) -> Vec<Element<'dr, D>> {
-        let mut tmp = self.values.clone().into_inner();
-        tmp.truncate(P::RATE);
-        tmp.reverse();
-        tmp
+        self.values.iter().take(P::RATE).cloned().rev().collect()
     }
 }
 
