@@ -57,18 +57,20 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use crate::floor_plan::{FloorPlan, RegistryPosition};
-use crate::routines::RoutineId;
 use ragu_primitives::GadgetExt;
 
 use alloc::{collections::BTreeMap, vec};
 
-use crate::{Circuit, FreshB, polynomials::Rank, registry};
-
 use super::{
     DriverExt,
     common::{CachedRoutine, MemoCache, WireEval, WireEvalSum, WireExtractor, WireInjector},
+};
+use crate::{
+    Circuit, FreshB,
+    floor_plan::{FloorPlan, RegistryPosition},
+    polynomials::Rank,
+    registry,
+    routines::RoutineId,
 };
 
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.

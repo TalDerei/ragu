@@ -75,9 +75,6 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use crate::floor_plan::{FloorPlan, RegistryPosition};
-use crate::routines::RoutineId;
 use ragu_primitives::GadgetExt;
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
@@ -86,8 +83,10 @@ use core::cell::RefCell;
 use super::DriverExt;
 use crate::{
     Circuit, FreshB,
+    floor_plan::{FloorPlan, RegistryPosition},
     polynomials::{Rank, structured},
     registry,
+    routines::RoutineId,
 };
 
 /// An index identifying a wire in the evaluator.

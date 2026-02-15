@@ -5,18 +5,18 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{GadgetKind, Kind},
-    maybe::Maybe,
+    maybe::{Empty, Maybe},
     routines::{Prediction, Routine},
 };
-
-use crate::routines::RoutineShape;
 use ragu_primitives::Element;
-
-use crate::metrics::{ShapeCounter, derive_shape};
 
 use core::marker::PhantomData;
 
 use super::Rank;
+use crate::{
+    metrics::{ShapeCounter, derive_shape},
+    routines::RoutineShape,
+};
 
 /// Routine for evaluating the TXZ polynomial, t(x, z).
 #[derive(Clone)]
@@ -38,8 +38,6 @@ impl<R: Rank> Evaluate<R> {
         }
     }
 }
-
-use ragu_core::maybe::Empty;
 
 impl<R: Rank> Evaluate<R> {
     /// Returns the shape of this routine.

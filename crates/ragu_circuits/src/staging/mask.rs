@@ -3,10 +3,9 @@ use ragu_core::Result;
 
 use alloc::vec::Vec;
 
-use crate::floor_plan::FloorPlan;
-
 use crate::{
     CircuitObject,
+    floor_plan::FloorPlan,
     polynomials::{Rank, structured, unstructured},
     registry,
 };

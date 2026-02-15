@@ -32,7 +32,6 @@
 //! [`sy`]: super::sy
 //! [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
 
-use core::marker::PhantomData;
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -40,10 +39,10 @@ use ragu_core::{
     drivers::{Driver, FromDriver, LinearExpression},
 };
 
-use crate::floor_plan::RegistryPosition;
-use crate::routines::RoutineId;
-
 use alloc::{collections::BTreeMap, vec::Vec};
+use core::marker::PhantomData;
+
+use crate::{floor_plan::RegistryPosition, routines::RoutineId};
 
 /// Cached polynomial contribution from a routine at a canonical floor plan position.
 ///

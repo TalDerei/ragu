@@ -14,11 +14,9 @@ use ragu_core::{
     maybe::Maybe,
     routines::{Prediction, Routine},
 };
-
-use crate::routines::RoutineShape;
 use ragu_primitives::Element;
 
-use crate::Circuit;
+use crate::{Circuit, routines::RoutineShape};
 
 /// A simple circuit that proves knowledge of a and b such that a^5 = b^2
 /// and a + b = c and a - b = d where c and d are public inputs.

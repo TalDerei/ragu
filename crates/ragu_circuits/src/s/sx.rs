@@ -71,25 +71,23 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use crate::floor_plan::{FloorPlan, RegistryPosition};
-use crate::routines::RoutineId;
 use ragu_primitives::GadgetExt;
 
 use alloc::{collections::BTreeMap, vec};
 
+use super::{
+    DriverExt,
+    common::{WireEval, WireEvalSum},
+};
 use crate::{
     Circuit, FreshB,
+    floor_plan::{FloorPlan, RegistryPosition},
     polynomials::{
         Rank,
         unstructured::{self, Polynomial},
     },
     registry,
-};
-
-use super::{
-    DriverExt,
-    common::{WireEval, WireEvalSum},
+    routines::RoutineId,
 };
 
 /// A [`Driver`] that computes the partial evaluation $s(x, Y)$.

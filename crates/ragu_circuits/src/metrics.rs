@@ -13,13 +13,12 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use crate::routines::RoutineShape;
 use ragu_primitives::GadgetExt;
 
 use core::marker::PhantomData;
 
 use super::{Circuit, FreshB};
+use crate::routines::RoutineShape;
 
 /// Performs full constraint system analysis, capturing basic details about a circuit's topology through simulation.
 pub struct CircuitMetrics {
