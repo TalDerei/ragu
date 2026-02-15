@@ -118,8 +118,9 @@ pub trait Cycle: Copy + Clone + Default + Send + Sync + 'static {
 
     /// The host curve that the proof system uses mainly to construct proofs for
     /// circuits over the [`CircuitField`](Cycle::CircuitField). (This is the
-    /// ideal curve to use for committing to large vector or polynomial
-    /// commitments and reasoning about them inside of PCD.)
+    /// Vesta curve in Zcash, and is the ideal curve to use for committing to
+    /// large vector or polynomial commitments and reasoning about them inside
+    /// of PCD.)
     type HostCurve: CurveAffine<ScalarExt = Self::CircuitField, Base = Self::ScalarField>;
 
     /// Fixed generators for the [`NestedCurve`](Cycle::NestedCurve).
