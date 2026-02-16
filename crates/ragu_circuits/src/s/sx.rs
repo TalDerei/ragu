@@ -67,7 +67,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},
-    gadgets::GadgetKind,
+    gadgets::{Bound, GadgetKind},
     maybe::Empty,
     routines::Routine,
 };
@@ -258,8 +258,8 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<F, R> {
     fn routine<Ro: Routine<Self::F> + 'dr>(
         &mut self,
         routine: Ro,
-        input: <Ro::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
-    ) -> Result<<Ro::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
+        input: Bound<'dr, Self, Ro::Input>,
+    ) -> Result<Bound<'dr, Self, Ro::Output>> {
         self.with_fresh_b(|this| {
             let mut dummy = Emulator::wireless();
             let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;

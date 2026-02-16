@@ -119,7 +119,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
-    gadgets::GadgetKind,
+    gadgets::{Bound, GadgetKind},
     maybe::{Always, MaybeKind},
 };
 use ragu_primitives::io::Write;
@@ -152,7 +152,7 @@ pub trait Stage<F: Field, R: Rank> {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr;
 
@@ -178,7 +178,7 @@ impl<F: Field, R: Rank> Stage<F, R> for () {
         &self,
         _: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {
@@ -230,7 +230,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::Output>>
     where
         Self: 'dr;
 
@@ -243,7 +243,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where
@@ -291,7 +291,7 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F,
         &self,
         dr: &mut D,
         instance: DriverValue<D, S::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::Output>>
     where
         Self: 'dr,
     {
@@ -302,10 +302,7 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F,
         &self,
         dr: &mut D,
         witness: DriverValue<D, S::Witness<'source>>,
-    ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
-        DriverValue<D, S::Aux<'source>>,
-    )>
+    ) -> Result<(Bound<'dr, D, Self::Output>, DriverValue<D, S::Aux<'source>>)>
     where
         Self: 'dr,
     {

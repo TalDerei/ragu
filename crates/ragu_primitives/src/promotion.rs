@@ -6,7 +6,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, DriverValue, FromDriver},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::{Bound, Gadget, GadgetKind},
     maybe::Empty,
 };
 
@@ -108,11 +108,11 @@ impl<'dr, 'new_dr, D: Driver<'dr>, F: FromDriver<'dr, 'new_dr, D>>
 /// has no witness data, so it cannot meaningfully enforce consistency. Promote
 /// the gadget first, then call `enforce_consistent` on the result.
 pub struct Demoted<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> {
-    gadget: <G::Kind as GadgetKind<D::F>>::Rebind<'dr, DemotedDriver<'dr, D>>,
+    gadget: Bound<'dr, DemotedDriver<'dr, D>, G::Kind>,
 }
 
 impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Deref for Demoted<'dr, D, G> {
-    type Target = <G::Kind as GadgetKind<D::F>>::Rebind<'dr, DemotedDriver<'dr, D>>;
+    type Target = Bound<'dr, DemotedDriver<'dr, D>, G::Kind>;
 
     fn deref(&self) -> &Self::Target {
         &self.gadget

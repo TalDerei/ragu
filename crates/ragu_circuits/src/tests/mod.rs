@@ -4,7 +4,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
 };
 use ragu_pasta::Fp;
@@ -35,7 +35,7 @@ impl Circuit<Fp> for SquareCircuit {
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
-    ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, instance)
     }
 
@@ -44,7 +44,7 @@ impl Circuit<Fp> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'witness>>,
     )> {
         let mut a = Element::alloc(dr, witness)?;
@@ -98,7 +98,7 @@ fn test_simple_circuit() {
             &self,
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             let c = Element::alloc(dr, instance.view().map(|v| v.0))?;
             let d = Element::alloc(dr, instance.view().map(|v| v.1))?;
 
@@ -110,7 +110,7 @@ fn test_simple_circuit() {
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'witness>>,
         ) -> Result<(
-            <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
+            Bound<'dr, D, Self::Output>,
             DriverValue<D, Self::Aux<'witness>>,
         )> {
             let a = Element::alloc(dr, witness.view().map(|w| w.0))?;
@@ -204,9 +204,9 @@ impl Routine<Fp> for TestRoutine {
     fn execute<'dr, D: Driver<'dr, F = Fp>>(
         &self,
         dr: &mut D,
-        _input: <Self::Input as GadgetKind<Fp>>::Rebind<'dr, D>,
+        _input: Bound<'dr, D, Self::Input>,
         aux: DriverValue<D, Self::Aux<'dr>>,
-    ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         let precomputed_value = aux.take();
         let element_from_aux = Element::alloc(dr, D::just(|| precomputed_value))?;
         let other = Element::alloc(dr, D::just(|| Fp::from(5u64)))?;
@@ -217,13 +217,8 @@ impl Routine<Fp> for TestRoutine {
     fn predict<'dr, D: Driver<'dr, F = Fp>>(
         &self,
         _dr: &mut D,
-        _input: &<Self::Input as GadgetKind<Fp>>::Rebind<'dr, D>,
-    ) -> Result<
-        Prediction<
-            <Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>,
-            DriverValue<D, Self::Aux<'dr>>,
-        >,
-    > {
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         Ok(Prediction::Unknown(D::just(|| Fp::from(10u64))))
     }
 }

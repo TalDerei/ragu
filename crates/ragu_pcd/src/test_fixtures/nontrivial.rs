@@ -5,7 +5,7 @@ use ragu_arithmetic::Cycle;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, poseidon::Sponge};
@@ -25,7 +25,7 @@ impl<F: Field> Header<F> for LeafNode {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, witness)
     }
 }
@@ -40,7 +40,7 @@ impl<F: Field> Header<F> for InternalNode {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, witness)
     }
 }

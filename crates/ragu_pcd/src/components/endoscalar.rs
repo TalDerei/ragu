@@ -26,7 +26,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{
@@ -80,7 +80,7 @@ impl<F: Field, R: Rank> Stage<F, R> for EndoscalarStage {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {
@@ -183,7 +183,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> Stage<C::Base, R>
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<C::Base>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {
@@ -262,7 +262,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         &self,
         _dr: &mut D,
         _instance: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<C::Base>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
 
@@ -271,7 +271,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<C::Base>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let (endoscalar_guard, dr) = dr.add_stage::<EndoscalarStage>()?;

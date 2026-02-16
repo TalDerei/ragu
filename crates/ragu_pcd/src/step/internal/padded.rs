@@ -2,7 +2,7 @@ use ff::{Field, PrimeField};
 use ragu_core::{
     Result,
     drivers::Driver,
-    gadgets::{Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Gadget, GadgetKind, Kind},
 };
 use ragu_primitives::{
     Element, GadgetExt,
@@ -40,7 +40,7 @@ pub(crate) fn for_header<
     D: Driver<'dr, F: PrimeField>,
 >(
     dr: &mut D,
-    gadget: <H::Output as GadgetKind<D::F>>::Rebind<'dr, D>,
+    gadget: Bound<'dr, D, H::Output>,
 ) -> Result<Padded<'dr, D, H::Output, HEADER_SIZE>> {
     let padded_content = PaddedContent { gadget };
     let suffix = Element::constant(dr, D::F::from(H::SUFFIX.get()));

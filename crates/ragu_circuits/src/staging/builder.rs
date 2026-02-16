@@ -45,7 +45,7 @@ use ragu_core::{
         Driver, DriverValue, FromDriver,
         emulator::{Emulator, Wireless},
     },
-    gadgets::{Consistent, Gadget, GadgetKind},
+    gadgets::{Bound, Consistent, Gadget},
     maybe::Empty,
 };
 
@@ -128,9 +128,9 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
         self,
         dr: &mut D,
         witness: DriverValue<D, S::Witness<'source>>,
-    ) -> Result<<S::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, S::OutputKind>>
     where
-        <S::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>: Consistent<'dr, D>,
+        Bound<'dr, D, S::OutputKind>: Consistent<'dr, D>,
     {
         let output = self.unenforced_inner(witness)?;
         output.enforce_consistent(dr)?;
@@ -141,7 +141,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
     fn unenforced_inner<'source: 'dr>(
         self,
         witness: DriverValue<D, S::Witness<'source>>,
-    ) -> Result<<S::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, S::OutputKind>> {
         let mut emulator: Emulator<Wireless<D::MaybeKind, D::F>> = Emulator::wireless();
         let computed_gadget = self.stage.witness(&mut emulator, witness)?;
 
@@ -162,7 +162,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
         self,
         _dr: &mut D,
         witness: DriverValue<D, S::Witness<'source>>,
-    ) -> Result<<S::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, S::OutputKind>> {
         self.unenforced_inner(witness)
     }
 }

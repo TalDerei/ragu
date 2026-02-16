@@ -23,7 +23,7 @@ use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Consistent, Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Consistent, Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, Point, io::Write};
@@ -360,7 +360,7 @@ impl<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'a, '
         self,
         dr: &mut D,
         instance: &DriverValue<D, &'a Instance<C>>,
-    ) -> Result<<InternalOutputKind<C> as GadgetKind<D::F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, InternalOutputKind<C>>> {
         let zero = Element::zero(dr);
         Ok(WithSuffix::new(self.finish_no_suffix(dr, instance)?, zero))
     }

@@ -5,7 +5,7 @@ use ragu_core::{
         Driver, DriverValue,
         emulator::{Emulator, Wireless},
     },
-    gadgets::GadgetKind,
+    gadgets::Bound,
 };
 use ragu_primitives::{
     Element, GadgetExt,
@@ -45,7 +45,7 @@ use super::{Header, internal::padded};
 /// (`Uniform`) that erases type-level differences through serialization.
 enum EncodedInner<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> {
     /// Standard gadget encoding preserving structure (efficient, type-dependent circuit)
-    Gadget(<H::Output as GadgetKind<D::F>>::Rebind<'dr, D>),
+    Gadget(Bound<'dr, D, H::Output>),
     /// Uniform encoding as field elements (less efficient, type-independent circuit)
     Uniform(FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>),
 }
@@ -78,12 +78,12 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     Encoded<'dr, D, H, HEADER_SIZE>
 {
     /// Create an encoded header from a gadget value.
-    pub fn from_gadget(gadget: <H::Output as GadgetKind<D::F>>::Rebind<'dr, D>) -> Self {
+    pub fn from_gadget(gadget: Bound<'dr, D, H::Output>) -> Self {
         Encoded(EncodedInner::Gadget(gadget))
     }
 
     /// Returns a reference to the underlying gadget.
-    pub fn as_gadget(&self) -> &<H::Output as GadgetKind<D::F>>::Rebind<'dr, D> {
+    pub fn as_gadget(&self) -> &Bound<'dr, D, H::Output> {
         match &self.0 {
             EncodedInner::Gadget(g) => g,
             EncodedInner::Uniform(_) => {
@@ -145,7 +145,7 @@ mod tests {
     use crate::header::{Header, Suffix};
     use ragu_core::{
         drivers::emulator::Emulator,
-        gadgets::Kind,
+        gadgets::{Bound, Kind},
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::Fp;
@@ -162,7 +162,7 @@ mod tests {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             Element::alloc(dr, witness)
         }
     }
@@ -177,7 +177,7 @@ mod tests {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             let (a, b) = witness.cast();
             Ok((Element::alloc(dr, a)?, Element::alloc(dr, b)?))
         }

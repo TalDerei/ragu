@@ -11,7 +11,7 @@ use ff::Field;
 use crate::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
+    gadgets::{Bound, GadgetKind},
 };
 
 /// Sections of a circuit that take a [`Gadget`](crate::gadgets::Gadget) as
@@ -44,9 +44,9 @@ pub trait Routine<F: Field>: Clone + Send {
     fn execute<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        input: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
+        input: Bound<'dr, D, Self::Input>,
         aux: DriverValue<D, Self::Aux<'dr>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>;
+    ) -> Result<Bound<'dr, D, Self::Output>>;
 
     /// Routines can offer to predict their outputs given their inputs, which
     /// drivers can leverage to skip actual execution or perform it in a
@@ -56,10 +56,8 @@ pub trait Routine<F: Field>: Clone + Send {
     fn predict<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        input: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-    ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
-    >;
+        input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>>;
 }
 
 /// Describes the result of a routine's [`predict`](Routine::predict) method.

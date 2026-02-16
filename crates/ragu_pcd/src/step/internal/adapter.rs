@@ -3,7 +3,7 @@ use ragu_circuits::{Circuit, polynomials::Rank};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{
@@ -66,7 +66,7 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
         &self,
         _: &mut D,
         _: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         unreachable!("k(Y) is computed manually for ragu_pcd circuit implementations")
     }
 
@@ -75,7 +75,7 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where
@@ -118,7 +118,7 @@ mod tests {
     use ragu_circuits::polynomials::R;
     use ragu_core::{
         drivers::emulator::Emulator,
-        gadgets::Kind,
+        gadgets::{Bound, Kind},
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::{Fp, Pasta};
@@ -136,7 +136,7 @@ mod tests {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             Element::alloc(dr, witness)
         }
     }

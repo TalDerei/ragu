@@ -9,7 +9,7 @@ use crate::Proof;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{Point, io::Write};
@@ -129,7 +129,7 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<C::Base>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {

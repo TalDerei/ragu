@@ -12,7 +12,7 @@ pub(crate) mod tests {
     use ragu_circuits::{polynomials::Rank, staging::Stage};
     use ragu_core::{
         drivers::emulator::{Emulator, Wireless},
-        gadgets::{Gadget, GadgetKind},
+        gadgets::{Bound, Gadget},
         maybe::Empty,
     };
 
@@ -25,7 +25,7 @@ pub(crate) mod tests {
         F: PrimeField,
         R: Rank,
         S: Stage<F, R>,
-        for<'dr> <S::OutputKind as GadgetKind<F>>::Rebind<'dr, Emulator<Wireless<Empty, F>>>:
+        for<'dr> Bound<'dr, Emulator<Wireless<Empty, F>>, S::OutputKind>:
             Gadget<'dr, Emulator<Wireless<Empty, F>>>,
     {
         let mut emulator = Emulator::counter();

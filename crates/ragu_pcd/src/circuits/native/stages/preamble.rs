@@ -7,7 +7,7 @@ use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Consistent, Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Consistent, Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{
@@ -262,7 +262,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<C::CircuitField>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {

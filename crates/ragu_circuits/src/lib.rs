@@ -35,7 +35,7 @@ use ff::Field;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
+    gadgets::Bound,
 };
 use ragu_primitives::io::Write;
 
@@ -91,7 +91,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::Output>>
     where
         Self: 'dr;
 
@@ -104,7 +104,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where

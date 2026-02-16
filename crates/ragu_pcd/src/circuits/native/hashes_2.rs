@@ -66,7 +66,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
+    gadgets::Bound,
     maybe::Maybe,
 };
 use ragu_primitives::{GadgetExt, poseidon::Sponge};
@@ -138,7 +138,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         &self,
         _: &mut D,
         _: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::Output>>
     where
         Self: 'dr,
     {
@@ -150,7 +150,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         builder: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where

@@ -23,7 +23,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind, Kind},
+    gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::Element;
@@ -377,7 +377,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<<Self::OutputKind as GadgetKind<C::CircuitField>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::OutputKind>>
     where
         Self: 'dr,
     {

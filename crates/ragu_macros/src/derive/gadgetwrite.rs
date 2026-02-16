@@ -126,7 +126,7 @@ pub fn derive(
             #[automatically_derived]
             impl #gadget_kind_generic_params #ragu_primitives_path::io::Write<#driverfield_ident> for #struct_ident #kind_subst_arguments {
                 fn write_gadget<#driver_lifetime, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, B: #ragu_primitives_path::io::Buffer<#driver_lifetime, #driver_ident> >(
-                    this: &<Self as #ragu_core_path::gadgets::GadgetKind<#driverfield_ident>>::Rebind<#driver_lifetime, #driver_ident>,
+                    this: &#ragu_core_path::gadgets::Bound<#driver_lifetime, #driver_ident, Self>,
                     dr: &mut #driver_ident,
                     buf: &mut B
                 ) -> #ragu_core_path::Result<()> {
@@ -167,7 +167,7 @@ fn test_gadget_serialize_derive() {
                 for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
             {
                 fn write_gadget<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, B: ::ragu_primitives::io::Buffer<'my_dr, MyD> >(
-                    this: &<Self as ::ragu_core::gadgets::GadgetKind<DriverField>>::Rebind<'my_dr, MyD>,
+                    this: &::ragu_core::gadgets::Bound<'my_dr, MyD, Self>,
                     dr: &mut MyD,
                     buf: &mut B
                 ) -> ::ragu_core::Result<()> {

@@ -8,7 +8,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{DirectSum, Driver, DriverTypes},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::{Bound, Gadget},
     maybe::{Always, MaybeKind},
     routines::{Prediction, Routine},
 };
@@ -137,8 +137,8 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
     fn routine<R: Routine<Self::F> + 'dr>(
         &mut self,
         routine: R,
-        input: <R::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
-    ) -> Result<<R::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
+        input: Bound<'dr, Self, R::Input>,
+    ) -> Result<Bound<'dr, Self, R::Output>> {
         let mut tmp = self.clone();
         match routine.predict(&mut tmp, &input)? {
             Prediction::Known(output, aux) => {

@@ -225,7 +225,7 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
-        gadgets::{Consistent, Gadget, GadgetKind},
+        gadgets::{Bound, Consistent, Gadget},
         maybe::Maybe,
     };
     use ragu_pasta::{EpAffine, Fp, Fq};
@@ -252,7 +252,7 @@ mod tests {
             &self,
             _: &mut D,
             _: DriverValue<D, Self::Instance<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             Ok(())
         }
 
@@ -261,7 +261,7 @@ mod tests {
             dr: &mut D,
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<(
-            <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+            Bound<'dr, D, Self::Output>,
             DriverValue<D, Self::Aux<'source>>,
         )> {
             let reserved = self.skip_multiplications + self.num_multiplications + 1;
@@ -312,7 +312,7 @@ mod tests {
                 &self,
                 dr: &mut D,
                 witness: DriverValue<D, Self::Witness<'source>>,
-            ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+            ) -> Result<Bound<'dr, D, Self::OutputKind>>
             where
                 Self: 'dr,
             {
@@ -337,7 +337,7 @@ mod tests {
                 &self,
                 dr: &mut D,
                 witness: DriverValue<D, Self::Witness<'source>>,
-            ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+            ) -> Result<Bound<'dr, D, Self::OutputKind>>
             where
                 Self: 'dr,
             {
@@ -554,7 +554,7 @@ mod tests {
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'source>>,
-        ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+        ) -> Result<Bound<'dr, D, Self::OutputKind>>
         where
             Self: 'dr,
         {

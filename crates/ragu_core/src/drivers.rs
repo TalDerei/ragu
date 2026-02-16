@@ -53,7 +53,7 @@ use ragu_arithmetic::Coeff;
 
 use crate::{
     Result,
-    gadgets::GadgetKind,
+    gadgets::{Bound, GadgetKind},
     maybe::{Maybe, MaybeKind},
     routines::Routine,
 };
@@ -195,8 +195,8 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     fn routine<R: Routine<Self::F> + 'dr>(
         &mut self,
         routine: R,
-        input: <R::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
-    ) -> Result<<R::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
+        input: Bound<'dr, Self, R::Input>,
+    ) -> Result<Bound<'dr, Self, R::Output>> {
         let mut dummy = emulator::Emulator::wireless();
         let dummy_input = R::Input::map_gadget(&input, &mut dummy)?;
         let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();

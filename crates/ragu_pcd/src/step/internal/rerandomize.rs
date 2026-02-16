@@ -79,7 +79,7 @@ fn test_rerandomize_consistency() {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue},
-        gadgets::{GadgetKind, Kind},
+        gadgets::{Bound, Kind},
         maybe::Maybe,
     };
     use ragu_pasta::{Fp, Pasta};
@@ -96,7 +96,7 @@ fn test_rerandomize_consistency() {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             Element::alloc(dr, witness)
         }
     }
@@ -109,7 +109,7 @@ fn test_rerandomize_consistency() {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Bound<'dr, D, Self::Output>> {
             let (a, b) = witness.cast();
             let a = Element::alloc(dr, a)?;
             let b = Element::alloc(dr, b)?;

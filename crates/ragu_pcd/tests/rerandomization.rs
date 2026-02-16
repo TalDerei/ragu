@@ -4,7 +4,7 @@ use ragu_circuits::polynomials::R;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
 };
 use ragu_pasta::{Fp, Pasta};
@@ -27,7 +27,7 @@ impl<F: Field> Header<F> for HeaderA {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
         _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
 }
@@ -42,7 +42,7 @@ impl Header<Fp> for HeaderWithData {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, witness)
     }
 }

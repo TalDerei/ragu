@@ -9,7 +9,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::Element;
@@ -30,7 +30,7 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         let c = Element::alloc(dr, instance.view().map(|v| v.0))?;
         let d = Element::alloc(dr, instance.view().map(|v| v.1))?;
 
@@ -42,7 +42,7 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'witness>>,
     )> {
         let a = Element::alloc(dr, witness.view().map(|w| w.0))?;
@@ -82,7 +82,7 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, instance)
     }
 
@@ -91,7 +91,7 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'witness>>,
     )> {
         let mut a = Element::alloc(dr, witness)?;

@@ -29,6 +29,11 @@ of [`GadgetKind`][gadgetkind-trait] to specify how a concrete
 associated type `Kind` that relates back to its corresponding
 [`GadgetKind`][gadgetkind-trait] implementation.
 
+## The `Bound` Type Alias
+
+The [`Bound<'dr, D, K>`][bound-alias] type alias is shorthand for
+`<K as GadgetKind<F>>::Rebind<'dr, D>`.
+
 ## `map_gadget`
 
 Thanks to the strict requirements on implementations of
@@ -71,6 +76,7 @@ see it.
 
 [gadget-trait]: ragu_core::gadgets::Gadget
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
+[bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
 [enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_equal_gadget
 [fromdriver-trait]: ragu_core::drivers::FromDriver

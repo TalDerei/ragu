@@ -74,7 +74,7 @@ use core::marker::PhantomData;
 use crate::{
     Result,
     drivers::{Coeff, DirectSum, Driver, DriverTypes, FromDriver, LinearExpression},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::{Bound, Gadget, GadgetKind},
     maybe::{Always, Empty, MaybeKind},
     routines::{Prediction, Routine},
 };
@@ -326,8 +326,8 @@ impl<'dr, M: MaybeKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
     fn routine<R: Routine<Self::F> + 'dr>(
         &mut self,
         routine: R,
-        input: <R::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
-    ) -> Result<<R::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
+        input: Bound<'dr, Self, R::Input>,
+    ) -> Result<Bound<'dr, Self, R::Output>> {
         short_circuit_routine(self, routine, input)
     }
 }
@@ -376,8 +376,8 @@ impl<'dr, F: Field> Driver<'dr> for Emulator<Wired<F>> {
     fn routine<R: Routine<Self::F> + 'dr>(
         &mut self,
         routine: R,
-        input: <R::Input as GadgetKind<Self::F>>::Rebind<'dr, Self>,
-    ) -> Result<<R::Output as GadgetKind<Self::F>>::Rebind<'dr, Self>> {
+        input: Bound<'dr, Self, R::Input>,
+    ) -> Result<Bound<'dr, Self, R::Output>> {
         short_circuit_routine(self, routine, input)
     }
 }
@@ -388,8 +388,8 @@ impl<'dr, F: Field> Driver<'dr> for Emulator<Wired<F>> {
 fn short_circuit_routine<'dr, D: Driver<'dr>, R: Routine<D::F> + 'dr>(
     dr: &mut D,
     routine: R,
-    input: <R::Input as GadgetKind<D::F>>::Rebind<'dr, D>,
-) -> Result<<R::Output as GadgetKind<D::F>>::Rebind<'dr, D>> {
+    input: Bound<'dr, D, R::Input>,
+) -> Result<Bound<'dr, D, R::Output>> {
     match routine.predict(dr, &input)? {
         Prediction::Known(output, _) => Ok(output),
         Prediction::Unknown(aux) => routine.execute(dr, input, aux),

@@ -61,7 +61,7 @@ types:
 
 ```rust
 use ff::Field;
-use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{GadgetKind, Kind}, maybe::Maybe};
+use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
 use ragu_pcd::header::{Header, Suffix};
 use ragu_primitives::Element;
 use ragu_primitives::poseidon::Sponge;
@@ -77,7 +77,7 @@ impl<F: Field> Header<F> for LeafNode {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, witness)  // Convert to circuit element
     }
 }
@@ -93,7 +93,7 @@ impl<F: Field> Header<F> for InternalNode {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Element::alloc(dr, witness)
     }
 }

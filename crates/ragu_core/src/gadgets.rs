@@ -89,6 +89,10 @@ use super::{
     drivers::{Driver, FromDriver},
 };
 
+/// Alias for the concrete rebinding of a [`GadgetKind`] `K` to a driver `D`. This simplifies
+/// the common pattern of accessing `<K as GadgetKind<F>>::Rebind<'dr, D>`.
+pub type Bound<'dr, D, K> = <K as GadgetKind<<D as Driver<'dr>>::F>>::Rebind<'dr, D>;
+
 /// An abstract data type (parameterized by a [`Driver`] type) which
 /// encapsulates wires allocated by the driver along with any corresponding
 /// witness information.
@@ -114,7 +118,7 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     fn map<'new_dr, ND: FromDriver<'dr, 'new_dr, D>>(
         &self,
         ndr: &mut ND,
-    ) -> Result<<Self::Kind as GadgetKind<D::F>>::Rebind<'new_dr, ND::NewDriver>> {
+    ) -> Result<Bound<'new_dr, ND::NewDriver, Self::Kind>> {
         Self::Kind::map_gadget(self, ndr)
     }
 

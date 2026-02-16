@@ -5,7 +5,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
+    gadgets::Bound,
 };
 use ragu_primitives::io::Write;
 
@@ -92,7 +92,7 @@ pub trait Header<F: Field>: Send + Sync + Any {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         dr: &mut D,
         witness: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>;
+    ) -> Result<Bound<'dr, D, Self::Output>>;
 }
 
 /// Trivial header that encodes no data.
@@ -105,7 +105,7 @@ impl<F: Field> Header<F> for () {
     fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         _: &mut D,
         _: DriverValue<D, Self::Data<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ use ff::Field;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
-    gadgets::{GadgetKind, Kind},
+    gadgets::{Bound, Kind},
     maybe::Maybe,
     routines::{Prediction, Routine},
 };
@@ -43,9 +43,9 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
     fn execute<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        input: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
+        input: Bound<'dr, D, Self::Input>,
         aux: DriverValue<D, Self::Aux<'dr>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         let x = input.0;
         let z = input.1;
 
@@ -87,10 +87,8 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
     fn predict<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        input: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-    ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
-    > {
+        input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         let n = 1u64 << R::log2_n();
 
         // Compute inversions once and store as aux data to accelerate execution

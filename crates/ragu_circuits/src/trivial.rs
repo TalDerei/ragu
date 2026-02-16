@@ -8,7 +8,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::GadgetKind,
+    gadgets::Bound,
 };
 
 impl<F: Field> Circuit<F> for () {
@@ -21,7 +21,7 @@ impl<F: Field> Circuit<F> for () {
         &self,
         _: &mut D,
         _: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>>
+    ) -> Result<Bound<'dr, D, Self::Output>>
     where
         Self: 'dr,
     {
@@ -33,7 +33,7 @@ impl<F: Field> Circuit<F> for () {
         _: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<F>>::Rebind<'dr, D>,
+        Bound<'dr, D, Self::Output>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where

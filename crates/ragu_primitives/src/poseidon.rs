@@ -9,7 +9,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Consistent, Gadget, GadgetKind},
+    gadgets::{Bound, Consistent, Gadget},
     routines::{Prediction, Routine},
 };
 
@@ -351,9 +351,9 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
     fn execute<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        mut state: <Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
+        mut state: Bound<'dr, D, Self::Input>,
         _: DriverValue<D, Self::Aux<'dr>>,
-    ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
+    ) -> Result<Bound<'dr, D, Self::Output>> {
         let mut rcs = self.params.round_constants();
 
         let mut round = |dr: &mut D, elems| {
@@ -379,10 +379,8 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
     fn predict<'dr, D: Driver<'dr, F = F>>(
         &self,
         _: &mut D,
-        _: &<Self::Input as GadgetKind<F>>::Rebind<'dr, D>,
-    ) -> Result<
-        Prediction<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>, DriverValue<D, Self::Aux<'dr>>>,
-    > {
+        _: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         Ok(Prediction::Unknown(D::just(|| ())))
     }
 }
