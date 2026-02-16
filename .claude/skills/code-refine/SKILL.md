@@ -1,14 +1,14 @@
 ---
-name: book-refine
-description: Incorporate feedback into book review policies, standards, and infrastructure
+name: code-refine
+description: Incorporate feedback into code review policies, standards, and infrastructure
 user-invocable: true
 ---
 
-# Book Refine
+# Code Refine
 
-Incorporate the user's feedback into the book review system. The feedback is in
+Incorporate the user's feedback into the code review system. The feedback is in
 `$ARGUMENTS` and/or in the preceding conversation context. This skill modifies
-the book review infrastructure itself to make future reviews better.
+the code review infrastructure itself to make future reviews better.
 
 **You MUST use plan mode (EnterPlanMode) for this skill.** Do all analysis and
 auditing first, present a plan for the user's approval, and only then execute.
@@ -19,10 +19,10 @@ Read ALL of these files before doing anything else:
 
 - `.claude/review-shared/writing.md` — Shared writing rules (used by book-review and code-review)
 - `.claude/review-shared/math.md` — Shared math notation rules (used by book-review and code-review)
-- `.claude/book-review/standards.md` — Master standards shared across all book reviewers
-- All files matching `.claude/book-review/*.md` — Per-focus review policies
-- `.claude/skills/book-review/SKILL.md` — Book review orchestration
-- `.claude/skills/book-refine/SKILL.md` — This file
+- `.claude/code-review/standards.md` — Master standards shared across all code reviewers
+- All files matching `.claude/code-review/*.md` — Per-focus review policies
+- `.claude/skills/code-review/SKILL.md` — Code review orchestration
+- `.claude/skills/code-refine/SKILL.md` — This file
 
 ## Step 2: Understand the Feedback
 
@@ -48,12 +48,12 @@ Examples:
 
 | User says | Generalized rule |
 |-----------|-----------------|
-| "I'd write 'the prover constructs' not 'a prover constructs'" | Use definite articles for named protocol roles (the prover, the verifier) |
-| "This section should have come before the definition" | Motivating examples and intuition should precede formal definitions |
-| "The math reviewer missed that alpha was reused" | Check that notation is consistent with prior chapters, not just within the current one |
-| "Stop complaining about sentence fragments in bullet points" | Sentence fragments are acceptable in bullet points when the meaning is clear from the list context |
-| "Don't rewrap it like that, do it like this" | A formatting correction — the user is showing a preferred rewrapping pattern. Add a before/after example to `.claude/book-review/formatting-examples.md` under the appropriate category, and refine the rule in `formatting.md` if the correction reveals a gap. |
-| "You should check that code examples actually match the current API" | (New review dimension: code accuracy. Create `.claude/book-review/code.md`) |
+| "Don't flag this as an unwrap issue, it's inside a test" | `unwrap()` and `expect()` are acceptable in test code (`#[cfg(test)]` modules and `tests/` crates) |
+| "The naming reviewer shouldn't complain about single-letter variables in closures" | Single-letter names are acceptable in short closures and iterator chains where the type provides sufficient context |
+| "You missed that the doc comment says 'evaluate' but the function is called 'eval_at'" | Flag mismatches between doc comment verbs and function names — the doc summary should use the same verb as the function name |
+| "Stop flagging my `as` casts in const contexts" | `as` casts are acceptable in `const` contexts where `try_into()` is not available |
+| "This function is too complex to split — add an exception for synthesis functions" | Functions that orchestrate circuit synthesis may exceed the 50-line guideline when splitting would obscure the constraint structure |
+| "You should also check that `// SAFETY:` comments actually justify the invariant" | (Strengthening an existing rule: don't just check presence of `// SAFETY:`, verify the comment explains soundness) |
 
 If you're not sure how to generalize a specific correction into a principle,
 ask the user. Don't guess — a wrong generalization is worse than none.
@@ -73,12 +73,14 @@ standards as a whole. Look for:
   specific cases of a more general principle? If so, propose replacing them
   with the generalization.
 - **Misplaced rules**: Are any existing rules in the wrong file? A rule in
-  `grammar.md` that's really about document structure belongs in
-  `structure.md`. Flag and propose moves.
+  `documentation.md` that's really about correctness belongs in
+  `correctness.md`. Flag and propose moves.
 - **Scope creep**: Is a policy file accumulating rules outside its stated scope?
   If so, propose splitting or redistributing.
 - **Staleness**: Do any existing rules seem outdated given the user's latest
   feedback? The user's new feedback might implicitly supersede an older rule.
+- **Shared vs specific**: Could the new rule benefit book-review too? If so,
+  it belongs in `.claude/review-shared/` rather than `.claude/code-review/`.
 
 Include any findings from this audit in your plan, even if they go beyond the
 user's immediate feedback. The goal is to keep the policy system coherent as it
@@ -90,12 +92,12 @@ Enter plan mode (EnterPlanMode). Your plan should include:
 
 1. **The generalized principle(s)** extracted from the feedback.
 2. **Where each change goes** and why:
-   - Cross-cutting writing rule (shared with code-review) → `.claude/review-shared/writing.md`
-   - Cross-cutting math rule (shared with code-review) → `.claude/review-shared/math.md`
-   - General book standard (all book reviewers) → `.claude/book-review/standards.md`
-   - Focus-specific rule (one reviewer) → the appropriate `.claude/book-review/*.md`
-   - New review dimension → new `.claude/book-review/{name}.md`
-   - Process/orchestration change → appropriate `.claude/skills/book-*/SKILL.md`
+   - Cross-cutting writing rule (shared with book-review) → `.claude/review-shared/writing.md`
+   - Cross-cutting math rule (shared with book-review) → `.claude/review-shared/math.md`
+   - General code standard (all code reviewers) → `.claude/code-review/standards.md`
+   - Focus-specific rule (one reviewer) → the appropriate `.claude/code-review/*.md`
+   - New review dimension → new `.claude/code-review/{name}.md`
+   - Process/orchestration change → `.claude/skills/code-review/SKILL.md`
    - Learning process change → this file
 3. **Audit findings** — any duplication, contradictions, consolidation
    opportunities, or misplaced rules discovered in Step 4, with proposed fixes.
@@ -103,8 +105,8 @@ Enter plan mode (EnterPlanMode). Your plan should include:
    user to approve or reject each one.
 
 When in doubt between general and specific placement, prefer the more specific
-location. A rule can always be promoted to `.claude/book-review/standards.md` later if it
-turns out to be universal.
+location. A rule can always be promoted to `.claude/code-review/standards.md`
+later if it turns out to be universal.
 
 Wait for user approval before proceeding.
 
@@ -113,10 +115,10 @@ Wait for user approval before proceeding.
 After the user approves the plan:
 
 - Edit the target file(s). Add new rules in the appropriate section.
-- For `.claude/book-review/standards.md`, add to the appropriate existing
+- For `.claude/code-review/standards.md`, add to the appropriate existing
   section or create a new section if none fits.
 - If creating a new policy file, follow the same structure as existing ones
-  (Scope, then themed sections).
+  (Scope, then themed sections with rationale and examples).
 - Execute any consolidation, deduplication, or moves identified in the audit.
 
 ## Step 7: Report

@@ -5,19 +5,15 @@
 Review mathematical content in book chapter markdown files (`book/src/`). Focus
 on correctness, consistency, and clarity of mathematical exposition.
 
+In addition to `.claude/review-shared/math.md` (shared math notation rules that apply
+to all project content), the following book-specific rules apply.
+
 ## Notation
 
 - All notation should be consistent with the KaTeX macros in `book/macros.txt`.
-- Variables and symbols introduced in one section should mean the same thing
-  throughout the chapter. Flag reuse of a symbol for a different meaning.
-- Flag notation used before it is defined.
-- Flag notation that conflicts with standard usage in the cryptography or
-  algebraic geometry literature without explicit redefinition.
-- Use KaTeX (`$...$`) for all mathematical symbols. Do not use raw Unicode
-  characters (e.g., ⊥, ∈, ∀, →) for symbols that have LaTeX equivalents.
-  When a LaTeX command name is verbose or unclear, define a short macro in
-  `book/macros.txt` (e.g., `\nil` for `\bot`). The only exception is
-  contexts where KaTeX cannot render, such as mermaid diagram labels.
+- When a LaTeX command name is verbose or unclear, define a short macro in
+  `book/macros.txt` (e.g., `\nil` for `\bot`). The only exception is contexts
+  where KaTeX cannot render, such as mermaid diagram labels.
 
 ## Definitions and Claims
 
