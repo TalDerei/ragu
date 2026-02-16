@@ -67,7 +67,7 @@ must satisfy a set of requirements:
   not a `D::Wire` should implement `Send`, so that when `D::Wire: Send` the
   entire gadget can cross thread boundaries safely. Because gadgets usually do
   not contain anything besides wires and witness data (which must be `Send` by
-  the definition of [`Maybe<T: Send>`][maybe-trait]), this property almost
+  the definition of [`Perhaps<T: Send>`][perhaps-trait]), this property almost
   always holds.
 * **They must be `'static`.** Specifically, when the driver's lifetime `'dr` is
   the static lifetime `'static` the gadget itself must be `'static`. This
@@ -120,7 +120,7 @@ will produce a helpful error because those types don't implement `Gadget`.
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
 [driver-trait]: ragu_core::drivers::Driver
 [gadget-thread-guarantees]: ragu_core::gadgets::GadgetKind#safety
-[maybe-trait]: ragu_core::maybe::Maybe
+[perhaps-trait]: ragu_core::perhaps::Perhaps
 [map-gadget-method]: ragu_core::gadgets::GadgetKind::map_gadget
 [fromdriver-trait]: ragu_core::drivers::FromDriver
 

@@ -46,7 +46,7 @@ use ragu_core::{
         emulator::{Emulator, Wireless},
     },
     gadgets::{Bound, Consistent, Gadget},
-    maybe::Empty,
+    perhaps::Empty,
 };
 
 use alloc::vec::Vec;
@@ -86,7 +86,7 @@ struct StageWireInjector<'a, 'dr, D: Driver<'dr>> {
     _marker: PhantomData<&'dr ()>,
 }
 
-impl<'dr, D: Driver<'dr>> FromDriver<'_, 'dr, Emulator<Wireless<D::MaybeKind, D::F>>>
+impl<'dr, D: Driver<'dr>> FromDriver<'_, 'dr, Emulator<Wireless<D::PerhapsKind, D::F>>>
     for StageWireInjector<'_, 'dr, D>
 {
     type NewDriver = D;
@@ -142,7 +142,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
         self,
         witness: DriverValue<D, S::Witness<'source>>,
     ) -> Result<Bound<'dr, D, S::OutputKind>> {
-        let mut emulator: Emulator<Wireless<D::MaybeKind, D::F>> = Emulator::wireless();
+        let mut emulator: Emulator<Wireless<D::PerhapsKind, D::F>> = Emulator::wireless();
         let computed_gadget = self.stage.witness(&mut emulator, witness)?;
 
         let mut injector = StageWireInjector::<D> {

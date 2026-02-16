@@ -61,7 +61,7 @@ types:
 
 ```rust
 use ff::Field;
-use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
+use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, perhaps::Perhaps};
 use ragu_pcd::header::{Header, Suffix};
 use ragu_primitives::Element;
 use ragu_primitives::poseidon::Sponge;

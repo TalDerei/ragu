@@ -120,7 +120,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
-    maybe::{Always, MaybeKind},
+    perhaps::{Always, PerhapsKind},
 };
 use ragu_primitives::io::Write;
 
@@ -321,7 +321,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     fn rx_configured(&self, witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>> {
         let values = {
             let mut dr = Emulator::extractor();
-            let out = self.witness(&mut dr, Always::maybe_just(|| witness))?;
+            let out = self.witness(&mut dr, Always::perhaps_just(|| witness))?;
             dr.wires(&out)?
         };
 

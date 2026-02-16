@@ -9,7 +9,7 @@ use ragu_core::{
     Error, Result,
     drivers::{DirectSum, Driver, DriverTypes},
     gadgets::{Bound, Gadget},
-    maybe::{Always, MaybeKind},
+    perhaps::{Always, PerhapsKind},
     routines::{Prediction, Routine},
 };
 
@@ -68,7 +68,7 @@ impl<F: Field> Simulator<F> {
         f: impl FnOnce(&mut Self, Always<W>) -> Result<()>,
     ) -> Result<Self> {
         let mut dr = Self::new();
-        let witness = Always::maybe_just(|| witness);
+        let witness = Always::perhaps_just(|| witness);
         f(&mut dr, witness)?;
 
         Ok(dr)
@@ -78,7 +78,7 @@ impl<F: Field> Simulator<F> {
 impl<F: Field> DriverTypes for Simulator<F> {
     type ImplField = F;
     type ImplWire = F;
-    type MaybeKind = Always<()>;
+    type PerhapsKind = Always<()>;
     type LCadd = DirectSum<F>;
     type LCenforce = DirectSum<F>;
 }

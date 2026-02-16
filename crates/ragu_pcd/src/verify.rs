@@ -6,7 +6,7 @@ use ragu_circuits::{
     polynomials::{Rank, structured},
     registry::CircuitIndex,
 };
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Result, drivers::emulator::Emulator, perhaps::Perhaps};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 

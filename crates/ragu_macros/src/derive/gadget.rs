@@ -160,7 +160,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
             FieldType::Value => {
                 let driver_id = &driver.ident;
                 quote! { {
-                    use #ragu_core_path::maybe::Maybe;
+                    use #ragu_core_path::perhaps::Perhaps;
                     #driver_id::just(|| self.#id.view().take().clone())
                 } }
             }
@@ -229,7 +229,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         let init = match ty {
             FieldType::Value => quote! {
                 {
-                    use #ragu_core_path::maybe::Maybe;
+                    use #ragu_core_path::perhaps::Perhaps;
 
                     let tmp = ND::just(|| this.#id.view().take().clone());
                     is_send(&tmp);
@@ -385,7 +385,7 @@ fn test_gadget_derive_boolean_customdriver() {
                     Boolean {
                         wire: ::core::clone::Clone::clone(&self.wire),
                         value: {
-                            use ::ragu_core::maybe::Maybe;
+                            use ::ragu_core::perhaps::Perhaps;
                             MyD::just(|| self.value.view().take().clone())
                         },
                     }
@@ -414,7 +414,7 @@ fn test_gadget_derive_boolean_customdriver() {
                     Ok(Boolean {
                         wire: ::ragu_core::drivers::FromDriver::convert_wire(ndr, &this.wire)?,
                         value: {
-                            use ::ragu_core::maybe::Maybe;
+                            use ::ragu_core::perhaps::Perhaps;
 
                             let tmp = ND::just(|| this.value.view().take().clone());
                             is_send(&tmp);
@@ -472,7 +472,7 @@ fn test_gadget_derive() {
                 fn clone(&self) -> Self {
                     MyGadget {
                         witness_field: {
-                            use ::ragu_core::maybe::Maybe;
+                            use ::ragu_core::perhaps::Perhaps;
                             MyD::just(|| self.witness_field.view().take().clone())
                         },
                         wire_field: ::core::clone::Clone::clone(&self.wire_field),
@@ -501,7 +501,7 @@ fn test_gadget_derive() {
 
                     Ok(MyGadget {
                         witness_field: {
-                            use ::ragu_core::maybe::Maybe;
+                            use ::ragu_core::perhaps::Perhaps;
 
                             let tmp = ND::just(|| this.witness_field.view().take().clone());
                             is_send(&tmp);

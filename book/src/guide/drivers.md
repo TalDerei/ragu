@@ -37,27 +37,27 @@ runtime overhead.
 
 ### 2. Witness generation versus constraint synthesis
 
-Drivers specify a `MaybeKind` associated type in the `DriverTypes` trait,
+Drivers specify a `PerhapsKind` associated type in the `DriverTypes` trait,
 which determines how witness information is represented. The
-`DriverValue<D, T>` is a type alias for the concrete `Maybe<T>` type for
+`DriverValue<D, T>` is a type alias for the concrete `Perhaps<T>` type for
 driver `D`, where `T` is the type of the witness data being wrapped. The
-alias resolves to different concrete types based on the driver's `MaybeKind`:
+alias resolves to different concrete types based on the driver's `PerhapsKind`:
 
 **SXY Driver**: Builds the circuit structure without computing witness values.
-Sets `MaybeKind = Empty` (witness closures passed to `driver.alloc()` and
+Sets `PerhapsKind = Empty` (witness closures passed to `driver.alloc()` and
 `driver.mul()` are never called, compiler optimizes them away) and
 `Wire = Wire<F>` (tracks wire assignments as powers of X and constraints on
 those wires as powers of Y). Together these construct the polynomial *S(X,Y)*
 encoding.
 
 **RX Driver**: Generates witness values without tracking circuit structure.
-Sets `MaybeKind = Always<T>` (witness closures are always called to compute
+Sets `PerhapsKind = Always<T>` (witness closures are always called to compute
 field element values), and `Wire = ()` (no wire tracking needed). Each
 operation invokes its witness closure and stores the resulting field elements
 in arrays, constructing the witness polynomial *R(X)*.
 
 This type-level parameterization ensures that witness computation is only
-executed when the driver's `MaybeKind` requires it.
+executed when the driver's `PerhapsKind` requires it.
 
 ### 3. Different synthesis contexts
 
@@ -72,16 +72,16 @@ a *mode* that determines whether it tracks wire assignments:
 - `Emulator::execute()` - Always has witness, no wire extraction
 - `Emulator::extractor()` - Full tracking, enables wire value extraction
 
-## The `Maybe` Monad
+## The `Perhaps` Monad
 
-The `Maybe<T>` monad allows the compiler to statically reason about the
+The `Perhaps<T>` monad allows the compiler to statically reason about the
 existence of witness data for a concrete driver, allowing the same code to be
 interpreted whether witness values are present or not.
 
 Traditionally, most zkSNARK toolkits bundle witness generation and constraint
 synthesis. This means every time you synthesize constraints, witness
 computation code executes even when witness values aren't needed, or vice
-versa. Ragu maintains separation of concerns through the `Maybe<T>`
+versa. Ragu maintains separation of concerns through the `Perhaps<T>`
 abstraction. In some frameworks, circuit synthesis alone accounts for 25-30%
 of the proof generation time (specifically constraint synthesis and inlining
 linear combinations; the R1CS to QAP reduction is an additional smaller
@@ -93,7 +93,7 @@ hot path. We need to optimize polynomial reductions, but without storing
 gigantic polynomials with all coefficients and indeterminates in memory.
 
 When writing gadgets with the `GadgetKind` trait, you'll work with
-`Maybe<T>` values - see the [GadgetKind](./gadgets/gadgetkind.md) section for
+`Perhaps<T>` values - see the [GadgetKind](./gadgets/gadgetkind.md) section for
 practical examples of how this abstraction is used.
 
 ## Available Drivers

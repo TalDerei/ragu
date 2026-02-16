@@ -123,7 +123,7 @@ mod tests {
         Result,
         drivers::{Driver, emulator::Emulator},
         gadgets::{Gadget, Kind},
-        maybe::{Always, Maybe, MaybeKind},
+        perhaps::{Always, Perhaps, PerhapsKind},
     };
     use ragu_pasta::Fp as F;
     use ragu_primitives::{
@@ -147,7 +147,7 @@ mod tests {
         let dr = &mut dr;
         let gadget = MySillyGadget {
             blah: (1u64..=4)
-                .map(|n| Element::alloc(dr, Always::maybe_just(|| F::from(n))))
+                .map(|n| Element::alloc(dr, Always::perhaps_just(|| F::from(n))))
                 .try_collect_fixed()?,
         };
 
@@ -181,7 +181,7 @@ mod tests {
         let dr = &mut dr;
         let gadget = MySillyGadget {
             blah: (1u64..=4)
-                .map(|n| Element::alloc(dr, Always::maybe_just(|| F::from(n))))
+                .map(|n| Element::alloc(dr, Always::perhaps_just(|| F::from(n))))
                 .try_collect_fixed()?,
         };
 

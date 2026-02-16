@@ -24,7 +24,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_primitives::Element;
 

@@ -8,7 +8,7 @@ use ragu_circuits::{
 };
 use ragu_core::{
     drivers::Driver,
-    maybe::{Always, Maybe},
+    perhaps::{Always, Perhaps},
 };
 use ragu_primitives::Element;
 
@@ -159,7 +159,7 @@ impl<C: Cycle> Challenges<C> {
         pre_beta: &Element<'dr, D>,
     ) -> Self
     where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+        D: Driver<'dr, F = C::CircuitField, PerhapsKind = Always<()>>,
     {
         Self {
             w: *w.value().take(),

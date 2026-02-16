@@ -1,31 +1,29 @@
-use super::{Maybe, MaybeCast, MaybeKind};
+use super::{Perhaps, PerhapsCast, PerhapsKind, Wrap};
 
-/// The kind of `Maybe<T>` that represents a value that does not exist. This is
+/// The kind of `Perhaps<T>` that represents a value that does not exist. This is
 /// a zero-sized type.
 pub struct Empty;
 
-impl MaybeKind for Empty {
+impl PerhapsKind for Empty {
     type Rebind<T: Send> = Empty;
 
-    fn empty<T: Send>() -> Self::Rebind<T> {
+    fn empty<T: Send>() -> Wrap<Self, T> {
         Empty
     }
 }
 
-impl<T: Send> Maybe<T> for Empty {
+impl<T: Send> Perhaps<T> for Empty {
     type Kind = Empty;
 
-    fn just<R: Send>(_: impl FnOnce() -> R) -> <Self::Kind as MaybeKind>::Rebind<R> {
+    fn just<R: Send>(_: impl FnOnce() -> R) -> Wrap<Self::Kind, R> {
         Empty
     }
-    fn with<R: Send, E>(
-        _: impl FnOnce() -> Result<R, E>,
-    ) -> Result<<Self::Kind as MaybeKind>::Rebind<R>, E> {
+    fn with<R: Send, E>(_: impl FnOnce() -> Result<R, E>) -> Result<Wrap<Self::Kind, R>, E> {
         Ok(Empty)
     }
     fn take(self) -> T {
         // This panic is guaranteed to occur at compile-time if this function is
-        // invoked. (`Maybe<T>` is not dyn compatible so dynamic dispatch will
+        // invoked. (`Perhaps<T>` is not dyn compatible so dynamic dispatch will
         // not provoke the evaluation of the `const` expression itself.) As long
         // as the user does not call `Empty::take()` then this expression will
         // also be optimized away after monomorphization and dead-code
@@ -39,17 +37,17 @@ impl<T: Send> Maybe<T> for Empty {
         // unwanted compile-time error in the worst case.
         const {
             panic!(
-                "Empty::take() called; you should not call Maybe<T>::take() outside of a context permitted by the API providing the Maybe<T> concrete type"
+                "Empty::take() called; you should not call Perhaps<T>::take() outside of a context permitted by the API providing the Perhaps<T> concrete type"
             );
         }
     }
-    fn map<U: Send, F>(self, _: F) -> <Self::Kind as MaybeKind>::Rebind<U>
+    fn map<U: Send, F>(self, _: F) -> Wrap<Self::Kind, U>
     where
         F: FnOnce(T) -> U,
     {
         Empty
     }
-    fn into<U: Send>(self) -> <Self::Kind as MaybeKind>::Rebind<U>
+    fn into<U: Send>(self) -> Wrap<Self::Kind, U>
     where
         T: Into<U>,
     {
@@ -61,25 +59,25 @@ impl<T: Send> Maybe<T> for Empty {
     {
         Empty
     }
-    fn and_then<U: Send, F>(self, _: F) -> <Self::Kind as MaybeKind>::Rebind<U>
+    fn and_then<U: Send, F>(self, _: F) -> Wrap<Self::Kind, U>
     where
-        F: FnOnce(T) -> <Self::Kind as MaybeKind>::Rebind<U>,
+        F: FnOnce(T) -> Wrap<Self::Kind, U>,
     {
         Empty
     }
-    fn view(&self) -> <Self::Kind as MaybeKind>::Rebind<&T>
+    fn view(&self) -> Wrap<Self::Kind, &T>
     where
         T: Sync,
     {
         Empty
     }
-    fn view_mut(&mut self) -> <Self::Kind as MaybeKind>::Rebind<&mut T> {
+    fn view_mut(&mut self) -> Wrap<Self::Kind, &mut T> {
         Empty
     }
 
     fn cast<R>(self) -> T::Output
     where
-        T: MaybeCast<R, Self::Kind>,
+        T: PerhapsCast<R, Self::Kind>,
     {
         T::empty()
     }

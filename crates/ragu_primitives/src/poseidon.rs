@@ -389,7 +389,7 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
 mod tests {
     use super::*;
     use ragu_arithmetic::Cycle;
-    use ragu_core::maybe::Maybe;
+    use ragu_core::perhaps::Perhaps;
     use ragu_pasta::{Fp, Pasta};
 
     type Simulator = crate::Simulator<Fp>;

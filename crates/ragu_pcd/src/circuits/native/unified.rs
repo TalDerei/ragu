@@ -24,7 +24,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Consistent, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_primitives::{Element, Point, io::Write};
 
@@ -370,7 +370,7 @@ impl<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'a, '
 mod tests {
     use super::*;
     use ragu_circuits::polynomials::R;
-    use ragu_core::{drivers::emulator::Emulator, maybe::Empty};
+    use ragu_core::{drivers::emulator::Emulator, perhaps::Empty};
     use ragu_pasta::Pasta;
 
     #[test]

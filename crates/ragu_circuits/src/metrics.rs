@@ -10,7 +10,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
-    maybe::Empty,
+    perhaps::Empty,
     routines::Routine,
 };
 use ragu_primitives::GadgetExt;
@@ -47,7 +47,7 @@ impl<F: Field> FreshB<bool> for Counter<F> {
 }
 
 impl<F: Field> DriverTypes for Counter<F> {
-    type MaybeKind = Empty;
+    type PerhapsKind = Empty;
     type ImplField = F;
     type ImplWire = ();
     type LCadd = ();

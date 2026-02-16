@@ -7,7 +7,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, DriverValue, FromDriver},
     gadgets::{Bound, Gadget, GadgetKind},
-    maybe::Empty,
+    perhaps::Empty,
 };
 
 use core::ops::Deref;
@@ -34,7 +34,7 @@ pub struct DemotedDriver<'dr, D: Driver<'dr>> {
 }
 
 impl<'dr, D: Driver<'dr>> DriverTypes for DemotedDriver<'dr, D> {
-    type MaybeKind = Empty;
+    type PerhapsKind = Empty;
     type LCadd = ();
     type LCenforce = ();
     type ImplField = D::F;

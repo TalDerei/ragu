@@ -20,7 +20,7 @@ extern crate alloc;
 pub mod drivers;
 mod errors;
 pub mod gadgets;
-pub mod maybe;
+pub mod perhaps;
 pub mod routines;
 
 pub use errors::{Error, Result};

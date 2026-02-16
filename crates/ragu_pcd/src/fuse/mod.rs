@@ -20,7 +20,7 @@ use ragu_circuits::{
     polynomials::{Rank, structured},
     registry::CircuitIndex,
 };
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Result, drivers::emulator::Emulator, perhaps::Perhaps};
 use ragu_primitives::{GadgetExt, Point, poseidon::Sponge, vec::CollectFixed};
 use rand::CryptoRng;
 

@@ -47,7 +47,7 @@ impl<F: Field> Circuit<F> for () {
 mod tests {
     use crate::Circuit;
     use ragu_core::drivers::emulator::{Emulator, Wired};
-    use ragu_core::maybe::{Always, MaybeKind};
+    use ragu_core::perhaps::{Always, PerhapsKind};
     use ragu_pasta::Fp;
 
     #[test]
@@ -58,13 +58,13 @@ mod tests {
 
         assert!(
             circuit
-                .instance(&mut dr, Always::maybe_just(|| instance))
+                .instance(&mut dr, Always::perhaps_just(|| instance))
                 .is_ok()
         );
 
         assert!(
             circuit
-                .witness(&mut dr, Always::maybe_just(|| instance))
+                .witness(&mut dr, Always::perhaps_just(|| instance))
                 .is_ok()
         );
     }

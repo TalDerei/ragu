@@ -13,7 +13,7 @@ pub(crate) mod tests {
     use ragu_core::{
         drivers::emulator::{Emulator, Wireless},
         gadgets::{Bound, Gadget},
-        maybe::Empty,
+        perhaps::Empty,
     };
 
     pub(crate) type R = ragu_circuits::polynomials::R<13>;

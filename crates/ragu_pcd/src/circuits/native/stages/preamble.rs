@@ -8,7 +8,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Consistent, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_primitives::{
     Boolean, Element, GadgetExt,
@@ -203,7 +203,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
     {
         let header_data = D::with(|| {
             use ragu_core::drivers::emulator::{Emulator, Wireless};
-            let emulator = &mut Emulator::<Wireless<D::MaybeKind, D::F>>::wireless();
+            let emulator = &mut Emulator::<Wireless<D::PerhapsKind, D::F>>::wireless();
 
             let output = H::encode(emulator, header_data)?;
             let output = padded::for_header::<H, HEADER_SIZE, _>(emulator, output)?;

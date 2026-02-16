@@ -68,7 +68,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
-    maybe::Empty,
+    perhaps::Empty,
     routines::Routine,
 };
 use ragu_primitives::GadgetExt;
@@ -159,13 +159,13 @@ impl<F: Field, R: Rank> FreshB<Option<WireEval<F>>> for Evaluator<F, R> {
 
 /// Configures associated types for the [`Evaluator`] driver.
 ///
-/// - `MaybeKind = Empty`: No witness values are needed; we only evaluate the
+/// - `PerhapsKind = Empty`: No witness values are needed; we only evaluate the
 ///   polynomial structure.
 /// - `LCadd` / `LCenforce`: Use [`WireEvalSum`] to accumulate linear
 ///   combinations as immediate field element sums.
 /// - `ImplWire`: [`WireEval`] represents wires as evaluated monomials.
 impl<F: Field, R: Rank> DriverTypes for Evaluator<F, R> {
-    type MaybeKind = Empty;
+    type PerhapsKind = Empty;
     type LCadd = WireEvalSum<F>;
     type LCenforce = WireEvalSum<F>;
     type ImplField = F;

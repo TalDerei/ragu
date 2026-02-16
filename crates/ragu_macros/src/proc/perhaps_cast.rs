@@ -18,22 +18,22 @@ pub fn evaluate(input: LitInt) -> Result<TokenStream> {
     })
 }
 
-/// Generate a single MaybeCast implementation for a tuple of the given size.
+/// Generate a single PerhapsCast implementation for a tuple of the given size.
 fn generate_impl_for_size(size: usize) -> TokenStream {
     let types: Vec<_> = (0..size).map(|i| format_ident!("T{}", i)).collect();
     let indices = (0..size).map(Index::from);
     let empties = std::iter::repeat_n(quote! { K::empty() }, size);
 
     quote! {
-        impl<#(#types: Send,)* K: MaybeKind> MaybeCast<(#(#types,)*), K> for (#(#types,)*) {
-            type Output = (#(K::Rebind<#types>,)*);
+        impl<#(#types: Send,)* K: PerhapsKind> PerhapsCast<(#(#types,)*), K> for (#(#types,)*) {
+            type Output = (#(Wrap<K, #types>,)*);
 
             fn empty() -> Self::Output {
                 (#(#empties,)*)
             }
 
             fn cast(self) -> Self::Output {
-                (#(K::maybe_just(|| self.#indices),)*)
+                (#(K::perhaps_just(|| self.#indices),)*)
             }
         }
     }
@@ -43,15 +43,15 @@ fn generate_impl_for_size(size: usize) -> TokenStream {
 fn test_generate_2tuple() {
     let output = generate_impl_for_size(2);
     let expected = quote! {
-        impl<T0: Send, T1: Send, K: MaybeKind> MaybeCast<(T0, T1,), K> for (T0, T1,) {
-            type Output = (K::Rebind<T0>, K::Rebind<T1>,);
+        impl<T0: Send, T1: Send, K: PerhapsKind> PerhapsCast<(T0, T1,), K> for (T0, T1,) {
+            type Output = (Wrap<K, T0>, Wrap<K, T1>,);
 
             fn empty() -> Self::Output {
                 (K::empty(), K::empty(),)
             }
 
             fn cast(self) -> Self::Output {
-                (K::maybe_just(|| self.0), K::maybe_just(|| self.1),)
+                (K::perhaps_just(|| self.0), K::perhaps_just(|| self.1),)
             }
         }
     };

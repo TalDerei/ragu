@@ -238,7 +238,7 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 ///   converted using [`FromDriver::convert_wire`].
 /// * `#[ragu(value)]` for fields that represent driver-specific values, which
 ///   are converted or cloned using
-///   [`DriverValue::just`](crate::maybe::Maybe::just).
+///   [`DriverValue::just`](crate::perhaps::Perhaps::just).
 /// * `#[ragu(gadget)]` can be used to explicitly mark gadget fields, but is
 ///   optional since this is the default behavior.
 /// * `#[ragu(phantom)]` for `PhantomData` fields.

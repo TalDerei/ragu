@@ -19,7 +19,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::Gadget,
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 
 use alloc::vec::Vec;
@@ -251,7 +251,7 @@ pub fn extract_endoscalar<F: PrimeField>(value: F) -> Uendo {
 
 #[cfg(test)]
 mod tests {
-    use super::{Element, Endoscalar, Maybe, Point};
+    use super::{Element, Endoscalar, Perhaps, Point};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::{CurveAffine, CurveExt, Uendo};

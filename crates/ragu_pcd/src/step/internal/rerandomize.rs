@@ -80,7 +80,7 @@ fn test_rerandomize_consistency() {
         Result,
         drivers::{Driver, DriverValue},
         gadgets::{Bound, Kind},
-        maybe::Maybe,
+        perhaps::Perhaps,
     };
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::Element;

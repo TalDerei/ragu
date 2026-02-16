@@ -36,7 +36,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::Driver,
-    maybe::{Always, Maybe},
+    perhaps::{Always, Perhaps},
 };
 use ragu_primitives::{Element, vec::FixedVec};
 use rand::CryptoRng;
@@ -60,7 +60,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         nu_prime: &Element<'dr, D>,
     ) -> Result<proof::AB<C, R>>
     where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+        D: Driver<'dr, F = C::CircuitField, PerhapsKind = Always<()>>,
     {
         let mu_prime = *mu_prime.value().take();
         let nu_prime = *nu_prime.value().take();

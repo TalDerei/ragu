@@ -5,7 +5,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{

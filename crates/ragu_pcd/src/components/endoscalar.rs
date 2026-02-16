@@ -27,7 +27,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_primitives::{
     Element, Endoscalar, Point, compute_endoscalar,
@@ -336,7 +336,7 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::emulator::{Emulator, Wired},
-        maybe::Maybe,
+        perhaps::Perhaps,
     };
     use ragu_pasta::{Ep, EpAffine, Fp, Fq};
     use ragu_primitives::{Endoscalar, vec::Len};

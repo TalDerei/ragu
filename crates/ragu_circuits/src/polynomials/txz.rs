@@ -5,7 +5,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
     routines::{Prediction, Routine},
 };
 use ragu_primitives::Element;

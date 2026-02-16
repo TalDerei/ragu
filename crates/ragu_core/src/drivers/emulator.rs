@@ -15,7 +15,7 @@
 //! Whereas in [`Wired`] mode, the emulator tracks wire assignments which can
 //! be extracted afterwards.
 //!
-//! The [`Wireless`] mode is parameterized by a [`MaybeKind`] to indicate
+//! The [`Wireless`] mode is parameterized by a [`PerhapsKind`] to indicate
 //! witness availability:
 //!
 //! * `Wireless<Empty, F>`: used mostly for wire counting and other static
@@ -34,7 +34,7 @@
 //! Sometimes, witness availability depends on other drivers' behavior, such as
 //! when invoking an [`Emulator`] within generic circuit code itself. In such
 //! cases, [`Emulator::wireless`] can be used to create wireless emulators
-//! parameterized by [`MaybeKind`].
+//! parameterized by [`PerhapsKind`].
 //!
 //! ### Wire Extraction
 //!
@@ -75,15 +75,15 @@ use crate::{
     Result,
     drivers::{Coeff, DirectSum, Driver, DriverTypes, FromDriver, LinearExpression},
     gadgets::{Bound, Gadget, GadgetKind},
-    maybe::{Always, Empty, MaybeKind},
+    perhaps::{Always, Empty, PerhapsKind, Wrap},
     routines::{Prediction, Routine},
 };
 
 /// Mode that an [`Emulator`] may be running in; usually either [`Wired`] or
 /// [`Wireless`].
 pub trait Mode {
-    /// Equal to the resulting [`Emulator`]'s [`DriverTypes::MaybeKind`].
-    type MaybeKind: MaybeKind;
+    /// Equal to the resulting [`Emulator`]'s [`DriverTypes::PerhapsKind`].
+    type PerhapsKind: PerhapsKind;
 
     /// Equal to the resulting [`Emulator`]'s [`DriverTypes::ImplField`].
     type F: Field;
@@ -100,7 +100,7 @@ pub trait Mode {
 
 /// Mode for an [`Emulator`] that tracks wire assignments.
 ///
-/// Wired mode always has witness availability (i.e., `MaybeKind = Always<()>`).
+/// Wired mode always has witness availability (i.e., `PerhapsKind = Always<()>`).
 pub struct Wired<F: Field>(PhantomData<F>);
 
 /// Container for a [`Field`] element representing a wire assignment.
@@ -170,7 +170,7 @@ impl<F: Field> LinearExpression<WiredValue<F>, F> for WiredDirectSum<F> {
 }
 
 impl<F: Field> Mode for Wired<F> {
-    type MaybeKind = Always<()>;
+    type PerhapsKind = Always<()>;
     type F = F;
     type Wire = WiredValue<F>;
     type LCadd = WiredDirectSum<F>;
@@ -178,10 +178,10 @@ impl<F: Field> Mode for Wired<F> {
 }
 
 /// Mode for an [`Emulator`] that does not track wire assignments.
-pub struct Wireless<M: MaybeKind, F: Field>(PhantomData<(M, F)>);
+pub struct Wireless<M: PerhapsKind, F: Field>(PhantomData<(M, F)>);
 
-impl<M: MaybeKind, F: Field> Mode for Wireless<M, F> {
-    type MaybeKind = M;
+impl<M: PerhapsKind, F: Field> Mode for Wireless<M, F> {
+    type PerhapsKind = M;
     type F = F;
     type Wire = ();
     type LCadd = ();
@@ -246,7 +246,7 @@ impl<F: Field> Emulator<Wired<F>> {
     }
 }
 
-impl<M: MaybeKind, F: Field> Emulator<Wireless<M, F>> {
+impl<M: PerhapsKind, F: Field> Emulator<Wireless<M, F>> {
     /// Creates a new [`Emulator`] driver in [`Wireless`] mode, parameterized on
     /// the existence of a witness.
     pub fn wireless() -> Self {
@@ -285,21 +285,21 @@ impl<M: Mode<F = F>, F: Field> Emulator<M> {
     fn with<R, W: Send>(
         &mut self,
         witness: W,
-        f: impl FnOnce(&mut Self, <M::MaybeKind as MaybeKind>::Rebind<W>) -> Result<R>,
+        f: impl FnOnce(&mut Self, Wrap<M::PerhapsKind, W>) -> Result<R>,
     ) -> Result<R> {
-        f(self, M::MaybeKind::maybe_just(|| witness))
+        f(self, M::PerhapsKind::perhaps_just(|| witness))
     }
 }
 
 impl<M: Mode> DriverTypes for Emulator<M> {
     type ImplField = M::F;
     type ImplWire = M::Wire;
-    type MaybeKind = M::MaybeKind;
+    type PerhapsKind = M::PerhapsKind;
     type LCadd = M::LCadd;
     type LCenforce = M::LCenforce;
 }
 
-impl<'dr, M: MaybeKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
+impl<'dr, M: PerhapsKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
     type F = F;
     type Wire = ();
     const ONE: Self::Wire = ();
@@ -398,7 +398,7 @@ fn short_circuit_routine<'dr, D: Driver<'dr>, R: Routine<D::F> + 'dr>(
 
 /// Conversion utility useful for passing wireless gadgets into
 /// [`Routine::predict`] to fulfill type system obligations.
-impl<'dr, D: Driver<'dr>> FromDriver<'dr, '_, D> for Emulator<Wireless<D::MaybeKind, D::F>> {
+impl<'dr, D: Driver<'dr>> FromDriver<'dr, '_, D> for Emulator<Wireless<D::PerhapsKind, D::F>> {
     type NewDriver = Self;
 
     fn convert_wire(&mut self, _: &D::Wire) -> Result<()> {
@@ -411,7 +411,7 @@ mod tests {
     use super::*;
     use crate::Result;
     use crate::drivers::{Coeff, Driver, LinearExpression};
-    use crate::maybe::Always;
+    use crate::perhaps::Always;
     use ff::Field;
     use ragu_pasta::Fp;
 
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn wireless_counter_static_analysis() -> Result<()> {
-        let mut dr = Emulator::<Wireless<crate::maybe::Empty, F>>::counter();
+        let mut dr = Emulator::<Wireless<crate::perhaps::Empty, F>>::counter();
 
         let () = dr.alloc(|| Ok(Coeff::One))?;
 

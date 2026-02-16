@@ -9,7 +9,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Consistent, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 
 use alloc::vec::Vec;

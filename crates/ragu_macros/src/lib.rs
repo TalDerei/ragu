@@ -96,16 +96,16 @@ pub fn derive_consistent(input: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 #[allow(unused_imports)]
-use ragu_core::maybe::MaybeCast as _;
+use ragu_core::perhaps::PerhapsCast as _;
 
-/// Generate `ragu_core::maybe::MaybeCast` implementations for tuples of sizes 2
+/// Generate `ragu_core::perhaps::PerhapsCast` implementations for tuples of sizes 2
 /// through a given maximum size (inclusive).
 ///
 /// # Example
-/// `ragu_macros::impl_maybe_cast_tuple!(4);` generates implementations for
+/// `ragu_macros::impl_perhaps_cast_tuple!(4);` generates implementations for
 /// tuples of sizes 2, 3, and 4.
 #[proc_macro]
-pub fn impl_maybe_cast_tuple(input: TokenStream) -> TokenStream {
+pub fn impl_perhaps_cast_tuple(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitInt);
-    macro_body(|| proc::maybe_cast::evaluate(input))
+    macro_body(|| proc::perhaps_cast::evaluate(input))
 }

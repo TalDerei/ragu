@@ -27,7 +27,7 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
 impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
     type ImplField = F;
     type ImplWire = ();
-    type MaybeKind = crate::maybe::Empty;
+    type PerhapsKind = crate::perhaps::Empty;
     type LCadd = ();
     type LCenforce = ();
 }

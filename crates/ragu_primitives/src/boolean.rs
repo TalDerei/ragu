@@ -9,7 +9,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Consistent, Gadget, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 
 use alloc::{vec, vec::Vec};
@@ -18,7 +18,7 @@ use crate::{
     Element, GadgetExt,
     io::{Buffer, Write},
     promotion::{Demoted, Promotion},
-    util::InternalMaybe,
+    util::InternalPerhaps,
 };
 
 /// Represents a wire that is constrained to be zero or one, along with its
@@ -376,7 +376,7 @@ fn test_multipack() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ragu_core::maybe::Maybe;
+    use ragu_core::perhaps::Perhaps;
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;

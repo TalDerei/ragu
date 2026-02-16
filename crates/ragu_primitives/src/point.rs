@@ -12,7 +12,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Consistent, Gadget},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 
 use core::marker::PhantomData;

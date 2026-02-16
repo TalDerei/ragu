@@ -270,7 +270,7 @@ mod tests {
     use super::*;
     use ff::Field;
     use ragu_circuits::polynomials::{R, structured};
-    use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
+    use ragu_core::{drivers::emulator::Emulator, perhaps::Perhaps};
     use ragu_pasta::Fp;
     use ragu_primitives::{Simulator, vec::CollectFixed};
     use rand::SeedableRng;

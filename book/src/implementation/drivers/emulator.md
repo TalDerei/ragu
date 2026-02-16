@@ -22,7 +22,7 @@ The [`Emulator`][emulator-type] operates in two modes:
 
 - **[`Wireless`][wireless-marker]**: The `Wire` type is `()`, so nothing about
   wire assignments is preserved. This mode is parameterized by a
-  [`MaybeKind`][maybekind-trait] to indicate witness availability.
+  [`PerhapsKind`][perhapskind-trait] to indicate witness availability.
 
 - **[`Wired`][wired-marker]**: The `Wire` type is
   [`WiredValue<F>`][wired-value], which tracks the assignments that the
@@ -35,7 +35,7 @@ The [`Emulator`][emulator-type] operates in two modes:
 |---|---|---|---|
 | [`Emulator::counter`][emulator-counter] | `Wireless<Empty, F>` | `()` | Wire counting, static analysis |
 | [`Emulator::execute`][emulator-execute] | `Wireless<Always<()>, F>` | `()` | Native witness execution |
-| [`Emulator::wireless`][emulator-wireless] | `Wireless<M, F>` | `()` | Generic (parameterized `MaybeKind`) |
+| [`Emulator::wireless`][emulator-wireless] | `Wireless<M, F>` | `()` | Generic (parameterized `PerhapsKind`) |
 | [`Emulator::extractor`][emulator-extractor] | `Wired<F>` | `WiredValue<F>` | Wire extraction |
 
 [`Emulator::wireless`][emulator-wireless] is useful when witness availability
@@ -56,7 +56,7 @@ returns a `Vec<F>` of field element assignments.
 [wired-marker]: ragu_core::drivers::emulator::Wired
 [wired-value]: ragu_core::drivers::emulator::WiredValue
 [gadget-trait]: ragu_core::gadgets::Gadget
-[maybekind-trait]: ragu_core::maybe::MaybeKind
+[perhapskind-trait]: ragu_core::perhaps::PerhapsKind
 
 [emulator-counter]: ragu_core::drivers::emulator::Emulator::counter
 [emulator-execute]: ragu_core::drivers::emulator::Emulator::execute

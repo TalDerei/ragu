@@ -4,7 +4,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_primitives::{
     Element,
@@ -119,7 +119,7 @@ mod tests {
     use ragu_core::{
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
-        maybe::{Always, Maybe, MaybeKind},
+        perhaps::{Always, Perhaps, PerhapsKind},
     };
     use ragu_pasta::{Fp, Pasta};
 
@@ -194,7 +194,7 @@ mod tests {
         let dr = &mut dr;
 
         let adapter = Adapter::<Pasta, TestStep, TestR, HEADER_SIZE>::new(TestStep);
-        let witness = Always::maybe_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
+        let witness = Always::perhaps_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
 
         let (output, _aux) = adapter
             .witness(dr, witness)
@@ -210,7 +210,7 @@ mod tests {
         let dr = &mut dr;
 
         let adapter = Adapter::<Pasta, TestStep, TestR, HEADER_SIZE>::new(TestStep);
-        let witness = Always::maybe_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
+        let witness = Always::perhaps_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
 
         let (_output, aux) = adapter
             .witness(dr, witness)

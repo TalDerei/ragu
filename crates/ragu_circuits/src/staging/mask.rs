@@ -226,7 +226,7 @@ mod tests {
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
         gadgets::{Bound, Consistent, Gadget},
-        maybe::Maybe,
+        perhaps::Perhaps,
     };
     use ragu_pasta::{EpAffine, Fp, Fq};
     use ragu_primitives::{Element, Endoscalar, Point, io::Write};

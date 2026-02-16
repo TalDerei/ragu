@@ -17,7 +17,7 @@
 //!
 //! * **Integration of witness evaluation**: Constraints can be written
 //!   alongside witness computation logic, even though drivers tend to reason
-//!   about one or the other. To reduce overhead, drivers specify a [`Maybe<T>`]
+//!   about one or the other. To reduce overhead, drivers specify a [`Perhaps<T>`]
 //!   type (via the type alias [`DriverValue`]) which enables static analysis and
 //!   optimization of witness computation for a specific driver context. This
 //!   coupling with witness evaluation logic is a zero-cost abstraction.
@@ -54,16 +54,16 @@ use ragu_arithmetic::Coeff;
 use crate::{
     Result,
     gadgets::{Bound, GadgetKind},
-    maybe::{Maybe, MaybeKind},
+    perhaps::{Perhaps, PerhapsKind, Wrap},
     routines::Routine,
 };
 
 pub use linexp::{DirectSum, LinearExpression};
 
-/// Alias for the concrete [`Maybe<T>`] type for a driver `D`, used to represent input data
+/// Alias for the concrete [`Perhaps<T>`] type for a driver `D`, used to represent input data
 /// that may or may not be available. This provides a uniform interface for both public
 /// and private data.
-pub type DriverValue<D, T> = <<D as DriverTypes>::MaybeKind as MaybeKind>::Rebind<T>;
+pub type DriverValue<D, T> = Wrap<<D as DriverTypes>::PerhapsKind, T>;
 
 /// Defines implementation types for a concrete driver. Users of drivers do not
 /// need to directly interact with this trait.
@@ -74,9 +74,9 @@ pub trait DriverTypes {
     /// The type of wire that this driver provides.
     type ImplWire: Clone;
 
-    /// The kind of [`Maybe<T>`] types for witness values that this driver
+    /// The kind of [`Perhaps<T>`] types for witness values that this driver
     /// expects.
-    type MaybeKind: MaybeKind;
+    type PerhapsKind: PerhapsKind;
 
     /// The concrete linear expression type that this driver uses for obtaining
     /// sum for addition gates.
@@ -108,7 +108,7 @@ pub trait DriverTypes {
 ///   is expected.
 /// * Users keep track of wire assignments or related witness data using a
 ///   driver-specific [`DriverValue`] type. This type implements an
-///   `Option`-like abstraction called [`Maybe`] which allows for compile-time
+///   `Option`-like abstraction called [`Perhaps`] which allows for compile-time
 ///   optimization and static analysis of witness data computation and memory.
 /// * Finally, and most importantly, wires can be constrained in two ways:
 ///     * The [`mul`](Driver::mul) method enforces a multiplicative constraint
@@ -139,7 +139,7 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     ///
     /// The provided closure may be called by the driver if an assignment is
     /// needed. If it is called, any errors are propagated from it, and the
-    /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
+    /// closure can rely on [`Witness<Self, T>::take`](Perhaps::take) succeeding
     /// unconditionally.
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire>;
 
@@ -153,7 +153,7 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     ///
     /// The provided closure may be called by the driver if an assignment is
     /// needed. If it is called, any errors are propagated from it, and the
-    /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
+    /// closure can rely on [`Witness<Self, T>::take`](Perhaps::take) succeeding
     /// unconditionally.
     fn mul(
         &mut self,
@@ -183,12 +183,12 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
 
     /// Proxy for the `Input::just` method for this driver.
     fn just<R: Send>(f: impl FnOnce() -> R) -> DriverValue<Self, R> {
-        <DriverValue<Self, R> as Maybe<R>>::just(f)
+        <DriverValue<Self, R> as Perhaps<R>>::just(f)
     }
 
     /// Proxy for the `Witness::with` method for this driver.
     fn with<R: Send>(f: impl FnOnce() -> Result<R>) -> Result<DriverValue<Self, R>> {
-        <DriverValue<Self, R> as Maybe<R>>::with(f)
+        <DriverValue<Self, R> as Perhaps<R>>::with(f)
     }
 
     /// Executes a routine with this driver.
@@ -212,7 +212,7 @@ pub trait FromDriver<'dr, 'new_dr, D: Driver<'dr>> {
 
     /// Proxy for the `Witness::just` method for the new driver.
     fn just<R: Send>(f: impl FnOnce() -> R) -> DriverValue<Self::NewDriver, R> {
-        <DriverValue<Self::NewDriver, R> as Maybe<R>>::just(f)
+        <DriverValue<Self::NewDriver, R> as Perhaps<R>>::just(f)
     }
 
     /// Converts a wire from `D` to the new driver's wire type, based on

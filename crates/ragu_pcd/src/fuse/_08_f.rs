@@ -18,7 +18,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::Driver,
-    maybe::{Always, Maybe},
+    perhaps::{Always, Perhaps},
 };
 use ragu_primitives::Element;
 use rand::CryptoRng;
@@ -46,7 +46,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         right: &Proof<C, R>,
     ) -> Result<proof::F<C, R>>
     where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+        D: Driver<'dr, F = C::CircuitField, PerhapsKind = Always<()>>,
     {
         use InternalCircuitIndex::*;
         use ragu_arithmetic::factor_iter;

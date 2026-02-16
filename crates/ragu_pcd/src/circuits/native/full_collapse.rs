@@ -55,7 +55,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 
 use core::marker::PhantomData;

@@ -1,4 +1,4 @@
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
+use ragu_core::{Result, drivers::Driver, perhaps::Perhaps};
 
 use core::marker::PhantomData;
 
@@ -39,7 +39,7 @@ impl<'dr, S: Driver<'dr, F = D::F>, D: Driver<'dr>, B: Buffer<'dr, D>> Buffer<'d
 fn test_pipe_between_wireless_emulators() -> Result<()> {
     use alloc::vec::Vec;
     use ragu_core::drivers::emulator::{Emulator, Wireless};
-    use ragu_core::maybe::{Always, MaybeKind};
+    use ragu_core::perhaps::{Always, PerhapsKind};
     use ragu_pasta::Fp;
 
     // Create first wireless emulator and allocate some elements
@@ -47,7 +47,7 @@ fn test_pipe_between_wireless_emulators() -> Result<()> {
     let values = [Fp::from(42u64), Fp::from(123u64), Fp::from(999u64)];
     let source_elements: Vec<Element<'_, _>> = values
         .iter()
-        .map(|&v| Element::alloc(&mut source_dr, Always::maybe_just(|| v)))
+        .map(|&v| Element::alloc(&mut source_dr, Always::perhaps_just(|| v)))
         .collect::<Result<_>>()?;
 
     // Create second wireless emulator and use pipe to transfer elements

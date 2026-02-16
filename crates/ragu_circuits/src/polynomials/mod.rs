@@ -83,7 +83,7 @@ pub trait Rank:
 
         use ragu_core::{
             drivers::{Driver, emulator::Emulator},
-            maybe::Maybe,
+            perhaps::Perhaps,
         };
         use ragu_primitives::Element;
 

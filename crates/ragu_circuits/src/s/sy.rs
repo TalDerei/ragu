@@ -72,7 +72,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, LinearExpression, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
-    maybe::Empty,
+    perhaps::Empty,
     routines::Routine,
 };
 use ragu_primitives::GadgetExt;
@@ -482,7 +482,7 @@ impl<'table, 'sy, F: Field, R: Rank> FreshB<Option<Wire<'table, 'sy, F, R>>>
 
 /// Configures associated types for the [`Evaluator`] driver.
 ///
-/// - `MaybeKind = Empty`: No witness values are needed; we only compute
+/// - `PerhapsKind = Empty`: No witness values are needed; we only compute
 ///   polynomial structure.
 /// - `LCadd`: Uses [`TermCollector`] to build deferred term lists for virtual
 ///   wires.
@@ -490,7 +490,7 @@ impl<'table, 'sy, F: Field, R: Rank> FreshB<Option<Wire<'table, 'sy, F, R>>>
 ///   contributions.
 /// - `ImplWire`: [`Wire`] handles with reference counting for virtual wires.
 impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, F, R> {
-    type MaybeKind = Empty;
+    type PerhapsKind = Empty;
     type LCadd = TermCollector<F>;
     type LCenforce = TermEnforcer<'table, 'sy, F, R>;
     type ImplField = F;

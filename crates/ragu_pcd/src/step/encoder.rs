@@ -128,7 +128,7 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
         dr: &mut D,
         witness: DriverValue<D, H::Data<'source>>,
     ) -> Result<Self> {
-        let mut emulator: Emulator<Wireless<D::MaybeKind, _>> = Emulator::wireless();
+        let mut emulator: Emulator<Wireless<D::PerhapsKind, _>> = Emulator::wireless();
         let gadget = H::encode(&mut emulator, witness)?;
         let gadget = padded::for_header::<H, HEADER_SIZE, _>(&mut emulator, gadget)?;
 
@@ -146,7 +146,7 @@ mod tests {
     use ragu_core::{
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
-        maybe::{Always, Maybe, MaybeKind},
+        perhaps::{Always, Perhaps, PerhapsKind},
     };
     use ragu_pasta::Fp;
 
@@ -188,7 +188,7 @@ mod tests {
         let mut dr = Emulator::execute();
         let dr = &mut dr;
 
-        let witness = Always::maybe_just(|| Fp::from(42u64));
+        let witness = Always::perhaps_just(|| Fp::from(42u64));
         let encoded = Encoded::<_, SingleHeader, HEADER_SIZE>::new(dr, witness)
             .expect("encoding should succeed");
 
@@ -203,7 +203,7 @@ mod tests {
         let mut dr = Emulator::execute();
         let dr = &mut dr;
 
-        let witness = Always::maybe_just(|| Fp::from(42u64));
+        let witness = Always::perhaps_just(|| Fp::from(42u64));
         let encoded = Encoded::<_, SingleHeader, HEADER_SIZE>::new_uniform(dr, witness)
             .expect("encoding should succeed");
 
@@ -218,7 +218,7 @@ mod tests {
         let mut dr = Emulator::execute();
         let dr = &mut dr;
 
-        let witness = Always::maybe_just(|| Fp::from(99u64));
+        let witness = Always::perhaps_just(|| Fp::from(99u64));
         let encoded = Encoded::<_, SingleHeader, HEADER_SIZE>::new(dr, witness)
             .expect("encoding should succeed");
 
@@ -231,7 +231,7 @@ mod tests {
         let mut dr = Emulator::execute();
         let dr = &mut dr;
 
-        let witness = Always::maybe_just(|| Fp::from(1u64));
+        let witness = Always::perhaps_just(|| Fp::from(1u64));
         let encoded = Encoded::<_, SingleHeader, HEADER_SIZE>::new(dr, witness)
             .expect("encoding should succeed");
 
@@ -249,17 +249,17 @@ mod tests {
 
         let single = Encoded::<_, SingleHeader, HEADER_SIZE>::new_uniform(
             dr,
-            Always::maybe_just(|| Fp::from(1u64)),
+            Always::perhaps_just(|| Fp::from(1u64)),
         )
         .expect("single encoding should succeed");
 
         let pair = Encoded::<_, PairHeader, HEADER_SIZE>::new_uniform(
             dr,
-            Always::maybe_just(|| (Fp::from(2u64), Fp::from(3u64))),
+            Always::perhaps_just(|| (Fp::from(2u64), Fp::from(3u64))),
         )
         .expect("pair encoding should succeed");
 
-        let trivial = Encoded::<_, (), HEADER_SIZE>::new_uniform(dr, Always::maybe_just(|| ()))
+        let trivial = Encoded::<_, (), HEADER_SIZE>::new_uniform(dr, Always::perhaps_just(|| ()))
             .expect("trivial encoding should succeed");
 
         let mut buf_single = vec![];
@@ -281,7 +281,7 @@ mod tests {
         let mut dr = Emulator::execute();
         let dr = &mut dr;
 
-        let witness = Always::maybe_just(|| Fp::from(77u64));
+        let witness = Always::perhaps_just(|| Fp::from(77u64));
         let original = Encoded::<_, SingleHeader, HEADER_SIZE>::new(dr, witness)
             .expect("encoding should succeed");
         let cloned = original.clone();

@@ -20,7 +20,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::Driver,
-    maybe::{Always, Maybe},
+    perhaps::{Always, Perhaps},
 };
 use ragu_primitives::{Element, compute_endoscalar, extract_endoscalar, vec::Len};
 
@@ -65,7 +65,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         f: &proof::F<C, R>,
     ) -> Result<proof::P<C, R>>
     where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+        D: Driver<'dr, F = C::CircuitField, PerhapsKind = Always<()>>,
     {
         let mut poly = f.poly.clone();
         let mut blind = f.blind;

@@ -5,7 +5,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    perhaps::Perhaps,
 };
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
@@ -15,7 +15,7 @@ use crate::{
     polynomials::{R, Rank},
     registry,
 };
-use ragu_core::maybe::Always;
+use ragu_core::perhaps::Always;
 use ragu_core::routines::Prediction;
 use ragu_core::routines::Routine;
 use ragu_primitives::Simulator;

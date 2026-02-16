@@ -9,7 +9,7 @@ use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
-    maybe::{Always, Maybe, MaybeKind},
+    perhaps::{Always, Perhaps, PerhapsKind},
     routines::Routine,
 };
 use ragu_primitives::GadgetExt;
@@ -30,7 +30,7 @@ impl<F: Field, R: Rank> FreshB<Option<usize>> for Evaluator<'_, F, R> {
 impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     type ImplField = F;
     type ImplWire = ();
-    type MaybeKind = Always<()>;
+    type PerhapsKind = Always<()>;
     type LCadd = ();
     type LCenforce = ();
 }
@@ -107,7 +107,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
                 Coeff::One,
             ))
         })?;
-        let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
+        let (io, aux) = circuit.witness(&mut dr, Always::perhaps_just(|| witness))?;
         io.write(&mut dr, &mut ())?;
 
         if dr.rx.a.len() > R::n() || dr.rx.b.len() > R::n() || dr.rx.c.len() > R::n() {

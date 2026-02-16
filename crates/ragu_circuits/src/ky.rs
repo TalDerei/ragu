@@ -9,7 +9,7 @@ use ff::Field;
 use ragu_core::{
     Result,
     drivers::emulator::Emulator,
-    maybe::{Always, MaybeKind},
+    perhaps::{Always, PerhapsKind},
 };
 use ragu_primitives::GadgetExt;
 
@@ -21,7 +21,7 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C, instance: C::Instance<'_>) -> 
     let mut dr = Emulator::extractor();
     let mut pubinputs = vec![];
     circuit
-        .instance(&mut dr, Always::maybe_just(|| instance))?
+        .instance(&mut dr, Always::perhaps_just(|| instance))?
         .write(&mut dr, &mut pubinputs)?;
 
     Ok(pubinputs

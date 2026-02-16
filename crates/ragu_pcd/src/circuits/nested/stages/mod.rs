@@ -33,7 +33,7 @@ macro_rules! define_nested_stage {
                 Result,
                 drivers::{Driver, DriverValue},
                 gadgets::{Bound, Gadget, Kind},
-                maybe::Maybe,
+                perhaps::Perhaps,
             };
             use ragu_primitives::{Point, io::Write};
 
