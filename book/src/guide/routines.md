@@ -1,15 +1,24 @@
 # Routines
 
-Circuit code asks the [`Driver`] to allocate wires and enforce constraints,
-turning a computation into a verifiable trace. The driver typically sees only a
-flat stream of constraints, with no structural insight into the operations they
-compose.
+Circuit code asks the [driver](drivers.md) to allocate wires and enforce
+constraints, turning a computation into a verifiable trace. The driver typically
+sees only a flat stream of constraints, with no structural insight into the
+operations they compose.
 
 **Routines** mark self-contained sections of circuit logic, giving the driver
 visibility into these boundaries and the freedom to handle them however it
-likes: reusing the underlying polynomial reductions across repeated invocations,
-reordering their placement in the trace, predicting outputs to enable
-concurrency, or even skipping execution when full synthesis isn't required.
+likes: reusing the underlying [polynomial reductions][poly-synthesis] across
+repeated invocations, reordering their placement in the trace, predicting
+outputs to enable concurrency, or even skipping execution when full synthesis
+isn't required.
+
+This visibility depends on the [`Gadget`] trait. Routine inputs and outputs are
+[gadgets][gadget], and the [fungibility](gadgets/index.md#fungibility)
+guarantee—that a gadget's synthesis behavior is determined entirely by its
+type—is what gives the driver an identity system for routines in the first
+place. The dependence is mutual: the properties `Gadget` imposes find their
+practical application at routine boundaries, and would serve little purpose
+without them.
 
 ## Execution
 
@@ -50,21 +59,20 @@ let txz = dr.routine(Txz::default(), (x, z))?;
 
 The result is semantically identical to calling `execute` directly, but only
 [`routine`] hands scheduling to the driver. Both the input and output are single
-[gadgets](gadgets/index.md) with semantics determined by their types; the
-driver's only obligation is to return an equivalent result.
+[gadgets](gadgets/index.md), and the driver's only obligation is to return an
+equivalent result.
 
 ### Memoization
 
 `Routine` has a narrow interface—one input gadget, one output gadget—and so
-different invocations of the same routine differ only by their input wires. The
-[fungibility](gadgets/index.md) guarantee of gadgets reinforces this: synthesis
-behavior is fully determined by the type, so the driver can recognize equivalent
-invocations without inspecting the constraint logic.
+different invocations of the same routine differ only by their input wires.
+Fungibility handles the rest: the driver can recognize equivalent invocations
+without inspecting the constraint logic.
 
-The constraint system ultimately reduces to polynomial expressions, and
-equivalent routines contribute structurally identical terms at different
-positions. The driver can derive one invocation's contribution from another
-without re-executing the body.
+The constraint system ultimately reduces to [polynomial
+expressions][poly-synthesis], and equivalent routines contribute structurally
+identical terms at different positions. The driver can derive one invocation's
+contribution from another without re-executing the body.
 
 ### Parameterization
 
@@ -155,3 +163,4 @@ auxiliary data for [`execute`].
 [`Gadget`]: ragu_core::gadgets::Gadget
 [`Routine`]: ragu_core::routines::Routine
 [gadget]: gadgets/index.md
+[poly-synthesis]: ../implementation/polynomials.md#synthesis

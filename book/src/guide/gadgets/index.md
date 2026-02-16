@@ -40,7 +40,7 @@ This gadget is a _compositional_ gadget: it contains another gadget (a
 [`FixedVec`][fixedvec-gadget]) which is also _parameterized_ by another gadget
 (an [`Element`][element-gadget]).
 
-## [`Gadget`][gadget-trait] trait
+## [`Gadget`][gadget-trait] trait {#fungibility}
 
 Gadgets usually can (and should) implement the [`Gadget`][gadget-trait] trait,
 which imposes a set of expectations and API requirements on the structure that

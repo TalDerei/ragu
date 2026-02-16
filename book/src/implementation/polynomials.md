@@ -19,7 +19,7 @@ $$
 
 at the restriction $Y = y$. This is known as the "wiring polynomial."
 
-## Synthesis
+## Synthesis {#synthesis}
 
 Ragu will directly synthesize circuit code into (partial) evaluations of
 the reduced wiring polynomial. There are two operations that influence this
