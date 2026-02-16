@@ -13,11 +13,10 @@ concurrency, or even skipping execution when full synthesis isn't required.
 
 ## Execution
 
-The simplest form of a [`Routine`] declares an [`Input`] gadget kind, an
-[`Output`] gadget kind, and an **[`execute`]** method that performs the actual
-circuit synthesis. Consider a routine `Txz` that evaluates a polynomial $t(X,
-Z)$ at a given point. It takes the pair $(x, z)$ as [`Element`]s and returns the
-result:
+The simplest form of a [`Routine`] declares an [`Input`] gadget, an [`Output`]
+gadget, and an [`execute`] method that performs circuit synthesis. Consider a
+routine `Txz` that evaluates a polynomial $t(X, Z)$ at a given point. It takes
+the pair $(x, z)$ as [`Element`]s and returns the result:
 
 ```rust,ignore
 impl<F: Field> Routine<F> for Txz {
@@ -51,21 +50,21 @@ let txz = dr.routine(Txz::default(), (x, z))?;
 
 The result is semantically identical to calling `execute` directly, but only
 [`routine`] hands scheduling to the driver. Both the input and output are single
-[gadgets](gadgets/index.md) with type-determined semantics; the driver's only
-obligation is to return a correct result.
+[gadgets](gadgets/index.md) with semantics determined by their types; the
+driver's only obligation is to return an equivalent result.
 
 ### Memoization
 
 `Routine` has a narrow interface—one input gadget, one output gadget—and so
 different invocations of the same routine differ only by their input wires. The
 [fungibility](gadgets/index.md) guarantee of gadgets reinforces this: synthesis
-behavior is fully determined by the type, so the driver can analyze equivalence
-between routine invocations without inspecting the internal constraint logic.
+behavior is fully determined by the type, so the driver can recognize equivalent
+invocations without inspecting the constraint logic.
 
-This fungibility is what makes memoization possible. When the driver sees a
-second invocation of the same routine, it already knows the internal constraint
-structure is identical. The only thing that has changed is which wires flow in
-and out, and the driver can account for that without re-executing the body.
+The constraint system ultimately reduces to polynomial expressions, and
+equivalent routines contribute structurally identical terms at different
+positions. The driver can derive one invocation's contribution from another
+without re-executing the body.
 
 ### Parameterization
 
@@ -86,23 +85,16 @@ routines—the driver treats them independently.
 
 ## Prediction
 
-Beyond memoization, routines demarcate sections of circuit code that align with
-another optimization opportunity: functions whose outputs can be efficiently
-predicted from their inputs. When a driver knows the output ahead of time, it
-has options. It might allow synthesis to proceed on the predicted result while
-collecting the actual trace concurrently. Or, during [emulation] (where the
-driver evaluates logic without enforcing constraints), it might skip execution
-entirely.
+Routines also demarcate sections of circuit code whose outputs can be
+efficiently predicted from their inputs. The [`Routine`] trait includes a
+[`predict`] method that examines the input and returns a [`Prediction`]:
 
-What a driver actually does with this information is not the routine author's
-concern. The abstraction simply provides the boundary and, optionally, a
-prediction; the driver decides how to use them.
+* **[`Known`]**: predicted output plus auxiliary data.
+* **[`Unknown`]**: auxiliary data only.
 
-The full [`Routine`] trait adds three items to support this: an associated type
-**[`Aux`]** that the routine defines to carry whatever intermediate state (if
-any) is worth preserving between prediction and execution, a **[`predict`]**
-method, and an `aux` parameter on [`execute`] that feeds prediction results back
-in.
+Prediction often performs intermediate computation that [`execute`] would
+otherwise redo, so both variants carry an [`Aux`] value—an associated type
+defined by the routine—which the driver threads back into [`execute`].
 
 ```rust,ignore
 impl<F: Field> Routine<F> for Txz {
@@ -132,19 +124,11 @@ impl<F: Field> Routine<F> for Txz {
 }
 ```
 
-[`predict`] examines the input and returns a [`Prediction`]:
-
-- **[`Known`]`(output, aux)`** — the routine can predict the output gadget, and
-  provides auxiliary data alongside it.
-- **[`Unknown`]`(aux)`** — the routine cannot efficiently predict the output (a
-  hash function, for instance), but can still provide auxiliary data.
-
-Either way, the auxiliary data is threaded back into [`execute`] via the `aux`
-parameter, allowing it to reuse work that [`predict`] already performed rather
-than recomputing it.
-
-The trait also requires `Send + Clone` so that routines can cross thread
-boundaries, which makes concurrent strategies available to the driver.
+Ultimately, the driver decides what to do with the prediction. Drivers that know
+the output ahead of time might skip execution entirely during [emulation], or
+synthesize on the predicted result while collecting the actual trace
+concurrently. Concurrency relies on the fact that `Routine`s implement `Send +
+Clone`.
 
 ```admonish info
 **When to use a routine.** Wrap a section of circuit code in a `Routine` when
