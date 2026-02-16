@@ -17,8 +17,8 @@ auditing first, present a plan for the user's approval, and only then execute.
 
 Read ALL of these files before doing anything else:
 
-- `.claude/review/writing.md` — Shared writing rules (used by book-review and code-review)
-- `.claude/review/math.md` — Shared math notation rules (used by book-review and code-review)
+- `.claude/review-shared/writing.md` — Shared writing rules (used by book-review and code-review)
+- `.claude/review-shared/math.md` — Shared math notation rules (used by book-review and code-review)
 - `.claude/book-review/standards.md` — Master standards shared across all book reviewers
 - All files matching `.claude/book-review/*.md` — Per-focus review policies
 - `.claude/skills/book-review/SKILL.md` — Book review orchestration
@@ -90,8 +90,8 @@ Enter plan mode (EnterPlanMode). Your plan should include:
 
 1. **The generalized principle(s)** extracted from the feedback.
 2. **Where each change goes** and why:
-   - Cross-cutting writing rule (shared with code-review) → `.claude/review/writing.md`
-   - Cross-cutting math rule (shared with code-review) → `.claude/review/math.md`
+   - Cross-cutting writing rule (shared with code-review) → `.claude/review-shared/writing.md`
+   - Cross-cutting math rule (shared with code-review) → `.claude/review-shared/math.md`
    - General book standard (all book reviewers) → `.claude/book-review/standards.md`
    - Focus-specific rule (one reviewer) → the appropriate `.claude/book-review/*.md`
    - New review dimension → new `.claude/book-review/{name}.md`

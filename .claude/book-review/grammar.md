@@ -7,7 +7,7 @@ Review sentence-level grammar and mechanics in book chapter markdown files
 For text-level concerns (terminology, transitions, coherence), see
 `prose.md`. All rules in `.claude/book-review/standards.md` also apply.
 
-In addition to `.claude/review/writing.md` (shared writing rules that apply to
+In addition to `.claude/review-shared/writing.md` (shared writing rules that apply to
 all project prose), the following book-specific rules apply.
 
 ## Voice Context

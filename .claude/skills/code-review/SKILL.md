@@ -40,8 +40,8 @@ If you're unsure what the user means, ask before launching reviewers.
    > - `.claude/code-review/standards.md` (master standards that always apply)
    > - `.claude/code-review/{focus}.md` (your specific review policy)
    {if focus is "documentation", also include:}
-   > - `.claude/review/writing.md` (shared writing rules)
-   > - `.claude/review/math.md` (shared math rules)
+   > - `.claude/review-shared/writing.md` (shared writing rules)
+   > - `.claude/review-shared/math.md` (shared math rules)
    >
    > **What to review:** {describe the specific content — file paths, line
    > ranges, the diff, whatever the user specified. If reviewing a diff, include

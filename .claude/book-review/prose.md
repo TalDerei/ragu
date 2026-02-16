@@ -8,7 +8,7 @@ units of text — transitions and coherence. For sentence-level mechanics
 (voice, structure, word choice), see `grammar.md`. All rules in
 `.claude/book-review/standards.md` also apply.
 
-In addition to `.claude/review/writing.md` (shared writing rules — terminology
+In addition to `.claude/review-shared/writing.md` (shared writing rules — terminology
 consistency, capitalization, etc.), the following book-specific rules apply.
 
 ## Terminology

@@ -51,8 +51,8 @@ changes before executing. New policy files are auto-discovered by `/book-review`
 ### Policy files
 
 ```
-.claude/review/writing.md         shared writing rules (grammar + prose reviewers)
-.claude/review/math.md            shared math notation rules (math reviewer)
+.claude/review-shared/writing.md   shared writing rules (grammar + prose reviewers)
+.claude/review-shared/math.md     shared math notation rules (math reviewer)
 .claude/book-review/standards.md  master standards (all reviewers)
 .claude/book-review/grammar.md    book-specific grammar rules
 .claude/book-review/prose.md      transitions, terminology appendix

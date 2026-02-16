@@ -5,7 +5,7 @@
 Review mathematical content in book chapter markdown files (`book/src/`). Focus
 on correctness, consistency, and clarity of mathematical exposition.
 
-In addition to `.claude/review/math.md` (shared math notation rules that apply
+In addition to `.claude/review-shared/math.md` (shared math notation rules that apply
 to all project content), the following book-specific rules apply.
 
 ## Notation
