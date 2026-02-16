@@ -39,7 +39,6 @@ rand = { workspace = true }
 proptest = { workspace = true }
 gungraun = { workspace = true }
 ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
-ragu_circuits = { path = ".", features = ["unstable-test-fixtures"] }
 
 [[bench]]
 name = "circuits"

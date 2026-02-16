@@ -42,12 +42,13 @@ pub trait Rank:
     fn tz<F: Field>(z: F) -> structured::Polynomial<F, Self> {
         let mut tmp = structured::Polynomial::new();
         if z != F::ZERO {
+            let tmp = tmp.backward();
             let zinv = z.invert().unwrap();
             let zpow = z.pow_vartime([2 * Self::n() as u64]);
             let mut l = -zpow * zinv;
             let mut r = -zpow;
             for _ in 0..Self::n() {
-                tmp.d.push(l + r);
+                tmp.c.push(l + r);
                 l *= zinv;
                 r *= z;
             }
@@ -60,14 +61,15 @@ pub trait Rank:
     fn tx<F: Field>(x: F) -> structured::Polynomial<F, Self> {
         let mut tmp = structured::Polynomial::new();
         if x != F::ZERO {
+            let tmp = tmp.backward();
             let mut xi = -x.pow([3 * Self::n() as u64]);
             for _ in 0..Self::n() {
-                tmp.v.push(xi);
-                tmp.u.push(xi);
+                tmp.a.push(xi);
+                tmp.b.push(xi);
                 xi *= x;
             }
-            tmp.v.reverse();
-            tmp.u.reverse();
+            tmp.a.reverse();
+            tmp.b.reverse();
         }
 
         tmp

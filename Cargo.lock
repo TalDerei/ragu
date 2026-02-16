@@ -460,7 +460,6 @@ dependencies = [
  "gungraun",
  "proptest",
  "ragu_arithmetic",
- "ragu_circuits",
  "ragu_core",
  "ragu_pasta",
  "ragu_primitives",
@@ -522,7 +521,6 @@ dependencies = [
  "ragu_circuits",
  "ragu_core",
  "ragu_pasta",
- "ragu_pcd",
  "ragu_primitives",
  "rand",
 ]

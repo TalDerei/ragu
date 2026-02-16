@@ -43,7 +43,6 @@ rand = { workspace = true }
 
 [dev-dependencies]
 ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
-ragu_pcd = { path = ".", features = ["unstable-test-fixtures"] }
 gungraun = { workspace = true }
 
 [[bench]]
