@@ -1,12 +1,13 @@
 use ff::PrimeField;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 /// Radix-2 evaluation domain for polynomials in fields supported by Ragu.
 pub struct Domain<F> {
     /// $n$, the size of the domain
     n: usize,
-    /// $\log_2(n)$
+    /// $\log_2(n)$, exponent such that $n = 2^{log2_n}$,
+    /// where the domain size $n$ must always a power of two
     log2_n: u32,
     /// The primitive $n$-th root of unity in the field
     omega: F,
@@ -177,7 +178,7 @@ impl<F: PrimeField> Domain<F> {
             })
             .collect();
         {
-            let mut scratch = denominators.clone();
+            let mut scratch = vec![F::ZERO; denominators.len()];
             ff::BatchInverter::invert_with_external_scratch(&mut denominators, &mut scratch);
         }
 

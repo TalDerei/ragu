@@ -78,28 +78,40 @@ impl<F: Field> Add for Coeff<F> {
 
     fn add(self, other: Self) -> Self::Output {
         match (self, other) {
+            // Zero (additive identity)
             (Coeff::Zero, other) | (other, Coeff::Zero) => other,
-            (Coeff::Two, a) | (a, Coeff::Two) => Coeff::Arbitrary(a.value() + F::ONE.double()),
+
+            // One + One
+            (Coeff::One, Coeff::One) => Coeff::Two,
             (Coeff::One, Coeff::NegativeOne) | (Coeff::NegativeOne, Coeff::One) => Coeff::Zero,
-            (Coeff::Arbitrary(a), Coeff::One) | (Coeff::One, Coeff::Arbitrary(a)) => {
+            (Coeff::NegativeOne, Coeff::NegativeOne) => Coeff::Arbitrary(-F::ONE.double()),
+
+            // Two
+            (Coeff::Two, Coeff::NegativeOne) | (Coeff::NegativeOne, Coeff::Two) => Coeff::One,
+            (Coeff::Two, a) | (a, Coeff::Two) => Coeff::Arbitrary(a.value() + F::ONE.double()),
+
+            // One + Arbitrary
+            (Coeff::One, Coeff::Arbitrary(a)) | (Coeff::Arbitrary(a), Coeff::One) => {
                 Coeff::Arbitrary(a + F::ONE)
             }
-            (Coeff::Arbitrary(a), Coeff::NegativeOne)
-            | (Coeff::NegativeOne, Coeff::Arbitrary(a)) => Coeff::Arbitrary(a - F::ONE),
-            (Coeff::Arbitrary(a), Coeff::Arbitrary(b)) => Coeff::Arbitrary(a + b),
-            (Coeff::One, Coeff::One) => Coeff::Arbitrary(F::ONE.double()),
-            (Coeff::NegativeOne, Coeff::NegativeOne) => Coeff::Arbitrary(-F::ONE.double()),
-            (Coeff::NegativeArbitrary(a), Coeff::NegativeArbitrary(b)) => {
-                Coeff::NegativeArbitrary(a + b)
-            }
-            (Coeff::NegativeArbitrary(a), Coeff::Arbitrary(b))
-            | (Coeff::Arbitrary(b), Coeff::NegativeArbitrary(a)) => Coeff::NegativeArbitrary(a - b),
+            (Coeff::NegativeOne, Coeff::Arbitrary(a))
+            | (Coeff::Arbitrary(a), Coeff::NegativeOne) => Coeff::Arbitrary(a - F::ONE),
+
+            // One + NegativeArbitrary
             (Coeff::One, Coeff::NegativeArbitrary(a))
-            | (Coeff::NegativeArbitrary(a), Coeff::One) => Coeff::NegativeArbitrary(a - F::ONE),
+            | (Coeff::NegativeArbitrary(a), Coeff::One) => Coeff::Arbitrary(F::ONE - a),
             (Coeff::NegativeOne, Coeff::NegativeArbitrary(a))
             | (Coeff::NegativeArbitrary(a), Coeff::NegativeOne) => {
                 Coeff::NegativeArbitrary(F::ONE + a)
             }
+
+            // Arbitrary + Arbitrary
+            (Coeff::Arbitrary(a), Coeff::Arbitrary(b)) => Coeff::Arbitrary(a + b),
+            (Coeff::NegativeArbitrary(a), Coeff::NegativeArbitrary(b)) => {
+                Coeff::NegativeArbitrary(a + b)
+            }
+            (Coeff::Arbitrary(a), Coeff::NegativeArbitrary(b))
+            | (Coeff::NegativeArbitrary(b), Coeff::Arbitrary(a)) => Coeff::Arbitrary(a - b),
         }
     }
 }

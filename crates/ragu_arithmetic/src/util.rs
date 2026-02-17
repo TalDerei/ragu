@@ -104,6 +104,7 @@ where
 /// multiexp, obtained through experimentation. This could probably be optimized
 /// further and for particular compilation targets.
 fn bucket_lookup(n: usize) -> usize {
+    // Approximates ceil(ln(n)) without floating-point. See test_bucket_lookup_thresholds.
     const LN_THRESHOLDS: [usize; 15] = [
         4, 4, 32, 55, 149, 404, 1097, 2981, 8104, 22027, 59875, 162755, 442414, 1202605, 3269018,
     ];
@@ -168,23 +169,24 @@ pub fn mul<
         let skip_bits = segment * c;
         let skip_bytes = skip_bits / 8;
 
-        if skip_bytes >= 32 {
+        if skip_bytes >= bytes.as_ref().len() {
             return 0;
         }
 
-        let mut v = [0; 8];
+        // 4 bytes suffices since bucket_lookup returns at most 16.
+        let mut v = [0; 4];
         for (v, o) in v.iter_mut().zip(bytes.as_ref()[skip_bytes..].iter()) {
             *v = *o;
         }
 
-        let mut tmp = u64::from_le_bytes(v);
+        let mut tmp = u32::from_le_bytes(v);
         tmp >>= skip_bits - (skip_bytes * 8);
         tmp %= 1 << c;
 
         tmp as usize
     }
 
-    let segments = (256 / c) + 1;
+    let segments = (C::Scalar::NUM_BITS as usize).div_ceil(c);
 
     let mut acc = C::Curve::identity();
 
@@ -474,7 +476,7 @@ fn test_dot() {
     let coeffs = [F::from(1), F::from(2), F::from(3), F::from(4), F::from(5)];
 
     assert_eq!(
-        dot(powers.iter(), coeffs.iter().rev().rev()),
+        dot(powers.iter(), coeffs.iter()),
         eval(coeffs.iter(), F::DELTA)
     );
 }
