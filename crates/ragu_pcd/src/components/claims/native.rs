@@ -25,12 +25,21 @@ use ragu_primitives::Element;
 use super::{Builder, Source};
 use crate::circuits::{self, native::InternalCircuitIndex};
 
-/// Number of circuits that use the unified k(y) value per proof.
+/// Number of circuits using unified k(y) in [`build`].
 ///
-/// This is the count of internal circuits (hashes_1, hashes_2, partial_collapse,
-/// full_collapse) that share the same unified k(y) value. The unified_ky iterator
-/// from [`KySource`] is repeated this many times in [`ky_values`].
-// TODO: this constant seems brittle because it may vary between the two fields.
+/// These circuits use [`unified::InternalOutputKind`]:
+/// [`hashes_2`], [`partial_collapse`], [`full_collapse`], [`compute_v`].
+///
+/// Note: [`hashes_1`] separately uses `unified_bridge_ky` because its public
+/// inputs include child proof headers (see [`hashes_1::Output`]).
+///
+/// [`hashes_1`]: crate::circuits::native::hashes_1
+/// [`hashes_1::Output`]: crate::circuits::native::hashes_1::Output
+/// [`hashes_2`]: crate::circuits::native::hashes_2
+/// [`partial_collapse`]: crate::circuits::native::partial_collapse
+/// [`full_collapse`]: crate::circuits::native::full_collapse
+/// [`compute_v`]: crate::circuits::native::compute_v
+/// [`unified::InternalOutputKind`]: crate::circuits::native::unified::InternalOutputKind
 pub const NUM_UNIFIED_CIRCUITS: usize = 4;
 
 /// Enum identifying which native field rx polynomial to retrieve from a proof.
