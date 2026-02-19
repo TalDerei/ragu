@@ -229,10 +229,10 @@ It's possible that malicious provers lie about the values of nested commitments.
 
 Ragu relies on the [staging design](../../extensions/staging.md) for input
 consistency. 
-Informally, staging allows provers to incrementally commits to the witness in
-stages rather than all at once; _stage checks_ ensure these partial witnesses at
+Informally, staging allows provers to incrementally commits to the trace in
+stages rather than all at once; _stage checks_ ensure these partial traces at
 different stages are non-overlapping and _staged commitment checks_ ensure the
-commitments of all partial witnesses add up to that of the overall witness.
+commitments of all partial traces add up to that of the overall trace.
 
 Due to symmetry, we only discuss from the primary circuit's perspective.
 Ragu captures the input encoding in a dedicated stage, named _preamble stage_,
@@ -240,7 +240,7 @@ as the first stage of our multi-stage circuit $CS_{merge}^{(1)}$.
 During the preamble stage, $\mathring{C}_1$ is added an advice wire, and other
 values in the tuple $\wit_1$ is witnessed as public input wires.
 Thus, $\mathring{C}_1$ is now a **nested staged commitment**, and its preimage
-$(C,A_1,B_1,\ldots, a_2,b_2,\ldots)\in\F_q^\ast$ is a partial witness of
+$(C,A_1,B_1,\ldots, a_2,b_2,\ldots)\in\F_q^\ast$ is a partial trace of
 $CS_{merge}^{(2)}$ in the next recursion step. 
 $CS_{merge}^{(2)}$ circuit embeds all necessary stage checks and staged
 commitment checks on all nested staged commitments declared in

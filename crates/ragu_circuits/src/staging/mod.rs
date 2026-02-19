@@ -3,7 +3,7 @@
 //! ## Background
 //!
 //! Circuits are evaluated over witnesses in Ragu by having the prover commit to
-//! some polynomial $r(X)$ which [encodes their witness](crate::CircuitExt::rx),
+//! some polynomial $r(X)$ which [encodes the trace](crate::CircuitExt::rx),
 //! and then checking to see if it satisfies the identity
 //!
 //! $$ \langle \kern-0.5em \langle \kern0.1em \mathbf{r}, \mathbf{r} \circ
@@ -25,7 +25,7 @@
 //! * The prover may wish to commit to part of their witness first (which may
 //!   include hundreds of allocated wires), receive a cryptographic commitment
 //!   to that stage, and then apply a hash function to this succinct value to
-//!   obtain a challenge value that reduces a claim about the partial witness to
+//!   obtain a challenge value that reduces a claim about the partial trace to
 //!   something that can be checked in fewer constraints.
 //! * The prover may wish to have multiple circuits contain the same data (but
 //!   perform different operations over it) but does not want to pay the cost of
@@ -36,15 +36,15 @@
 //! $$ r(X) = a(X) + b(X) + \cdots + f(X) $$
 //!
 //! where $a(X), b(X), \cdots$ are called _staging polynomials_ (corresponding
-//! to a _stage_ of the witness) and $f(X)$ is a special "final" staging
-//! polynomial that encodes the "remainder" of the witness assignment for
+//! to a _stage_ of the trace) and $f(X)$ is a special "final" staging
+//! polynomial that encodes the "remainder" of the wire assignment for
 //! $r(X)$. The prover will commit to $a(X), b(X), \cdots$ independently, and
 //! _then_ may commit to $f(X)$ and use public inputs to obtain cryptographic
 //! commitments to $a(X), b(X)$ for the purpose of evaluating hash functions
 //! that produce digests that are cryptographically bound to their contents.
 //!
 //! In order for this to work, each of the individual stages (including the
-//! final stage) of the witness must be constrained to be well-formed, meaning
+//! final stage) of the trace must be constrained to be well-formed, meaning
 //! that their wire assignments cannot overlap. Some of these checks can be
 //! batched efficiently because well-formedness checks of the kind we need are
 //! highly linearized.
@@ -102,7 +102,7 @@
 //!
 //! Any implementation of [`MultiStageCircuit`] can be transformed into an
 //! implementation of [`Circuit`] using the [`MultiStage`] adaptor. The resulting
-//! [`StageExt::rx`] output contains the final witness polynomial $f(X)$, which
+//! [`StageExt::rx`] output contains the final trace polynomial $f(X)$, which
 //! must be similarly checked to be well-formed using the
 //! [`StageExt::final_mask`] method's staging mask (obtained from the
 //! [`MultiStageCircuit::Last`] implementation).
@@ -133,12 +133,12 @@ use crate::{
 
 pub use builder::{StageBuilder, StageGuard};
 
-/// Represents a partial witness component for a multi-stage circuit.
+/// Represents a partial trace component for a multi-stage circuit.
 pub trait Stage<F: Field, R: Rank> {
     /// The parent stage for this stage. This is set to `()` for the base stage.
     type Parent: Stage<F, R>;
 
-    /// The data needed to compute the assignment of this partial witness.
+    /// The data needed to compute the assignment of this partial trace.
     type Witness<'source>: Send;
 
     /// The kind of gadget that this stage produces as output.
@@ -195,7 +195,7 @@ impl<F: Field, R: Rank> Stage<F, R> for () {
 pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     /// The last explicitly defined stage of this multi-stage circuit.
     ///
-    /// The witness polynomial has the form `r(X) = r'(X) + a(X) + b(X) + ...`
+    /// The trace polynomial has the form `r(X) = r'(X) + a(X) + b(X) + ...`
     /// where `a(X), b(X), ...` are stage polynomials (defined via [`Stage`],
     /// independently committable) and `r'(X)` is the "final" witness.
     ///
@@ -317,7 +317,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         Self::values().div_ceil(2)
     }
 
-    /// Compute the (partial) witness polynomial $r(X)$ for this stage.
+    /// Compute the (partial) trace polynomial $r(X)$ for this stage.
     fn rx_configured(&self, witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>> {
         let values = {
             let mut dr = Emulator::extractor();
@@ -361,7 +361,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         Ok(rx)
     }
 
-    /// Compute the (partial) witness polynomial $r(X)$ for this stage, using a
+    /// Compute the (partial) trace polynomial $r(X)$ for this stage, using a
     /// default implementation.
     fn rx(witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>>
     where
@@ -374,7 +374,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// well-formedness checks on the stage.
     ///
     /// Staging circuits do not behave like normal circuits because they do not
-    /// have a `ONE` wire and are used solely for partial witness commitments.
+    /// have a `ONE` wire and are used solely for partial trace commitments.
     /// As a result, they must be computed differently.
     fn mask<'a>() -> Result<Box<dyn CircuitObject<F, R> + 'a>> {
         Ok(Box::new(mask::StageMask::new(
@@ -384,7 +384,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     }
 
     /// Creates a circuit object that can be used to enforce well-formedness
-    /// checks on any final witness (stage) that has this stage as its
+    /// checks on any final trace (stage) that has this stage as its
     /// [`MultiStageCircuit::Last`] stage.
     fn final_mask<'a>() -> Result<Box<dyn CircuitObject<F, R> + 'a>> {
         Ok(Box::new(mask::StageMask::new_final(

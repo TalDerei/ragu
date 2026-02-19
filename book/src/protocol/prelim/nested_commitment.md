@@ -22,7 +22,7 @@ a commitment on the other:
 
 ### Example
 
-You're in an $\F_p$ circuit with witness polynomial $\v{a}\in\F^n$ and need to
+You're in an $\F_p$ circuit with trace polynomial $\v{a}\in\F^n$ and need to
 hash a commitment $A$ (Vesta point with $\F_q$ coordinates)
 into the [transcript](./transcript.md).
 Even with algebraic hash function, you can't hash $\F_q$ elements natively 
@@ -52,11 +52,11 @@ multiplication in $\F_q$ circuit becomes efficient _endoscaling_.
 The $\F_q$ circuit will generate a proof which itself will be recursively
 (partial-) verified by an $\F_p$ circuit in the next recursion step.
 
-Furthermore, define $A(X)\in\F_q[X]$ the _partial witness polynomial_ (a.k.a.
+Furthermore, define $A(X)\in\F_q[X]$ the _partial trace polynomial_ (a.k.a.
 [staging polynomial](../extensions/staging.md)) that encodes $A$.
-Since $A(X)$ is only a partial witness of the $\F_q$ circuit,
+Since $A(X)$ is only a partial trace of the $\F_q$ circuit,
 we need to further enforce the consistency between its commitment
-$\mathring{A}$ and the overall witness polynomial commitment
+$\mathring{A}$ and the overall trace polynomial commitment
 $R\in\G_{nested}=\com(r(X)\in\F_q[X])$.
 Both $\mathring{A}$ and $R$ are available to the next $\F_p$ circuit step.
 
@@ -66,7 +66,7 @@ Both $\mathring{A}$ and $R$ are available to the next $\F_p$ circuit step.
 
 Ensuring this consistency checks constitutes two _well-formedness_ requirements:
 1. $A(X)$ doesn't overlap with other partial-witness (e.g. $B(X)$)
-2. Their commitments adds up to the overall witness polynomial commitment 
+2. Their commitments adds up to the overall trace polynomial commitment 
 (e.g. $R=\mathring{A} + \mathring{B}$)
 
 The first statement is checked via a revdot product as part of the $\F_q$
@@ -80,14 +80,14 @@ proof/accumulator merging and uses nested commitments
 $\mathring{A}, \mathring{B},\ldots$ as non-deterministic advice to hash
 into the transcript. Concurrently, the $\F_q$ circuit performs the deferred
 group operations over the original commitments $A, B\in\G_{host}$ and
-checks part 1 of the well-formedness of the partial witness polynomials
+checks part 1 of the well-formedness of the partial trace polynomials
 underlying these nested commitments. Finally, part 2 of the
 well-formedness is enforced within the $\F_p$ recursion circuit, verifying
-that the "partial/multi-staged" commitments add up to the overall witness
+that the "partial/multi-staged" commitments add up to the overall trace
 commitment.
 
 To summarize, deferred operations for the next recursion step include:
-- Verify that partial witness polynomials (a.k.a. _staging polynomials_) are
+- Verify that partial trace polynomials (a.k.a. _staging polynomials_) are
   well-formed
 - Verify any deferred group operations (e.g. endoscaling) were computed
   correctly

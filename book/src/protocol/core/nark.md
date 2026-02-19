@@ -31,7 +31,7 @@ This is exactly what we need! If we multiply $\hat{r}(X)\cdot r(zX)$, the
 coefficient of its $X^{4n-1}$ term equals
 $\revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}}}$—the left side of our constraint.
 
-But there's a problem. Our witness polynomials have degree less than $4n$, so
+But there's a problem. Our trace polynomials have degree less than $4n$, so
 their product $c(X)$ has degree up to $8n-2$. We could commit to this
 product directly, but that's expensive—committing to degree-$8n$ polynomials
 costs roughly twice as much as degree-$4n$ polynomials. And we only care about
@@ -75,11 +75,11 @@ evaluations, let's build out the complete Polynomial IOP protocol.
 We start by taking all those coefficient vectors from our arithmetization
 and interpreting them as polynomials.
 
-- **witness polynomial**:
+- **trace polynomial**:
   $r(X)=\sum_{i=0}^{n-1} (c_iX^i+b_iX^{2n-1-i}+a_iX^{2n+i})$
-  - dilated witness polynomial: $r(XZ)$ corresponding to $\v{r}\circ\v{z^{4n}}$
+  - dilated trace polynomial: $r(XZ)$ corresponding to $\v{r}\circ\v{z^{4n}}$
   fixated at $z\in\F$
-- **wiring/circuit polynomial**:
+- **wiring polynomial**:
     $$
     s(X,Y)=\sum_{j=0}^{4n-1} Y^j\cdot\left(\sum_{i=0}^{n-1} (
         \v{u}_j^{(i)}\cdot X^{2n-1-i} +
@@ -119,13 +119,13 @@ sequenceDiagram
 
 Here's how the protocol flows:
 
-1. **Setup**: The circuit polynomials $s(X, Y)$ and $t(X, Z)$ are shared
-   between prover and verifier. These encode the structure of the circuit and
-   don't change per proof.
+1. **Setup**: The wiring polynomial $s(X, Y)$ and the gate polynomial $t(X, Z)$
+   are shared between prover and verifier. These encode the structure of the
+   circuit and don't change per proof.
 
 2. **Public input**: The public input polynomial $k(Y)$ is shared.
 
-3. **Witness commitment**: The prover commits to the witness polynomial $r(X)$.
+3. **Trace commitment**: The prover commits to the trace polynomial $r(X)$.
 
 4. **Random challenges**: The verifier sends random challenges $z, y\in\F$.
    These are used to partially evaluate $s(X,y), t(X,z)$ such that the
@@ -207,7 +207,7 @@ Denote hiding commitments as $\bar{C}\in\G$ with blinding factor $\gamma\in\F$,
 and non-hiding commitments as $C\in\G$ with zero blinding factor.
 Ragu NARK works as follows:
 
-1. Prover commits public input and witness polynomials:
+1. Prover commits public input and trace polynomials:
   $K\leftarrow\com(k(Y)), \bar{R}\leftarrow\com(r(X);\gamma_r)$,
   sends $K,\bar{R}\in\G$ to the Verifier.
 2. Verifier sends back challenges $z, y\sample\F$
@@ -275,8 +275,8 @@ This protocol makes several choices that seem strange for a standalone NARK but
 exist for a reason: they prepare us for recursion.
 
 **Why separate $\bar{A}$ from $\bar{R}$?**<br>
-During recursion, the witness polynomial commitment
-$\bar{R}$ binds the current step's witness, while $\bar{A}$ is an aggregated
+During recursion, the trace polynomial commitment
+$\bar{R}$ binds the current step's trace, while $\bar{A}$ is an aggregated
 commitment for a batch of accumulated revdot product statements. By separating
 them now, our NARK is structurally similar to the eventual recursion logic.
 

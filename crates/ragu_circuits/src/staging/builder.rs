@@ -2,8 +2,8 @@
 //!
 //! The staging system separates witness computation into explicit **stage
 //! polynomials** ($a(X)$, $b(X)$, ...) that can be committed independently,
-//! and an implicit **final witness** ($r'(X)$) that consumes their outputs.
-//! Together these form the full witness polynomial:
+//! and an implicit **final trace** ($r'(X)$) that consumes their outputs.
+//! Together these form the full trace polynomial:
 //!
 //! $$
 //! r(X) = r'(X) + a(X) + b(X) + \cdots
@@ -25,7 +25,7 @@
 //!    the driver, then populate each stage via [`StageGuard::enforced`] or
 //!    [`StageGuard::unenforced`]. The remaining code computes $r'(X)$.
 //!
-//! After phase 1, the witness polynomial has a fixed structure:
+//! After phase 1, the trace polynomial has a fixed structure:
 //!
 //! $$
 //! r(X) = \underbrace{a(X)}\_{\text{wires 0--99}} + \underbrace{b(X)}\_{\text{wires 100--101}} + \underbrace{r'(X)}\_{\text{wires 102+}}

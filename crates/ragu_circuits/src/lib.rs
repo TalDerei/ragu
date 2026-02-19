@@ -158,7 +158,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         Ok(Box::new(circuit))
     }
 
-    /// Computes the witness polynomial $r(X)$ given a witness for the circuit.
+    /// Computes the trace polynomial $r(X)$ given a witness for the circuit.
     fn rx<'witness, R: Rank>(
         &self,
         witness: Self::Witness<'witness>,

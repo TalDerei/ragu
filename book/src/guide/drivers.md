@@ -11,7 +11,7 @@ driver interprets differently. Each synthesis invocation is a deterministic
 pass over the circuit definition with a different backend "interpreter" that
 computes and extracts different information. For example, the `SXY` driver
 builds wiring polynomials *S(X, Y)* during registry construction (canonically
-referred to as circuit synthesis), and the `RX` driver generates witness
+referred to as circuit synthesis), and the `RX` driver generates trace
 polynomials *R(X)*.
 
 The driver exposes operations (for instance `driver.mul()` for encoding
@@ -54,7 +54,7 @@ encoding.
 Sets `MaybeKind = Always<T>` (witness closures are always called to compute
 field element values), and `Wire = ()` (no wire tracking needed). Each
 operation invokes its witness closure and stores the resulting field elements
-in arrays, constructing the witness polynomial *R(X)*.
+in arrays, constructing the trace polynomial *R(X)*.
 
 This type-level parameterization ensures that witness computation is only
 executed when the driver's `MaybeKind` requires it.
@@ -98,8 +98,8 @@ practical examples of how this abstraction is used.
 
 ## Available Drivers
 
-- **SXY** - Circuit synthesis (builds S(X,Y) polynomial)
-- **RX** - Witness generation (builds R(X) polynomial)
+- **SXY** - Wiring synthesis (builds S(X,Y) wiring polynomial)
+- **RX** - Trace generation (builds R(X) trace polynomial)
 - **Emulator** - Direct execution without constraints
 - **Simulator** - Full synthesis simulation with validation
 

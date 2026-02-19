@@ -1,8 +1,8 @@
 # Registry Polynomial
 
 As [previously discussed](../core/arithmetization.md), individual
-circuits can be represented entirely by a polynomial $s(X, Y)$ that
-represents all of its linear constraints. In order to make many
+circuits can be represented entirely by a wiring polynomial $s(X, Y)$
+that represents all of its linear constraints. In order to make many
 different circuits available within the protocol simultaneously, it
 will be useful to define a registry polynomial $m(W, X, Y)$ in that
 third formal indeterminate $W$ that interpolates such that
@@ -14,7 +14,7 @@ $$
 for some root of unity $\omega \in \mathbb{F}$ of sufficiently large
 $2^k$ order to index all circuits. Evaluating the registry at any
 domain point $W = \omega^i$ recovers exactly the $i$-th circuit's
-bivariate polynomial.
+wiring polynomial.
 
 ## Construction
 

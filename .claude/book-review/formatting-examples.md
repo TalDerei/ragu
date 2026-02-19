@@ -63,12 +63,12 @@ $\v{z}=(1, \v{x}, \v{w})$
 
 <!-- <BEFORE> -->
 we need to further enforce the consistency between its commitment $\mathring{A}$
-and the overall witness polynomial commitment $R\in\G_{nested}=\com(r(X)\in\F_q[X])$.
+and the overall trace polynomial commitment $R\in\G_{nested}=\com(r(X)\in\F_q[X])$.
 <!-- </BEFORE> -->
 
 <!-- <AFTER> -->
 we need to further enforce the consistency between its commitment $\mathring{A}$
-and the overall witness polynomial commitment
+and the overall trace polynomial commitment
 $R\in\G_{nested}=\com(r(X)\in\F_q[X])$.
 <!-- </AFTER> -->
 

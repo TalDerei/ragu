@@ -1,6 +1,6 @@
 //! Proof and proof-carrying data structures.
 //!
-//! Defines the [`Proof`] structure containing witness polynomials, commitments,
+//! Defines the [`Proof`] structure containing trace polynomials, commitments,
 //! and accumulated claims, along with [`Pcd`] which bundles a [`Proof`] with the
 //! data that a [`Header`] succinctly encodes.
 

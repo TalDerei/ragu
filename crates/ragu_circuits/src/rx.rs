@@ -1,7 +1,7 @@
-//! Assembly of the $r(X)$ witness polynomial.
+//! Assembly of the $r(X)$ trace polynomial.
 //!
 //! The [`eval`] function in this module processes some witness data for a
-//! particular [`Circuit`] and assembles the corresponding $r(X)$ polynomial.
+//! particular [`Circuit`] and assembles the corresponding $r(X)$ trace polynomial.
 
 use ff::Field;
 use ragu_arithmetic::Coeff;
