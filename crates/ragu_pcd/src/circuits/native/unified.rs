@@ -26,7 +26,10 @@ use ragu_core::{
     gadgets::{Bound, Consistent, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Point, io::Write};
+use ragu_primitives::{
+    Element, GadgetExt, Point,
+    io::{Buffer, Write},
+};
 
 use crate::{components::suffix::WithSuffix, proof::Proof};
 
@@ -85,21 +88,25 @@ macro_rules! define_unified_instance {
         /// Shared public inputs for internal verification circuits.
         ///
         /// This gadget contains the commitments, Fiat-Shamir challenges, and final
-        /// values that internal circuits consume as public inputs. The nested curve
+        /// values that internal circuits consume. The nested curve
         /// (`C::NestedCurve`) is the other curve in the cycle, whose base field equals
         /// the circuit's scalar field.
         ///
         /// # Field Organization
         ///
-        /// Fields are ordered to match the current proof's transcript:
+        /// Fields are ordered to match the current proof's transcript. The
+        /// [`Write`] impl only serializes non-derivable fields as public outputs:
         ///
         /// - **Commitments**: Points on the nested curve from current proof components
-        /// - **Challenges**: Fiat-Shamir challenges computed by [`hashes_1`] and [`hashes_2`]
         /// - **Final values**: The revdot claim $c$ and expected evaluation $v$
+        ///
+        /// Fiat-Shamir challenges (computed by [`hashes_1`] and [`hashes_2`]) are
+        /// present as gadget fields for internal circuit use but excluded from
+        /// serialization since they are verifier-derivable from the commitments.
         ///
         /// [`hashes_1`]: super::hashes_1
         /// [`hashes_2`]: super::hashes_2
-        #[derive(Gadget, Write, Consistent)]
+        #[derive(Gadget, Consistent)]
         pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> {
             $(
                 $(#[$field_meta])*
@@ -175,7 +182,8 @@ macro_rules! define_unified_instance {
 }
 
 // Define all unified instance fields in one place.
-// Field order is significant: it determines wire ordering in the circuit.
+// Field order determines wire allocation ordering in the circuit.
+// Serialization order is determined by the custom Write impl below.
 define_unified_instance! {
     /// Commitment from the preamble proof component.
     nested_preamble_commitment: Point,
@@ -219,6 +227,34 @@ define_unified_instance! {
     pre_beta: Element,
     /// Expected evaluation at the challenge point for consistency verification.
     v: Element,
+}
+
+/// Custom [`Write`] implementation that only serializes non-derivable fields.
+///
+/// Fiat-Shamir challenges ($w$, $y$, $z$, $\mu$, $\nu$, $\mu'$, $\nu'$, $x$,
+/// $\alpha$, $u$, `pre_beta`) are excluded because they are deterministic
+/// Poseidon squeezes of the commitments, already constrained by the
+/// [`hashes_1`](super::hashes_1) and [`hashes_2`](super::hashes_2) circuits.
+impl<C: Cycle<CircuitField = F>, F: ff::Field> Write<F>
+    for Output<'static, core::marker::PhantomData<F>, C>
+{
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+        this: &Bound<'dr, D, Self>,
+        dr: &mut D,
+        buf: &mut B,
+    ) -> Result<()> {
+        GadgetExt::write(&this.nested_preamble_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_s_prime_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_error_m_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_error_n_commitment, dr, buf)?;
+        GadgetExt::write(&this.c, dr, buf)?;
+        GadgetExt::write(&this.nested_ab_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_query_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_f_commitment, dr, buf)?;
+        GadgetExt::write(&this.nested_eval_commitment, dr, buf)?;
+        GadgetExt::write(&this.v, dr, buf)?;
+        Ok(())
+    }
 }
 
 /// A lazy-allocation slot for a single field in the unified output.
@@ -384,6 +420,30 @@ mod tests {
             output.num_wires(),
             NUM_WIRES,
             "NUM_WIRES constant does not match actual wire count"
+        );
+    }
+
+    /// The number of wires serialized by the custom [`Write`] impl.
+    ///
+    /// Excludes Fiat-Shamir challenges (verifier-derivable from commitments
+    /// via Poseidon, already constrained by hashes_1 and hashes_2). Only
+    /// commitments and non-derivable values (`c`, `v`) are serialized.
+    const NUM_SERIALIZED_WIRES: usize = 18;
+
+    #[test]
+    fn num_serialized_wires_constant_is_correct() {
+        let mut emulator = Emulator::counter();
+        let output = Output::<'_, _, Pasta>::alloc_from_proof::<R<16>>(&mut emulator, Empty)
+            .expect("allocation should succeed");
+
+        let mut count = 0usize;
+        output
+            .write(&mut emulator, &mut count)
+            .expect("write should succeed");
+
+        assert_eq!(
+            count, NUM_SERIALIZED_WIRES,
+            "NUM_SERIALIZED_WIRES does not match actual serialized wire count"
         );
     }
 }
