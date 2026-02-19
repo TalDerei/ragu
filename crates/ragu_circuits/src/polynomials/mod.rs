@@ -17,8 +17,9 @@ mod private {
 pub trait Rank:
     private::Sealed + Clone + Send + Sync + 'static + PartialEq + Eq + core::fmt::Debug + Default
 {
-    /// Ragu currently only supports ranks between $2$ and $28$ to avoid
-    /// overflows on 32-bit architectures.
+    /// The rank can range from $2$ to $28$ (to avoid overflows on 32-bit
+    /// architectures), but only [`ProductionRank`] and [`TestRank`] are
+    /// currently implemented.
     const RANK: u32;
 
     /// Returns the $2^\text{RANK}$ number of coefficients in the polynomials
@@ -100,9 +101,9 @@ pub trait Rank:
     }
 }
 
-/// `R<N>` implements [`Rank`] for supported values of $N$. The [`Rank`] trait
-/// provides a [`ProductionRank`] ($N = 13$) and [`TestRank`] ($N = 5$). Additional
-/// implementations can be added to [`impl_rank_for_R!`] as needed.
+/// `R<N>` implements [`Rank`] for supported values of $N$. The type aliases
+/// [`ProductionRank`] ($N = 13$) and [`TestRank`] ($N = 7$) are provided for
+/// convenience. Additional implementations can be added to `impl_rank_for_R!` as needed.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct R<const RANK: u32>;
 
