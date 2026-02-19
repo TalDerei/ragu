@@ -100,10 +100,23 @@ pub trait Rank:
     }
 }
 
-/// Explicit implementations for various basis sizes supported for use in Ragu.
-/// `R<N>` implements [`Rank`] for $N \in [2, 28]$.
+/// `R<N>` implements [`Rank`] for supported values of $N$. The [`Rank`] trait
+/// provides a [`ProductionRank`] ($N = 13$) and [`TestRank`] ($N = 5$). Additional
+/// implementations can be added to [`impl_rank_for_R!`] as needed.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct R<const RANK: u32>;
+
+/// The standard production rank for Ragu circuits.
+///
+/// Provides $2^{13} = 8192$ polynomial coefficients and supports up to
+/// $2^{11} = 2048$ multiplication constraints.
+pub type ProductionRank = R<13>;
+
+/// A small rank for fast unit tests.
+///
+/// Provides $2^7 = 128$ polynomial coefficients and supports up to
+/// $2^5 = 32$ multiplication constraints.
+pub type TestRank = R<7>;
 
 /// Macro to implement [`Rank`] for various `R<N>`.
 macro_rules! impl_rank_for_R {
@@ -117,13 +130,13 @@ macro_rules! impl_rank_for_R {
     };
 }
 
-impl_rank_for_R! {2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}
+impl_rank_for_R! {7, 13}
 
 #[test]
 fn test_tz() {
     use ragu_pasta::Fp;
 
-    type DemoR = R<7>;
+    type DemoR = TestRank;
 
     let mut poly = structured::Polynomial::<Fp, DemoR>::new();
     for _ in 0..DemoR::n() {
@@ -150,7 +163,7 @@ fn test_tz() {
 #[test]
 fn test_txz_consistency() {
     use ragu_pasta::Fp;
-    type DemoR = R<10>;
+    type DemoR = TestRank;
     let z = Fp::random(&mut rand::rng());
     let x = Fp::random(&mut rand::rng());
     let txz = DemoR::txz(x, z);
