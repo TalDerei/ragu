@@ -350,10 +350,9 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         Ok(poly)
     }
 
-    /// Return the constraint system key for this registry, used by the proof
-    /// generator.
-    pub fn key(&self) -> &Key<F> {
-        &self.key
+    /// Return the registry digest (the key's field element).
+    pub fn digest(&self) -> F {
+        self.key.value()
     }
 
     /// Returns a slice of the circuit objects in this registry.
