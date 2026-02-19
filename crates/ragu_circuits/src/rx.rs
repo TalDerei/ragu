@@ -16,6 +16,23 @@ use ragu_primitives::GadgetExt;
 
 use super::{Circuit, FreshB, Rank, registry, structured};
 
+/// Opaque trace produced by [`CircuitExt::rx`](crate::CircuitExt::rx).
+///
+/// Callers must go through
+/// [`Registry::assemble`](crate::registry::Registry::assemble) (or
+/// [`assemble_trivial`](Self::assemble_trivial) in tests) to obtain the final
+/// polynomial.
+pub struct Trace<F: Field, R: Rank>(pub(crate) structured::Polynomial<F, R>);
+
+impl<F: Field, R: Rank> Trace<F, R> {
+    /// Assembles the trace into a polynomial using a trivial floor plan.
+    ///
+    /// For use in tests and benchmarks that don't have a registry.
+    pub fn assemble_trivial(self) -> structured::Polynomial<F, R> {
+        self.0
+    }
+}
+
 struct Evaluator<'a, F: Field, R: Rank> {
     rx: structured::View<'a, F, R, structured::Forward>,
     available_b: Option<usize>,
@@ -93,7 +110,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
     witness: C::Witness<'witness>,
     key: &registry::Key<F>,
-) -> Result<(structured::Polynomial<F, R>, C::Aux<'witness>)> {
+) -> Result<(Trace<F, R>, C::Aux<'witness>)> {
     let mut rx = structured::Polynomial::<F, R>::new();
     let aux = {
         let mut dr = Evaluator {
@@ -116,7 +133,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
 
         aux.take()
     };
-    Ok((rx, aux))
+    Ok((Trace(rx), aux))
 }
 
 #[cfg(test)]
@@ -131,7 +148,8 @@ mod tests {
         let circuit = SquareCircuit { times: 10 };
         let witness: Fp = Fp::from(3);
         let key = registry::Key::default();
-        let (rx, _aux) = eval::<Fp, _, TestRank>(&circuit, witness, &key).unwrap();
+        let (trace, _aux) = eval::<Fp, _, TestRank>(&circuit, witness, &key).unwrap();
+        let rx = trace.assemble_trivial();
         let mut coeffs = rx.iter_coeffs().collect::<Vec<_>>();
         let size_of_vec = coeffs.len() / 4;
         let c = coeffs.drain(..size_of_vec).collect::<Vec<_>>();

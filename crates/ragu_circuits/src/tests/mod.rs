@@ -150,7 +150,8 @@ fn test_simple_circuit() {
             &registry::Key::default(),
         )
         .unwrap()
-        .0;
+        .0
+        .assemble_trivial();
 
     type MyRank = TestRank;
     let circuit = MySimpleCircuit.into_object::<MyRank>().unwrap();

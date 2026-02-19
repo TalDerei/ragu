@@ -206,12 +206,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let step_circuit =
                     EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
                 let staged = MultiStage::new(step_circuit);
-                let (step_rx, _) = staged.rx::<R>(
+                let (step_trace, _) = staged.rx::<R>(
                     EndoscalingStepWitness {
                         endoscalar: beta_endo,
                         points: &witness,
                     },
                     key,
+                )?;
+                let step_rx = self.nested_registry.assemble(
+                    &step_trace,
+                    crate::circuits::nested::InternalCircuitIndex::EndoscalingStep(step as u32)
+                        .circuit_index(),
                 )?;
                 step_rxs.push(step_rx);
             }

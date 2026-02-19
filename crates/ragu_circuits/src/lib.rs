@@ -24,6 +24,8 @@ mod s;
 pub mod staging;
 mod trivial;
 
+pub use rx::Trace;
+
 #[cfg(test)]
 mod tests;
 
@@ -163,7 +165,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         &self,
         witness: Self::Witness<'witness>,
         key: &registry::Key<F>,
-    ) -> Result<(structured::Polynomial<F, R>, Self::Aux<'witness>)> {
+    ) -> Result<(rx::Trace<F, R>, Self::Aux<'witness>)> {
         rx::eval(self, witness, key)
     }
 
