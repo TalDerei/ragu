@@ -192,6 +192,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 .enforce_equal(dr, &error_n.collapsed[i])?;
         }
 
-        Ok((unified_output.finish(dr, unified_instance)?, D::just(|| ())))
+        let (output, _coverage) = unified_output.finish(dr, unified_instance)?;
+        Ok((output, D::just(|| ())))
     }
 }

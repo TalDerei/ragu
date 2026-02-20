@@ -6,6 +6,7 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
+    circuits::native::unified::Coverage,
     circuits::{self, native, native::total_circuit_counts},
     components::fold_revdot::NativeParameters,
     proof,
@@ -55,7 +56,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             v: p.v,
         };
 
-        let (hashes_1_trace, _) =
+        let (hashes_1_trace, hashes_1_cov) =
             native::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
                 self.params,
                 total_circuit_counts(self.num_application_steps).1,
@@ -73,7 +74,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let hashes_1_rx_commitment =
             hashes_1_rx.commit(C::host_generators(self.params), hashes_1_rx_blind);
 
-        let (hashes_2_trace, _) =
+        let (hashes_2_trace, hashes_2_cov) =
             native::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(self.params).rx(
                 native::hashes_2::Witness {
                     unified_instance,
@@ -121,14 +122,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let full_collapse_rx_commitment =
             full_collapse_rx.commit(C::host_generators(self.params), full_collapse_rx_blind);
 
-        let (compute_v_trace, _) = native::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx(
-            native::compute_v::Witness {
-                unified_instance,
-                preamble_witness,
-                query_witness,
-                eval_witness,
-            },
-        )?;
+        let (compute_v_trace, compute_v_cov) =
+            native::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx(
+                native::compute_v::Witness {
+                    unified_instance,
+                    preamble_witness,
+                    query_witness,
+                    eval_witness,
+                },
+            )?;
         let compute_v_rx = self.native_registry.assemble(
             &compute_v_trace,
             native::compute_v::CIRCUIT_ID.circuit_index(),
@@ -136,6 +138,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let compute_v_rx_blind = C::CircuitField::random(&mut *rng);
         let compute_v_rx_commitment =
             compute_v_rx.commit(C::host_generators(self.params), compute_v_rx_blind);
+
+        // Cross-circuit coverage validation: the three challenge-deriving circuits
+        // must cover all 12 required challenges exactly once.
+        Coverage::validate(&[hashes_1_cov, hashes_2_cov, compute_v_cov]);
 
         Ok(proof::InternalCircuits {
             hashes_1_rx,
