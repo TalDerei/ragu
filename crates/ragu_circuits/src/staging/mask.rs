@@ -247,6 +247,7 @@ mod tests {
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
         gadgets::{Bound, Consistent, Gadget},
         maybe::Maybe,
+        routines::{Prediction, Routine},
     };
     use ragu_pasta::{EpAffine, Fp, Fq};
     use ragu_primitives::{Element, Endoscalar, Point, io::Write};
@@ -669,5 +670,91 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_child_routine_zero_linear_constraints() {
+        // A routine that only uses a multiplication gate and no linear
+        // constraints.  This exercises the `.saturating_sub(1)` path in
+        // sy::eval's sub-routine y-power initialisation.
+        #[derive(Clone)]
+        struct MulOnlyRoutine;
+
+        impl Routine<Fp> for MulOnlyRoutine {
+            type Input = ();
+            type Output = ();
+            type Aux<'dr> = ();
+
+            fn execute<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                _input: Bound<'dr, D, Self::Input>,
+                _aux: DriverValue<D, Self::Aux<'dr>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                dr.mul(|| unreachable!())?;
+                Ok(())
+            }
+
+            fn predict<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _input: &Bound<'dr, D, Self::Input>,
+            ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>>
+            {
+                Ok(Prediction::Unknown(D::just(|| ())))
+            }
+        }
+
+        struct TestCircuit;
+
+        impl crate::Circuit<Fp> for TestCircuit {
+            type Instance<'source> = ();
+            type Witness<'source> = ();
+            type Output = ();
+            type Aux<'source> = ();
+
+            fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _instance: DriverValue<D, Self::Instance<'source>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                Ok(())
+            }
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                _witness: DriverValue<D, Self::Witness<'source>>,
+            ) -> Result<(
+                Bound<'dr, D, Self::Output>,
+                DriverValue<D, Self::Aux<'source>>,
+            )> {
+                dr.routine(MulOnlyRoutine, ())?;
+                Ok(((), D::just(|| ())))
+            }
+        }
+
+        let obj = TestCircuit
+            .into_object::<R>()
+            .expect("into_object should succeed");
+        let floor_plan = crate::floor_planner::floor_plan(obj.routine_records());
+
+        // The child routine (index 1) should have zero linear constraints.
+        assert_eq!(
+            floor_plan[1].num_linear_constraints, 0,
+            "MulOnlyRoutine should have 0 linear constraints"
+        );
+
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+        let k = registry::Key::new(Fp::random(&mut rand::rng()));
+
+        // None of these must panic — previously sy would underflow on `- 1`.
+        let sxy = obj.sxy(x, y, &k, &floor_plan);
+        let sx = obj.sx(x, &k, &floor_plan);
+        let sy = obj.sy(y, &k, &floor_plan);
+
+        assert_eq!(sxy, sx.eval(y));
+        assert_eq!(sxy, sy.eval(x));
     }
 }

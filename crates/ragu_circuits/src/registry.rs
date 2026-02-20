@@ -343,19 +343,21 @@ impl<F: PrimeField> From<F> for OmegaKey {
 }
 
 impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
-    /// Assembles a [`Trace`](crate::Trace) into the final `r(X)` polynomial.
-    ///
-    /// The `circuit` parameter identifies which circuit produced the trace.
+    /// Assembles a [`Trace`](crate::Trace) into a [`structured::Polynomial`] using
+    /// this registry's key and the floor plan for the specified circuit.
     pub fn assemble(
         &self,
         trace: &crate::rx::Trace<F>,
-        // TODO: use circuit index to apply per-circuit floor plans.
-        _circuit: CircuitIndex,
+        circuit: CircuitIndex,
     ) -> Result<structured::Polynomial<F, R>> {
-        trace.assemble_with_key(&self.key)
+        trace.assemble_with_key(&self.key, &self.floor_plans[usize::from(circuit)])
     }
 
-    /// Return the registry digest (the key's field element).
+    /// Returns the registry digest value.
+    ///
+    /// This is the binding key computed during
+    /// [`RegistryBuilder::finalize`] that ties each circuit's wiring
+    /// polynomial to this registry.
     pub fn digest(&self) -> F {
         self.key.value()
     }
