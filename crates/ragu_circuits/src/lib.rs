@@ -169,7 +169,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         rx::eval(self, witness)
     }
 
-    /// Computes the public input polynomial $k(Y)$ for the given instance.
+    /// Computes the instance polynomial $k(Y)$ for the given instance.
     fn ky(&self, instance: Self::Instance<'_>) -> Result<Vec<F>> {
         ky::eval(self, instance)
     }

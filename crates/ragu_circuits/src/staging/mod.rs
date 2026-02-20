@@ -29,7 +29,7 @@
 //!   something that can be checked in fewer constraints.
 //! * The prover may wish to have multiple circuits contain the same data (but
 //!   perform different operations over it) but does not want to pay the cost of
-//!   using public inputs to check that they are equivalent.
+//!   checking equivalence through instance wires.
 //!
 //! The solution is to decompose $r(X)$ like so:
 //!
@@ -39,7 +39,7 @@
 //! to a _stage_ of the trace) and $f(X)$ is a special "final" staging
 //! polynomial that encodes the "remainder" of the wire assignment for
 //! $r(X)$. The prover will commit to $a(X), b(X), \cdots$ independently, and
-//! _then_ may commit to $f(X)$ and use public inputs to obtain cryptographic
+//! _then_ may commit to $f(X)$ and use instance wires to obtain cryptographic
 //! commitments to $a(X), b(X)$ for the purpose of evaluating hash functions
 //! that produce digests that are cryptographically bound to their contents.
 //!
