@@ -31,31 +31,38 @@ pub struct Trace<F: Field> {
 }
 
 impl<F: Field> Trace<F> {
-    /// Assembles the trace into a polynomial using a trivial floor plan.
-    ///
-    /// For use in tests and benchmarks that don't have a registry.
-    pub fn assemble_trivial<R: Rank>(self) -> Result<structured::Polynomial<F, R>> {
+    /// Assembles the trace into a polynomial, embedding the given `key`.
+    pub(crate) fn assemble_with_key<R: Rank>(
+        &self,
+        key: &registry::Key<F>,
+    ) -> Result<structured::Polynomial<F, R>> {
         if self.a.len() > R::n() || self.b.len() > R::n() || self.c.len() > R::n() {
             return Err(Error::MultiplicationBoundExceeded(R::n()));
         }
-        let key = registry::Key::default();
         let mut poly = structured::Polynomial::<F, R>::new();
         {
             let view = poly.forward();
-            for val in self.a {
-                view.a.push(val);
+            for val in &self.a {
+                view.a.push(*val);
             }
-            for val in self.b {
-                view.b.push(val);
+            for val in &self.b {
+                view.b.push(*val);
             }
-            for val in self.c {
-                view.c.push(val);
+            for val in &self.c {
+                view.c.push(*val);
             }
             view.a[0] = key.value();
             view.b[0] = key.inverse();
             view.c[0] = F::ONE;
         }
         Ok(poly)
+    }
+
+    /// Assembles the trace into a polynomial using a trivial floor plan.
+    ///
+    /// For use in tests and benchmarks that don't have a registry.
+    pub fn assemble_trivial<R: Rank>(self) -> Result<structured::Polynomial<F, R>> {
+        self.assemble_with_key(&registry::Key::default())
     }
 }
 

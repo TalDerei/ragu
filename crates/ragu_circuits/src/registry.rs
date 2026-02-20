@@ -338,28 +338,10 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     pub fn assemble(
         &self,
         trace: &crate::rx::Trace<F>,
+        // TODO: use circuit index to apply per-circuit floor plans.
         _circuit: CircuitIndex,
     ) -> Result<structured::Polynomial<F, R>> {
-        if trace.a.len() > R::n() || trace.b.len() > R::n() || trace.c.len() > R::n() {
-            return Err(Error::MultiplicationBoundExceeded(R::n()));
-        }
-        let mut poly = structured::Polynomial::<F, R>::new();
-        {
-            let view = poly.forward();
-            for val in &trace.a {
-                view.a.push(*val);
-            }
-            for val in &trace.b {
-                view.b.push(*val);
-            }
-            for val in &trace.c {
-                view.c.push(*val);
-            }
-            view.a[0] = self.key.value();
-            view.b[0] = self.key.inverse();
-            view.c[0] = F::ONE;
-        }
-        Ok(poly)
+        trace.assemble_with_key(&self.key)
     }
 
     /// Return the registry digest (the key's field element).
