@@ -273,12 +273,12 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             routine.execute(self, input, aux)
         };
         // Verify this routine consumed exactly the expected constraints.
-        debug_assert_eq!(
+        assert_eq!(
             self.scope.multiplication_constraints,
             slot.multiplication_start + slot.num_multiplication_constraints,
             "routine multiplication constraint count must match floor plan"
         );
-        debug_assert_eq!(
+        assert_eq!(
             self.scope.linear_constraints,
             slot.linear_start + slot.num_linear_constraints,
             "routine linear constraint count must match floor plan"
@@ -376,17 +376,17 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     evaluator.enforce_one()?;
 
     // Verify all floor plan slots were consumed and counts match.
-    debug_assert_eq!(
+    assert_eq!(
         evaluator.current_routine + 1,
         evaluator.floor_plan.len(),
         "floor plan routine count must match synthesis"
     );
-    debug_assert_eq!(
+    assert_eq!(
         evaluator.scope.multiplication_constraints,
         evaluator.floor_plan[0].num_multiplication_constraints,
         "root multiplication constraint count must match floor plan"
     );
-    debug_assert_eq!(
+    assert_eq!(
         evaluator.scope.linear_constraints, evaluator.floor_plan[0].num_linear_constraints,
         "root linear constraint count must match floor plan"
     );

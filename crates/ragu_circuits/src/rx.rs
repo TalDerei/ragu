@@ -138,7 +138,7 @@ impl<F: Field> Trace<F> {
                 let slot = &floor_plan[seg_idx];
 
                 // Verify segment size matches floor plan expectation.
-                debug_assert_eq!(
+                assert_eq!(
                     seg.a.len(),
                     slot.num_multiplication_constraints,
                     "segment {} size must match floor plan",

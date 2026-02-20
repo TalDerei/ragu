@@ -135,11 +135,11 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
 
                 // Verify internal consistency: current_record unchanged and
                 // all paired allocations consumed.
-                debug_assert_eq!(
+                assert_eq!(
                     this.scope.current_record, record,
                     "current_record must remain stable during routine execution"
                 );
-                debug_assert!(
+                assert!(
                     !this.scope.available_b,
                     "all paired allocations must be consumed"
                 );
