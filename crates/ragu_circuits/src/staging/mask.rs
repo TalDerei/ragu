@@ -279,7 +279,7 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
-        gadgets::{Bound, Consistent, Gadget},
+        gadgets::{Bound, Consistent, Gadget, GadgetKind},
         maybe::Maybe,
         routines::{Prediction, Routine},
     };
@@ -290,7 +290,8 @@ mod tests {
     use crate::{
         CircuitExt, CircuitObject, metrics,
         polynomials::{Rank, structured},
-        registry, staging::StageBuilder,
+        registry,
+        staging::StageBuilder,
         tests::SquareCircuit,
     };
 

@@ -129,8 +129,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         // Extract endoscalars from challenges and compute their field-scaled values.
         let y_endo = Endoscalar::extract(dr, y)?;
         let z_endo = Endoscalar::extract(dr, z)?;
-        let y_coeff = y_endo.field_scale(dr)?;
-        let z_coeff = z_endo.field_scale(dr)?;
+        let y_coeff = y_endo.lift(dr)?;
+        let z_coeff = z_endo.lift(dr)?;
 
         // Create zero elements for b-positions.
         // This ensures coefficients land in a-positions when rx is built.
