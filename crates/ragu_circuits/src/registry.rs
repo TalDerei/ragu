@@ -401,14 +401,6 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         coeffs
     }
 
-    /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
-    ///
-    /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
-    pub fn circuit_in_domain(&self, i: CircuitIndex) -> bool {
-        let w: F = i.omega_j();
-        self.domain.contains(w)
-    }
-
     /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
     /// the registry polynomial unrestricted at $X$.
     ///
@@ -417,6 +409,14 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
         let w: F = i.omega_j();
         self.at(w).wy(y)
+    }
+
+    /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
+    ///
+    /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
+    pub fn circuit_in_domain(&self, i: CircuitIndex) -> bool {
+        let w: F = i.omega_j();
+        self.domain.contains(w)
     }
 
     /// Evaluate the registry polynomial unrestricted at $X$.
