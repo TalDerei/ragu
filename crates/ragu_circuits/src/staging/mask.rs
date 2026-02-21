@@ -116,6 +116,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         y: F,
         key: &registry::Key<F>,
         floor_plan: &[crate::floor_planner::RoutineSlot],
+        _type_floor_plan: &crate::floor_plan::FloorPlan,
         _cache: &mut crate::s::MemoCache<F>,
     ) -> F {
         // StageMask doesn't use routines, so no memoization benefit.
