@@ -116,6 +116,7 @@ mod builder;
 pub(crate) mod mask;
 
 use ff::Field;
+use ragu_arithmetic::{CurveAffine, FixedGenerators};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
@@ -399,6 +400,34 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         Ok(Box::new(mask::StageMask::new_final(
             Self::skip_multiplications() + Self::num_multiplications(),
         )?))
+    }
+
+    /// Returns the generator index for the i-th A coefficient of this stage.
+    ///
+    /// The A coefficients are placed at positions `2n + 1 + skip + i` in the
+    /// generator array, where `n` is the rank parameter and `skip` is the
+    /// number of skipped multiplications.
+    fn generator_index_for_a(coefficient_index: usize) -> usize {
+        assert!(
+            coefficient_index < Self::num_multiplications(),
+            "coefficient_index {} exceeds num_multiplications {}",
+            coefficient_index,
+            Self::num_multiplications()
+        );
+
+        2 * R::n() + 1 + Self::skip_multiplications() + coefficient_index
+    }
+
+    /// Returns the generator point for the i-th A coefficient of this stage.
+    ///
+    /// This is useful for computing commitments to values placed in A positions
+    /// of the witness polynomial, such as challenge coefficients for smuggling.
+    fn generator_for_a_coefficient<C: CurveAffine>(
+        generators: &impl FixedGenerators<C>,
+        coefficient_index: usize,
+    ) -> C {
+        let idx = Self::generator_index_for_a(coefficient_index);
+        generators.g()[idx]
     }
 }
 
