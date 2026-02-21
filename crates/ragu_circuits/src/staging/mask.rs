@@ -208,6 +208,17 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         -((F::ONE + xy_2n) * (skip + tail) * gsum)
     }
 
+    fn sxy_with_cache(
+        &self,
+        x: F,
+        y: F,
+        floor_plan: &[crate::floor_planner::ConstraintSegment],
+        _cache: &mut crate::wiring::MemoCache<F>,
+    ) -> F {
+        // StageMask doesn't use routines, so no memoization benefit.
+        self.sxy(x, y, floor_plan)
+    }
+
     fn sx(
         &self,
         x: F,
