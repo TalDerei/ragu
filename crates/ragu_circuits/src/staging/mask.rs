@@ -809,6 +809,35 @@ mod tests {
     }
 
     #[test]
+    fn test_generator_index_edge_cases() {
+        let pasta = Pasta::baked();
+        let generators = Pasta::host_generators(pasta);
+
+        // Edge case: skip = 0, various num_multiplications.
+        for num in 1..10 {
+            let stage = StageMask::<R>::new(0, num).unwrap();
+            assert_eq!(stage.generator_index_for_a(0), 2 * R::n() + 1);
+            assert_eq!(stage.generator_index_for_a(num - 1), 2 * R::n() + num);
+            let _ = stage.generator_for_a_coefficient(generators, num - 1);
+        }
+
+        // Edge case: maximum valid coefficient_index.
+        let stage = StageMask::<R>::new(5, 10).unwrap();
+        let max_idx = stage.num_multiplications - 1;
+        let gen_idx = stage.generator_index_for_a(max_idx);
+        assert_eq!(gen_idx, 2 * R::n() + 1 + 5 + 9);
+        let _ = stage.generator_for_a_coefficient(generators, max_idx);
+    }
+
+    #[test]
+    #[should_panic(expected = "coefficient_index 5 exceeds num_multiplications 5")]
+    fn test_generator_index_panics_on_invalid_coefficient() {
+        let stage = StageMask::<R>::new(2, 5).unwrap();
+        // This should panic: coefficient_index == num_multiplications.
+        let _ = stage.generator_index_for_a(5);
+    }
+
+    #[test]
     fn test_a_only_commitment_for_challenge_smuggling() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
