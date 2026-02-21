@@ -279,7 +279,7 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
-        gadgets::{Bound, Consistent, Gadget, GadgetKind},
+        gadgets::{Bound, Consistent, Gadget},
         maybe::Maybe,
         routines::{Prediction, Routine},
     };
@@ -709,6 +709,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_child_routine_zero_linear_constraints() {
         // A routine that only uses a multiplication gate and no linear
         // constraints.  This exercises the `.saturating_sub(1)` path in
@@ -891,7 +892,7 @@ mod tests {
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'source>>,
-        ) -> Result<<Self::OutputKind as GadgetKind<Fp>>::Rebind<'dr, D>>
+        ) -> Result<Bound<'dr, D, Self::OutputKind>>
         where
             Self: 'dr,
         {
