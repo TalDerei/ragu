@@ -272,19 +272,11 @@ impl<F: Field, R: Rank> RawPolynomial<F, R> {
     }
 }
 
-/// An `Arc`-wrapped snapshot of a [`RawPolynomial`].
+/// An [`Arc`]-wrapped [`RawPolynomial`].
 ///
 /// All polynomial data and operations live on [`RawPolynomial`]; this type
-/// adds cheap clone-on-write ownership on top via [`Arc`].
-///
-/// ## Clone-on-write semantics
-///
-/// - `Clone` is O(1): increments the `Arc` reference count, no data is copied.
-/// - Mutation via `DerefMut` (e.g. `poly.dilate(z)`, `*poly += &other`) calls
-///   [`Arc::make_mut`] internally:
-///   - **Uniquely owned** (refcount = 1): zero-cost, same as `&mut RawPolynomial`.
-///   - **Shared** (refcount > 1): clones the `RawPolynomial` exactly once, then
-///     mutates the fresh copy, leaving other clones unaffected.
+/// adds cheap cloning: clones are O(1) and mutating a shared clone copies
+/// the data lazily, leaving other clones unaffected.
 #[derive(Clone, Debug)]
 pub struct Polynomial<F: Field, R: Rank> {
     inner: Arc<RawPolynomial<F, R>>,
@@ -300,6 +292,8 @@ impl<F: Field, R: Rank> Deref for Polynomial<F, R> {
 
 impl<F: Field, R: Rank> DerefMut for Polynomial<F, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // Arc::make_mut is O(1) when uniquely owned, and clones RawPolynomial
+        // exactly once when shared (copy-on-write).
         Arc::make_mut(&mut self.inner)
     }
 }
@@ -344,8 +338,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
                 .into_iter()
                 .fold(RawPolynomial::new(), |mut acc, poly| {
                     acc.scale(scale_factor);
-                    // poly.borrow(): &Polynomial, &**poly.borrow(): &RawPolynomial (via Deref chain)
-                    acc.add_assign(&**poly.borrow());
+                    acc.add_assign(poly.borrow());
                     acc
                 }),
         )
@@ -360,16 +353,16 @@ impl<F: Field, R: Rank> ragu_arithmetic::Ring for Polynomial<F, R> {
         r.scale(by);
     }
     fn add_assign(r: &mut Self, other: &Self) {
-        r.add_assign(other);
+        RawPolynomial::add_assign(r, other);
     }
     fn sub_assign(r: &mut Self, other: &Self) {
-        r.sub_assign(other);
+        RawPolynomial::sub_assign(r, other);
     }
 }
 
 impl<F: Field, R: Rank> PartialEq for Polynomial<F, R> {
     fn eq(&self, other: &Self) -> bool {
-        self.iter_coeffs().eq(other.iter_coeffs())
+        self.u == other.u && self.v == other.v && self.w == other.w && self.d == other.d
     }
 }
 

@@ -2,21 +2,6 @@
 //!
 //! [`CommittedPolynomial`] bundles a polynomial, its blinding factor, and a
 //! pre-computed commitment into one immutable type.
-//!
-//! # Construction
-//!
-//! The two ways to obtain a [`CommittedPolynomial`] with a verified commitment are:
-//! - [`Committable::commit`] — samples a fresh blind from an RNG.
-//! - [`Committable::commit_with_blind`] — uses a caller-supplied blind.
-//!
-//! Both are available on [`structured::Polynomial`] and [`unstructured::Polynomial`].
-//!
-//! A third constructor, [`CommittedPolynomial::new_unchecked`], is provided for
-//! cases where the commitment is known from an external source (e.g. a proof
-//! transcript) and does **not** compute or verify the commitment.
-//!
-//! [`structured::Polynomial`]: super::structured::Polynomial
-//! [`unstructured::Polynomial`]: super::unstructured::Polynomial
 
 use ff::Field;
 use ragu_arithmetic::{CurveAffine, FixedGenerators};
@@ -24,7 +9,7 @@ use rand::CryptoRng;
 
 use crate::polynomials::{Rank, structured, unstructured};
 
-/// Trait implemented by polynomial types that know how to Pedersen-commit
+/// A trait implemented by polynomial types that know how to Pedersen-commit
 /// themselves, producing a [`CommittedPolynomial`].
 pub trait Committable<C: CurveAffine>: Sized {
     /// Commit to this polynomial using the provided blinding factor.
@@ -83,12 +68,7 @@ impl<F: Field, R: Rank, C: CurveAffine<ScalarExt = F>> Committable<C>
 /// commitment.
 ///
 /// The commitment is computed at construction time, so all accessor methods
-/// take `&self`. Because `C` is `Copy` (all [`CurveAffine`] types are), cloning
-/// a `CommittedPolynomial` costs as much as cloning `P` (O(1) when `P` is a
-/// [`structured::Polynomial`] or [`unstructured::Polynomial`]).
-///
-/// [`structured::Polynomial`]: super::structured::Polynomial
-/// [`unstructured::Polynomial`]: super::unstructured::Polynomial
+/// take `&self`.
 #[derive(Clone)]
 pub struct CommittedPolynomial<P, C: CurveAffine> {
     poly: P,
@@ -97,12 +77,12 @@ pub struct CommittedPolynomial<P, C: CurveAffine> {
 }
 
 impl<P, C: CurveAffine> CommittedPolynomial<P, C> {
-    /// Returns a reference to the underlying polynomial.
+    /// Returns the underlying polynomial.
     pub fn poly(&self) -> &P {
         &self.poly
     }
 
-    /// Returns the blinding factor.
+    /// Returns the blinding scalar used at commitment time.
     pub fn blind(&self) -> C::Scalar {
         self.blind
     }

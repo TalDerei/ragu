@@ -59,8 +59,8 @@ impl<F: Field, R: Rank> RawPolynomial<F, R> {
         }
     }
 
-    /// Create a polynomial from the given coefficients. Panics if the number of
-    /// coefficients exceeds the rank's limit.
+    /// Creates a polynomial from the given coefficients. Panics if the number
+    /// of coefficients exceeds the rank's limit.
     pub fn from_coeffs(mut coeffs: Vec<F>) -> Self {
         assert!(coeffs.len() <= R::num_coeffs());
         coeffs.resize(R::num_coeffs(), F::ZERO);
@@ -153,18 +153,11 @@ impl<F: Field, R: Rank> AddAssign<&Self> for RawPolynomial<F, R> {
     }
 }
 
-/// An `Arc`-wrapped snapshot of a [`RawPolynomial`] in monomial basis.
+/// An [`Arc`]-wrapped [`RawPolynomial`] in monomial basis.
 ///
 /// All polynomial data and operations live on [`RawPolynomial`]; this type
-/// adds cheap clone-on-write ownership on top via [`Arc`].
-///
-/// ## Clone-on-write semantics
-///
-/// - `Clone` is O(1): increments the `Arc` reference count, no data is copied.
-/// - Mutation via `DerefMut` calls [`Arc::make_mut`] internally:
-///   - **Uniquely owned** (refcount = 1): zero-cost, same as `&mut RawPolynomial`.
-///   - **Shared** (refcount > 1): clones the `RawPolynomial` exactly once, then
-///     mutates the fresh copy, leaving other clones unaffected.
+/// adds cheap cloning: clones are O(1) and mutating a shared clone copies
+/// the data lazily, leaving other clones unaffected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Polynomial<F: Field, R: Rank> {
     inner: Arc<RawPolynomial<F, R>>,
@@ -180,6 +173,8 @@ impl<F: Field, R: Rank> Deref for Polynomial<F, R> {
 
 impl<F: Field, R: Rank> DerefMut for Polynomial<F, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // Arc::make_mut is O(1) when uniquely owned, and clones RawPolynomial
+        // exactly once when shared (copy-on-write).
         Arc::make_mut(&mut self.inner)
     }
 }
@@ -205,8 +200,8 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         }
     }
 
-    /// Create a polynomial from the given coefficients. Panics if the number of
-    /// coefficients exceeds the rank's limit.
+    /// Creates a polynomial from the given coefficients. Panics if the number
+    /// of coefficients exceeds the rank's limit.
     pub fn from_coeffs(coeffs: Vec<F>) -> Self {
         Self {
             inner: Arc::new(RawPolynomial::from_coeffs(coeffs)),
