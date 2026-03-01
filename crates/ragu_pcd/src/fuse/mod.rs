@@ -68,6 +68,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// Used by [`Application::fuse`] (via [`StepHandle`]) for application steps,
     /// and directly by internal operations like rerandomization and trivial
     /// seeding that bypass the public handle API.
+    ///
+    /// # Safety invariant
+    ///
+    /// `circuit_index` must point to a circuit that was built from step type `S`.
     pub(crate) fn fuse_inner<'source, RNG: CryptoRng, S: Step<C>>(
         &self,
         rng: &mut RNG,
@@ -77,6 +81,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: Pcd<'source, C, R, S::Left>,
         right: Pcd<'source, C, R, S::Right>,
     ) -> Result<(Proof<C, R>, S::Aux<'source>)> {
+        debug_assert!(
+            usize::from(circuit_index) < self.native_registry.circuits().len(),
+            "circuit_index {circuit_index:?} out of range (registry has {} circuits)",
+            self.native_registry.circuits().len(),
+        );
         let (left, right, application, application_aux) =
             self.compute_application_proof(rng, circuit_index, step, witness, left, right)?;
 

@@ -149,17 +149,18 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
 fn register_steps_success_and_finalize() -> Result<()> {
     let pasta = Pasta::baked();
     let mut builder = ApplicationBuilder::<Pasta, ProductionRank, 4>::new();
-    builder.register(Step0)?;
-    builder.register(Step1)?;
+    let _ = builder.register(Step0)?;
+    let _ = builder.register(Step1)?;
     builder.finalize(pasta)?;
 
     Ok(())
 }
 
 #[test]
-#[should_panic]
-fn register_steps_duplicate_suffix_should_fail() {
+fn register_steps_duplicate_suffix_should_fail() -> Result<()> {
     let mut builder = ApplicationBuilder::<Pasta, ProductionRank, 4>::new();
-    builder.register(Step0).unwrap();
-    builder.register(Step1Dup).unwrap();
+    let _ = builder.register(Step0)?;
+    assert!(builder.register(Step1Dup).is_err());
+
+    Ok(())
 }

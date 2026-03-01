@@ -67,7 +67,6 @@ pub trait Step<C: Cycle> {
 
 The associated types define the step's interface:
 
-* **`INDEX`**: Unique identifier for this step within the application.
 * **`Witness`**: Private data provided by the prover (not visible to verifiers).
 * **`Aux`**: Auxiliary output returned after proving, often used to construct
   the output header data.

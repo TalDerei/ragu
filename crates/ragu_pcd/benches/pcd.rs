@@ -23,8 +23,8 @@ fn register(
     ),
 ) {
     let mut builder = ApplicationBuilder::<Pasta, ProductionRank, 4>::new();
-    builder.register(leaf).unwrap();
-    builder.register(hash).unwrap();
+    let _ = builder.register(leaf).unwrap();
+    let _ = builder.register(hash).unwrap();
     black_box(builder);
 }
 

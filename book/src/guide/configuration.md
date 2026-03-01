@@ -202,10 +202,10 @@ use ragu_pcd::ApplicationBuilder;
 let pasta = Pasta::baked();
 
 // Build application with production parameters
-let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
-    .register(step1)?
-    .register(step2)?
-    .finalize(pasta)?;
+let mut builder = ApplicationBuilder::<Pasta, R<13>, 4>::new();
+let step1_handle = builder.register(step1)?;
+let step2_handle = builder.register(step2)?;
+let app = builder.finalize(pasta)?;
 ```
 
 **Why these parameters?**
@@ -260,14 +260,14 @@ You can build different applications with different parameters:
 
 ```rust
 // Small, fast application for testing
-let test_app = ApplicationBuilder::<Pasta, R<10>, 1>::new()
-    .register(small_step)?
-    .finalize(pasta)?;
+let mut test_builder = ApplicationBuilder::<Pasta, R<10>, 1>::new();
+let small_handle = test_builder.register(small_step)?;
+let test_app = test_builder.finalize(pasta)?;
 
 // Large, production application
-let prod_app = ApplicationBuilder::<Pasta, R<14>, 8>::new()
-    .register(complex_step)?
-    .finalize(pasta)?;
+let mut prod_builder = ApplicationBuilder::<Pasta, R<14>, 8>::new();
+let complex_handle = prod_builder.register(complex_step)?;
+let prod_app = prod_builder.finalize(pasta)?;
 ```
 
 Proofs from different configurations are **not compatible** - they're
@@ -306,8 +306,8 @@ ApplicationBuilder::<Pasta, R<10>, 4>::new()  // Only 1024 constraints
 ### ✗ Forgetting to Bake Pasta
 
 ```rust
-let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
-    .finalize(pasta)?;  // But pasta was never initialized!
+let builder = ApplicationBuilder::<Pasta, R<13>, 4>::new();
+let app = builder.finalize(pasta)?;  // But pasta was never initialized!
 ```
 
 **Error**: Panic or undefined behavior.

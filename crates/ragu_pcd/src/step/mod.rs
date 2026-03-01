@@ -36,6 +36,7 @@ pub(crate) const NUM_INTERNAL_STEPS: usize = InternalStepIndex::Trivial as usize
 /// and required by [`Application::seed`](crate::Application::seed) and
 /// [`Application::fuse`](crate::Application::fuse) to identify which circuit to
 /// use during proving.
+#[must_use = "this handle is required for seed() and fuse()"]
 pub struct StepHandle<S> {
     circuit_index: CircuitIndex,
     _marker: core::marker::PhantomData<fn() -> S>,

@@ -56,7 +56,7 @@ Steps are registered with `ApplicationBuilder::register()`, which returns a
 `StepHandle` that carries the auto-assigned circuit index:
 
 ```rust
-let mut builder = ApplicationBuilder::<Pasta, R<ProductionRank>, 4>::new();
+let mut builder = ApplicationBuilder::<Pasta, R<13>, 4>::new();
 let create_leaf = builder.register(CreateLeaf { /* ... */ })?;
 ```
 
@@ -239,10 +239,14 @@ With Steps and Headers defined, an application is constructed as follows:
 
 ```rust
 let pasta = Pasta::baked();
-let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
-    .register(CreateLeaf { poseidon_params: Pasta::circuit_poseidon(pasta) })?
-    .register(CombineNodes { poseidon_params: Pasta::circuit_poseidon(pasta) })?
-    .finalize(pasta)?;
+let mut builder = ApplicationBuilder::<Pasta, R<13>, 4>::new();
+let create_leaf = builder.register(CreateLeaf {
+    poseidon_params: Pasta::circuit_poseidon(pasta),
+})?;
+let combine_nodes = builder.register(CombineNodes {
+    poseidon_params: Pasta::circuit_poseidon(pasta),
+})?;
+let app = builder.finalize(pasta)?;
 ```
 
 For details on parameter selection (`Pasta`, `R<13>`, `4`), see

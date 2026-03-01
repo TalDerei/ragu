@@ -25,10 +25,10 @@ pub fn setup_finalize() -> (
     let pasta = Pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     let mut builder = ApplicationBuilder::<Pasta, ProductionRank, 4>::new();
-    builder
+    let _ = builder
         .register(nontrivial::WitnessLeaf { poseidon_params })
         .unwrap();
-    builder
+    let _ = builder
         .register(nontrivial::Hash2 { poseidon_params })
         .unwrap();
     (builder, pasta)
