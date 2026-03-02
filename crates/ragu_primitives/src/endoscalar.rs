@@ -52,7 +52,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                 let bit = Boolean::alloc(
                     dr,
                     value
-                        .view()
+                        .as_ref()
                         .map(|v| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64)),
                 )?;
                 Demoted::new(&bit)
@@ -64,13 +64,13 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
 
     /// Returns an iterator over the bits in this endoscalar, little endian order.
     pub fn bits(&self) -> impl Iterator<Item = Boolean<'dr, D>> {
-        let mut bits = self.value.view().map(|v| {
+        let mut bits = self.value.as_ref().map(|v| {
             (0..(Uendo::BITS as usize))
                 .map(move |i| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64))
         });
 
         self.bits.iter().map(move |demoted_bit| {
-            demoted_bit.promote(bits.view_mut().map(|bits| bits.next().unwrap()))
+            demoted_bit.promote(bits.as_mut().map(|bits| bits.next().unwrap()))
         })
     }
 
@@ -104,7 +104,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             })?
             .cast();
 
-            value.view_mut().map(|v| {
+            value.as_mut().map(|v| {
                 if *bit.snag() {
                     *v |= Uendo::from(1u64) << i
                 }

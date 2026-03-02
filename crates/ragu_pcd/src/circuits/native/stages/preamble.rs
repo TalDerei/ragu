@@ -157,7 +157,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             data: DriverValue<D, &[D::F]>,
         ) -> Result<FixedVec<Element<'dr, D>, ConstLen<N>>> {
             D::with(|| {
-                if data.view().take().len() != N {
+                if data.as_ref().take().len() != N {
                     return Err(Error::MalformedEncoding(
                         "Header data length does not match HEADER_SIZE".into(),
                     ));
@@ -167,7 +167,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             })?;
 
             (0..N)
-                .map(|i| Element::alloc(dr, data.view().map(|d| d[i])))
+                .map(|i| Element::alloc(dr, data.as_ref().map(|d| d[i])))
                 .try_collect_fixed()
         }
 
@@ -175,17 +175,19 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             children: ChildHeaders {
                 left: alloc_header(
                     dr,
-                    proof.view().map(|p| p.application.left_header.as_slice()),
+                    proof.as_ref().map(|p| p.application.left_header.as_slice()),
                 )?,
                 right: alloc_header(
                     dr,
-                    proof.view().map(|p| p.application.right_header.as_slice()),
+                    proof
+                        .as_ref()
+                        .map(|p| p.application.right_header.as_slice()),
                 )?,
             },
-            output_header: alloc_header(dr, output_header.view().map(|h| &h[..]))?,
+            output_header: alloc_header(dr, output_header.as_ref().map(|h| &h[..]))?,
             circuit_id: Element::alloc(
                 dr,
-                proof.view().map(|p| p.application.circuit_id.omega_j()),
+                proof.as_ref().map(|p| p.application.circuit_id.omega_j()),
             )?,
             unified: unified::Output::alloc_from_proof(dr, proof)?,
         })
@@ -217,7 +219,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
                 .collect_fixed()
         })?;
 
-        Self::alloc(dr, proof, header_data.view())
+        Self::alloc(dr, proof, header_data.as_ref())
     }
 }
 
@@ -271,14 +273,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     {
         let left = ProofInputs::alloc(
             dr,
-            witness.view().map(|w| w.left.proof),
-            witness.view().map(|w| &w.left.output_header),
+            witness.as_ref().map(|w| w.left.proof),
+            witness.as_ref().map(|w| &w.left.output_header),
         )?;
 
         let right = ProofInputs::alloc(
             dr,
-            witness.view().map(|w| w.right.proof),
-            witness.view().map(|w| &w.right.output_header),
+            witness.as_ref().map(|w| w.right.proof),
+            witness.as_ref().map(|w| &w.right.output_header),
         )?;
 
         Ok(Output { left, right })

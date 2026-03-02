@@ -74,7 +74,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let (preamble_witness, error_terms_m, y, mu, nu) = witness.cast();
 
                 let preamble = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::default()
-                    .witness(dr, preamble_witness.view().map(|w| *w))?;
+                    .witness(dr, preamble_witness.as_ref().map(|w| *w))?;
 
                 let y = Element::alloc(dr, y)?;
                 let left_application_ky = preamble.left.application_ky(dr, &y)?;
@@ -105,7 +105,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
                 let collapsed = FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {
-                        Element::alloc(dr, error_terms_m.view().map(|et| et[i][j]))
+                        Element::alloc(dr, error_terms_m.as_ref().map(|et| et[i][j]))
                     })?;
                     let ky = FixedVec::from_fn(|_| ky.next().unwrap());
 

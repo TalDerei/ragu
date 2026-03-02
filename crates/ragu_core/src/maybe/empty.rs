@@ -65,13 +65,13 @@ impl<T: Send> Maybe<T> for Empty {
     {
         Empty
     }
-    fn view(&self) -> Perhaps<Self::Kind, &T>
+    fn as_ref(&self) -> Perhaps<Self::Kind, &T>
     where
         T: Sync,
     {
         Empty
     }
-    fn view_mut(&mut self) -> Perhaps<Self::Kind, &mut T> {
+    fn as_mut(&mut self) -> Perhaps<Self::Kind, &mut T> {
         Empty
     }
 

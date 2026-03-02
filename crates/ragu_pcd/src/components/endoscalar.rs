@@ -187,11 +187,11 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> Stage<C::Base, R>
     where
         Self: 'dr,
     {
-        let initial = Point::alloc(dr, witness.view().map(|w| w.initial))?;
+        let initial = Point::alloc(dr, witness.as_ref().map(|w| w.initial))?;
         let inputs =
-            FixedVec::try_from_fn(|i| Point::alloc(dr, witness.view().map(|w| w.inputs[i])))?;
+            FixedVec::try_from_fn(|i| Point::alloc(dr, witness.as_ref().map(|w| w.inputs[i])))?;
         let interstitials = FixedVec::try_from_fn(|i| {
-            Point::alloc(dr, witness.view().map(|w| w.interstitials[i]))
+            Point::alloc(dr, witness.as_ref().map(|w| w.interstitials[i]))
         })?;
         Ok(Points {
             initial,
@@ -282,8 +282,8 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         // boolean constraints for these stages are enforced by the routing
         // circuits (see #172). This only constrains the Horner accumulation
         // relationship between inputs and interstitials.
-        let endoscalar = endoscalar_guard.unenforced(dr, witness.view().map(|w| w.endoscalar))?;
-        let points = points_guard.unenforced(dr, witness.view().map(|w| w.points))?;
+        let endoscalar = endoscalar_guard.unenforced(dr, witness.as_ref().map(|w| w.endoscalar))?;
+        let points = points_guard.unenforced(dr, witness.as_ref().map(|w| w.points))?;
 
         // acc = initial or previous interstitial, depending on step index
         let mut acc = self

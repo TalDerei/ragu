@@ -183,31 +183,31 @@ impl<'dr, D: Driver<'dr>> FixedRegistryEvaluations<'dr, D> {
     /// Allocate fixed registry evaluations from pre-computed witness values.
     pub fn alloc(dr: &mut D, witness: DriverValue<D, &FixedRegistryWitness<D::F>>) -> Result<Self> {
         Ok(FixedRegistryEvaluations {
-            preamble_stage: Element::alloc(dr, witness.view().map(|w| w.preamble_stage))?,
-            error_n_stage: Element::alloc(dr, witness.view().map(|w| w.error_n_stage))?,
-            error_m_stage: Element::alloc(dr, witness.view().map(|w| w.error_m_stage))?,
-            query_stage: Element::alloc(dr, witness.view().map(|w| w.query_stage))?,
-            eval_stage: Element::alloc(dr, witness.view().map(|w| w.eval_stage))?,
+            preamble_stage: Element::alloc(dr, witness.as_ref().map(|w| w.preamble_stage))?,
+            error_n_stage: Element::alloc(dr, witness.as_ref().map(|w| w.error_n_stage))?,
+            error_m_stage: Element::alloc(dr, witness.as_ref().map(|w| w.error_m_stage))?,
+            query_stage: Element::alloc(dr, witness.as_ref().map(|w| w.query_stage))?,
+            eval_stage: Element::alloc(dr, witness.as_ref().map(|w| w.eval_stage))?,
             error_m_final_staged: Element::alloc(
                 dr,
-                witness.view().map(|w| w.error_m_final_staged),
+                witness.as_ref().map(|w| w.error_m_final_staged),
             )?,
             error_n_final_staged: Element::alloc(
                 dr,
-                witness.view().map(|w| w.error_n_final_staged),
+                witness.as_ref().map(|w| w.error_n_final_staged),
             )?,
-            eval_final_staged: Element::alloc(dr, witness.view().map(|w| w.eval_final_staged))?,
-            hashes_1_circuit: Element::alloc(dr, witness.view().map(|w| w.hashes_1_circuit))?,
-            hashes_2_circuit: Element::alloc(dr, witness.view().map(|w| w.hashes_2_circuit))?,
+            eval_final_staged: Element::alloc(dr, witness.as_ref().map(|w| w.eval_final_staged))?,
+            hashes_1_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_1_circuit))?,
+            hashes_2_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_2_circuit))?,
             partial_collapse_circuit: Element::alloc(
                 dr,
-                witness.view().map(|w| w.partial_collapse_circuit),
+                witness.as_ref().map(|w| w.partial_collapse_circuit),
             )?,
             full_collapse_circuit: Element::alloc(
                 dr,
-                witness.view().map(|w| w.full_collapse_circuit),
+                witness.as_ref().map(|w| w.full_collapse_circuit),
             )?,
-            compute_v_circuit: Element::alloc(dr, witness.view().map(|w| w.compute_v_circuit))?,
+            compute_v_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.compute_v_circuit))?,
         })
     }
 
@@ -307,32 +307,32 @@ impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
         witness: DriverValue<D, &ChildEvaluationsWitness<D::F>>,
     ) -> Result<Self> {
         Ok(ChildEvaluations {
-            preamble: Element::alloc(dr, witness.view().map(|w| w.preamble))?,
-            error_m: Element::alloc(dr, witness.view().map(|w| w.error_m))?,
-            error_n: Element::alloc(dr, witness.view().map(|w| w.error_n))?,
-            query: Element::alloc(dr, witness.view().map(|w| w.query))?,
-            eval: Element::alloc(dr, witness.view().map(|w| w.eval))?,
-            application: Element::alloc(dr, witness.view().map(|w| w.application))?,
-            hashes_1: Element::alloc(dr, witness.view().map(|w| w.hashes_1))?,
-            hashes_2: Element::alloc(dr, witness.view().map(|w| w.hashes_2))?,
-            partial_collapse: Element::alloc(dr, witness.view().map(|w| w.partial_collapse))?,
-            full_collapse: Element::alloc(dr, witness.view().map(|w| w.full_collapse))?,
-            compute_v: Element::alloc(dr, witness.view().map(|w| w.compute_v))?,
-            a_poly_at_xz: Element::alloc(dr, witness.view().map(|w| w.a_poly_at_xz))?,
-            b_poly_at_x: Element::alloc(dr, witness.view().map(|w| w.b_poly_at_x))?,
+            preamble: Element::alloc(dr, witness.as_ref().map(|w| w.preamble))?,
+            error_m: Element::alloc(dr, witness.as_ref().map(|w| w.error_m))?,
+            error_n: Element::alloc(dr, witness.as_ref().map(|w| w.error_n))?,
+            query: Element::alloc(dr, witness.as_ref().map(|w| w.query))?,
+            eval: Element::alloc(dr, witness.as_ref().map(|w| w.eval))?,
+            application: Element::alloc(dr, witness.as_ref().map(|w| w.application))?,
+            hashes_1: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_1))?,
+            hashes_2: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_2))?,
+            partial_collapse: Element::alloc(dr, witness.as_ref().map(|w| w.partial_collapse))?,
+            full_collapse: Element::alloc(dr, witness.as_ref().map(|w| w.full_collapse))?,
+            compute_v: Element::alloc(dr, witness.as_ref().map(|w| w.compute_v))?,
+            a_poly_at_xz: Element::alloc(dr, witness.as_ref().map(|w| w.a_poly_at_xz))?,
+            b_poly_at_x: Element::alloc(dr, witness.as_ref().map(|w| w.b_poly_at_x))?,
             child_registry_xy_at_current_w: Element::alloc(
                 dr,
-                witness.view().map(|w| w.child_registry_xy_at_current_w),
+                witness.as_ref().map(|w| w.child_registry_xy_at_current_w),
             )?,
             current_registry_xy_at_child_circuit_id: Element::alloc(
                 dr,
                 witness
-                    .view()
+                    .as_ref()
                     .map(|w| w.current_registry_xy_at_child_circuit_id),
             )?,
             current_registry_wy_at_child_x: Element::alloc(
                 dr,
-                witness.view().map(|w| w.current_registry_wy_at_child_x),
+                witness.as_ref().map(|w| w.current_registry_wy_at_child_x),
             )?,
         })
     }
@@ -384,10 +384,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
         Self: 'dr,
     {
         let fixed_registry =
-            FixedRegistryEvaluations::alloc(dr, witness.view().map(|w| &w.fixed_registry))?;
-        let registry_wxy = Element::alloc(dr, witness.view().map(|w| w.registry_wxy))?;
-        let left = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.left))?;
-        let right = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.right))?;
+            FixedRegistryEvaluations::alloc(dr, witness.as_ref().map(|w| &w.fixed_registry))?;
+        let registry_wxy = Element::alloc(dr, witness.as_ref().map(|w| w.registry_wxy))?;
+        let left = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.left))?;
+        let right = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.right))?;
         Ok(Output {
             fixed_registry,
             registry_wxy,

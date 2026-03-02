@@ -16,7 +16,7 @@ pub(crate) trait InternalMaybe<T: Send>: Maybe<T> {
         Self: Maybe<U>,
         U: Borrow<bool> + Send + Sync,
     {
-        Maybe::<U>::view(self).map(|b| if *b.borrow() { F::ONE } else { F::ZERO })
+        Maybe::<U>::as_ref(self).map(|b| if *b.borrow() { F::ONE } else { F::ZERO })
     }
 
     /// Convert a `bool` into a `Coeff`.
@@ -25,7 +25,7 @@ pub(crate) trait InternalMaybe<T: Send>: Maybe<T> {
         Self: Maybe<U>,
         U: Borrow<bool> + Send + Sync,
     {
-        Maybe::<U>::view(self).map(|b| if *b.borrow() { Coeff::One } else { Coeff::Zero })
+        Maybe::<U>::as_ref(self).map(|b| if *b.borrow() { Coeff::One } else { Coeff::Zero })
     }
 
     /// Convert an arbitrary `Field` element into a `Coeff`.
@@ -34,7 +34,7 @@ pub(crate) trait InternalMaybe<T: Send>: Maybe<T> {
         Self: Maybe<U>,
         U: Borrow<F> + Send + Sync,
     {
-        Maybe::<U>::view(self).map(|f| Coeff::Arbitrary(*f.borrow()))
+        Maybe::<U>::as_ref(self).map(|f| Coeff::Arbitrary(*f.borrow()))
     }
 
     /// Negate a `bool`.
@@ -43,7 +43,7 @@ pub(crate) trait InternalMaybe<T: Send>: Maybe<T> {
         Self: Maybe<U>,
         U: Borrow<bool> + Send + Sync,
     {
-        Maybe::<U>::view(self).map(|b| !*b.borrow())
+        Maybe::<U>::as_ref(self).map(|b| !*b.borrow())
     }
 }
 

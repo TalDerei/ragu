@@ -148,10 +148,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let (error_n, builder) = builder.add_stage::<error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
-        let preamble = preamble.unenforced(dr, witness.view().map(|w| w.preamble_witness))?;
-        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        let preamble = preamble.unenforced(dr, witness.as_ref().map(|w| w.preamble_witness))?;
+        let error_n = error_n.unenforced(dr, witness.as_ref().map(|w| w.error_n_witness))?;
 
-        let unified_instance = &witness.view().map(|w| w.unified_instance);
+        let unified_instance = &witness.as_ref().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
         // Get layer 2 folding challenges. These are distinct from the layer 1

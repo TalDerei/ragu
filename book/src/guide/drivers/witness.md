@@ -42,7 +42,7 @@ analogous to `Option<T>`. This allows circuit code to manipulate witness values
 generically without knowing which concrete representation it holds. The trait
 methods cover extraction, transformation, and construction:
 
-### [`take`], [`view`], [`view_mut`], and [`snag`] {#take-view-snag}
+### [`take`], [`as_ref`], [`as_mut`], and [`snag`] {#take-as_ref-snag}
 
 [`take`] extracts the enclosed value, analogous to [`Option::unwrap()`], but it
 always succeeds at runtime—without branching, overhead, or panics.
@@ -52,10 +52,8 @@ this is unreachable: when [`MaybeKind`] `= Empty`, drivers never invoke witness
 closures, so after monomorphization the dead-code elimination pass removes those
 call sites entirely.
 
-[`view`] and [`view_mut`] are the equivalents of [`Option::as_ref()`] and
-[`Option::as_mut()`], but under different names. This avoids shadowing
-`Option`’s inherent methods, which would take precedence under Rust’s
-method-dispatch rules. [`snag`] is shorthand for `.view().take()`. Because
+[`as_ref`] and [`as_mut`] are the equivalents of [`Option::as_ref()`] and
+[`Option::as_mut()`]. [`snag`] is shorthand for `.as_ref().take()`. Because
 [`take`] consumes the `Maybe<T>` by value, [`snag`] covers the common case of
 obtaining a `&T` without consuming the original value.
 
@@ -113,8 +111,8 @@ returns `Empty`.
 [`Maybe<T>`]: ragu_core::maybe::Maybe
 [`take`]: ragu_core::maybe::Maybe::take
 [`snag`]: ragu_core::maybe::Maybe::snag
-[`view`]: ragu_core::maybe::Maybe::view
-[`view_mut`]: ragu_core::maybe::Maybe::view_mut
+[`as_ref`]: ragu_core::maybe::Maybe::as_ref
+[`as_mut`]: ragu_core::maybe::Maybe::as_mut
 [`Option<T>`]: core::option::Option
 [`Option`]: core::option::Option
 [`Option::unwrap()`]: core::option::Option::unwrap

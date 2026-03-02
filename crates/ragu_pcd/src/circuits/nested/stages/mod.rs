@@ -89,7 +89,7 @@ macro_rules! define_nested_stage {
                         $(
                             $field_name: Point::alloc(
                                 dr,
-                                witness.view().map(|w| w.$field_name)
+                                witness.as_ref().map(|w| w.$field_name)
                             )?,
                         )+
                     })

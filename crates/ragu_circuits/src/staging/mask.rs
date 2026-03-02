@@ -387,8 +387,8 @@ mod tests {
             where
                 Self: 'dr,
             {
-                let a = Point::alloc(dr, witness.view().map(|w| w.0))?;
-                let b = Point::alloc(dr, witness.view().map(|w| w.1))?;
+                let a = Point::alloc(dr, witness.as_ref().map(|w| w.0))?;
+                let b = Point::alloc(dr, witness.as_ref().map(|w| w.1))?;
 
                 Ok((a, b))
             }
@@ -627,8 +627,8 @@ mod tests {
         where
             Self: 'dr,
         {
-            let witness_a = witness.view().map(|w| w.0);
-            let witness_b = witness.view().map(|w| w.1);
+            let witness_a = witness.as_ref().map(|w| w.0);
+            let witness_b = witness.as_ref().map(|w| w.1);
 
             let a = Element::alloc(dr, witness_a)?;
             let b = Element::alloc(dr, witness_b)?;
@@ -828,11 +828,11 @@ mod tests {
         {
             // Allocate each challenge value followed by zero, which
             // ensures challenges land in a-positions, zeros in b-positions.
-            let a0 = Element::alloc(dr, witness.view().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.view().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.view().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {
@@ -869,11 +869,11 @@ mod tests {
         where
             Self: 'dr,
         {
-            let a0 = Element::alloc(dr, witness.view().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.view().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.view().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {

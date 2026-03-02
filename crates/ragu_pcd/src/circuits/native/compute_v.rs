@@ -157,12 +157,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
 
         // Preamble is enforced because it contains child proof data that must
         // be validated (Points, Booleans, etc.).
-        let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
+        let preamble = preamble.enforced(dr, witness.as_ref().map(|w| w.preamble_witness))?;
 
-        let query = query.unenforced(dr, witness.view().map(|w| w.query_witness))?;
-        let eval = eval.unenforced(dr, witness.view().map(|w| w.eval_witness))?;
+        let query = query.unenforced(dr, witness.as_ref().map(|w| w.query_witness))?;
+        let eval = eval.unenforced(dr, witness.as_ref().map(|w| w.eval_witness))?;
 
-        let unified_instance = &witness.view().map(|w| w.unified_instance);
+        let unified_instance = &witness.as_ref().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
         // Retrieve Fiat-Shamir challenges from the unified instance.
@@ -785,7 +785,7 @@ impl<'dr, D: Driver<'dr, F: ff::PrimeField>> Inverter<'dr, D> {
 
         self.differences
             .into_iter()
-            .map(|e| e.invert_with(dr, advice.view_mut().map(|e| e.next().unwrap())))
+            .map(|e| e.invert_with(dr, advice.as_mut().map(|e| e.next().unwrap())))
             .collect()
     }
 }

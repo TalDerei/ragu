@@ -87,12 +87,12 @@ pub struct ChildOutput<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildOutput<'dr, D, C> {
     fn alloc(dr: &mut D, witness: DriverValue<D, &ChildWitness<C>>) -> Result<Self> {
         Ok(ChildOutput {
-            application: Point::alloc(dr, witness.view().map(|w| w.application))?,
-            hashes_1: Point::alloc(dr, witness.view().map(|w| w.hashes_1))?,
-            hashes_2: Point::alloc(dr, witness.view().map(|w| w.hashes_2))?,
-            partial_collapse: Point::alloc(dr, witness.view().map(|w| w.partial_collapse))?,
-            full_collapse: Point::alloc(dr, witness.view().map(|w| w.full_collapse))?,
-            compute_v: Point::alloc(dr, witness.view().map(|w| w.compute_v))?,
+            application: Point::alloc(dr, witness.as_ref().map(|w| w.application))?,
+            hashes_1: Point::alloc(dr, witness.as_ref().map(|w| w.hashes_1))?,
+            hashes_2: Point::alloc(dr, witness.as_ref().map(|w| w.hashes_2))?,
+            partial_collapse: Point::alloc(dr, witness.as_ref().map(|w| w.partial_collapse))?,
+            full_collapse: Point::alloc(dr, witness.as_ref().map(|w| w.full_collapse))?,
+            compute_v: Point::alloc(dr, witness.as_ref().map(|w| w.compute_v))?,
         })
     }
 }
@@ -136,9 +136,9 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
         Self: 'dr,
     {
         Ok(Output {
-            native_preamble: Point::alloc(dr, witness.view().map(|w| w.native_preamble))?,
-            left: ChildOutput::alloc(dr, witness.view().map(|w| &w.left))?,
-            right: ChildOutput::alloc(dr, witness.view().map(|w| &w.right))?,
+            native_preamble: Point::alloc(dr, witness.as_ref().map(|w| w.native_preamble))?,
+            left: ChildOutput::alloc(dr, witness.as_ref().map(|w| &w.left))?,
+            right: ChildOutput::alloc(dr, witness.as_ref().map(|w| &w.right))?,
         })
     }
 }

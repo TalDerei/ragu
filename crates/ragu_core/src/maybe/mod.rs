@@ -97,17 +97,15 @@ pub trait Maybe<T: Send>: Send {
     fn take(self) -> T;
 
     /// Returns a reference to the enclosed value, analogous to
-    /// [`Option::as_ref`]. Named `view` rather than `as_ref` to avoid
-    /// shadowing `Option`'s inherent method under Rust's method-dispatch
-    /// rules.
-    fn view(&self) -> Perhaps<Self::Kind, &T>
+    /// [`Option::as_ref`].
+    fn as_ref(&self) -> Perhaps<Self::Kind, &T>
     where
         T: Sync;
 
-    /// Mutable counterpart of [`view`](Maybe::view).
-    fn view_mut(&mut self) -> Perhaps<Self::Kind, &mut T>;
+    /// Mutable counterpart of [`as_ref`](Maybe::as_ref).
+    fn as_mut(&mut self) -> Perhaps<Self::Kind, &mut T>;
 
-    /// Helper for `.view().take()` to obtain a reference to the enclosed value
+    /// Helper for `.as_ref().take()` to obtain a reference to the enclosed value
     /// in contexts where the `Maybe<T>` is guaranteed to be an existing value.
     /// In other contexts, just as in [`Maybe<T>::take`], this will fail at
     /// compile time.
@@ -115,7 +113,7 @@ pub trait Maybe<T: Send>: Send {
     where
         T: Sync,
     {
-        self.view().take()
+        self.as_ref().take()
     }
 
     /// Helper to clone the enclosed `Maybe<T>` value when `T` is `Clone`.
@@ -236,14 +234,14 @@ mod tests {
             assert_eq!(ninenine.snag(), &99999);
         });
 
-        ninenine.view_mut().map(|v| *v = 1181818);
+        ninenine.as_mut().map(|v| *v = 1181818);
 
         I::just(|| {
             assert_eq!(ninenine.snag(), &1181818);
         });
 
         I::just(|| {
-            let a = ninenine.view_mut().take();
+            let a = ninenine.as_mut().take();
             *a = 1181819;
         });
 
@@ -252,11 +250,11 @@ mod tests {
         });
 
         let mut a = I::just(|| vec![1, 2, 3]);
-        let mut b = a.view_mut().map(|v| v.iter_mut());
+        let mut b = a.as_mut().map(|v| v.iter_mut());
 
         I::just(|| {
             for i in 1..4 {
-                assert_eq!(*b.view_mut().take().next().unwrap(), i);
+                assert_eq!(*b.as_mut().take().next().unwrap(), i);
             }
         });
 

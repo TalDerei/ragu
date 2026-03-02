@@ -496,12 +496,12 @@ mod tests {
                     let mut ky_idx = 0;
                     let collapsed = FixedVec::try_from_fn(|group| {
                         let errors = FixedVec::try_from_fn(|j| {
-                            Element::alloc(dr, error_m.view().map(|e| e[group][j]))
+                            Element::alloc(dr, error_m.as_ref().map(|e| e[group][j]))
                         })?;
                         let ky = FixedVec::try_from_fn(|_| {
                             let idx = ky_idx;
                             ky_idx += 1;
-                            Element::alloc(dr, ky_values.view().map(|kv| kv[idx]))
+                            Element::alloc(dr, ky_values.as_ref().map(|kv| kv[idx]))
                         })?;
                         let v = fold_products.fold_products_m::<P>(dr, &errors, &ky)?;
                         Ok(*v.value().take())
@@ -542,10 +542,10 @@ mod tests {
                     let fold_products = FoldProducts::new(dr, &mu_prime, &nu_prime)?;
 
                     let error_terms = FixedVec::try_from_fn(|i| {
-                        Element::alloc(dr, error_n.view().map(|e| e[i]))
+                        Element::alloc(dr, error_n.as_ref().map(|e| e[i]))
                     })?;
                     let collapsed = FixedVec::try_from_fn(|i| {
-                        Element::alloc(dr, collapsed.view().map(|c| c[i]))
+                        Element::alloc(dr, collapsed.as_ref().map(|c| c[i]))
                     })?;
 
                     let c = fold_products.fold_products_n::<P>(dr, &error_terms, &collapsed)?;
@@ -704,10 +704,10 @@ mod tests {
         fn verify<const M: usize, const N: usize>() -> Result<()> {
             let rng = rand::rngs::StdRng::from_rng(&mut rand::rng());
             let sim = Simulator::simulate(rng, |dr, mut rng| {
-                let mu = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
-                let nu = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
-                let mu_prime = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
-                let nu_prime = Element::alloc(dr, rng.view_mut().map(Fp::random))?;
+                let mu = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
+                let nu = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
+                let mu_prime = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
+                let nu_prime = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
 
                 // Layer 1: N instances of M-sized reductions (uses mu, nu).
                 let fold_products_layer1 = FoldProducts::new(dr, &mu, &nu)?;
@@ -715,13 +715,11 @@ mod tests {
                     FixedVec<_, ErrorTermsLen<ConstLen<M>>>,
                     ConstLen<N>,
                 > = FixedVec::try_from_fn(|_| {
-                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))
+                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))
                 })?;
                 let all_ky_values_m: FixedVec<FixedVec<_, ConstLen<M>>, ConstLen<N>> =
                     FixedVec::try_from_fn(|_| {
-                        FixedVec::try_from_fn(|_| {
-                            Element::alloc(dr, rng.view_mut().map(Fp::random))
-                        })
+                        FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))
                     })?;
 
                 let collapsed: FixedVec<_, ConstLen<N>> = FixedVec::try_from_fn(|i| {
@@ -735,7 +733,7 @@ mod tests {
                 // Layer 2: Single N-sized reduction (uses mu', nu' - separate FoldProducts).
                 let fold_products_layer2 = FoldProducts::new(dr, &mu_prime, &nu_prime)?;
                 let error_terms_n: FixedVec<_, ErrorTermsLen<ConstLen<N>>> =
-                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.view_mut().map(Fp::random)))?;
+                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))?;
 
                 fold_products_layer2.fold_products_n::<TestParams<N, M>>(
                     dr,

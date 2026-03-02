@@ -125,21 +125,21 @@ impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
         witness: DriverValue<D, &ChildEvaluationsWitness<D::F>>,
     ) -> Result<Self> {
         Ok(ChildEvaluations {
-            application: Element::alloc(dr, witness.view().map(|w| w.application))?,
-            preamble: Element::alloc(dr, witness.view().map(|w| w.preamble))?,
-            error_n: Element::alloc(dr, witness.view().map(|w| w.error_n))?,
-            error_m: Element::alloc(dr, witness.view().map(|w| w.error_m))?,
-            a_poly: Element::alloc(dr, witness.view().map(|w| w.a_poly))?,
-            b_poly: Element::alloc(dr, witness.view().map(|w| w.b_poly))?,
-            query: Element::alloc(dr, witness.view().map(|w| w.query))?,
-            registry_xy_poly: Element::alloc(dr, witness.view().map(|w| w.registry_xy_poly))?,
-            eval: Element::alloc(dr, witness.view().map(|w| w.eval))?,
-            p_poly: Element::alloc(dr, witness.view().map(|w| w.p_poly))?,
-            hashes_1: Element::alloc(dr, witness.view().map(|w| w.hashes_1))?,
-            hashes_2: Element::alloc(dr, witness.view().map(|w| w.hashes_2))?,
-            partial_collapse: Element::alloc(dr, witness.view().map(|w| w.partial_collapse))?,
-            full_collapse: Element::alloc(dr, witness.view().map(|w| w.full_collapse))?,
-            compute_v: Element::alloc(dr, witness.view().map(|w| w.compute_v))?,
+            application: Element::alloc(dr, witness.as_ref().map(|w| w.application))?,
+            preamble: Element::alloc(dr, witness.as_ref().map(|w| w.preamble))?,
+            error_n: Element::alloc(dr, witness.as_ref().map(|w| w.error_n))?,
+            error_m: Element::alloc(dr, witness.as_ref().map(|w| w.error_m))?,
+            a_poly: Element::alloc(dr, witness.as_ref().map(|w| w.a_poly))?,
+            b_poly: Element::alloc(dr, witness.as_ref().map(|w| w.b_poly))?,
+            query: Element::alloc(dr, witness.as_ref().map(|w| w.query))?,
+            registry_xy_poly: Element::alloc(dr, witness.as_ref().map(|w| w.registry_xy_poly))?,
+            eval: Element::alloc(dr, witness.as_ref().map(|w| w.eval))?,
+            p_poly: Element::alloc(dr, witness.as_ref().map(|w| w.p_poly))?,
+            hashes_1: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_1))?,
+            hashes_2: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_2))?,
+            partial_collapse: Element::alloc(dr, witness.as_ref().map(|w| w.partial_collapse))?,
+            full_collapse: Element::alloc(dr, witness.as_ref().map(|w| w.full_collapse))?,
+            compute_v: Element::alloc(dr, witness.as_ref().map(|w| w.compute_v))?,
         })
     }
 }
@@ -193,14 +193,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
-        let left = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.left))?;
-        let right = ChildEvaluations::alloc(dr, witness.view().map(|w| &w.right))?;
-        let registry_wx0 = Element::alloc(dr, witness.view().map(|w| w.current.registry_wx0))?;
-        let registry_wx1 = Element::alloc(dr, witness.view().map(|w| w.current.registry_wx1))?;
-        let registry_wy = Element::alloc(dr, witness.view().map(|w| w.current.registry_wy))?;
-        let a_poly = Element::alloc(dr, witness.view().map(|w| w.current.a_poly))?;
-        let b_poly = Element::alloc(dr, witness.view().map(|w| w.current.b_poly))?;
-        let registry_xy = Element::alloc(dr, witness.view().map(|w| w.current.registry_xy))?;
+        let left = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.left))?;
+        let right = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.right))?;
+        let registry_wx0 = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wx0))?;
+        let registry_wx1 = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wx1))?;
+        let registry_wy = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wy))?;
+        let a_poly = Element::alloc(dr, witness.as_ref().map(|w| w.current.a_poly))?;
+        let b_poly = Element::alloc(dr, witness.as_ref().map(|w| w.current.b_poly))?;
+        let registry_xy = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_xy))?;
         Ok(Output {
             left,
             right,

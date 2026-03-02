@@ -78,7 +78,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     pub fn alloc_square(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<(Self, Self)> {
         let square = D::just(|| assignment.snag().square());
         let (a, b, c) = dr.mul(|| {
-            let value = *assignment.view().take();
+            let value = *assignment.as_ref().take();
             Ok((
                 Coeff::Arbitrary(value),
                 Coeff::Arbitrary(value),
@@ -133,7 +133,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Returns the value of this element. The caller can rely on this being
     /// consistent with the underlying wire's value.
     pub fn value(&self) -> DriverValue<D, &D::F> {
-        self.value.view()
+        self.value.as_ref()
     }
 
     /// Returns the wire associated with this element.

@@ -54,9 +54,9 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
             })
         })?;
 
-        let (x, x2) = Element::alloc_square(dr, coordinates.view().map(|p| *p.x()))?;
+        let (x, x2) = Element::alloc_square(dr, coordinates.as_ref().map(|p| *p.x()))?;
         let x3 = x.mul(dr, &x2)?;
-        let (y, y2) = Element::alloc_square(dr, coordinates.view().map(|p| *p.y()))?;
+        let (y, y2) = Element::alloc_square(dr, coordinates.as_ref().map(|p| *p.y()))?;
 
         // Enforce x³ + b - y² = 0
         dr.enforce_zero(|lc| {

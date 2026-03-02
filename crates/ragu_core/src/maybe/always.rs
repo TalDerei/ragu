@@ -51,13 +51,13 @@ impl<T: Send> Maybe<T> for Always<T> {
     {
         f(self.0)
     }
-    fn view(&self) -> Perhaps<Self::Kind, &T>
+    fn as_ref(&self) -> Perhaps<Self::Kind, &T>
     where
         T: Sync,
     {
         Always(&self.0)
     }
-    fn view_mut(&mut self) -> Perhaps<Self::Kind, &mut T> {
+    fn as_mut(&mut self) -> Perhaps<Self::Kind, &mut T> {
         Always(&mut self.0)
     }
 

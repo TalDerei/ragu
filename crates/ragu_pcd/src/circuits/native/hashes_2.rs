@@ -161,9 +161,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
-        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        let error_n = error_n.unenforced(dr, witness.as_ref().map(|w| w.error_n_witness))?;
 
-        let unified_instance = &witness.view().map(|w| w.unified_instance);
+        let unified_instance = &witness.as_ref().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
         // Resume sponge from saved state (error_m already absorbed in hashes_1)

@@ -100,8 +100,8 @@ fn test_simple_circuit() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let c = Element::alloc(dr, instance.view().map(|v| v.0))?;
-            let d = Element::alloc(dr, instance.view().map(|v| v.1))?;
+            let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
+            let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
 
             Ok((c, d))
         }
@@ -114,8 +114,8 @@ fn test_simple_circuit() {
             Bound<'dr, D, Self::Output>,
             DriverValue<D, Self::Aux<'witness>>,
         )> {
-            let a = Element::alloc(dr, witness.view().map(|w| w.0))?;
-            let b = Element::alloc(dr, witness.view().map(|w| w.1))?;
+            let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
+            let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
 
             let a2 = a.square(dr)?;
             let a4 = a2.square(dr)?;
