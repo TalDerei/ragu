@@ -273,7 +273,6 @@ impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
                         // Skip past the entire subtree — children will be filled during flush.
                         let child_start = this.next_routine;
                         this.next_routine += this.subtree_sizes[seg] - 1;
-                        let subtree_sizes = this.subtree_sizes;
                         this.pending
                             .push(Box::new(move |dr: &mut Evaluator<'a, F>| {
                                 let saved = dr.next_routine;
@@ -283,10 +282,7 @@ impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
                                         available_b: None,
                                         current_segment: seg,
                                     },
-                                    |dr| {
-                                        dr.subtree_sizes = subtree_sizes;
-                                        routine.execute(dr, input, aux).map(|_| ())
-                                    },
+                                    |dr| routine.execute(dr, input, aux).map(|_| ()),
                                 )?;
                                 dr.next_routine = saved;
                                 Ok(())
@@ -333,6 +329,12 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
                 thunk(&mut dr)?;
             }
         }
+
+        debug_assert_eq!(
+            dr.next_routine,
+            metrics.segments.len(),
+            "rx segment counter diverged from metrics"
+        );
 
         aux.take()
     };
