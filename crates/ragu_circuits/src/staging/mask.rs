@@ -232,6 +232,9 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn segment_records(&self) -> &[crate::SegmentRecord] {
         &[]
     }
+    fn subtree_sizes(&self) -> &[usize] {
+        &[]
+    }
 }
 
 #[cfg(test)]

@@ -174,6 +174,9 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
             fn segment_records(&self) -> &[SegmentRecord] {
                 &self.metrics.segments
             }
+            fn subtree_sizes(&self) -> &[usize] {
+                &self.metrics.subtree_sizes
+            }
         }
 
         let circuit = ProcessedCircuit {
@@ -187,12 +190,18 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     ///
     /// The returned [`Trace`] can be assembled into a polynomial
     /// via [`Registry::assemble`](registry::Registry::assemble).
+    ///
+    /// This standalone entry point computes metrics internally. Callers
+    /// that already have a [`CircuitObject`] (e.g. from registration)
+    /// can avoid the redundant metrics pass by calling
+    /// [`rx::eval`] directly with the cached
+    /// [`subtree_sizes`](CircuitObject::subtree_sizes).
     fn rx<'witness>(
         &self,
         witness: Self::Witness<'witness>,
     ) -> Result<(rx::Trace<F>, Self::Aux<'witness>)> {
         let metrics = metrics::eval(self)?;
-        rx::eval(self, witness, &metrics)
+        rx::eval(self, witness, &metrics.subtree_sizes)
     }
 
     /// Computes the instance polynomial $k(Y)$ for the given instance.
@@ -240,4 +249,11 @@ pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
     /// These records serve as input to
     /// [`floor_planner::floor_plan`] for computing absolute offsets.
     fn segment_records(&self) -> &[SegmentRecord];
+
+    /// Returns per-segment subtree sizes in DFS order.
+    ///
+    /// `subtree_sizes[i]` is the number of segments in segment `i`'s subtree,
+    /// including itself. Used by the trace evaluator to skip past Known
+    /// subtrees without recomputing metrics.
+    fn subtree_sizes(&self) -> &[usize];
 }

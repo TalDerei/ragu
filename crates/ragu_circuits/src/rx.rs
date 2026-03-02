@@ -304,15 +304,15 @@ impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
 pub fn eval<'witness, F: Field, C: Circuit<F>>(
     circuit: &C,
     witness: C::Witness<'witness>,
-    metrics: &super::metrics::CircuitMetrics,
+    subtree_sizes: &[usize],
 ) -> Result<(Trace<F>, C::Aux<'witness>)> {
-    let mut trace = Trace::new(metrics.segments.len());
+    let mut trace = Trace::new(subtree_sizes.len());
     let aux = {
         let mut dr = Evaluator {
             trace: &mut trace,
             state: TraceScope::default(),
             pending: Vec::new(),
-            subtree_sizes: &metrics.subtree_sizes,
+            subtree_sizes,
             next_routine: 1,
         };
         let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
@@ -332,7 +332,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
 
         debug_assert_eq!(
             dr.next_routine,
-            metrics.segments.len(),
+            subtree_sizes.len(),
             "rx segment counter diverged from metrics"
         );
 
@@ -355,7 +355,7 @@ mod tests {
         witness: C::Witness<'w>,
     ) -> Result<(Trace<Fp>, C::Aux<'w>)> {
         let m = metrics::eval(circuit)?;
-        eval(circuit, witness, &m)
+        eval(circuit, witness, &m.subtree_sizes)
     }
 
     #[test]
