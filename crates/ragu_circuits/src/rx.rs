@@ -5,7 +5,9 @@
 //! The [`Trace`] is later assembled into a [`structured::Polynomial`]
 //! by the registry.
 
+use super::multicore::*;
 use alloc::{boxed::Box, vec, vec::Vec};
+use core::cell::UnsafeCell;
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -15,7 +17,7 @@ use ragu_core::{
     maybe::{Always, Maybe, MaybeKind},
     routines::{Prediction, Routine},
 };
-use ragu_primitives::GadgetExt;
+use ragu_primitives::{GadgetExt, Sendable};
 
 use super::{
     Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, metrics::SegmentRecord, registry,
@@ -33,9 +35,60 @@ pub(crate) struct Segment<F> {
     pub(crate) c: Vec<F>,
 }
 
-/// A deferred execute() call that will be processed after circuit traversal.
-/// The closure takes the evaluator mutably and fills in the segment at the captured index.
-type PendingExecute<'a, F> = Box<dyn FnOnce(&mut Evaluator<'a, F>) -> Result<()> + 'a>;
+/// Concurrent access wrapper for pre-allocated segments.
+///
+/// Each segment is independently accessible via [`UnsafeCell`], allowing parallel
+/// thunks to write to non-overlapping segments without requiring `&mut` to the
+/// entire collection.
+struct SharedSegments<F> {
+    inner: Vec<UnsafeCell<Segment<F>>>,
+}
+
+// Safety: the DFS counter + subtree_sizes mechanism guarantees that parallel
+// thunks access non-overlapping segment indices. See the safety argument in
+// the module-level documentation.
+#[allow(unsafe_code)]
+unsafe impl<F: Send> Sync for SharedSegments<F> {}
+
+impl<F: Field> SharedSegments<F> {
+    fn new(num_segments: usize) -> Self {
+        let mut inner = Vec::with_capacity(num_segments);
+        // Segment 0: zeroed placeholder for the ONE gate.
+        inner.push(UnsafeCell::new(Segment {
+            a: vec![F::ZERO],
+            b: vec![F::ZERO],
+            c: vec![F::ZERO],
+        }));
+        for _ in 1..num_segments {
+            inner.push(UnsafeCell::new(Segment {
+                a: Vec::new(),
+                b: Vec::new(),
+                c: Vec::new(),
+            }));
+        }
+        SharedSegments { inner }
+    }
+
+    /// # Safety
+    ///
+    /// No other thread may access the same index concurrently.
+    #[allow(unsafe_code, clippy::mut_from_ref)]
+    unsafe fn get_mut(&self, idx: usize) -> &mut Segment<F> {
+        unsafe { &mut *self.inner[idx].get() }
+    }
+
+    fn into_segments(self) -> Vec<Segment<F>> {
+        self.inner.into_iter().map(UnsafeCell::into_inner).collect()
+    }
+}
+
+/// A deferred routine execution processed after circuit traversal.
+///
+/// Each thunk creates its own [`Evaluator`] internally, writing to the shared
+/// pre-allocated segments and returning any nested pending thunks.
+struct PendingExecute<'a, F: Field>(
+    Box<dyn FnOnce(&'a SharedSegments<F>, &'a [usize]) -> Result<Vec<Self>> + Send + 'a>,
+);
 
 /// Trace data produced by evaluating a circuit.
 ///
@@ -48,24 +101,10 @@ pub struct Trace<F> {
 }
 
 impl<F: Field> Trace<F> {
-    /// Pre-allocates all `num_segments` segments. Segment 0 starts with a
-    /// zeroed placeholder for the ONE gate; segments 1+ are empty.
-    pub(crate) fn new(num_segments: usize) -> Self {
-        let mut segments = Vec::with_capacity(num_segments);
-        // Segment 0: zeroed placeholder for the ONE gate.
-        segments.push(Segment {
-            a: vec![F::ZERO],
-            b: vec![F::ZERO],
-            c: vec![F::ZERO],
-        });
-        for _ in 1..num_segments {
-            segments.push(Segment {
-                a: Vec::new(),
-                b: Vec::new(),
-                c: Vec::new(),
-            });
+    fn from_shared(shared: SharedSegments<F>) -> Self {
+        Trace {
+            segments: shared.into_segments(),
         }
-        Self { segments }
     }
 }
 
@@ -174,7 +213,7 @@ struct TraceScope {
 }
 
 struct Evaluator<'a, F: Field> {
-    trace: &'a mut Trace<F>,
+    segments: &'a SharedSegments<F>,
     state: TraceScope,
     /// Deferred execute() calls to be processed after circuit traversal.
     pending: Vec<PendingExecute<'a, F>>,
@@ -215,30 +254,37 @@ impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
     type Wire = ();
     const ONE: Self::Wire = ();
 
+    #[allow(unsafe_code)]
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
         // Packs two allocations into one multiplication gate when possible, enabling consecutive
         // allocations to share gates.
         if let Some(index) = self.state.available_b.take() {
-            let seg = &mut self.trace.segments[self.state.current_segment];
+            // Safety: only this evaluator accesses the current segment.
+            let seg = unsafe { self.segments.get_mut(self.state.current_segment) };
             let a = seg.a[index];
             let b = value()?;
             seg.b[index] = b.value();
             seg.c[index] = a * b.value();
             Ok(())
         } else {
-            let index = self.trace.segments[self.state.current_segment].a.len();
+            // Safety: only this evaluator accesses the current segment.
+            let index = unsafe { self.segments.get_mut(self.state.current_segment) }
+                .a
+                .len();
             self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
             self.state.available_b = Some(index);
             Ok(())
         }
     }
 
+    #[allow(unsafe_code)]
     fn mul(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<((), (), ())> {
         let (a, b, c) = values()?;
-        let seg = &mut self.trace.segments[self.state.current_segment];
+        // Safety: only this evaluator accesses the current segment.
+        let seg = unsafe { self.segments.get_mut(self.state.current_segment) };
         seg.a.push(a.value());
         seg.b.push(b.value());
         seg.c.push(c.value());
@@ -273,20 +319,27 @@ impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
                         // Skip past the entire subtree — children will be filled during flush.
                         let child_start = this.next_routine;
                         this.next_routine += this.subtree_sizes[seg] - 1;
-                        this.pending
-                            .push(Box::new(move |dr: &mut Evaluator<'a, F>| {
-                                let saved = dr.next_routine;
-                                dr.next_routine = child_start;
-                                dr.with_scope(
+                        let input = Sendable::new::<'a, Self>(input);
+                        this.pending.push(PendingExecute(Box::new(
+                            move |segments: &SharedSegments<F>, subtree_sizes: &'a [usize]| {
+                                let input = input.into_inner();
+                                let mut eval = Evaluator {
+                                    segments,
+                                    state: TraceScope::default(),
+                                    pending: Vec::new(),
+                                    subtree_sizes,
+                                    next_routine: child_start,
+                                };
+                                eval.with_scope(
                                     TraceScope {
                                         available_b: None,
                                         current_segment: seg,
                                     },
-                                    |dr| routine.execute(dr, input, aux).map(|_| ()),
+                                    |eval| routine.execute(eval, input, aux).map(|_| ()),
                                 )?;
-                                dr.next_routine = saved;
-                                Ok(())
-                            }));
+                                Ok(eval.pending)
+                            },
+                        )));
                         Ok(output)
                     }
                     Prediction::Unknown(aux) => routine.execute(this, input, aux),
@@ -306,39 +359,44 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
     witness: C::Witness<'witness>,
     metrics: &super::metrics::CircuitMetrics,
 ) -> Result<(Trace<F>, C::Aux<'witness>)> {
-    let mut trace = Trace::new(metrics.segments.len());
-    let aux = {
+    let shared = SharedSegments::new(metrics.segments.len());
+    let subtree_sizes = &metrics.subtree_sizes;
+
+    // Phase 1: sequential circuit traversal.
+    let (mut pending, aux) = {
         let mut dr = Evaluator {
-            trace: &mut trace,
+            segments: &shared,
             state: TraceScope::default(),
             pending: Vec::new(),
-            subtree_sizes: &metrics.subtree_sizes,
+            subtree_sizes,
             next_routine: 1,
         };
         let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
         io.write(&mut dr, &mut ())?;
-
-        // Flush deferred execute() calls, looping until all nested
-        // Known thunks are drained.
-        loop {
-            let pending = core::mem::take(&mut dr.pending);
-            if pending.is_empty() {
-                break;
-            }
-            for thunk in pending {
-                thunk(&mut dr)?;
-            }
-        }
-
-        debug_assert_eq!(
-            dr.next_routine,
-            metrics.segments.len(),
-            "rx segment counter diverged from metrics"
-        );
-
-        aux.take()
+        (core::mem::take(&mut dr.pending), aux.take())
     };
-    Ok((trace, aux))
+
+    // Phase 2: flush deferred execute() calls in parallel, looping until
+    // all nested Known thunks are drained.
+    loop {
+        let batch = core::mem::take(&mut pending);
+        if batch.is_empty() {
+            break;
+        }
+        let new_pendings: Vec<Vec<PendingExecute<'_, F>>> = batch
+            .into_par_iter()
+            .map(|thunk| (thunk.0)(&shared, subtree_sizes))
+            .collect::<Result<_>>()?;
+        for group in new_pendings {
+            pending.extend(group);
+        }
+    }
+
+    // Drop the (empty) pending vec so the compiler can see that
+    // the closures' borrow of `shared` has ended.
+    drop(pending);
+
+    Ok((Trace::from_shared(shared), aux))
 }
 
 #[cfg(test)]
