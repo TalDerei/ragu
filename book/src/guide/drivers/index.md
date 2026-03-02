@@ -76,6 +76,12 @@ thread scope's lifetime lets routines hold borrowed references and send auxiliar
 data to workers without `Arc`.
 ```
 
+### Equality
+
+The [`enforce_equal()`] method constrains two wires to have the same value. By
+default it calls [`enforce_zero()`] on their difference, but drivers may
+override it.
+
 ## Concrete Drivers
 
 Ragu uses drivers internally to execute circuit code, and users do not need to
@@ -99,4 +105,5 @@ code. The most useful drivers that are exposed in the public API are:
 [`Driver`]: ragu_core::drivers::Driver
 [`Routine`]: ragu_core::routines::Routine
 [`Simulator`]: ragu_primitives::Simulator
+[`enforce_equal()`]: ragu_core::drivers::Driver::enforce_equal
 [`Wire`]: ragu_core::drivers::Driver::Wire

@@ -94,6 +94,14 @@ be cast into `(Maybe<A>, Maybe<B>)`, splitting a tuple witness into its
 components. Any type can implement [`MaybeCast`] to define its own
 decomposition; the built-in implementations cover tuples and arrays.
 
+### [`clone`] {#clone}
+
+[`Maybe<T>`] provides its own [`clone`] method rather than implementing
+[`Clone`] as a supertrait. Rust does not allow a supertrait bound that is
+conditional on `T: Clone`, so a dedicated trait method fills the gap. It behaves
+identically to [`Clone::clone`] when the value is present; under `Empty`, it
+returns `Empty`.
+
 [`just`]: ragu_core::maybe::Maybe::just
 [`with`]: ragu_core::maybe::Maybe::with
 [`map`]: ragu_core::maybe::Maybe::map
@@ -112,4 +120,7 @@ decomposition; the built-in implementations cover tuples and arrays.
 [`Option::unwrap()`]: core::option::Option::unwrap
 [`Option::as_ref()`]: core::option::Option::as_ref
 [`Option::as_mut()`]: core::option::Option::as_mut
+[`clone`]: ragu_core::maybe::Maybe::clone
+[`Clone`]: core::clone::Clone
+[`Clone::clone`]: core::clone::Clone::clone
 [`Point`]: ragu_primitives::point::Point

@@ -22,12 +22,11 @@ constraints call the closure with an empty expression of their own concrete
 type, and circuit code builds on it using only the [`LinearExpression`] trait
 methods.[^hidden-types]
 
-The one method a driver's `LinearExpression`s must implement is [`add_term`],
-which appends a wire with an explicit [`Coeff<F>`] coefficient. [`Coeff<F>`] is
-an enum whose variants let drivers select cheaper code paths for common
-coefficient patterns instead of always performing a full field multiplication.
-The convenience methods [`add`], [`sub`], and [`extend`] delegate to
-[`add_term`] by default.
+The central implementation method is [`add_term`], which appends a wire with an
+explicit [`Coeff<F>`] coefficient. [`Coeff<F>`] is an enum whose variants let
+drivers select cheaper code paths for common coefficient patterns instead of
+always performing a full field multiplication. The convenience methods [`add`],
+[`sub`], and [`extend`] delegate to [`add_term`] by default.
 
 Here, an `enforce_zero` call constrains the elliptic curve equation $x^3 + b -
 y^2 = 0$, where `x3` holds $x^3$ and `y2` holds $y^2$:

@@ -96,12 +96,15 @@ pub trait Maybe<T: Send>: Send {
     /// will fail at compile time.
     fn take(self) -> T;
 
-    /// As in `Option<T>::as_ref`.
+    /// Returns a reference to the enclosed value, analogous to
+    /// [`Option::as_ref`]. Named `view` rather than `as_ref` to avoid
+    /// shadowing `Option`'s inherent method under Rust's method-dispatch
+    /// rules.
     fn view(&self) -> Perhaps<Self::Kind, &T>
     where
         T: Sync;
 
-    /// As in `Option<T>::as_mut`.
+    /// Mutable counterpart of [`view`](Maybe::view).
     fn view_mut(&mut self) -> Perhaps<Self::Kind, &mut T>;
 
     /// Helper for `.view().take()` to obtain a reference to the enclosed value
