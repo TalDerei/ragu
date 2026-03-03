@@ -24,17 +24,27 @@ use super::{
     structured,
 };
 
-/// A deferred routine evaluation, queued for serial execution.
+/// Deferred `execute()` for a Known-predicted routine.                                                                                                                                                                                            
+///                                                                                                            
+/// Created when `predict()` returns [`Known`](Prediction::Known), allowing                                                                                                                                                                        
+/// the main traversal to continue with the predicted output while deferring                                   
+/// the actual witness computation. When invoked, runs `execute()` in a fresh
+/// [`Evaluator`] and returns the resulting trace segments.
 struct Thunk<'env, F: Field>(
     Box<dyn FnOnce(&mut Vec<Thunk<'env, F>>) -> Result<Vec<AnnotatedSegment<F>>> + Send + 'env>,
 );
+
+impl<'env, F: Field> Thunk<'env, F> {
+    fn run(self, thunks: &mut Vec<Thunk<'env, F>>) -> Result<Vec<AnnotatedSegment<F>>> {
+        (self.0)(thunks)
+    }
+}
 
 /// A contiguous group of multiplication gates.
 ///
 /// Segment 0 is the root segment and holds the placeholder `ONE` gate
 /// at position 0. Routine calls create additional segments (see
 /// [`Evaluator::routine`]).
-#[derive(Clone)]
 pub(crate) struct Segment<F> {
     pub(crate) a: Vec<F>,
     pub(crate) b: Vec<F>,
@@ -43,14 +53,13 @@ pub(crate) struct Segment<F> {
 
 /// A segment paired with the DFS path that produced it, so that segments from
 /// independent evaluators can be sorted back into the canonical DFS order
-/// expected by the floor planner.
+/// expected by the floor planner. This is used during post-processing.
 ///
 /// The path is the sequence of routine-call indices from root to this segment.
 /// For example, if the root's second routine call (`routine_counter = 1`)
 /// itself makes a first routine call (`routine_counter = 0`), that inner
 /// segment has path `[1, 0]`. Lexicographic sort of paths reconstructs DFS
 /// visitation order.
-#[derive(Clone)]
 struct AnnotatedSegment<F> {
     dfs_path: Vec<usize>,
     segment: Segment<F>,
@@ -191,9 +200,13 @@ struct TraceScope {
     dfs_prefix: Vec<usize>,
 }
 
+/// Driver that records multiplication gates into trace segments.
 struct Evaluator<'scope, 'env, F: Field> {
+    /// Trace segments produced by this evaluator's routine scope.
     segments: Vec<AnnotatedSegment<F>>,
+    /// Deferred `execute()` closures for Known-predicted routines.
     thunks: &'scope mut Vec<Thunk<'env, F>>,
+    /// Per-routine state saved and restored across routine boundaries.
     state: TraceScope,
 }
 
@@ -288,6 +301,9 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
         match prediction {
             Prediction::Known(predicted_output, aux) => {
                 let output = predicted_output.map(&mut Lifter::lift())?;
+                // Remap the input gadget to a driver-independent representation,
+                // then wrap in `Sendable` to satisfy the `Send` bound on the
+                // thunk closure.
                 let input = input.map(&mut Lifter::lift())?.sendable();
 
                 self.thunks.push(Thunk(Box::new(move |thunks| {
@@ -296,31 +312,76 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
                         .into_inner()
                         .map(&mut Lifter::lift())
                         .and_then(|input| routine.execute(&mut eval, input, aux))
-                        .map(|_| eval.segments)
+                        // Discard the output gadget; we already have the predicted output.
+                        .map(|_| {
+                            assert!(
+                                !eval.segments.is_empty(),
+                                "deferred routine must produce at least one segment"
+                            );
+                            eval.segments
+                        })
                 })));
 
                 Ok(output)
             }
+            // Without a predicted output the caller cannot continue, so
+            // Unknown routines must be evaluated inline.
             Prediction::Unknown(aux) => {
                 self.segments.push(AnnotatedSegment::new(&child_prefix));
-
+                let seg_idx = self.segments.len() - 1;
                 self.with_scope(
                     TraceScope {
                         available_b: None,
-                        current_segment: self.segments.len() - 1,
+                        current_segment: seg_idx,
                         routine_counter: 0,
                         dfs_prefix: child_prefix,
                     },
-                    |this| routine.execute(this, input, aux),
+                    |this| {
+                        let result = routine.execute(this, input, aux);
+                        assert_eq!(
+                            this.state.current_segment, seg_idx,
+                            "current_segment must remain stable during routine execution"
+                        );
+                        result
+                    },
                 )
             }
         }
     }
 }
 
+/// [`FromDriver`] adapter that trivially converts `()` wires between any
+/// `Driver` and an [`Evaluator`].
+///
+/// Because every `Evaluator` wire is `()`, conversion is a no-op. The
+/// `'scope` and `'env` lifetimes tie the adapter to a particular
+/// `Evaluator` so the compiler can verify the remapped gadgets stay valid.
+struct Lifter<'scope, 'env, F: Field>(PhantomData<Evaluator<'scope, 'env, F>>);
+
+impl<'scope, 'env, F: Field> Lifter<'scope, 'env, F> {
+    fn lift() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<'dr, 'scope, 'env, F: Field, D: Driver<'dr, Wire = (), F = F>> FromDriver<'dr, 'env, D>
+    for Lifter<'scope, 'env, F>
+{
+    type NewDriver = Evaluator<'scope, 'env, F>;
+
+    fn convert_wire(&mut self, _: &()) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// Sorts segments by DFS path and strips annotations.
 fn finish<F: Field>(mut segments: Vec<AnnotatedSegment<F>>) -> Trace<F> {
     segments.sort_unstable_by(|a, b| a.dfs_path.cmp(&b.dfs_path));
+
+    assert!(
+        segments[0].dfs_path.is_empty(),
+        "root segment must be present after sorting"
+    );
 
     Trace {
         segments: segments.into_iter().map(|s| s.segment).collect(),
@@ -350,29 +411,14 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
         Ok((evaluator.segments, aux))
     }?;
 
+    // Flush deferred execute() calls, popping until all nested
+    // Known thunks are drained.
+    // TODO: thunks are independent and can be evaluated in parallel.
     while let Some(thunk) = thunks.pop() {
-        segments.extend(thunk.0(&mut thunks)?);
+        segments.extend(thunk.run(&mut thunks)?);
     }
 
     Ok((finish(segments), aux))
-}
-
-struct Lifter<'scope, 'env, F: Field>(PhantomData<Evaluator<'scope, 'env, F>>);
-
-impl<'scope, 'env, F: Field> Lifter<'scope, 'env, F> {
-    fn lift() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<'dr, 'scope, 'env, F: Field, D: Driver<'dr, Wire = (), F = F>> FromDriver<'dr, 'env, D>
-    for Lifter<'scope, 'env, F>
-{
-    type NewDriver = Evaluator<'scope, 'env, F>;
-
-    fn convert_wire(&mut self, _: &()) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
