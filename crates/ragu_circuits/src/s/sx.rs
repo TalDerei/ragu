@@ -82,12 +82,9 @@ use ragu_primitives::GadgetExt;
 use alloc::vec;
 
 use crate::{
-    Circuit, DriverScope,
+    Challenge, Circuit, DriverScope,
     floor_planner::ConstraintSegment,
-    polynomials::{
-        Rank,
-        unstructured::{self, Polynomial},
-    },
+    polynomials::{Rank, unstructured},
     registry,
 };
 
@@ -329,22 +326,15 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 /// - `floor_plan`: Per-routine absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
 ///
-/// # Special Cases
-///
-/// If $x = 0$, returns the zero polynomial since all monomials vanish.
-///
 /// [`Registry`]: crate::registry::Registry
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
-    x: F,
+    x: &Challenge<F>,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
 ) -> Result<unstructured::Polynomial<F, R>> {
-    if x == F::ZERO {
-        return Ok(Polynomial::new());
-    }
-
-    let x_inv = x.invert().expect("x is not zero");
+    let x_inv = x.inverse();
+    let x = x.value();
     let xn = x.pow_vartime([R::n() as u64]);
     let xn2 = xn.square();
     let base_u_x = xn2 * x_inv;

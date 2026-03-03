@@ -51,7 +51,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let xz = x * *z.value().take();
 
-        let registry_xy_poly = self.native_registry.xy(x, y);
+        let registry_xy_poly = self.native_registry.xy(
+            &ragu_circuits::Challenge::new(x),
+            &ragu_circuits::Challenge::new(y),
+        );
         let registry_xy_blind = C::CircuitField::random(&mut *rng);
         let registry_xy_commitment =
             registry_xy_poly.commit(C::host_generators(self.params), registry_xy_blind);

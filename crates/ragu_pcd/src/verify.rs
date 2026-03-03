@@ -110,12 +110,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Check registry_xy polynomial evaluation at the sampled w.
         // registry_xy_poly is m(W, x, y) - the registry evaluated at current x, y, free in W.
+        // A valid proof should never have zero challenges (produced by Fiat-Shamir),
+        // so reject if either is zero.
         let registry_xy_claim = {
-            let x = pcd.proof.challenges.x;
-            let y = pcd.proof.challenges.y;
-            let poly_eval = pcd.proof.query.registry_xy_poly.eval(w);
-            let expected = self.native_registry.wxy(w, x, y);
-            poly_eval == expected
+            let proof_x = pcd.proof.challenges.x;
+            let proof_y = pcd.proof.challenges.y;
+            if proof_x == C::CircuitField::ZERO || proof_y == C::CircuitField::ZERO {
+                false
+            } else {
+                let x = ragu_circuits::Challenge::new(proof_x);
+                let y = ragu_circuits::Challenge::new(proof_y);
+                let poly_eval = pcd.proof.query.registry_xy_poly.eval(w);
+                let expected = self.native_registry.wxy(w, &x, &y);
+                poly_eval == expected
+            }
         };
 
         // TODO: Add checks for registry_wx0_poly, registry_wx1_poly, and registry_wy_poly.

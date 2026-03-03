@@ -4,7 +4,7 @@ use ragu_core::Result;
 use alloc::vec::Vec;
 
 use crate::{
-    CircuitObject,
+    Challenge, CircuitObject,
     polynomials::{Rank, structured, unstructured},
     registry,
 };
@@ -59,8 +59,8 @@ impl<R: Rank> StageMask<R> {
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn sxy(
         &self,
-        x: F,
-        y: F,
+        x: &Challenge<F>,
+        y: &Challenge<F>,
         key: &registry::Key<F>,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> F {
@@ -68,14 +68,9 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
         let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
-        if x == F::ZERO || y == F::ZERO {
-            // If either x or y is zero, the polynomial evaluates to zero. This
-            // is unlike standard circuits because the constant term is not used
-            // to constrain the `ONE` wire.
-            return F::ZERO;
-        }
-
-        let x_inv = x.invert().expect("x is not zero");
+        let x_inv = x.inverse();
+        let x = x.value();
+        let y = y.value();
         let y2 = y.square();
         let y3 = y * y2;
         let x_y3 = x * y3;
@@ -112,7 +107,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
     fn sx(
         &self,
-        x: F,
+        x: &Challenge<F>,
         key: &registry::Key<F>,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> unstructured::Polynomial<F, R> {
@@ -120,13 +115,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
         let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
-        if x == F::ZERO {
-            return unstructured::Polynomial::new();
-        }
-
         let mut coeffs = Vec::with_capacity(R::num_coeffs());
         {
-            let x_inv = x.invert().expect("x is not zero");
+            let x_inv = x.inverse();
+            let x = x.value();
             let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
             let xn2 = xn.square(); // xn2 = x^(2n)
             let mut u = xn2 * x_inv; // x^(2n - 1)
@@ -171,7 +163,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
     fn sy(
         &self,
-        y: F,
+        y: &Challenge<F>,
         key: &registry::Key<F>,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> structured::Polynomial<F, R> {
@@ -180,13 +172,12 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
         let mut poly = structured::Polynomial::new();
-        if y == F::ZERO {
-            return poly;
-        }
+
+        let y_inv = y.inverse();
+        let y = y.value();
 
         let num_linear_from_gates = 3 * (reserved + self.skip_multiplications);
         let mut yq = y.pow_vartime([(num_linear_from_gates + 1) as u64]);
-        let y_inv = y.invert().expect("y is not zero");
 
         {
             let poly = poly.backward();
@@ -254,7 +245,7 @@ mod tests {
     use rand::RngExt;
 
     use crate::{
-        CircuitExt, CircuitObject, metrics,
+        Challenge, CircuitExt, CircuitObject, metrics,
         polynomials::{Rank, structured},
         registry,
         staging::StageBuilder,
@@ -407,11 +398,11 @@ mod tests {
         let circ2 = MyStage2::mask()?;
 
         let z = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         {
-            let rhs = circ1.sy(y, &k, &[]);
+            let rhs = circ1.sy(&y, &k, &[]);
             assert_eq!(rx1_a.revdot(&rhs), Fp::ZERO);
             assert_eq!(rx1_b.revdot(&rhs), Fp::ZERO);
 
@@ -425,10 +416,10 @@ mod tests {
             assert_eq!(combined.revdot(&rhs), Fp::ZERO);
         }
 
-        assert_eq!(rx1_a.revdot(&circ1.sy(y, &k, &[])), Fp::ZERO);
-        assert_eq!(rx2.revdot(&circ2.sy(y, &k, &[])), Fp::ZERO);
-        assert!(rx1_a.revdot(&circ2.sy(y, &k, &[])) != Fp::ZERO);
-        assert!(rx2.revdot(&circ1.sy(y, &k, &[])) != Fp::ZERO);
+        assert_eq!(rx1_a.revdot(&circ1.sy(&y, &k, &[])), Fp::ZERO);
+        assert_eq!(rx2.revdot(&circ2.sy(&y, &k, &[])), Fp::ZERO);
+        assert!(rx1_a.revdot(&circ2.sy(&y, &k, &[])) != Fp::ZERO);
+        assert!(rx2.revdot(&circ1.sy(&y, &k, &[])) != Fp::ZERO);
 
         Ok(())
     }
@@ -437,39 +428,39 @@ mod tests {
     fn test_skip_multiplications_zero() {
         let stage_mask = StageMask::<R>::new(0, 5).unwrap();
 
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
-        let sxy = stage_mask.sxy(x, y, &k, &[]);
-        let sx = stage_mask.sx(x, &k, &[]);
-        let sy = stage_mask.sy(y, &k, &[]);
+        let sxy = stage_mask.sxy(&x, &y, &k, &[]);
+        let sx = stage_mask.sx(&x, &k, &[]);
+        let sy = stage_mask.sy(&y, &k, &[]);
 
-        assert_eq!(sxy, sx.eval(y));
-        assert_eq!(sxy, sy.eval(x));
+        assert_eq!(sxy, sx.eval(y.value()));
+        assert_eq!(sxy, sy.eval(x.value()));
     }
 
     #[test]
     fn test_stage_mask_all_multiplications() {
         // Edge case: skip = 0, num = R::n() - 1, reserved = 0.
         let stage = StageMask::<R>::new(0, R::n() - 1).unwrap();
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let comparison_mask = stage.clone().into_object::<R>().unwrap();
         let floor_plan = crate::floor_planner::floor_plan(comparison_mask.segment_records());
 
-        let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
-        let comparison_sxy = comparison_mask.sxy(x, y, &k, &floor_plan) - x_4n_minus_1;
+        let x_4n_minus_1 = x.value().pow_vartime([(4 * R::n() - 1) as u64]);
+        let comparison_sxy = comparison_mask.sxy(&x, &y, &k, &floor_plan) - x_4n_minus_1;
 
-        assert_eq!(stage.sxy(x, y, &k, &[]), comparison_sxy);
+        assert_eq!(stage.sxy(&x, &y, &k, &[]), comparison_sxy);
     }
 
     #[test]
     fn test_minimum_linear_constraints() {
         let circuit = SquareCircuit { times: 2 };
-        let y = Fp::random(&mut rand::rng());
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let obj = circuit
@@ -477,12 +468,12 @@ mod tests {
             .expect("into_object should succeed");
         let floor_plan = crate::floor_planner::floor_plan(obj.segment_records());
         let (_, num_linear_constraints) = obj.constraint_counts();
-        let mut sy = obj.sy(y, &k, &floor_plan);
+        let mut sy = obj.sy(&y, &k, &floor_plan);
 
         // The first gate (ONE gate) should have the highest y-power.
         let expected_y_power = num_linear_constraints - 1;
         let actual_first_coeff = sy.backward().a[0];
-        let expected_first_coeff = y.pow_vartime([expected_y_power as u64]);
+        let expected_first_coeff = y.value().pow_vartime([expected_y_power as u64]);
 
         // This verifies the y-power calculation is correct
         assert_eq!(
@@ -523,16 +514,16 @@ mod tests {
         // When reserved = 0, all gates except one are used.
         let stage = StageMask::<R>::new(0, R::n() - 1).expect("skip multiplications");
 
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
-        let sxy = stage.sxy(x, y, &k, &[]);
-        let sx = stage.sx(x, &k, &[]);
-        let sy = stage.sy(y, &k, &[]);
+        let sxy = stage.sxy(&x, &y, &k, &[]);
+        let sx = stage.sx(&x, &k, &[]);
+        let sy = stage.sy(&y, &k, &[]);
 
-        assert_eq!(sxy, sx.eval(y));
-        assert_eq!(sxy, sy.eval(x));
+        assert_eq!(sxy, sx.eval(y.value()));
+        assert_eq!(sxy, sy.eval(x.value()));
     }
 
     #[test]
@@ -563,37 +554,39 @@ mod tests {
 
             let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
-            let check = |x: Fp, y: Fp| {
-                let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+            let check = |x: Challenge<Fp>, y: Challenge<Fp>| {
+                let x_4n_minus_1 = x.value().pow_vartime([(4 * R::n() - 1) as u64]);
 
                 // This adjusts for the single "ONE" constraint which is always skipped
                 // in staging witnesses.
-                let sxy = comparison_mask.sxy(x, y, &k, &floor_plan) - x_4n_minus_1;
-                let mut sx = comparison_mask.sx(x, &k, &floor_plan);
+                let sxy = comparison_mask.sxy(&x, &y, &k, &floor_plan) - x_4n_minus_1;
+                let mut sx = comparison_mask.sx(&x, &k, &floor_plan);
                 {
                     sx[0] -= x_4n_minus_1;
                 }
-                let mut sy = comparison_mask.sy(y, &k, &floor_plan);
+                let mut sy = comparison_mask.sy(&y, &k, &floor_plan);
                 {
                     let sy = sy.backward();
                     sy.c[0] -= Fp::ONE;
                 }
 
-                prop_assert_eq!(sy.eval(x), sxy);
-                prop_assert_eq!(sx.eval(y), sxy);
-                prop_assert_eq!(stage_mask.sxy(x, y, &k, &[]), sxy);
-                prop_assert_eq!(stage_mask.sx(x, &k, &[]).eval(y), sxy);
-                prop_assert_eq!(stage_mask.sy(y, &k, &[]).eval(x), sxy);
+                prop_assert_eq!(sy.eval(x.value()), sxy);
+                prop_assert_eq!(sx.eval(y.value()), sxy);
+                prop_assert_eq!(stage_mask.sxy(&x, &y, &k, &[]), sxy);
+                prop_assert_eq!(stage_mask.sx(&x, &k, &[]).eval(y.value()), sxy);
+                prop_assert_eq!(stage_mask.sy(&y, &k, &[]).eval(x.value()), sxy);
 
                 Ok(())
             };
 
-            let x = Fp::random(&mut rand::rng());
-            let y = Fp::random(&mut rand::rng());
+            let x = Challenge::new(Fp::random(&mut rand::rng()));
+            let y = Challenge::new(Fp::random(&mut rand::rng()));
+            let x2 = Challenge::new(Fp::random(&mut rand::rng()));
+            let y2 = Challenge::new(Fp::random(&mut rand::rng()));
             check(x, y)?;
-            check(Fp::ZERO, y)?;
-            check(x, Fp::ZERO)?;
-            check(Fp::ZERO, Fp::ZERO)?;
+            check(x2, y)?;
+            check(x, y2)?;
+            check(x2, y2)?;
 
         }
     }
@@ -661,9 +654,9 @@ mod tests {
         let stage_mask = ConstrainedStage::mask::<'_>().unwrap();
 
         // rx.revdot(&stage_mask) == 0 for well-formed stages
-        let y = Fp::random(&mut rand::rng());
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::ONE);
-        let sy = stage_mask.sy(y, &k, &[]);
+        let sy = stage_mask.sy(&y, &k, &[]);
 
         let check = rx.revdot(&sy);
         assert_eq!(
@@ -770,17 +763,17 @@ mod tests {
             "MulOnlyRoutine should have 0 linear constraints"
         );
 
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         // None of these must panic — previously sy would underflow on `- 1`.
-        let sxy = obj.sxy(x, y, &k, &floor_plan);
-        let sx = obj.sx(x, &k, &floor_plan);
-        let sy = obj.sy(y, &k, &floor_plan);
+        let sxy = obj.sxy(&x, &y, &k, &floor_plan);
+        let sx = obj.sx(&x, &k, &floor_plan);
+        let sy = obj.sy(&y, &k, &floor_plan);
 
-        assert_eq!(sxy, sx.eval(y));
-        assert_eq!(sxy, sy.eval(x));
+        assert_eq!(sxy, sx.eval(y.value()));
+        assert_eq!(sxy, sy.eval(x.value()));
     }
 
     /// A stage that allocates values only in a-positions (b = 0) for challenge smuggling.

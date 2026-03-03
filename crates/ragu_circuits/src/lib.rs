@@ -139,8 +139,8 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         impl<F: Field, C: Circuit<F>, R: Rank> CircuitObject<F, R> for ProcessedCircuit<C> {
             fn sxy(
                 &self,
-                x: F,
-                y: F,
+                x: &Challenge<F>,
+                y: &Challenge<F>,
                 key: &registry::Key<F>,
                 floor_plan: &[floor_planner::ConstraintSegment],
             ) -> F {
@@ -149,7 +149,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
             }
             fn sx(
                 &self,
-                x: F,
+                x: &Challenge<F>,
                 key: &registry::Key<F>,
                 floor_plan: &[floor_planner::ConstraintSegment],
             ) -> unstructured::Polynomial<F, R> {
@@ -158,7 +158,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
             }
             fn sy(
                 &self,
-                y: F,
+                y: &Challenge<F>,
                 key: &registry::Key<F>,
                 floor_plan: &[floor_planner::ConstraintSegment],
             ) -> structured::Polynomial<F, R> {
@@ -202,31 +202,59 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
 
 impl<F: Field, C: Circuit<F>> CircuitExt<F> for C {}
 
+/// A non-zero field element with a cached inverse.
+///
+/// Used for verifier challenges ($x$, $y$, etc.) that must be non-zero for
+/// soundness. Follows the same pattern as [`registry::Key`].
+#[derive(Clone, Copy, Debug)]
+pub struct Challenge<F: Field> {
+    val: F,
+    inv: F,
+}
+
+impl<F: Field> Challenge<F> {
+    /// Creates a new challenge from a field element, panicking if zero.
+    pub fn new(val: F) -> Self {
+        let inv = val.invert().expect("challenge must be non-zero");
+        Self { val, inv }
+    }
+
+    /// Returns the challenge value.
+    pub fn value(&self) -> F {
+        self.val
+    }
+
+    /// Returns the cached inverse of the challenge.
+    pub fn inverse(&self) -> F {
+        self.inv
+    }
+}
+
 /// A trait for (partially) evaluating $s(X, Y)$ for some circuit.
 ///
 /// See [`CircuitExt::into_object`].
 pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
-    /// Evaluates the polynomial $s(x, y)$ for some $x, y \in \mathbb{F}$.
+    /// Evaluates the polynomial $s(x, y)$ for some non-zero $x, y \in \mathbb{F}$.
     fn sxy(
         &self,
-        x: F,
-        y: F,
+        x: &Challenge<F>,
+        y: &Challenge<F>,
         key: &registry::Key<F>,
         floor_plan: &[floor_planner::ConstraintSegment],
     ) -> F;
 
-    /// Computes the polynomial restriction $s(x, Y)$ for some $x \in \mathbb{F}$.
+    /// Computes the polynomial restriction $s(x, Y)$ for some non-zero $x \in \mathbb{F}$.
     fn sx(
         &self,
-        x: F,
+        x: &Challenge<F>,
         key: &registry::Key<F>,
         floor_plan: &[floor_planner::ConstraintSegment],
     ) -> unstructured::Polynomial<F, R>;
 
-    /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
+    /// Computes the polynomial restriction $s(X, y)$ for some non-zero $y \in \mathbb{F}$.
     fn sy(
         &self,
-        y: F,
+        y: &Challenge<F>,
         key: &registry::Key<F>,
         floor_plan: &[floor_planner::ConstraintSegment],
     ) -> structured::Polynomial<F, R>;

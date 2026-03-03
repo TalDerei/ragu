@@ -130,16 +130,16 @@ fn test_rerandomize_consistency() {
     .into_object::<R>()
     .unwrap();
 
-    let x = Fp::from(5u64);
-    let y = Fp::from(17u64);
+    let x = ragu_circuits::Challenge::new(Fp::from(5u64));
+    let y = ragu_circuits::Challenge::new(Fp::from(17u64));
     let key = registry::Key::default();
 
     let floor_plan_single =
         ragu_circuits::floor_planner::floor_plan(circuit_single.segment_records());
     let floor_plan_pair = ragu_circuits::floor_planner::floor_plan(circuit_pair.segment_records());
 
-    let eval_single = circuit_single.sxy(x, y, &key, &floor_plan_single);
-    let eval_pair = circuit_pair.sxy(x, y, &key, &floor_plan_pair);
+    let eval_single = circuit_single.sxy(&x, &y, &key, &floor_plan_single);
+    let eval_pair = circuit_pair.sxy(&x, &y, &key, &floor_plan_pair);
 
     assert_eq!(eval_single, eval_pair,);
 }

@@ -453,23 +453,23 @@ mod tests {
             let staged_floor_plan =
                 ragu_circuits::floor_planner::floor_plan(staged_s.segment_records());
             let ky = staged.ky(())?;
-            let y = Fp::random(&mut rand::rng());
+            let y = ragu_circuits::Challenge::new(Fp::random(&mut rand::rng()));
 
             // Verify revdot identities for each stage.
             assert_eq!(
-                endoscalar_rx.revdot(&endoscalar_mask.sy(y, &key, &[])),
+                endoscalar_rx.revdot(&endoscalar_mask.sy(&y, &key, &[])),
                 Fp::ZERO
             );
-            assert_eq!(points_rx.revdot(&points_mask.sy(y, &key, &[])), Fp::ZERO);
-            assert_eq!(final_rx.revdot(&final_mask.sy(y, &key, &[])), Fp::ZERO);
+            assert_eq!(points_rx.revdot(&points_mask.sy(&y, &key, &[])), Fp::ZERO);
+            assert_eq!(final_rx.revdot(&final_mask.sy(&y, &key, &[])), Fp::ZERO);
 
             // Verify combined circuit identity.
             let mut lhs = final_rx.clone();
             lhs.add_assign(&endoscalar_rx);
             lhs.add_assign(&points_rx);
             assert_eq!(
-                lhs.revdot(&staged_s.sy(y, &key, &staged_floor_plan)),
-                ragu_arithmetic::eval(&ky, y)
+                lhs.revdot(&staged_s.sy(&y, &key, &staged_floor_plan)),
+                ragu_arithmetic::eval(&ky, y.value())
             );
         }
 
@@ -523,7 +523,7 @@ mod tests {
             let staged_floor_plan =
                 ragu_circuits::floor_planner::floor_plan(staged_s.segment_records());
             let ky = staged.ky(())?;
-            let y = Fp::random(&mut rand::rng());
+            let y = ragu_circuits::Challenge::new(Fp::random(&mut rand::rng()));
 
             let endoscalar_rx = <EndoscalarStage as StageExt<Fp, R>>::rx(endoscalar)?;
             let points_rx = <PointsStage<EpAffine, NUM_POINTS> as StageExt<Fp, R>>::rx(&points)?;
@@ -533,8 +533,8 @@ mod tests {
             lhs.add_assign(&endoscalar_rx);
             lhs.add_assign(&points_rx);
             assert_eq!(
-                lhs.revdot(&staged_s.sy(y, &key, &staged_floor_plan)),
-                ragu_arithmetic::eval(&ky, y)
+                lhs.revdot(&staged_s.sy(&y, &key, &staged_floor_plan)),
+                ragu_arithmetic::eval(&ky, y.value())
             );
         }
 

@@ -23,7 +23,7 @@ use ragu_core::{Error, Result};
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 
 use crate::{
-    Circuit, CircuitExt, CircuitObject,
+    Challenge, Circuit, CircuitExt, CircuitObject,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, structured, unstructured},
     staging::{Stage, StageExt},
@@ -388,7 +388,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $W$.
-    pub fn xy(&self, x: F, y: F) -> unstructured::Polynomial<F, R> {
+    pub fn xy(&self, x: &Challenge<F>, y: &Challenge<F>) -> unstructured::Polynomial<F, R> {
         let mut coeffs = unstructured::Polynomial::default();
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
@@ -406,7 +406,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     ///
     /// Wraps [`Registry::at`] and [`RegistryAt::wy`].
     /// See [`CircuitIndex::omega_j`] for more details.
-    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
+    pub fn circuit_y(&self, i: CircuitIndex, y: &Challenge<F>) -> structured::Polynomial<F, R> {
         let w: F = i.omega_j();
         self.at(w).wy(y)
     }
@@ -420,17 +420,17 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $X$.
-    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
+    pub fn wy(&self, w: F, y: &Challenge<F>) -> structured::Polynomial<F, R> {
         self.at(w).wy(y)
     }
 
     /// Evaluate the registry polynomial unrestricted at $Y$.
-    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
+    pub fn wx(&self, w: F, x: &Challenge<F>) -> unstructured::Polynomial<F, R> {
         self.at(w).wx(x)
     }
 
     /// Evaluate the registry polynomial at the provided point.
-    pub fn wxy(&self, w: F, x: F, y: F) -> F {
+    pub fn wxy(&self, w: F, x: &Challenge<F>, y: &Challenge<F>) -> F {
         self.at(w).wxy(x, y)
     }
 
@@ -493,7 +493,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
 
 impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     /// Evaluate the registry polynomial restricted at $W$, unrestricted at $Y$.
-    pub fn wy(&self, y: F) -> structured::Polynomial<F, R> {
+    pub fn wy(&self, y: &Challenge<F>) -> structured::Polynomial<F, R> {
         self.registry.w_cached(
             &self.cache,
             structured::Polynomial::default,
@@ -506,7 +506,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial restricted at $W$, unrestricted at $X$.
-    pub fn wx(&self, x: F) -> unstructured::Polynomial<F, R> {
+    pub fn wx(&self, x: &Challenge<F>) -> unstructured::Polynomial<F, R> {
         self.registry.w_cached(
             &self.cache,
             unstructured::Polynomial::default,
@@ -519,7 +519,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial at the point ($W$, $X$, $Y$).
-    pub fn wxy(&self, x: F, y: F) -> F {
+    pub fn wxy(&self, x: &Challenge<F>, y: &Challenge<F>) -> F {
         self.registry.w_cached(
             &self.cache,
             || F::ZERO,
@@ -549,21 +549,21 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 
         // Placeholder "nothing-up-my-sleeve challenges" (small primes).
         let mut w = F::from(2u64);
-        let mut x = F::from(3u64);
-        let mut y = F::from(5u64);
+        let mut x = Challenge::new(F::from(3u64));
+        let mut y = Challenge::new(F::from(5u64));
 
         // FIXME(security): 6 iterations is insufficient to fully bind the registry
         // polynomial. This should be increased to a value that overdetermines the
         // polynomial (exceeds the degrees of freedom an adversary could exploit).
         // Currently limited by registry evaluation performance; See #78 and #316.
         for _ in 0..6 {
-            let eval = self.wxy(w, x, y);
+            let eval = self.wxy(w, &x, &y);
             hasher.update(eval.to_repr().as_ref());
 
             let digest_state = hasher.finalize();
             w = field_from_hash(&digest_state, 0);
-            x = field_from_hash(&digest_state, 1);
-            y = field_from_hash(&digest_state, 2);
+            x = Challenge::new(field_from_hash(&digest_state, 1));
+            y = Challenge::new(field_from_hash(&digest_state, 2));
 
             hasher = Params::new().personal(b"ragu_registry___").to_state();
             hasher.update(digest_state.as_bytes());
@@ -576,6 +576,7 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 #[cfg(test)]
 mod tests {
     use super::{CircuitIndex, OmegaKey, RegistryBuilder};
+    use crate::Challenge;
     use crate::polynomials::TestRank;
     use crate::tests::SquareCircuit;
     use alloc::collections::BTreeSet;
@@ -624,30 +625,30 @@ mod tests {
             .finalize()?;
 
         let w = Fp::random(&mut rand::rng());
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
 
-        let xy_poly = registry.xy(x, y);
-        let wy_poly = registry.wy(w, y);
-        let wx_poly = registry.wx(w, x);
+        let xy_poly = registry.xy(&x, &y);
+        let wy_poly = registry.wy(w, &y);
+        let wx_poly = registry.wx(w, &x);
 
-        let wxy_value = registry.wxy(w, x, y);
+        let wxy_value = registry.wxy(w, &x, &y);
 
         assert_eq!(wxy_value, xy_poly.eval(w));
-        assert_eq!(wxy_value, wy_poly.eval(x));
-        assert_eq!(wxy_value, wx_poly.eval(y));
+        assert_eq!(wxy_value, wy_poly.eval(x.value()));
+        assert_eq!(wxy_value, wx_poly.eval(y.value()));
 
         let mut w = Fp::ONE;
         for _ in 0..registry.domain.n() {
-            let xy_poly = registry.xy(x, y);
-            let wy_poly = registry.wy(w, y);
-            let wx_poly = registry.wx(w, x);
+            let xy_poly = registry.xy(&x, &y);
+            let wy_poly = registry.wy(w, &y);
+            let wx_poly = registry.wx(w, &x);
 
-            let wxy_value = registry.wxy(w, x, y);
+            let wxy_value = registry.wxy(w, &x, &y);
 
             assert_eq!(wxy_value, xy_poly.eval(w));
-            assert_eq!(wxy_value, wy_poly.eval(x));
-            assert_eq!(wxy_value, wx_poly.eval(y));
+            assert_eq!(wxy_value, wy_poly.eval(x.value()));
+            assert_eq!(wxy_value, wx_poly.eval(y.value()));
 
             w *= registry.domain.omega();
         }
@@ -665,37 +666,37 @@ mod tests {
             .finalize()?;
 
         let w = Fp::random(&mut rand::rng());
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Challenge::new(Fp::random(&mut rand::rng()));
+        let y = Challenge::new(Fp::random(&mut rand::rng()));
         let eval_point = Fp::random(&mut rand::rng());
 
         let registry_at_w = registry.at(w);
 
         assert_eq!(
-            registry_at_w.wx(x).eval(eval_point),
-            registry.wx(w, x).eval(eval_point)
+            registry_at_w.wx(&x).eval(eval_point),
+            registry.wx(w, &x).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w.wy(y).eval(eval_point),
-            registry.wy(w, y).eval(eval_point)
+            registry_at_w.wy(&y).eval(eval_point),
+            registry.wy(w, &y).eval(eval_point)
         );
-        assert_eq!(registry_at_w.wxy(x, y), registry.wxy(w, x, y));
+        assert_eq!(registry_at_w.wxy(&x, &y), registry.wxy(w, &x, &y));
 
         // Test with w in domain (omega^j)
         let w_in_domain = registry.domain.omega();
         let registry_at_w_in_domain = registry.at(w_in_domain);
 
         assert_eq!(
-            registry_at_w_in_domain.wx(x).eval(eval_point),
-            registry.wx(w_in_domain, x).eval(eval_point)
+            registry_at_w_in_domain.wx(&x).eval(eval_point),
+            registry.wx(w_in_domain, &x).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w_in_domain.wy(y).eval(eval_point),
-            registry.wy(w_in_domain, y).eval(eval_point)
+            registry_at_w_in_domain.wy(&y).eval(eval_point),
+            registry.wy(w_in_domain, &y).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w_in_domain.wxy(x, y),
-            registry.wxy(w_in_domain, x, y)
+            registry_at_w_in_domain.wxy(&x, &y),
+            registry.wxy(w_in_domain, &x, &y)
         );
 
         Ok(())
@@ -713,9 +714,9 @@ mod tests {
         // This isn't in the domain.
         let w = omega + Fp::ONE;
 
-        let x = Fp::from(42u64);
-        let y = Fp::from(43u64);
-        assert_ne!(registry.at(w).wxy(x, y), registry.at(omega).wxy(x, y));
+        let x = Challenge::new(Fp::from(42u64));
+        let y = Challenge::new(Fp::from(43u64));
+        assert_ne!(registry.at(w).wxy(&x, &y), registry.at(omega).wxy(&x, &y));
 
         Ok(())
     }
@@ -740,9 +741,9 @@ mod tests {
         assert_eq!(OmegaKey::from(w), OmegaKey::from(omega));
         assert!(!registry.domain.contains(w));
 
-        let x = Fp::from(42u64);
-        let y = Fp::from(43u64);
-        assert_ne!(registry.at(w).wxy(x, y), registry.at(omega).wxy(x, y));
+        let x = Challenge::new(Fp::from(42u64));
+        let y = Challenge::new(Fp::from(43u64));
+        assert_ne!(registry.at(w).wxy(&x, &y), registry.at(omega).wxy(&x, &y));
 
         Ok(())
     }
@@ -846,11 +847,11 @@ mod tests {
             assert_eq!(registry.domain.n(), expected_domain_size);
 
             let w = Fp::random(&mut rand::rng());
-            let x = Fp::random(&mut rand::rng());
-            let y = Fp::random(&mut rand::rng());
+            let x = Challenge::new(Fp::random(&mut rand::rng()));
+            let y = Challenge::new(Fp::random(&mut rand::rng()));
 
-            let wxy = registry.wxy(w, x, y);
-            let xy = registry.xy(x, y);
+            let wxy = registry.wxy(w, &x, &y);
+            let xy = registry.xy(&x, &y);
             assert_eq!(wxy, xy.eval(w), "Failed for num_circuits={}", num_circuits);
         }
 

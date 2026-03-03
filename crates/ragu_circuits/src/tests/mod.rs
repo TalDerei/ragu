@@ -11,7 +11,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
 use crate::{
-    Circuit, CircuitExt, CircuitObject,
+    Challenge, Circuit, CircuitExt, CircuitObject,
     polynomials::{Rank, TestRank},
     registry,
 };
@@ -58,29 +58,37 @@ impl Circuit<Fp> for SquareCircuit {
 }
 
 fn consistency_checks<R: Rank>(circuit: &dyn CircuitObject<Fp, R>) {
-    let x = Fp::random(&mut rand::rng());
-    let y = Fp::random(&mut rand::rng());
+    let x = Challenge::new(Fp::random(&mut rand::rng()));
+    let x2 = Challenge::new(Fp::random(&mut rand::rng()));
+    let y = Challenge::new(Fp::random(&mut rand::rng()));
+    let y2 = Challenge::new(Fp::random(&mut rand::rng()));
     let k = registry::Key::new(Fp::random(&mut rand::rng()));
     let floor_plan = crate::floor_planner::floor_plan(circuit.segment_records());
 
-    let sxy_eval = circuit.sxy(x, y, &k, &floor_plan);
-    let s0y_eval = circuit.sxy(Fp::ZERO, y, &k, &floor_plan);
-    let sx0_eval = circuit.sxy(x, Fp::ZERO, &k, &floor_plan);
-    let s00_eval = circuit.sxy(Fp::ZERO, Fp::ZERO, &k, &floor_plan);
+    let sxy_eval = circuit.sxy(&x, &y, &k, &floor_plan);
+    let sx2y_eval = circuit.sxy(&x2, &y, &k, &floor_plan);
+    let sxy2_eval = circuit.sxy(&x, &y2, &k, &floor_plan);
+    let sx2y2_eval = circuit.sxy(&x2, &y2, &k, &floor_plan);
 
-    let sxY_poly = circuit.sx(x, &k, &floor_plan);
-    let sXy_poly = circuit.sy(y, &k, &floor_plan).unstructured();
-    let s0Y_poly = circuit.sx(Fp::ZERO, &k, &floor_plan);
-    let sX0_poly = circuit.sy(Fp::ZERO, &k, &floor_plan).unstructured();
+    let sxY_poly = circuit.sx(&x, &k, &floor_plan);
+    let sXy_poly = circuit.sy(&y, &k, &floor_plan).unstructured();
+    let sx2Y_poly = circuit.sx(&x2, &k, &floor_plan);
+    let sXy2_poly = circuit.sy(&y2, &k, &floor_plan).unstructured();
 
-    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sXy_poly[..], x));
-    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sxY_poly[..], y));
-    assert_eq!(s0y_eval, ragu_arithmetic::eval(&sXy_poly[..], Fp::ZERO));
-    assert_eq!(sx0_eval, ragu_arithmetic::eval(&sxY_poly[..], Fp::ZERO));
-    assert_eq!(s0y_eval, ragu_arithmetic::eval(&s0Y_poly[..], y));
-    assert_eq!(sx0_eval, ragu_arithmetic::eval(&sX0_poly[..], x));
-    assert_eq!(s00_eval, ragu_arithmetic::eval(&s0Y_poly[..], Fp::ZERO));
-    assert_eq!(s00_eval, ragu_arithmetic::eval(&sX0_poly[..], Fp::ZERO));
+    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sXy_poly[..], x.value()));
+    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sxY_poly[..], y.value()));
+    assert_eq!(sx2y_eval, ragu_arithmetic::eval(&sXy_poly[..], x2.value()));
+    assert_eq!(sxy2_eval, ragu_arithmetic::eval(&sxY_poly[..], y2.value()));
+    assert_eq!(sx2y_eval, ragu_arithmetic::eval(&sx2Y_poly[..], y.value()));
+    assert_eq!(sxy2_eval, ragu_arithmetic::eval(&sXy2_poly[..], x.value()));
+    assert_eq!(
+        sx2y2_eval,
+        ragu_arithmetic::eval(&sx2Y_poly[..], y2.value())
+    );
+    assert_eq!(
+        sx2y2_eval,
+        ragu_arithmetic::eval(&sXy2_poly[..], x2.value())
+    );
 }
 
 #[test]
@@ -155,7 +163,7 @@ fn test_simple_circuit() {
 
     consistency_checks(&*circuit);
 
-    let y = Fp::random(&mut rand::rng());
+    let y = Challenge::new(Fp::random(&mut rand::rng()));
     let z = Fp::random(&mut rand::rng());
     let k = registry::Key::default();
     let floor_plan = crate::floor_planner::floor_plan(circuit.segment_records());
@@ -163,7 +171,7 @@ fn test_simple_circuit() {
     let a = assignment.clone();
     let mut b = assignment.clone();
     b.dilate(z);
-    b.add_assign(&circuit.sy(y, &k, &floor_plan));
+    b.add_assign(&circuit.sy(&y, &k, &floor_plan));
     b.add_assign(&MyRank::tz(z));
 
     let expected = ragu_arithmetic::eval(
@@ -183,7 +191,7 @@ fn test_simple_circuit() {
                 ]),
             ))
             .unwrap(),
-        y,
+        y.value(),
     );
 
     let a = a.unstructured();

@@ -61,7 +61,9 @@ use ragu_primitives::GadgetExt;
 
 use alloc::vec;
 
-use crate::{Circuit, DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, registry};
+use crate::{
+    Challenge, Circuit, DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, registry,
+};
 
 use super::{
     DriverExt,
@@ -318,17 +320,13 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 /// [`Registry`]: crate::registry::Registry
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
-    x: F,
-    y: F,
+    x: &Challenge<F>,
+    y: &Challenge<F>,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
 ) -> Result<F> {
-    if x == F::ZERO {
-        // The polynomial is zero if x is zero.
-        return Ok(F::ZERO);
-    }
-
-    let x_inv = x.invert().expect("x is not zero");
+    let x_inv = x.inverse();
+    let x = x.value();
     let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
     let xn2 = xn.square(); // xn2 = x^(2n)
     let base_u_x = xn2 * x_inv; // x^(2n - 1)
@@ -336,11 +334,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let xn4 = xn2.square(); // x^(4n)
     let one = xn4 * x_inv; // x^(4n - 1)
 
-    if y == F::ZERO {
-        // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
-        // wire coefficient.
-        return Ok(one);
-    }
+    let y = y.value();
 
     let mut evaluator = Evaluator::<F, R> {
         scope: SxyScope {

@@ -90,7 +90,8 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
         circuit_id: CircuitIndex,
         rx: Cow<'rx, structured::Polynomial<F, R>>,
     ) {
-        let sy = self.registry.circuit_y(circuit_id, self.y);
+        let y = ragu_circuits::Challenge::new(self.y);
+        let sy = self.registry.circuit_y(circuit_id, &y);
         let mut b = rx.as_ref().clone();
         b.dilate(self.z);
         b.add_assign(&sy);
@@ -107,7 +108,8 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
         mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) -> ragu_core::Result<()> {
         let first = rxs.next().expect("must provide at least one rx polynomial");
-        let sy = self.registry.circuit_y(circuit_id, self.y);
+        let y = ragu_circuits::Challenge::new(self.y);
+        let sy = self.registry.circuit_y(circuit_id, &y);
 
         let a = match rxs.next() {
             None => Cow::Borrowed(first),

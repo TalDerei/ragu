@@ -19,14 +19,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
     ) -> Result<proof::SPrime<C, R>> {
-        let x0 = left.challenges.x;
-        let x1 = right.challenges.x;
+        // When a child proof is trivial, its challenge x is zero and the
+        // registry polynomial evaluated at x = 0 is the zero polynomial.
+        let wx = |x_raw: C::CircuitField| {
+            if x_raw == C::CircuitField::ZERO {
+                ragu_circuits::polynomials::unstructured::Polynomial::default()
+            } else {
+                registry_at_w.wx(&ragu_circuits::Challenge::new(x_raw))
+            }
+        };
 
-        let native_registry_wx0_poly = registry_at_w.wx(x0);
+        let native_registry_wx0_poly = wx(left.challenges.x);
         let native_registry_wx0_blind = C::CircuitField::random(&mut *rng);
         let native_registry_wx0_commitment = native_registry_wx0_poly
             .commit(C::host_generators(self.params), native_registry_wx0_blind);
-        let native_registry_wx1_poly = registry_at_w.wx(x1);
+        let native_registry_wx1_poly = wx(right.challenges.x);
         let native_registry_wx1_blind = C::CircuitField::random(&mut *rng);
         let native_registry_wx1_commitment = native_registry_wx1_poly
             .commit(C::host_generators(self.params), native_registry_wx1_blind);

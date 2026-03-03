@@ -82,7 +82,7 @@ use core::cell::RefCell;
 
 use super::DriverExt;
 use crate::{
-    Circuit, DriverScope,
+    Challenge, Circuit, DriverScope,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, structured},
     registry,
@@ -662,18 +662,14 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
 /// [`Registry`]: crate::registry::Registry
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
-    y: F,
+    y: &Challenge<F>,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
 ) -> Result<structured::Polynomial<F, R>> {
-    let mut sy = structured::Polynomial::<F, R>::new();
+    let y_inv = y.inverse();
+    let y = y.value();
 
-    if y == F::ZERO {
-        // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
-        // wire coefficient.
-        sy.backward().c.push(F::ONE);
-        return Ok(sy);
-    }
+    let mut sy = structured::Polynomial::<F, R>::new();
 
     let total_multiplications: usize = floor_plan
         .iter()
@@ -713,7 +709,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
                     linear_constraints: 0,
                 },
                 y,
-                y_inv: y.invert().expect("y is not zero"),
+                y_inv,
                 virtual_table: &virtual_table,
                 floor_plan,
                 current_routine: 0,
