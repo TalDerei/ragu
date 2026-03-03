@@ -230,6 +230,12 @@ impl<F: Field> Challenge<F> {
     }
 }
 
+#[test]
+#[should_panic(expected = "challenge must be non-zero")]
+fn zero_challenge_panics() {
+    Challenge::new(ragu_pasta::Fp::ZERO);
+}
+
 /// A trait for (partially) evaluating $s(X, Y)$ for some circuit.
 ///
 /// See [`CircuitExt::into_object`].

@@ -63,8 +63,8 @@ pub trait Source {
 /// the registry polynomial to transform rx polynomials appropriately.
 pub struct Builder<'m, 'rx, F: PrimeField, R: Rank> {
     pub(crate) registry: &'m Registry<'m, F, R>,
-    pub(crate) y: F,
-    pub(crate) z: F,
+    pub(crate) y: ragu_circuits::Challenge<F>,
+    pub(crate) z: ragu_circuits::Challenge<F>,
     pub(crate) tz: structured::Polynomial<F, R>,
     /// The accumulated `a` polynomials for revdot claims.
     pub a: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
@@ -77,8 +77,8 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
     pub fn new(registry: &'m Registry<'m, F, R>, y: F, z: F) -> Self {
         Self {
             registry,
-            y,
-            z,
+            y: ragu_circuits::Challenge::new(y),
+            z: ragu_circuits::Challenge::new(z),
             tz: R::tz(z),
             a: Vec::new(),
             b: Vec::new(),
@@ -90,10 +90,9 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
         circuit_id: CircuitIndex,
         rx: Cow<'rx, structured::Polynomial<F, R>>,
     ) {
-        let y = ragu_circuits::Challenge::new(self.y);
-        let sy = self.registry.circuit_y(circuit_id, &y);
+        let sy = self.registry.circuit_y(circuit_id, &self.y);
         let mut b = rx.as_ref().clone();
-        b.dilate(self.z);
+        b.dilate(self.z.value());
         b.add_assign(&sy);
         b.add_assign(&self.tz);
 
@@ -108,8 +107,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
         mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) -> ragu_core::Result<()> {
         let first = rxs.next().expect("must provide at least one rx polynomial");
-        let y = ragu_circuits::Challenge::new(self.y);
-        let sy = self.registry.circuit_y(circuit_id, &y);
+        let sy = self.registry.circuit_y(circuit_id, &self.y);
 
         let a = match rxs.next() {
             None => Cow::Borrowed(first),
@@ -117,7 +115,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
                 core::iter::once(first)
                     .chain(core::iter::once(second))
                     .chain(rxs),
-                self.z,
+                self.z.value(),
             )),
         };
 
