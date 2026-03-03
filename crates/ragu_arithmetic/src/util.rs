@@ -160,7 +160,10 @@ pub fn mul<
 >(
     coeffs: A,
     bases: B,
-) -> C::Curve {
+) -> C::Curve
+where
+    B::IntoIter: Clone + Sync,
+{
     let coeffs: Vec<_> = coeffs.into_iter().map(|a| a.to_repr()).collect();
 
     let c = bucket_lookup(coeffs.len());
@@ -220,15 +223,15 @@ pub fn mul<
     }
 
     /// Compute the bucket sum for a single window segment.
-    fn window_sum<C: CurveAffine>(
+    fn window_sum<'a, C: CurveAffine, I: Iterator<Item = &'a C>>(
         current_segment: usize,
         c: usize,
         coeffs: &[<C::Scalar as PrimeField>::Repr],
-        bases: &[C],
+        bases: I,
     ) -> C::Curve {
         let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
 
-        for (coeff, base) in coeffs.iter().zip(bases.iter()) {
+        for (coeff, base) in coeffs.iter().zip(bases) {
             let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
             if coeff != 0 {
                 buckets[coeff - 1].add_assign(base);
@@ -248,12 +251,11 @@ pub fn mul<
         sum
     }
 
-    let bases_vec: Vec<C> = bases.into_iter().copied().collect();
-
     // Compute each window's bucket sum in parallel (or sequentially via maybe-rayon facade).
+    let bases_iter = bases.into_iter();
     let window_sums: Vec<C::Curve> = (0..segments)
         .into_par_iter()
-        .map(|seg| window_sum(seg, c, &coeffs, &bases_vec))
+        .map(|seg| window_sum(seg, c, &coeffs, bases_iter.clone()))
         .collect();
 
     // Combine window sums sequentially, from most significant to least.
