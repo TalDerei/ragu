@@ -4,6 +4,7 @@ use pasta_curves::{arithmetic::CurveAffine, group::Group};
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use crate::domain::Domain;
+use crate::multicore::*;
 
 /// Evaluates a polynomial $p \in \mathbb{F}\[X]$ at a point $x \in \mathbb{F}$,
 /// where $p$ is defined by `coeffs` in ascending order of degree.
@@ -156,11 +157,14 @@ pub fn mul<
     'a,
     C: CurveAffine,
     A: IntoIterator<Item = &'a C::Scalar>,
-    B: IntoIterator<Item = &'a C> + Clone,
+    B: IntoIterator<Item = &'a C>,
 >(
     coeffs: A,
     bases: B,
-) -> C::Curve {
+) -> C::Curve
+where
+    B::IntoIter: Clone + Sync,
+{
     let coeffs: Vec<_> = coeffs.into_iter().map(|a| a.to_repr()).collect();
 
     let c = bucket_lookup(coeffs.len());
@@ -188,47 +192,47 @@ pub fn mul<
 
     let segments = (C::Scalar::NUM_BITS as usize).div_ceil(c);
 
-    let mut acc = C::Curve::identity();
+    #[derive(Clone, Copy)]
+    enum Bucket<C: CurveAffine> {
+        None,
+        Affine(C),
+        Projective(C::Curve),
+    }
 
-    for current_segment in (0..segments).rev() {
-        for _ in 0..c {
-            acc = acc.double();
-        }
-
-        #[derive(Clone, Copy)]
-        enum Bucket<C: CurveAffine> {
-            None,
-            Affine(C),
-            Projective(C::Curve),
-        }
-
-        impl<C: CurveAffine> Bucket<C> {
-            fn add_assign(&mut self, other: &C) {
-                *self = match *self {
-                    Bucket::None => Bucket::Affine(*other),
-                    Bucket::Affine(a) => Bucket::Projective(a + *other),
-                    Bucket::Projective(mut a) => {
-                        a += *other;
-                        Bucket::Projective(a)
-                    }
-                }
-            }
-
-            fn add(self, mut other: C::Curve) -> C::Curve {
-                match self {
-                    Bucket::None => other,
-                    Bucket::Affine(a) => {
-                        other += a;
-                        other
-                    }
-                    Bucket::Projective(a) => other + a,
+    impl<C: CurveAffine> Bucket<C> {
+        fn add_assign(&mut self, other: &C) {
+            *self = match *self {
+                Bucket::None => Bucket::Affine(*other),
+                Bucket::Affine(a) => Bucket::Projective(a + *other),
+                Bucket::Projective(mut a) => {
+                    a += *other;
+                    Bucket::Projective(a)
                 }
             }
         }
 
+        fn add(self, mut other: C::Curve) -> C::Curve {
+            match self {
+                Bucket::None => other,
+                Bucket::Affine(a) => {
+                    other += a;
+                    other
+                }
+                Bucket::Projective(a) => other + a,
+            }
+        }
+    }
+
+    /// Compute the bucket sum for a single window segment.
+    fn window_sum<'a, C: CurveAffine, I: Iterator<Item = &'a C>>(
+        current_segment: usize,
+        c: usize,
+        coeffs: &[<C::Scalar as PrimeField>::Repr],
+        bases: I,
+    ) -> C::Curve {
         let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
 
-        for (coeff, base) in coeffs.iter().zip(bases.clone().into_iter()) {
+        for (coeff, base) in coeffs.iter().zip(bases) {
             let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
             if coeff != 0 {
                 buckets[coeff - 1].add_assign(base);
@@ -240,10 +244,28 @@ pub fn mul<
         //                    (a) + b +
         //                    ((a) + b) + c
         let mut running_sum = C::Curve::identity();
+        let mut sum = C::Curve::identity();
         for exp in buckets.into_iter().rev() {
             running_sum = exp.add(running_sum);
-            acc += &running_sum;
+            sum += &running_sum;
         }
+        sum
+    }
+
+    // Compute each window's bucket sum in parallel (or sequentially via maybe-rayon facade).
+    let bases_iter = bases.into_iter();
+    let window_sums: Vec<C::Curve> = (0..segments)
+        .into_par_iter()
+        .map(|seg| window_sum(seg, c, &coeffs, bases_iter.clone()))
+        .collect();
+
+    // Combine window sums sequentially, from most significant to least.
+    let mut acc = C::Curve::identity();
+    for sum in window_sums.into_iter().rev() {
+        for _ in 0..c {
+            acc = acc.double();
+        }
+        acc += &sum;
     }
 
     acc
