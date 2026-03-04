@@ -456,8 +456,12 @@ where
 {
     let mut counter = Counter::<F>::new();
 
-    // Map input from the caller's driver to Counter wires.
+    // Remap input wires into Counter, mirroring Counter::routine:
+    // uncounted (seeding only) and available_b cleared afterward.
+    counter.counting = false;
     let new_input = Ro::Input::map_gadget(input, &mut counter)?;
+    counter.counting = true;
+    counter.scope.available_b = None;
 
     // Predict (on a wireless emulator) then execute on the counter.
     let mut dummy = Emulator::wireless();
@@ -465,10 +469,13 @@ where
     let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
     routine.execute(&mut counter, new_input, aux)?;
 
+    // Segment 0 holds only this routine's own constraints; nested
+    // routine constraints live in their own segments.
+    let seg = &counter.segments[0];
     Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
         counter.scope.result,
-        counter.num_multiplication_constraints,
-        counter.num_linear_constraints,
+        seg.num_multiplication_constraints,
+        seg.num_linear_constraints,
     )))
 }
 

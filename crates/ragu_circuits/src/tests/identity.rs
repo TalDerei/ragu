@@ -773,11 +773,10 @@ where
     for<'dr> Ro::Aux<'dr>: Send + Clone,
 {
     let m = metrics::eval(&SingleRoutineCircuit(routine.clone())).unwrap();
-    assert_eq!(
-        m.segments.len(),
-        2,
-        "fingerprint_via_eval expects a flat (non-nesting) routine; \
-         got {} segments",
+    assert!(
+        m.segments.len() >= 2,
+        "fingerprint_via_eval expects at least 2 segments (root + routine); \
+         got {}",
         m.segments.len(),
     );
     match m.segments[1].identity {
