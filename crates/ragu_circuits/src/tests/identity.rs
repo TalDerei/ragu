@@ -1048,10 +1048,7 @@ fn test_aliasing_delegate_vs_alloc_enforce() {
 /// polynomials — but the fingerprint can't see it.
 #[test]
 fn test_aliasing_delegate_vs_alloc_no_constraints() {
-    assert_ne!(
-        fingerprint_elem(&PureNesting),
-        fingerprint_elem(&AllocOnly),
-    );
+    assert_ne!(fingerprint_elem(&PureNesting), fingerprint_elem(&AllocOnly),);
 }
 
 /// ```text
