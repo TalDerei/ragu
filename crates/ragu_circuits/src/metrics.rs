@@ -404,21 +404,18 @@ impl<'dr, F: PrimeField> Driver<'dr> for Counter<F> {
         self.scope = saved;
 
         // Remap child output wires as fresh parent allocations.
-        // Save and restore pairing state and geometric sequences so
-        // that the uncounted gates don't drift from the sxy evaluator.
+        // The geometric sequences deliberately advance past the remap
+        // positions so that remapped output wires and subsequent local
+        // allocations receive distinct values.  Only the pairing state
+        // is saved/restored; the real drivers (sxy, sx, sy) don't remap
+        // outputs at all, so there is no alignment to maintain.
         let saved_b = self.scope.available_b.take();
-        let saved_a = self.scope.current_a;
-        let saved_b_geo = self.scope.current_b;
-        let saved_c = self.scope.current_c;
 
         self.counting = false;
         let parent_output = Ro::Output::map_gadget(&output, self)?;
         self.counting = true;
 
         self.scope.available_b = saved_b;
-        self.scope.current_a = saved_a;
-        self.scope.current_b = saved_b_geo;
-        self.scope.current_c = saved_c;
 
         Ok(parent_output)
     }
