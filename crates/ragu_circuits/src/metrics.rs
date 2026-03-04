@@ -67,10 +67,10 @@ pub enum RoutineIdentity {
 /// A Schwartz–Zippel fingerprint for a routine invocation's constraint
 /// structure.
 ///
-/// Two routines share a fingerprint when they have matching [`TypeId`] pairs
-/// and matching evaluation scalars. The scalar is the low 64 bits of the field
-/// element produced by running the routine's synthesis on the `Counter`
-/// driver.
+/// Two routines share a fingerprint when they have matching [`TypeId`] pairs,
+/// matching evaluation scalars, and matching constraint counts. The scalar is
+/// the low 64 bits of the field element produced by running the routine's
+/// synthesis on the `Counter` driver.
 ///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -78,16 +78,24 @@ pub struct RoutineFingerprint {
     input_kind: TypeId,
     output_kind: TypeId,
     fingerprint: u64,
+    num_multiplication_constraints: usize,
+    num_linear_constraints: usize,
 }
 
 impl RoutineFingerprint {
     /// Constructs a [`RoutineFingerprint`] from a routine's `Input`/`Output`
-    /// type ids and a field element evaluation.
-    fn of<F: PrimeField, Ro: Routine<F>>(eval: F) -> Self {
+    /// type ids, a field element evaluation, and constraint counts.
+    fn of<F: PrimeField, Ro: Routine<F>>(
+        eval: F,
+        num_multiplication_constraints: usize,
+        num_linear_constraints: usize,
+    ) -> Self {
         Self {
             input_kind: TypeId::of::<Ro::Input>(),
             output_kind: TypeId::of::<Ro::Output>(),
             fingerprint: ragu_arithmetic::low_u64(eval),
+            num_multiplication_constraints,
+            num_linear_constraints,
         }
     }
 
@@ -383,9 +391,14 @@ impl<'dr, F: PrimeField> Driver<'dr> for Counter<F> {
         let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
         let output = routine.execute(self, new_input, aux)?;
 
-        // Extract fingerprint from the child's Horner accumulator.
+        // Extract fingerprint from the child's Horner accumulator and counts.
+        let seg = &self.segments[segment_idx];
         self.segments[segment_idx].identity =
-            RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(self.scope.result));
+            RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
+                self.scope.result,
+                seg.num_multiplication_constraints,
+                seg.num_linear_constraints,
+            ));
 
         // Restore parent scope.
         self.scope = saved;
@@ -457,6 +470,8 @@ where
 
     Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
         counter.scope.result,
+        counter.num_multiplication_constraints,
+        counter.num_linear_constraints,
     )))
 }
 
