@@ -23,8 +23,13 @@ const MAX_DEPTH: u32 = 4;
 const MAX_TREE_SIZE: u32 = 30;
 
 /// A `RoutineTree` describes the structure of a single routine scope: how many
-/// wire allocations happen before any sub-routine is called, and what
-/// sub-routines are called — each paired with a post-call allocation count.
+/// wire allocations happen before any sub-routine is called, what sub-routines
+/// are called, and whether this routine's `predict()` returns `Known` or
+/// `Unknown`.
+///
+/// The `predict_known` flag lets proptest cover all four combinations of outer
+/// and inner prediction modes, exercising both the deferred-parallel path
+/// (`Known`) and the synchronous path (`Unknown`) at every nesting level.
 ///
 /// The execution order within one scope is:
 ///
@@ -48,21 +53,27 @@ struct RoutineTree {
     /// `post_allocs`: the number of wire allocations emitted in this scope
     /// immediately after that child returns.
     children: Vec<(RoutineTree, usize)>,
+    /// When `true`, `predict()` returns `Known` (deferred parallel path).
+    /// When `false`, `predict()` returns `Unknown` (synchronous path).
+    predict_known: bool,
 }
 
 fn arb_tree() -> impl Strategy<Value = RoutineTree> {
-    let leaf = (0usize..MAX_ALLOCS).prop_map(|n| RoutineTree {
+    let leaf = (0usize..MAX_ALLOCS, any::<bool>()).prop_map(|(n, predict_known)| RoutineTree {
         pre_allocs: n,
         children: vec![],
+        predict_known,
     });
     leaf.prop_recursive(MAX_DEPTH, MAX_TREE_SIZE, MAX_CHILDREN as u32, |inner| {
         (
             0usize..MAX_ALLOCS,
             proptest::collection::vec((inner, 0usize..MAX_ALLOCS), 0..MAX_CHILDREN),
+            any::<bool>(),
         )
-            .prop_map(|(pre_allocs, children)| RoutineTree {
+            .prop_map(|(pre_allocs, children, predict_known)| RoutineTree {
                 pre_allocs,
                 children,
+                predict_known,
             })
     })
 }
@@ -98,7 +109,11 @@ impl Routine<Fp> for TreeRoutine {
         _dr: &mut D,
         _input: &Bound<'dr, D, Self::Input>,
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
-        Ok(Prediction::Unknown(D::just(|| ())))
+        if self.0.predict_known {
+            Ok(Prediction::Known((), D::just(|| ())))
+        } else {
+            Ok(Prediction::Unknown(D::just(|| ())))
+        }
     }
 }
 
