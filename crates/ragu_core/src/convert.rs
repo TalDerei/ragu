@@ -4,9 +4,9 @@
 //! driver context to another while preserving its structure and semantics is a
 //! fundamental operation. Any code that operates across multiple driver
 //! contexts will need this: [routines](crate::routines) translate their inputs
-//! onto [`Wireless`] [`Emulator`]s
-//! for prediction, wire-counting passes discard wire values entirely, and driver implementations may need
-//! to inject or rewrite wires during circuit analysis.
+//! onto [`Wireless`] [`Emulator`]s for prediction, wire-counting passes discard
+//! wire values entirely, and driver implementations may need to inject or rewrite
+//! wires during circuit analysis.
 //!
 //! [`WireMap`] provides a uniform mechanism for these conversions: an
 //! implementor fixes a source and destination driver via associated types, then
