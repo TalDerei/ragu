@@ -57,6 +57,9 @@ pub trait Routine<F: Field>: Clone + Send {
     /// background thread. In any event, the prediction process produces some
     /// routine-specific auxiliary data that can be leveraged during actual
     /// execution to avoid duplicated effort.
+    ///
+    /// The returned auxiliary data must be forwarded to
+    /// [`execute`](Routine::execute) if the driver proceeds with execution.
     fn predict<'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
