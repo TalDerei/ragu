@@ -9,9 +9,11 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Bound, Consistent, Gadget},
+    gadgets::{Bound, Gadget},
     routines::{Prediction, Routine},
 };
+
+use crate::consistent::Consistent;
 
 use alloc::{vec, vec::Vec};
 use core::{marker::PhantomData, panic};

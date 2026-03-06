@@ -23,8 +23,10 @@ use ragu_core::{
     Error, Result,
     convert::WireMap,
     drivers::Driver,
-    gadgets::{Bound, Consistent, Gadget, GadgetKind},
+    gadgets::{Bound, Gadget, GadgetKind},
 };
+
+use crate::consistent::Consistent;
 
 use alloc::vec::Vec;
 use core::{

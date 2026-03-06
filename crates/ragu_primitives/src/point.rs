@@ -11,9 +11,11 @@ use ragu_arithmetic::{Coeff, CurveAffine};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{Consistent, Gadget},
+    gadgets::Gadget,
     maybe::Maybe,
 };
+
+use crate::consistent::Consistent;
 
 use core::marker::PhantomData;
 

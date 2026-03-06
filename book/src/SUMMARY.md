@@ -17,7 +17,6 @@
     - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
     - [The Kind! Macro](guide/gadgets/kind.md)
     - [Conversion](guide/gadgets/conversion.md)
-    - [The Consistent Trait](guide/gadgets/consistent.md) <!-- todo -->
   - [Routines](guide/routines.md)
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->

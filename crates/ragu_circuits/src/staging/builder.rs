@@ -46,9 +46,10 @@ use ragu_core::{
         Driver, DriverValue,
         emulator::{Emulator, Wireless},
     },
-    gadgets::{Bound, Consistent, Gadget},
+    gadgets::{Bound, Gadget},
     maybe::Empty,
 };
+use ragu_primitives::consistent::Consistent;
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;

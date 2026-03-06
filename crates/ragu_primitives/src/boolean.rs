@@ -8,9 +8,11 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{Consistent, Gadget, Kind},
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
+
+use crate::consistent::Consistent;
 
 use alloc::vec::Vec;
 

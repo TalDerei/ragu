@@ -22,10 +22,10 @@ use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Bound, Consistent, Gadget, Kind},
+    gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Point, io::Write};
+use ragu_primitives::{Element, Point, consistent::Consistent, io::Write};
 
 use crate::{components::suffix::WithSuffix, proof::Proof};
 

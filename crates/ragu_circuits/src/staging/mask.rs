@@ -245,12 +245,12 @@ mod tests {
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
-        gadgets::{Bound, Consistent, Gadget},
+        gadgets::{Bound, Gadget},
         maybe::Maybe,
         routines::{Prediction, Routine},
     };
     use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
-    use ragu_primitives::{Element, Endoscalar, Point, io::Write};
+    use ragu_primitives::{Element, Endoscalar, Point, consistent::Consistent, io::Write};
     use rand::RngExt;
 
     use crate::{

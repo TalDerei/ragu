@@ -15,6 +15,7 @@ extern crate alloc;
 extern crate self as ragu_primitives;
 
 mod boolean;
+pub mod consistent;
 mod element;
 mod endoscalar;
 mod foreign;
