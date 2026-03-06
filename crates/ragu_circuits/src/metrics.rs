@@ -36,7 +36,8 @@ use ff::{Field, FromUniformBytes, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverTypes, FromDriver, emulator::Emulator},
+    convert::WireMap,
+    drivers::{Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
     maybe::Empty,
     routines::Routine,
@@ -397,9 +398,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         self.scope.available_b = None; // match sxy/rx initial state
 
         // Predict and execute.
-        let mut dummy = Emulator::wireless();
-        let dummy_input = Ro::Input::map_gadget(&new_input, &mut dummy)?;
-        let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+        let aux = Emulator::predict(&routine, &new_input)?.into_aux();
         let output = routine.execute(self, new_input, aux)?;
 
         // Extract fingerprint from the child's Horner accumulator and counts.
@@ -432,16 +431,38 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     }
 }
 
-/// Allows [`Counter`] to receive input wires from any driver with the same
-/// field type. Each source wire is mapped to a fresh allocation on the counter,
-/// producing linearly independent wire values for the input gadget.
-impl<'dr, F: PrimeField + FromUniformBytes<64>, D: Driver<'dr, F = F>> FromDriver<'dr, '_, D>
-    for Counter<F>
-{
-    type NewDriver = Self;
+/// [`WireMap`] for `Counter`→`Counter`: each source wire is replaced by a
+/// fresh allocation, producing linearly independent wire values.
+impl<F: PrimeField + FromUniformBytes<64>> WireMap<F> for Counter<F> {
+    type Src = Self;
+    type Dst = Self;
 
-    fn convert_wire(&mut self, _: &D::Wire) -> Result<WireEval<F>> {
+    fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
         self.alloc(|| unreachable!())
+    }
+}
+
+/// [`WireMap`] adapter that maps wires from an arbitrary source driver into
+/// [`Counter`] via fresh allocations. Used by [`fingerprint_routine`] where the
+/// source driver is generic.
+#[cfg(test)]
+use core::marker::PhantomData;
+
+#[cfg(test)]
+struct CounterRemap<'a, F, Src: DriverTypes> {
+    counter: &'a mut Counter<F>,
+    _marker: PhantomData<Src>,
+}
+
+#[cfg(test)]
+impl<F: PrimeField + FromUniformBytes<64>, Src: DriverTypes<ImplField = F>> WireMap<F>
+    for CounterRemap<'_, F, Src>
+{
+    type Src = Src;
+    type Dst = Counter<F>;
+
+    fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
+        self.counter.alloc(|| unreachable!())
     }
 }
 
@@ -472,14 +493,18 @@ where
     // Remap input wires into Counter, mirroring Counter::routine:
     // uncounted (seeding only) and available_b cleared afterward.
     counter.counting = false;
-    let new_input = Ro::Input::map_gadget(input, &mut counter)?;
+    let new_input = {
+        let mut remap = CounterRemap {
+            counter: &mut counter,
+            _marker: PhantomData::<D>,
+        };
+        Ro::Input::map_gadget(input, &mut remap)?
+    };
     counter.counting = true;
     counter.scope.available_b = None;
 
     // Predict (on a wireless emulator) then execute on the counter.
-    let mut dummy = Emulator::wireless();
-    let dummy_input = Ro::Input::map_gadget(&new_input, &mut dummy)?;
-    let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+    let aux = Emulator::predict(routine, &new_input)?.into_aux();
     routine.execute(&mut counter, new_input, aux)?;
 
     // Segment 0 holds only this routine's own constraints; nested
