@@ -187,7 +187,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         // Invoke wireless emulator with dummy witness to get gadget structure.
         // The emulator never actually reads the witness values.
         let mut emulator = Emulator::counter();
-        let mut num_wires = stage.witness(&mut emulator, Empty)?.num_wires();
+        let mut num_wires = stage.witness(&mut emulator, Empty)?.num_wires()?;
 
         // Check bounds
         if num_wires > Next::values() {

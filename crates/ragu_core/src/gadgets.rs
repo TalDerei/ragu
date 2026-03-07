@@ -140,7 +140,11 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     /// Gadgets do not vary in the number of wires they contain, so this should
     /// return the same quantity regardless of the specific instance of this
     /// [`Gadget`] implementation.
-    fn num_wires(&self) -> usize {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying [`GadgetKind::map_gadget`] fails.
+    fn num_wires(&self) -> Result<usize> {
         struct WireCounter<Src: DriverTypes> {
             count: usize,
             _marker: core::marker::PhantomData<Src>,
@@ -160,9 +164,8 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
             count: 0,
             _marker: core::marker::PhantomData,
         };
-        self.map(&mut counter)
-            .expect("wire counting should never fail");
-        counter.count
+        self.map(&mut counter)?;
+        Ok(counter.count)
     }
 }
 

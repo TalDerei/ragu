@@ -515,7 +515,7 @@ mod tests {
                 .expect("allocation should succeed");
 
         assert_eq!(
-            output.num_wires(),
+            output.num_wires().expect("wire counting should succeed"),
             NUM_WIRES,
             "NUM_WIRES constant does not match actual wire count"
         );
