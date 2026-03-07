@@ -306,6 +306,18 @@ impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
             h,
         }
     }
+
+    /// Runs `f` with `counting` set to `false`, restoring it afterward.
+    ///
+    /// Used during wire remapping so that `mul` advances geometric
+    /// sequences without incrementing constraint counts, and
+    /// `enforce_zero` is a no-op.
+    fn uncounted<R>(&mut self, f: impl FnOnce(&mut Self) -> Result<R>) -> Result<R> {
+        self.counting = false;
+        let result = f(self);
+        self.counting = true;
+        result
+    }
 }
 
 impl<F: Field> DriverTypes for Counter<F> {
@@ -403,9 +415,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Remap input wires to fixed positions in the fresh scope so the
         // fingerprint captures only internal structure, not caller context.
         // Uncounted: these gates only seed the geometric sequences.
-        self.counting = false;
-        let new_input = Ro::Input::map_gadget(&input, self)?;
-        self.counting = true;
+        let new_input = self.uncounted(|c| Ro::Input::map_gadget(&input, c))?;
         self.scope.available_b = None; // match sxy/rx initial state
 
         // Predict and execute.
@@ -432,9 +442,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // outputs at all, so there is no alignment to maintain.
         let saved_b = self.scope.available_b.take();
 
-        self.counting = false;
-        let parent_output = Ro::Output::map_gadget(&output, self)?;
-        self.counting = true;
+        let parent_output = self.uncounted(|c| Ro::Output::map_gadget(&output, c))?;
 
         self.scope.available_b = saved_b;
 
@@ -503,15 +511,13 @@ where
 
     // Remap input wires into Counter, mirroring Counter::routine:
     // uncounted (seeding only) and available_b cleared afterward.
-    counter.counting = false;
-    let new_input = {
+    let new_input = counter.uncounted(|c| {
         let mut remap = CounterRemap {
-            counter: &mut counter,
+            counter: c,
             _marker: PhantomData::<D>,
         };
-        Ro::Input::map_gadget(input, &mut remap)?
-    };
-    counter.counting = true;
+        Ro::Input::map_gadget(input, &mut remap)
+    })?;
     counter.scope.available_b = None;
 
     // Predict (on a wireless emulator) then execute on the counter.
