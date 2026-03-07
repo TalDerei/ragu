@@ -8,6 +8,10 @@ use crate::multicore::*;
 
 /// Returns the low 64 bits of a [`PrimeField`] element's canonical
 /// little-endian representation.
+///
+/// # Panics
+///
+/// Panics if the field's canonical representation is shorter than 8 bytes.
 pub fn low_u64<F: PrimeField>(f: F) -> u64 {
     let repr = f.to_repr();
     let bytes = repr.as_ref();

@@ -56,7 +56,7 @@ use ragu_core::drivers::LinearExpression;
 /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
 /// [`Driver::add`]: ragu_core::drivers::Driver::add
 /// [`WireEvalSum::add_term`]: WireEvalSum::add_term
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum WireEval<F> {
     Value(F),
     One,

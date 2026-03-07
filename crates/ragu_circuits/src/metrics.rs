@@ -38,7 +38,7 @@ use ragu_core::{
     Result,
     convert::WireMap,
     drivers::{Driver, DriverTypes, emulator::Emulator},
-    gadgets::{Bound, GadgetKind},
+    gadgets::{Bound, GadgetKind as _},
     maybe::Empty,
     routines::Routine,
 };
@@ -82,7 +82,7 @@ pub enum RoutineIdentity {
 /// representation (`[u8; 32]`) instead — the cost is negligible.
 ///
 /// [`TypeId`]: core::any::TypeId
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RoutineFingerprint {
     input_kind: TypeId,
     output_kind: TypeId,
