@@ -975,8 +975,6 @@ fn test_output_remapping_preserves_parent() {
     );
 }
 
-// ── Regression tests: previously-fixed fingerprint aliasing bugs ─────
-//
 // These tests exercise pairs of structurally different routines that
 // previously produced identical fingerprints due to one or more of:
 //
@@ -1051,8 +1049,6 @@ fn test_aliasing_metrics_confirm_different_structure() {
     assert_ne!(m3.segments.len(), m4.segments.len());
 }
 
-// ── Output remap vs local alloc regression ──────────────────────
-//
 // These tests verify that a remapped child-output wire and a subsequent
 // local allocation receive distinct geometric values.  The output remap
 // (inside `Counter::routine`) advances the parent's geometric sequences,
@@ -1101,8 +1097,6 @@ fn test_wire_collision_metrics_identical() {
         assert_eq!(s1.num_linear_constraints, s2.num_linear_constraints);
     }
 }
-
-// ── Cross-path consistency ───────────────────────────────────────────
 
 /// `fingerprint_routine` (standalone) and `fingerprint_via_eval`
 /// (production path through `Counter::routine`) must agree for every
@@ -1163,8 +1157,6 @@ fn test_vanishing_leading_trivial_via_eval() {
     );
 }
 
-// ── Output remap vs local alloc (via eval) ──────────────────────────
-//
 // The output remap inside `Counter::routine` restores the parent scope
 // and then allocates fresh wires for the child's outputs.  This advances
 // the parent's geometric sequences past the remap positions, so the

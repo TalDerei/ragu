@@ -269,15 +269,11 @@ struct Counter<F> {
 
 impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
     fn new() -> Self {
+        let base_state = blake2b_simd::Params::new()
+            .personal(b"ragu_counter____")
+            .to_state();
         let point = |index: u8| {
-            F::from_uniform_bytes(
-                blake2b_simd::Params::new()
-                    .personal(b"ragu_counter____")
-                    .to_state()
-                    .update(&[index])
-                    .finalize()
-                    .as_array(),
-            )
+            F::from_uniform_bytes(base_state.clone().update(&[index]).finalize().as_array())
         };
 
         let x0 = point(0);
