@@ -77,10 +77,9 @@ mod array_impl {
             for item in this.iter() {
                 result.push(G::map_gadget(item, wm)?);
             }
-            match result.try_into() {
-                Ok(arr) => Ok(arr),
-                Err(_) => unreachable!(),
-            }
+            Ok(result
+                .try_into()
+                .unwrap_or_else(|_| unreachable!("Vec had exactly N elements")))
         }
 
         fn enforce_equal_gadget<
