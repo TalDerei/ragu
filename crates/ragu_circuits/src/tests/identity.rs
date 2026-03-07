@@ -437,12 +437,6 @@ impl Routine<Fp> for DelegateThenEnforce {
 }
 
 /// Allocates two fresh wires, enforces the second == 0. No delegation.
-///
-/// When run through `fingerprint_routine` (which does not clear `available_b`
-/// after input remapping), the first alloc drains the stale b-wire (value 3)
-/// without consuming a mul gate, so the second alloc starts a fresh gate at a=4
-/// — the same position the Counter assigns to a remapped output wire.  This is
-/// the `available_b` leak expressing itself as a Tier 1 alias.
 #[derive(Clone)]
 struct AllocThenEnforce;
 
@@ -566,8 +560,9 @@ impl Routine<Fp> for AllocThenAddEnforce {
 
 /// Like SquareOnce but preceded by two trivial enforce_zero calls (empty linear
 /// combination). The $s(X, Y)$ polynomial differs because the real constraints
-/// land at $Y^2$ and $Y^3$ instead of $Y^0$ and $Y^1$, but the Horner scalar is
-/// the same because the leading contributions are zero.
+/// land at $Y^2$ and $Y^3$ instead of $Y^0$ and $Y^1$. The nonzero Horner seed
+/// `h` ensures the leading empty constraints shift the accumulator (via
+/// `h * y^k`), so the scalars also differ.
 #[derive(Clone)]
 struct SquareOnceWithLeadingTrivial;
 
@@ -980,52 +975,24 @@ fn test_output_remapping_preserves_parent() {
     );
 }
 
-// ── Regression tests: fingerprint aliasing bugs ─────────────────────
+// ── Regression tests: previously-fixed fingerprint aliasing bugs ─────
 //
-// Each diagram traces a routine through the Counter driver with fixed
-// constants x0=2, x1=3, x2=5, y=7.  After input remapping, every
-// Elem→Elem routine starts from the same parent state:
+// These tests exercise pairs of structurally different routines that
+// previously produced identical fingerprints due to one or more of:
 //
-//     in=2  │  a→4  b→9  c→25  paired-b=3  scalar=0
+//   1. Constraint counts (mul, lin) absent from the fingerprint tuple.
+//   2. `available_b` not cleared after input remapping in
+//      `fingerprint_routine`, causing stale pairing state to shift
+//      subsequent wire positions.
+//   3. Zero-valued Horner initial accumulator, which made leading empty
+//      `enforce_zero` calls invisible.
 //
-// Notation:
-//
-//     in → 2              input wire gets Counter value 2
-//     ──( Child )──       delegate to child (fingerprinted separately)
-//     out:4 ← remap       output wire via uncounted save/restore alloc
-//     w:4 ← alloc         counted mul gate; wire gets current_a = 4
-//     _:3 ← paired        consume leftover b-wire from prior gate
-//     w:6 ← add(a, b)     linear combination with value 6
-//     enforce(w:4)         enforce_zero on wire: s = s*7 + 4
-//     enforce(empty)       empty LC: s = s*7 + 0
-//     s=N  M*mul  L*lin    final scalar, mul-gate count, linear count
-//
-// ── Tier 1: missing constraint counts ───────────────────────────────
-//
-// The fingerprint tuple (TypeId(Input), TypeId(Output), scalar) only
-// accumulates from enforce_zero calls.  Mul-gate counts and linear
-// constraint counts are absent, so routines that differ only in those
-// dimensions produce identical fingerprints.
+// All three bugs have been fixed.  The tests remain as regression guards
+// — each `assert_ne!` confirms the pair is correctly distinguished.
 
-/// ```text
-///  DelegateThenEnforce          AllocThenEnforce
-///  ───────────────────          ────────────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──            _:3 ← paired
-///  out:4 ← remap                 f:4 ← alloc
-///  enforce(out:4)                enforce(f:4)
-///    s = 0*7 + 4 = 4              s = 0*7 + 4 = 4
-///  ─── s=4  0*mul  1*lin ───   ─── s=4  1*mul  1*lin ───
-///            ^^^^^                      ^^^^^
-/// ```
-///
-/// Bug: `fingerprint_routine` does not clear `available_b` after input
-/// remapping, so `_consume_paired_b` drains the stale b-wire without
-/// consuming a mul gate.  The subsequent `fresh = alloc()` therefore
-/// starts at the same geometric position (a=4) as the remapped output
-/// wire, producing the same Horner contribution.  This aliasing is an
-/// artifact of the `available_b` leak; the mul-gate count also differs
-/// (0 vs 1) but fixing counts alone would resolve it too.
+/// Delegation + enforce vs local alloc + enforce.  Differs in mul count
+/// (0 vs 1) and scalar (output remap wire vs local alloc wire have
+/// distinct geometric values).
 #[test]
 fn test_aliasing_delegate_vs_alloc_enforce() {
     assert_ne!(
@@ -1034,44 +1001,18 @@ fn test_aliasing_delegate_vs_alloc_enforce() {
     );
 }
 
-/// ```text
-///  PureNesting                  AllocOnly
-///  ───────────                  ─────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──            _:3 ← paired
-///  out:4 ← remap                 f:4 ← alloc
-///  (no constraints)              (no constraints)
-///  ─── s=0  0*mul  0*lin ───   ─── s=0  1*mul  0*lin ───
-///            ^^^^^                      ^^^^^
-/// ```
-///
-/// Bug: with no enforce_zero calls both scalars are trivially 0.
-/// The routines differ by a whole mul gate — different $s(X, Y)$
-/// polynomials — but the fingerprint can't see it.
+/// Pure delegation wrapper vs local alloc with no constraints.  With no
+/// `enforce_zero` calls the scalars are both equal to the Horner seed
+/// `h`, but the mul counts differ (0 vs 1).
 #[test]
 fn test_aliasing_delegate_vs_alloc_no_constraints() {
     assert_ne!(fingerprint_elem(&PureNesting), fingerprint_elem(&AllocOnly),);
 }
 
-/// ```text
-///  DelegateThenAddEnforce       AllocThenAddEnforce
-///  ──────────────────────       ───────────────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──            _:3 ← paired
-///  out:4 ← remap                 f:4 ← alloc
-///  sum:6 ← add(out:4, in:2)     sum:6 ← add(f:4, in:2)
-///  enforce(sum:6)                enforce(sum:6)
-///    s = 0*7 + 6 = 6              s = 0*7 + 6 = 6
-///  ─── s=6  0*mul  1*lin ───   ─── s=6  1*mul  1*lin ───
-///            ^^^^^                      ^^^^^
-/// ```
-///
-/// Bug: aliasing propagates through linear combinations.  The values
-/// `out:4` and `f:4` are identical because the `available_b` leak
-/// places the `fresh` alloc at a=4 (same position as the remapped
-/// output wire).  If `available_b` were cleared, `f` would be 9 and
-/// the sums would differ.  The mul-gate count also differs (0 vs 1)
-/// but that is a secondary issue here.
+/// Aliasing through linear combinations: delegation output + input vs
+/// local alloc + input, fed into `add` then `enforce_zero`.  The
+/// output remap wire and local alloc wire have distinct geometric
+/// values, so the `add` sums and thus the Horner contributions differ.
 #[test]
 fn test_aliasing_propagates_through_linear_combinations() {
     assert_ne!(
@@ -1080,25 +1021,11 @@ fn test_aliasing_propagates_through_linear_combinations() {
     );
 }
 
-/// ```text
-///  SquareOnce                   SquareOnceWithLeadingTrivial
-///  ──────────                   ────────────────────────────
-///  in → 2                       in → 2
-///                                enforce(empty) → +0  (vanishes!)
-///                                enforce(empty) → +0  (vanishes!)
-///  square(in):                   square(in):
-///    gate: a=4 b=9                 gate: a=4 b=9
-///    enforce(a-in = 2)             enforce(a-in = 2)
-///      s = 0*7 + 2 = 2              s = 0*7 + 2 = 2
-///    enforce(b-in = 7)             enforce(b-in = 7)
-///      s = 2*7 + 7 = 21             s = 2*7 + 7 = 21
-///  ─── s=21  1*mul  2*lin ──   ─── s=21  1*mul  4*lin ──
-///                    ^^^^^                       ^^^^^
-/// ```
-///
-/// Bug: leading enforce_zero on empty LCs contribute 0 to the Horner
-/// accumulator, so they vanish: $0 \cdot 7^k = 0$.  The linear constraint
-/// count differs (2 vs 4) but isn't in the fingerprint.
+/// SquareOnce (2 linear constraints) vs SquareOnceWithLeadingTrivial
+/// (2 leading empty `enforce_zero` + 2 from square = 4 total).  The
+/// nonzero Horner seed makes leading empty constraints visible: the
+/// seed shifts through extra powers of $y$, producing distinct scalars.
+/// Linear constraint counts also differ (2 vs 4).
 #[test]
 fn test_aliasing_leading_trivial_linear_constraints() {
     assert_ne!(
@@ -1124,41 +1051,16 @@ fn test_aliasing_metrics_confirm_different_structure() {
     assert_ne!(m3.segments.len(), m4.segments.len());
 }
 
-// ── available_b leak amplification ───────────────────────────────
+// ── Output remap vs local alloc regression ──────────────────────
 //
-// The following tests were originally designed to demonstrate a
-// save/restore wire-value collision, but the aliasing they exhibit
-// is actually caused by the `available_b` leak in `fingerprint_routine`
-// (documented in the Tier 3 section below).  Via `metrics::eval` —
-// which correctly clears `available_b` — these pairs produce different
-// scalars and are NOT aliased.
-//
-// The genuine save/restore collision (which persists through `eval`)
-// is demonstrated separately by DelegatePadEnforceOutput vs
-// DelegateAllocEnforceFirst in the "Wire collision via eval" section.
+// These tests verify that a remapped child-output wire and a subsequent
+// local allocation receive distinct geometric values.  The output remap
+// (inside `Counter::routine`) advances the parent's geometric sequences,
+// so the next counted `alloc` starts from a later position.
 
-/// ```text
-///  DelegateEnforceChild         DelegateEnforceLocal
-///  ────────────────────         ────────────────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──           ──( SquareOnce )──
-///  out:4 ← remap                out:4 ← remap
-///  _:3 ← paired (consume_b)     _:3 ← paired (consume_b)
-///  _:4 ← alloc (pad)           loc:4 ← alloc
-///                                         ↑
-///  enforce(out:4)               enforce(loc:4)
-///         ↑                        ↑
-///    child output               local alloc ── SAME VALUE
-///    s = 0*7 + 4 = 4              s = 0*7 + 4 = 4
-///  ─── s=4  1*mul  1*lin ───   ─── s=4  1*mul  1*lin ───
-/// ```
-///
-/// Bug: both wires land at a=4 because `fingerprint_routine` leaks
-/// `available_b`, causing `_consume_b` to drain the stale b-wire
-/// without consuming a mul gate.  Via `metrics::eval` (which clears
-/// `available_b`), these produce different scalars (s=4 vs s=9) and
-/// are NOT aliased.  Fixing the `available_b` leak alone would make
-/// this test pass.
+/// Enforces the child output wire vs a local alloc wire.  The output
+/// remap and the subsequent alloc land at different geometric positions,
+/// producing distinct Horner contributions.
 #[test]
 fn test_wire_collision_child_output_vs_local_alloc() {
     assert_ne!(
@@ -1167,27 +1069,9 @@ fn test_wire_collision_child_output_vs_local_alloc() {
     );
 }
 
-/// ```text
-///  DelegateEnforceChild         AllocThenEnforce
-///  ────────────────────         ────────────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──            _:3 ← paired
-///  out:4 ← remap                 f:4 ← alloc
-///  _:3 ← paired                 enforce(f:4)
-///  _:4 ← alloc                    s = 0*7 + 4 = 4
-///  enforce(out:4)               ─── s=4  1*mul  1*lin ───
-///    s = 0*7 + 4 = 4
-///  ─── s=4  1*mul  1*lin ───      f is input-INDEPENDENT
-///                                 (fresh alloc, ignores in)
-///    out is input-DEPENDENT
-///    (child computed from in)
-/// ```
-///
-/// Bug: left enforces a child-output wire that varies with the
-/// input; right enforces a local alloc that doesn't.  The aliasing
-/// here is caused by the `available_b` leak in `fingerprint_routine`
-/// (same mechanism as the test above).  Via `eval`, these produce
-/// different scalars (s=4 vs s=9) and are not aliased.
+/// Delegation + enforce child output vs no delegation + enforce local
+/// alloc.  Different segment structure (delegation creates a child
+/// segment) and different scalars.
 #[test]
 fn test_delegation_indistinguishable_from_alloc_with_matched_counts() {
     assert_ne!(
@@ -1196,11 +1080,9 @@ fn test_delegation_indistinguishable_from_alloc_with_matched_counts() {
     );
 }
 
-/// This pair has identical segment structure AND identical per-segment
-/// constraint counts.  The aliasing through `fingerprint_elem` is caused
-/// by the `available_b` leak, not by save/restore wire collision — fixing
-/// the leak alone would make `test_wire_collision_child_output_vs_local_alloc`
-/// pass without any constraint-count changes.
+/// DelegateEnforceChild and DelegateEnforceLocal have identical segment
+/// structure and per-segment constraint counts, but differ in which wire
+/// is enforced (child output vs local alloc), producing distinct scalars.
 #[test]
 fn test_wire_collision_metrics_identical() {
     let m1 = metrics::eval(&SingleRoutineCircuit(DelegateEnforceChild)).unwrap();
@@ -1220,20 +1102,7 @@ fn test_wire_collision_metrics_identical() {
     }
 }
 
-// ── fingerprint_routine bug: available_b leak ───────────────────────
-//
-// The standalone `fingerprint_routine` function does not clear
-// `available_b` after input remapping, while `Counter::routine`
-// (used by `eval`) does (metrics.rs line 378).  For routines whose
-// first driver operation is `alloc`, the stale b-wire from the
-// input gate changes subsequent wire values and thus the Horner
-// scalar.
-//
-// This inconsistency means `fingerprint_routine` can disagree with
-// `eval` for the same routine, AND it amplifies several of the
-// aliasing tests above — four of the six Tier 1/2 test failures
-// are artifacts of this leak, not of the missing-count or
-// wire-collision design issues.
+// ── Cross-path consistency ───────────────────────────────────────────
 
 /// `fingerprint_routine` (standalone) and `fingerprint_via_eval`
 /// (production path through `Counter::routine`) must agree for every
@@ -1272,63 +1141,39 @@ fn test_cross_path_consistency() {
     ];
 }
 
-/// The two genuine design bugs persist through `eval`: missing
-/// constraint counts (both scalars trivially 0) and vanishing empty
-/// linear combinations (leading $0 \cdot y^k$ terms disappear).
+/// Regression: via `eval`, PureNesting and AllocOnly have identical
+/// scalars (both equal to the Horner seed `h`, since neither has
+/// `enforce_zero` calls) but differ in mul count (0 vs 1).
 #[test]
 fn test_missing_counts_via_eval() {
-    // PureNesting vs AllocOnly: no enforce_zero → both scalar 0.
-    // Different mul-gate counts (0 vs 1) but not in the fingerprint.
     assert_ne!(
         fingerprint_via_eval(&PureNesting),
         fingerprint_via_eval(&AllocOnly),
     );
 }
 
+/// Regression: via `eval`, SquareOnce and SquareOnceWithLeadingTrivial
+/// now produce distinct scalars thanks to the nonzero Horner seed.
+/// They also differ in linear constraint count (2 vs 4).
 #[test]
 fn test_vanishing_leading_trivial_via_eval() {
-    // SquareOnce vs SquareOnceWithLeadingTrivial: leading empty
-    // enforce_zero calls contribute 0 to Horner, so both scalar 21.
-    // Different linear counts (2 vs 4) but not in the fingerprint.
     assert_ne!(
         fingerprint_via_eval(&SquareOnce),
         fingerprint_via_eval(&SquareOnceWithLeadingTrivial),
     );
 }
 
-// ── Wire collision via eval (save/restore) ──────────────────────────
+// ── Output remap vs local alloc (via eval) ──────────────────────────
 //
-// Even after fixing the available_b leak AND adding constraint counts,
-// the output remapping's save/restore still causes a collision: the
-// remap wire and the first local alloc share the same geometric
-// position.  This is because save/restore rewinds current_a to the
-// same value used for the remap alloc, so the next counted mul gate
-// returns the same a-wire value.
-//
-// The following pair demonstrates this through `eval`, with matching
-// constraint counts in every segment — proving that adding counts
-// alone cannot fix it.
+// The output remap inside `Counter::routine` restores the parent scope
+// and then allocates fresh wires for the child's outputs.  This advances
+// the parent's geometric sequences past the remap positions, so the
+// next counted allocation receives a distinct wire value.
 
-/// ```text
-///  DelegatePadEnforceOutput     DelegateAllocEnforceFirst
-///  ────────────────────────     ─────────────────────────
-///  in → 2                       in → 2
-///  ──( SquareOnce )──           ──( SquareOnce )──
-///  out:4 ← remap                out:4 ← remap
-///  pad:4 ← alloc                loc:4 ← alloc
-///           ↑                            ↑
-///  enforce(out:4)               enforce(loc:4)
-///          ↑                             ↑
-///    child output               local alloc ── SAME VALUE
-///    s = 0*7 + 4 = 4              s = 0*7 + 4 = 4
-///  ─── s=4  1*mul  1*lin ───   ─── s=4  1*mul  1*lin ───
-/// ```
-///
-/// Bug: save/restore rewinds the geometric sequence so the output
-/// remap alloc and the first counted alloc both land at a=4.  The
-/// enforced wires are semantically different (child output is
-/// input-dependent, local alloc is not) but evaluate identically.
-/// Adding constraint counts would not help — they already match.
+/// DelegatePadEnforceOutput enforces the remapped child output wire;
+/// DelegateAllocEnforceFirst enforces a subsequent local alloc.  The
+/// output remap advances the parent's geometric sequences, giving
+/// these wires distinct values and thus distinct Horner scalars.
 #[test]
 fn test_wire_collision_via_eval() {
     assert_ne!(
@@ -1337,10 +1182,9 @@ fn test_wire_collision_via_eval() {
     );
 }
 
-/// The wire-collision pair has identical segment structure AND identical
-/// per-segment constraint counts through `eval`.  This confirms the
-/// collision is purely from geometric sequence aliasing, not from
-/// missing count information.
+/// DelegatePadEnforceOutput and DelegateAllocEnforceFirst have identical
+/// segment structure and per-segment constraint counts — they are
+/// distinguished solely by the Horner scalar.
 #[test]
 fn test_wire_collision_via_eval_metrics_identical() {
     let m1 = metrics::eval(&SingleRoutineCircuit(DelegatePadEnforceOutput)).unwrap();
