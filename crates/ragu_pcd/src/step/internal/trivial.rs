@@ -51,6 +51,6 @@ impl<C: Cycle> Step<C> for Trivial {
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }

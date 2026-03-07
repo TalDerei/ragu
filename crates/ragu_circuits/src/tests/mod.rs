@@ -56,7 +56,7 @@ impl Circuit<Fp> for SquareCircuit {
             a = a.square(dr)?;
         }
 
-        Ok((a, D::just(|| ())))
+        Ok((a, D::unit()))
     }
 }
 
@@ -131,7 +131,7 @@ fn test_simple_circuit() {
             let c = a.add(dr, &b);
             let d = a.sub(dr, &b);
 
-            Ok(((c, d), D::just(|| ())))
+            Ok(((c, d), D::unit()))
         }
     }
 

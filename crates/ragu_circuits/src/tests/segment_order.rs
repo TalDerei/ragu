@@ -128,9 +128,9 @@ impl Routine<Fp> for TreeRoutine {
         _input: &Bound<'dr, D, Self::Input>,
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         if self.0.prediction_is_known {
-            Ok(Prediction::Known((), D::just(|| ())))
+            Ok(Prediction::Known((), D::unit()))
         } else {
-            Ok(Prediction::Unknown(D::just(|| ())))
+            Ok(Prediction::Unknown(D::unit()))
         }
     }
 }
@@ -166,7 +166,7 @@ impl Circuit<Fp> for TreeCircuit {
         Self: 'dr,
     {
         drive_tree(dr, &self.0)?;
-        Ok(((), D::just(|| ())))
+        Ok(((), D::unit()))
     }
 }
 

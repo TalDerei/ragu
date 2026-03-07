@@ -389,7 +389,7 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
         _: &mut D,
         _: &Bound<'dr, D, Self::Input>,
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
-        Ok(Prediction::Unknown(D::just(|| ())))
+        Ok(Prediction::Unknown(D::unit()))
     }
 }
 

@@ -39,7 +39,7 @@ impl<F: Field> Circuit<F> for () {
     where
         Self: 'dr,
     {
-        Ok(((), D::just(|| ())))
+        Ok(((), D::unit()))
     }
 }
 

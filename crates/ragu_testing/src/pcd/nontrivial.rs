@@ -84,7 +84,7 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
         let output_data = output.value().map(|v| *v);
         let output = Encoded::from_gadget(output);
 
-        Ok(((left, right, output), output_data, D::just(|| ())))
+        Ok(((left, right, output), output_data, D::unit()))
     }
 }
 
@@ -132,7 +132,7 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
                 leaf_encoded,
             ),
             leaf_data,
-            D::just(|| ()),
+            D::unit(),
         ))
     }
 }

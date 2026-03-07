@@ -74,7 +74,7 @@ impl Step<Pasta> for StepWithData {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::new(dr, witness.clone())?;
-        Ok(((left, right, output), witness, D::just(|| ())))
+        Ok(((left, right, output), witness, D::unit()))
     }
 }
 
@@ -105,7 +105,7 @@ impl<C: Cycle> Step<C> for Step0 {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -135,7 +135,7 @@ impl<C: Cycle> Step<C> for Step1 {
         let left = Encoded::new(dr, left)?;
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 

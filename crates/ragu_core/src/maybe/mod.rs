@@ -95,6 +95,12 @@ pub trait Maybe<T: Send>: Send {
     /// not represent an existing value.
     fn try_just<R: Send, E>(f: impl FnOnce() -> Result<R, E>) -> Result<Perhaps<Self::Kind, R>, E>;
 
+    /// Creates a unit `Maybe<()>` value for this kind. Equivalent to
+    /// `Self::just(|| ())`.
+    fn unit() -> Perhaps<Self::Kind, ()> {
+        Self::just(|| ())
+    }
+
     /// In contexts where the `Maybe<T>` is known or guaranteed to be an
     /// existing value, this returns the enclosed value. In other contexts, this
     /// will fail at compile time.

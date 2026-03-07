@@ -83,7 +83,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -115,7 +115,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -147,7 +147,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
         let right = Encoded::new(dr, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ()), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 

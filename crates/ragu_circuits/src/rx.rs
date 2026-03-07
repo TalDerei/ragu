@@ -518,7 +518,7 @@ mod tests {
             ragu_core::drivers::DriverValue<D, Self::Aux<'witness>>,
         )> {
             let element = Element::alloc(dr, witness)?;
-            Ok((MulOnWrite { element }, D::just(|| ())))
+            Ok((MulOnWrite { element }, D::unit()))
         }
     }
 

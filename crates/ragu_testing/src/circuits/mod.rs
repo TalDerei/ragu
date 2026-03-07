@@ -58,7 +58,7 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         let c = a.add(dr, &b);
         let d = a.sub(dr, &b);
 
-        Ok(((c, d), D::just(|| ())))
+        Ok(((c, d), D::unit()))
     }
 }
 
@@ -99,6 +99,6 @@ impl<F: Field> Circuit<F> for SquareCircuit {
             a = a.square(dr)?;
         }
 
-        Ok((a, D::just(|| ())))
+        Ok((a, D::unit()))
     }
 }

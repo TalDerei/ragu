@@ -21,23 +21,21 @@ fn fuse_bench(c: &mut Criterion) {
 
     let mut rng = StdRng::seed_from_u64(1234);
 
-    let (proof1, aux1) = app
+    let (leaf1, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(1u64),
         )
         .unwrap();
-    let leaf1 = proof1.carry::<nontrivial::LeafNode>(aux1);
 
-    let (proof2, aux2) = app
+    let (leaf2, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(2u64),
         )
         .unwrap();
-    let leaf2 = proof2.carry::<nontrivial::LeafNode>(aux2);
 
     c.bench_function("fuse", |b| {
         b.iter_batched(

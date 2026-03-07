@@ -71,11 +71,7 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
         // Rank, both of which are not in scope here.
 
         // Return left's data as the output data - this preserves it!
-        Ok((
-            (left_encoded.clone(), right, left_encoded),
-            left,
-            D::just(|| ()),
-        ))
+        Ok(((left_encoded.clone(), right, left_encoded), left, D::unit()))
     }
 }
 

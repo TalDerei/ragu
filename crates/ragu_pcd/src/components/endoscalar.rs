@@ -314,7 +314,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         // Constrain output
         acc.enforce_equal(dr, &points.interstitials[self.step])?;
 
-        Ok(((), D::just(|| ())))
+        Ok(((), D::unit()))
     }
 }
 

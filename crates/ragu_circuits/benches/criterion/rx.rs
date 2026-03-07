@@ -52,7 +52,7 @@ impl Routine<Fp> for HeavyKnownRoutine {
                 Ok(v)
             })?,
         )?;
-        Ok(Prediction::Known(output, D::just(|| ())))
+        Ok(Prediction::Known(output, D::unit()))
     }
 }
 
@@ -92,7 +92,7 @@ impl Circuit<Fp> for HeavyRoutineCircuit {
             result = dr.routine(routine.clone(), input.clone())?;
         }
 
-        Ok((result, D::just(|| ())))
+        Ok((result, D::unit()))
     }
 }
 
