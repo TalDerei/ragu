@@ -251,6 +251,15 @@ struct Counter<F> {
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
     one: F,
+
+    /// Initial value of the Horner accumulator for each routine scope.
+    ///
+    /// A nonzero seed derived from the same BLAKE2b PRF ensures that leading
+    /// `enforce_zero` calls with zero-valued linear combinations still shift
+    /// the accumulator (via `result = result * y + 0`), preventing structurally
+    /// different routines from producing identical scalars when they differ
+    /// only by prepended trivial constraints.
+    h: F,
 }
 
 impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
@@ -270,6 +279,7 @@ impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
         let x1 = point(1);
         let x2 = point(2);
         let y = point(3);
+        let h = point(4);
 
         Self {
             scope: CounterScope {
@@ -278,7 +288,7 @@ impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
                 current_a: x0,
                 current_b: x1,
                 current_c: x2,
-                result: F::ZERO,
+                result: h,
             },
             num_linear_constraints: 0,
             num_multiplication_constraints: 0,
@@ -293,6 +303,7 @@ impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
             x2,
             y,
             one: x2, // c wire of gate 0
+            h,
         }
     }
 }
@@ -385,7 +396,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_a: self.x0,
                 current_b: self.x1,
                 current_c: self.x2,
-                result: F::ZERO,
+                result: self.h,
             },
         );
 
