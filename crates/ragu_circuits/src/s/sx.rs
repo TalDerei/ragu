@@ -223,7 +223,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
         let index = self.scope.multiplication_constraints;
         if index == R::n() {
-            return Err(Error::MultiplicationBoundExceeded(R::n()));
+            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
         self.scope.multiplication_constraints += 1;
 
@@ -260,7 +260,9 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         let q = self.scope.linear_constraints;
         if q == R::num_coeffs() {
-            return Err(Error::LinearBoundExceeded(R::num_coeffs()));
+            return Err(Error::LinearBoundExceeded {
+                limit: R::num_coeffs(),
+            });
         }
         self.scope.linear_constraints += 1;
 

@@ -211,6 +211,21 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>, L: Len> Gadget<'dr, D> for FixedVec
     type Kind = FixedVec<PhantomData<G::Kind>, L>;
 }
 
+#[test]
+fn test_vector_length_mismatch() {
+    use alloc::vec;
+    use ragu_core::Error;
+    let result = FixedVec::<i32, ConstLen<3>>::new(vec![1, 2]);
+    match result {
+        Err(Error::VectorLengthMismatch { expected, actual }) => {
+            assert_eq!(expected, 3);
+            assert_eq!(actual, 2);
+        }
+        Err(_) => panic!("expected VectorLengthMismatch"),
+        Ok(_) => panic!("expected error"),
+    }
+}
+
 impl<'dr, D: Driver<'dr>, G: Consistent<'dr, D>, L: Len> Consistent<'dr, D> for FixedVec<G, L> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         for item in self.iter() {

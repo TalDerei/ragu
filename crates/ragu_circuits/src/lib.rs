@@ -124,11 +124,13 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
         let metrics = metrics::eval(&self)?;
 
         if metrics.num_linear_constraints > R::num_coeffs() {
-            return Err(Error::LinearBoundExceeded(R::num_coeffs()));
+            return Err(Error::LinearBoundExceeded {
+                limit: R::num_coeffs(),
+            });
         }
 
         if metrics.num_multiplication_constraints > R::n() {
-            return Err(Error::MultiplicationBoundExceeded(R::n()));
+            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
 
         struct ProcessedCircuit<C> {

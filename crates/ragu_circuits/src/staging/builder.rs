@@ -191,9 +191,9 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
 
         // Check bounds
         if num_wires > Next::values() {
-            return Err(ragu_core::Error::MultiplicationBoundExceeded(
-                Next::num_multiplications(),
-            ));
+            return Err(ragu_core::Error::MultiplicationBoundExceeded {
+                limit: Next::num_multiplications(),
+            });
         }
 
         // Collect stage wires

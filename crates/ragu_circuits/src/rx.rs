@@ -130,7 +130,7 @@ impl<F: Field> Trace<F> {
             .max()
             .expect("floor plan is never empty (root segment always exists)");
         if total_gates > R::n() {
-            return Err(Error::MultiplicationBoundExceeded(R::n()));
+            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
 
         let mut poly = structured::Polynomial::<F, R>::new();
