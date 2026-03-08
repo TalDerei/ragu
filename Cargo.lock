@@ -812,8 +812,10 @@ dependencies = [
 name = "ragu_pcd"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "ff",
  "gungraun",
+ "maybe-rayon",
  "pasta_curves",
  "ragu_arithmetic",
  "ragu_circuits",
