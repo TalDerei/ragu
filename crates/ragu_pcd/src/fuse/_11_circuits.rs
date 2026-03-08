@@ -71,8 +71,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::hashes_1::CIRCUIT_ID.circuit_index(),
         )?;
         let hashes_1_rx_blind = C::CircuitField::random(&mut *rng);
-        let hashes_1_rx_commitment =
-            hashes_1_rx.commit(C::host_generators(self.params), hashes_1_rx_blind);
 
         let (hashes_2_trace, unified) =
             native::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(self.params).rx(
@@ -86,8 +84,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::hashes_2::CIRCUIT_ID.circuit_index(),
         )?;
         let hashes_2_rx_blind = C::CircuitField::random(&mut *rng);
-        let hashes_2_rx_commitment =
-            hashes_2_rx.commit(C::host_generators(self.params), hashes_2_rx_blind);
 
         let (partial_collapse_trace, unified) =
             native::partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new().rx(
@@ -103,8 +99,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::partial_collapse::CIRCUIT_ID.circuit_index(),
         )?;
         let partial_collapse_rx_blind = C::CircuitField::random(&mut *rng);
-        let partial_collapse_rx_commitment =
-            partial_collapse_rx.commit(C::host_generators(self.params), partial_collapse_rx_blind);
 
         let (full_collapse_trace, unified) =
             native::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new().rx(
@@ -119,8 +113,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::full_collapse::CIRCUIT_ID.circuit_index(),
         )?;
         let full_collapse_rx_blind = C::CircuitField::random(&mut *rng);
-        let full_collapse_rx_commitment =
-            full_collapse_rx.commit(C::host_generators(self.params), full_collapse_rx_blind);
 
         let (compute_v_trace, unified) = native::compute_v::Circuit::<C, R, HEADER_SIZE>::new()
             .rx(native::compute_v::Witness {
@@ -134,14 +126,27 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::compute_v::CIRCUIT_ID.circuit_index(),
         )?;
         let compute_v_rx_blind = C::CircuitField::random(&mut *rng);
-        let compute_v_rx_commitment =
-            compute_v_rx.commit(C::host_generators(self.params), compute_v_rx_blind);
 
         // Cross-circuit coverage validation (prover-time development assertion,
         // not a verifier check): all internal recursion circuits together must
         // cover every slot exactly once. Overlap is caught eagerly by finish();
         // missing slots are caught here.
         unified.assert_complete();
+
+        let host_gen = C::host_generators(self.params);
+        let [
+            hashes_1_rx_commitment,
+            hashes_2_rx_commitment,
+            partial_collapse_rx_commitment,
+            full_collapse_rx_commitment,
+            compute_v_rx_commitment,
+        ] = ragu_arithmetic::batch_to_affine([
+            hashes_1_rx.commit_projective(host_gen, hashes_1_rx_blind),
+            hashes_2_rx.commit_projective(host_gen, hashes_2_rx_blind),
+            partial_collapse_rx.commit_projective(host_gen, partial_collapse_rx_blind),
+            full_collapse_rx.commit_projective(host_gen, full_collapse_rx_blind),
+            compute_v_rx.commit_projective(host_gen, compute_v_rx_blind),
+        ]);
 
         Ok(proof::InternalCircuits {
             hashes_1_rx,

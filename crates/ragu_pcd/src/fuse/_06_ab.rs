@@ -69,11 +69,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let a_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(a, mu_prime_inv);
         let a_blind = C::CircuitField::random(&mut *rng);
-        let a_commitment = a_poly.commit(C::host_generators(self.params), a_blind);
-
         let b_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(b, mu_prime_nu_prime);
         let b_blind = C::CircuitField::random(&mut *rng);
-        let b_commitment = b_poly.commit(C::host_generators(self.params), b_blind);
+        let host_gen = C::host_generators(self.params);
+        let [a_commitment, b_commitment] = ragu_arithmetic::batch_to_affine([
+            a_poly.commit_projective(host_gen, a_blind),
+            b_poly.commit_projective(host_gen, b_blind),
+        ]);
 
         let c = a_poly.revdot(&b_poly);
 

@@ -52,8 +52,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let registry_wy_poly = registry_at_w.wy(y);
         let registry_wy_blind = C::CircuitField::random(&mut *rng);
-        let registry_wy_commitment =
-            registry_wy_poly.commit(C::host_generators(self.params), registry_wy_blind);
 
         let source = FuseProofSource { left, right };
         let mut builder = claims::Builder::new(&self.native_registry, y, z);
@@ -68,7 +66,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &error_m_witness,
         )?;
         let native_blind = C::CircuitField::random(&mut *rng);
-        let native_commitment = native_rx.commit(C::host_generators(self.params), native_blind);
+        let host_gen = C::host_generators(self.params);
+        let [registry_wy_commitment, native_commitment] = ragu_arithmetic::batch_to_affine([
+            registry_wy_poly.commit_projective(host_gen, registry_wy_blind),
+            native_rx.commit_projective(host_gen, native_blind),
+        ]);
 
         let nested_error_m_witness = nested::stages::error_m::Witness {
             native_error_m: native_commitment,

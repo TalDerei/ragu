@@ -24,12 +24,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let native_registry_wx0_poly = registry_at_w.wx(x0);
         let native_registry_wx0_blind = C::CircuitField::random(&mut *rng);
-        let native_registry_wx0_commitment = native_registry_wx0_poly
-            .commit(C::host_generators(self.params), native_registry_wx0_blind);
         let native_registry_wx1_poly = registry_at_w.wx(x1);
         let native_registry_wx1_blind = C::CircuitField::random(&mut *rng);
-        let native_registry_wx1_commitment = native_registry_wx1_poly
-            .commit(C::host_generators(self.params), native_registry_wx1_blind);
+        let host_gen = C::host_generators(self.params);
+        let [
+            native_registry_wx0_commitment,
+            native_registry_wx1_commitment,
+        ] = ragu_arithmetic::batch_to_affine([
+            native_registry_wx0_poly.commit_projective(host_gen, native_registry_wx0_blind),
+            native_registry_wx1_poly.commit_projective(host_gen, native_registry_wx1_blind),
+        ]);
 
         let nested_s_prime_witness = nested::stages::s_prime::Witness {
             registry_wx0: native_registry_wx0_commitment,
