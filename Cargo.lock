@@ -522,6 +522,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lean_extraction"
+version = "0.0.0"
+dependencies = [
+ "ff",
+ "ragu_arithmetic",
+ "ragu_core",
+ "ragu_pasta",
+ "ragu_primitives",
+]
+
+[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
