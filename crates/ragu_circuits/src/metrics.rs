@@ -86,32 +86,32 @@ pub enum RoutineIdentity {
 pub struct RoutineFingerprint {
     input_kind: TypeId,
     output_kind: TypeId,
-    fingerprint: u64,
-    num_multiplication_constraints: usize,
-    num_linear_constraints: usize,
+    eval: u64,
+    local_num_multiplication_constraints: usize,
+    local_num_linear_constraints: usize,
 }
 
 impl RoutineFingerprint {
     /// Constructs a [`RoutineFingerprint`] from a routine's `Input`/`Output`
-    /// type ids, a field element evaluation, and constraint counts.
+    /// type ids, a field element evaluation, and local constraint counts.
     fn of<F: PrimeField, Ro: Routine<F>>(
         eval: F,
-        num_multiplication_constraints: usize,
-        num_linear_constraints: usize,
+        local_num_multiplication_constraints: usize,
+        local_num_linear_constraints: usize,
     ) -> Self {
         Self {
             input_kind: TypeId::of::<Ro::Input>(),
             output_kind: TypeId::of::<Ro::Output>(),
-            fingerprint: ragu_arithmetic::low_u64(eval),
-            num_multiplication_constraints,
-            num_linear_constraints,
+            eval: ragu_arithmetic::low_u64(eval),
+            local_num_multiplication_constraints,
+            local_num_linear_constraints,
         }
     }
 
-    /// Returns the raw scalar component of the fingerprint.
+    /// Returns the raw evaluation scalar.
     #[cfg(test)]
     pub(crate) fn scalar(&self) -> u64 {
-        self.fingerprint
+        self.eval
     }
 }
 
