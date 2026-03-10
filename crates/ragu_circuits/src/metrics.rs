@@ -82,6 +82,11 @@ pub enum RoutineIdentity {
 /// ever used for security-critical decisions, store the full field
 /// representation (`[u8; 32]`) instead — the cost is negligible.
 ///
+/// The constraint counts duplicate the values in the enclosing
+/// [`SegmentRecord`]. This is intentional: it makes the fingerprint a
+/// self-contained `Hash + Eq` key so callers can use it directly in
+/// equivalence maps without also comparing the segment record.
+///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RoutineFingerprint {
@@ -103,7 +108,7 @@ impl RoutineFingerprint {
         Self {
             input_kind: TypeId::of::<Ro::Input>(),
             output_kind: TypeId::of::<Ro::Output>(),
-            eval: ragu_arithmetic::low_u64(eval),
+            eval: ragu_arithmetic::low_u64(&eval),
             local_num_multiplication_constraints,
             local_num_linear_constraints,
         }
@@ -111,7 +116,7 @@ impl RoutineFingerprint {
 
     /// Returns the raw evaluation scalar.
     #[cfg(test)]
-    pub(crate) fn scalar(&self) -> u64 {
+    pub(crate) fn eval(&self) -> u64 {
         self.eval
     }
 }
@@ -264,13 +269,17 @@ struct Counter<F> {
     ///
     /// A nonzero seed derived from the same BLAKE2b PRF ensures that leading
     /// `enforce_zero` calls with zero-valued linear combinations still shift
-    /// the accumulator (via `result = result * y + 0`), preventing structurally
-    /// different routines from producing identical scalars when they differ
-    /// only by prepended trivial constraints.
+    /// the accumulator (via `result = h * y + lc_value`), preventing
+    /// degenerate collisions. Without this, a routine whose first linear
+    /// combination evaluates to zero (`lc_value = 0`) would produce
+    /// `0 * y^{n-1} + c_2 * y^{n-2} + …`, colliding with a shorter routine
+    /// that starts at `c_2`. The nonzero seed lifts the accumulator to
+    /// `h * y^n + c_1 * y^{n-1} + …`, making the leading power of `y`
+    /// always visible.
     h: F,
 }
 
-impl<F: PrimeField + FromUniformBytes<64>> Counter<F> {
+impl<F: FromUniformBytes<64>> Counter<F> {
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -333,7 +342,7 @@ impl<F: Field> DriverTypes for Counter<F> {
     type LCenforce = WireEvalSum<F>;
 }
 
-impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
+impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type F = F;
     type Wire = WireEval<F>;
     const ONE: Self::Wire = WireEval::One;
@@ -437,9 +446,15 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 
         // Remap child output wires as fresh parent allocations.
         //
-        // The output remap calls `alloc` for each output wire, which may
-        // call `mul` internally. This has two side effects on the parent
-        // scope:
+        // The child's a/b/c sequences were reset to (x0, x1, x2) on entry,
+        // so its output wires carry child-local evaluations. After restoring
+        // the parent scope those values are no longer globally distinct —
+        // they could collide with the parent's own wires. Re-allocating via
+        // `map_gadget` assigns each output wire a fresh position in the
+        // parent's geometric sequences.
+        //
+        // The remap calls `alloc` for each output wire, which may call
+        // `mul` internally. This has two side effects on the parent scope:
         //
         // 1. Geometric sequences advance — `current_a`, `current_b`,
         //    `current_c` move past the remap gates.
@@ -486,7 +501,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 
 /// [`WireMap`] for `Counter`→`Counter`: each source wire is replaced by a
 /// fresh allocation, producing linearly independent wire values.
-impl<F: PrimeField + FromUniformBytes<64>> WireMap<F> for Counter<F> {
+impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
     type Src = Self;
     type Dst = Self;
 
@@ -495,83 +510,8 @@ impl<F: PrimeField + FromUniformBytes<64>> WireMap<F> for Counter<F> {
     }
 }
 
-/// [`WireMap`] adapter that maps wires from an arbitrary source driver into
-/// [`Counter`] via fresh allocations. Used by [`fingerprint_routine`] where the
-/// source driver is generic.
-#[cfg(test)]
-use core::marker::PhantomData;
-
-#[cfg(test)]
-struct CounterRemap<'a, F, Src: DriverTypes> {
-    counter: &'a mut Counter<F>,
-    _marker: PhantomData<Src>,
-}
-
-#[cfg(test)]
-impl<F: PrimeField + FromUniformBytes<64>, Src: DriverTypes<ImplField = F>> WireMap<F>
-    for CounterRemap<'_, F, Src>
-{
-    type Src = Src;
-    type Dst = Counter<F>;
-
-    fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
-        self.counter.alloc(|| unreachable!())
-    }
-}
-
-/// Computes the [`RoutineIdentity`] for a single routine invocation.
-///
-/// Creates a fresh [`Counter`], maps the caller's `input` gadget into the
-/// counter (allocating fresh wires for each input wire), then predicts and
-/// executes the routine. Nested routine calls within the routine are
-/// fingerprinted independently; their output wires are treated as auxiliary
-/// inputs to the caller rather than folded into the caller's fingerprint.
-///
-/// # Arguments
-///
-/// - `routine`: The routine to fingerprint.
-/// - `input`: The caller's input gadget, bound to driver `D`.
-#[cfg(test)]
-pub(crate) fn fingerprint_routine<'dr, F, D, Ro>(
-    routine: &Ro,
-    input: &Bound<'dr, D, Ro::Input>,
-) -> Result<RoutineIdentity>
-where
-    F: PrimeField + FromUniformBytes<64>,
-    D: Driver<'dr, F = F>,
-    Ro: Routine<F>,
-{
-    let mut counter = Counter::<F>::new();
-
-    // Remap input wires into Counter, mirroring Counter::routine:
-    // uncounted (seeding only) and available_b cleared afterward.
-    let new_input = counter.uncounted(|c| {
-        let mut remap = CounterRemap {
-            counter: c,
-            _marker: PhantomData::<D>,
-        };
-        Ro::Input::map_gadget(input, &mut remap)
-    })?;
-    counter.scope.available_b = None;
-
-    // Predict (on a wireless emulator) then execute on the counter.
-    let aux = Emulator::predict(routine, &new_input)?.into_aux();
-    routine.execute(&mut counter, new_input, aux)?;
-
-    // Segment 0 holds only this routine's own constraints; nested
-    // routine constraints live in their own segments.
-    let seg = &counter.segments[0];
-    Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
-        counter.scope.result,
-        seg.num_multiplication_constraints,
-        seg.num_linear_constraints,
-    )))
-}
-
 /// Evaluates the constraint topology of a circuit.
-pub fn eval<F: PrimeField + FromUniformBytes<64>, C: Circuit<F>>(
-    circuit: &C,
-) -> Result<CircuitMetrics> {
+pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
     let mut collector = Counter::<F>::new();
     let mut degree_ky = 0usize;
 
@@ -612,6 +552,20 @@ pub fn eval<F: PrimeField + FromUniformBytes<64>, C: Circuit<F>>(
         collector.num_linear_constraints
     );
 
+    assert!(
+        matches!(collector.segments[0].identity, RoutineIdentity::Root),
+        "first segment must be Root"
+    );
+    assert_eq!(
+        collector
+            .segments
+            .iter()
+            .filter(|s| matches!(s.identity, RoutineIdentity::Root))
+            .count(),
+        1,
+        "exactly one segment must be Root"
+    );
+
     Ok(CircuitMetrics {
         num_linear_constraints: collector.num_linear_constraints,
         num_multiplication_constraints: collector.num_multiplication_constraints,
@@ -621,14 +575,82 @@ pub fn eval<F: PrimeField + FromUniformBytes<64>, C: Circuit<F>>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use core::marker::PhantomData;
     use ragu_core::{
         drivers::{Driver, DriverValue},
         gadgets::Bound,
         routines::{Prediction, Routine},
     };
     use ragu_pasta::Fp;
+
+    /// [`WireMap`] adapter that maps wires from an arbitrary source driver into
+    /// [`Counter`] via fresh allocations. Used by [`fingerprint_routine`] where
+    /// the source driver is generic.
+    struct CounterRemap<'a, F, Src: DriverTypes> {
+        counter: &'a mut Counter<F>,
+        _marker: PhantomData<Src>,
+    }
+
+    impl<F: FromUniformBytes<64>, Src: DriverTypes<ImplField = F>> WireMap<F>
+        for CounterRemap<'_, F, Src>
+    {
+        type Src = Src;
+        type Dst = Counter<F>;
+
+        fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
+            self.counter.alloc(|| unreachable!())
+        }
+    }
+
+    /// Computes the [`RoutineIdentity`] for a single routine invocation.
+    ///
+    /// Creates a fresh [`Counter`], maps the caller's `input` gadget into the
+    /// counter (allocating fresh wires for each input wire), then predicts and
+    /// executes the routine. Nested routine calls within the routine are
+    /// fingerprinted independently; their output wires are treated as auxiliary
+    /// inputs to the caller rather than folded into the caller's fingerprint.
+    ///
+    /// # Arguments
+    ///
+    /// - `routine`: The routine to fingerprint.
+    /// - `input`: The caller's input gadget, bound to driver `D`.
+    pub(crate) fn fingerprint_routine<'dr, F, D, Ro>(
+        routine: &Ro,
+        input: &Bound<'dr, D, Ro::Input>,
+    ) -> Result<RoutineIdentity>
+    where
+        F: FromUniformBytes<64>,
+        D: Driver<'dr, F = F>,
+        Ro: Routine<F>,
+    {
+        let mut counter = Counter::<F>::new();
+
+        // Remap input wires into Counter, mirroring Counter::routine:
+        // uncounted (seeding only) and available_b cleared afterward.
+        let new_input = counter.uncounted(|c| {
+            let mut remap = CounterRemap {
+                counter: c,
+                _marker: PhantomData::<D>,
+            };
+            Ro::Input::map_gadget(input, &mut remap)
+        })?;
+        counter.scope.available_b = None;
+
+        // Predict (on a wireless emulator) then execute on the counter.
+        let aux = Emulator::predict(routine, &new_input)?.into_aux();
+        routine.execute(&mut counter, new_input, aux)?;
+
+        // Segment 0 holds only this routine's own constraints; nested
+        // routine constraints live in their own segments.
+        let seg = &counter.segments[0];
+        Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
+            counter.scope.result,
+            seg.num_multiplication_constraints,
+            seg.num_linear_constraints,
+        )))
+    }
 
     // A routine that allocates exactly one wire, leaving the "b" slot dangling
     // in a pair-allocated driver like `Counter`.

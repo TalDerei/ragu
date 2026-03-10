@@ -84,13 +84,13 @@ pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
     application_steps: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
 }
 
-impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
+impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'params, F: PrimeField + FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
+impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// Creates a new empty [`Registry`] builder.
     pub fn new() -> Self {
         Self {
@@ -353,7 +353,7 @@ impl<F: PrimeField> From<F> for OmegaKey {
         // TODO: This only holds for the Pasta curves. See issue #51
         let product = f.double().double() + f;
 
-        OmegaKey(ragu_arithmetic::low_u64(product))
+        OmegaKey(ragu_arithmetic::low_u64(&product))
     }
 }
 
@@ -525,7 +525,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     }
 }
 
-impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
+impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
     /// Compute a digest of this registry using BLAKE2b.
     fn compute_registry_digest(&self) -> F {
         let mut hasher = Params::new().personal(b"ragu_registry___").to_state();

@@ -731,14 +731,14 @@ fn fingerprint_elem(
 ) -> RoutineFingerprint {
     let mut sim = Simulator::<Fp>::new();
     let input = Element::alloc(&mut sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    match metrics::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &input).unwrap() {
+    match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &input).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
     }
 }
 
 fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> RoutineFingerprint {
-    match metrics::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &()).unwrap() {
+    match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &()).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
     }
@@ -750,7 +750,7 @@ fn fingerprint_pair(
     let sim = &mut Simulator::<Fp>::new();
     let a = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
     let b = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    match metrics::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &(a, b)).unwrap() {
+    match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &(a, b)).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
     }
@@ -921,8 +921,8 @@ fn test_root_identity() {
 fn test_known_value_regression() {
     let a = fingerprint_elem(&SquareOnce);
     let b = fingerprint_elem(&SquareOnce);
-    assert_eq!(a.scalar(), b.scalar());
-    assert_ne!(a.scalar(), 0);
+    assert_eq!(a.eval(), b.eval());
+    assert_ne!(a.eval(), 0);
 }
 
 /// Fingerprint from metrics::eval matches standalone fingerprint_routine.
@@ -943,7 +943,7 @@ fn test_metrics_integration() {
 fn test_linear_only() {
     let linear = fingerprint_elem(&LinearOnly);
     assert_ne!(linear, fingerprint_elem(&SquareOnce));
-    assert_ne!(linear.scalar(), 0);
+    assert_ne!(linear.eval(), 0);
     assert_ne!(linear, fingerprint_unit(&EmptyRoutine));
 }
 

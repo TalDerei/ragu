@@ -15,7 +15,7 @@ use crate::multicore::*;
 /// # Panics
 ///
 /// Panics if the field's canonical representation is shorter than 8 bytes.
-pub fn low_u64<F: PrimeField>(f: F) -> u64 {
+pub fn low_u64<F: PrimeField>(f: &F) -> u64 {
     let repr = f.to_repr();
     let bytes = repr.as_ref();
     u64::from_le_bytes(
