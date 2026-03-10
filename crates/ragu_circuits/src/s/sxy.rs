@@ -526,6 +526,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 /// - `segment_records`: Per-segment constraint records for fingerprint lookup.
 /// - `type_floor_plan`: Canonical routine positions for cache keys.
 /// - `cache`: Shared cache for inter-circuit memoization.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_with_cache<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
     x: F,
