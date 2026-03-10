@@ -28,7 +28,7 @@ impl RoutineId {
 }
 
 /// Information about a single routine invocation, captured during discovery.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct RoutineInfo {
     /// The shape (dimensions) of this routine invocation.
     pub shape: SegmentRecord,
@@ -123,23 +123,25 @@ mod tests {
         );
     }
 
+    fn shape(muls: usize, lcs: usize) -> SegmentRecord {
+        SegmentRecord {
+            num_multiplication_constraints: muls,
+            num_linear_constraints: lcs,
+            identity: crate::RoutineIdentity::Root,
+        }
+    }
+
     #[test]
     fn segment_record_fields() {
-        let shape = SegmentRecord {
-            num_multiplication_constraints: 10,
-            num_linear_constraints: 20,
-        };
-        assert_eq!(shape.num_multiplication_constraints, 10);
-        assert_eq!(shape.num_linear_constraints, 20);
+        let s = shape(10, 20);
+        assert_eq!(s.num_multiplication_constraints, 10);
+        assert_eq!(s.num_linear_constraints, 20);
     }
 
     #[test]
     fn routine_registry_tracks_nesting() {
         let mut registry = RoutineRegistry::new();
-        let shape = SegmentRecord {
-            num_multiplication_constraints: 5,
-            num_linear_constraints: 10,
-        };
+        let shape = shape(5, 10);
 
         registry.register::<RoutineA>(shape);
         registry.enter_routine();

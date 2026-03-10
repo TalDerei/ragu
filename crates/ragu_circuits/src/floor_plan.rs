@@ -154,14 +154,11 @@ impl FloorPlan {
     }
 
     /// Gets the shape for a routine type, if it exists in the floor plan.
-    pub fn get_shape(&self, id: &RoutineId) -> Option<SegmentRecord> {
+    pub fn get_shape(&self, id: &RoutineId) -> Option<ConstraintSegment> {
         self.placements
             .iter()
             .find(|p| p.id == *id)
-            .map(|p| SegmentRecord {
-                num_multiplication_constraints: p.segment.num_multiplication_constraints,
-                num_linear_constraints: p.segment.num_linear_constraints,
-            })
+            .map(|p| p.segment)
     }
 }
 
@@ -176,6 +173,7 @@ mod tests {
         SegmentRecord {
             num_multiplication_constraints: muls,
             num_linear_constraints: lcs,
+            identity: crate::RoutineIdentity::Root,
         }
     }
 

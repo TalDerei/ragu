@@ -54,8 +54,9 @@ use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
+    convert::{StripWires, WireMap as _},
     drivers::{Driver, DriverTypes, emulator::Emulator},
-    gadgets::Bound,
+    gadgets::{Bound, GadgetKind as _},
     maybe::Empty,
     routines::Routine,
 };
@@ -298,15 +299,18 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
                     // Reconstruct output gadget from cached wires:
                     // 1. Execute with wireless emulator to get a template with unit wires
                     // 2. Use WireInjector to convert unit wires to cached WireEval wires
-                    let mut dummy = Emulator::wireless();
-                    let dummy_input = Ro::Input::map_gadget(&input, &mut dummy)?;
-                    let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
+                    type W<F> = Emulator<ragu_core::drivers::emulator::Wireless<Empty, F>>;
 
-                    let mut wireless = Emulator::wireless();
-                    let wireless_input = Ro::Input::map_gadget(&input, &mut wireless)?;
-                    let template = routine.execute(&mut wireless, wireless_input, aux)?;
+                    let dummy_input = StripWires::<Self>::remap(&input)?;
+                    let aux = routine
+                        .predict(&mut Emulator::wireless(), &dummy_input)?
+                        .into_aux();
 
-                    let mut injector = WireInjector::<_, Self>::new(&cached.output_wires);
+                    let wireless_input = StripWires::<Self>::remap(&input)?;
+                    let template =
+                        routine.execute(&mut Emulator::wireless(), wireless_input, aux)?;
+
+                    let mut injector = WireInjector::<_, W<F>, Self>::new(&cached.output_wires);
                     let output = Ro::Output::map_gadget(&template, &mut injector)?;
                     debug_assert!(
                         injector.is_exhausted(),
@@ -366,7 +370,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             {
                 // Extract output wires for caching
                 if let Ok(ref output) = exec_result {
-                    let mut extractor = WireExtractor::new();
+                    let mut extractor = WireExtractor::<_, Self>::new();
                     // map_gadget visits all wires in the gadget, extracting them
                     let _ = Ro::Output::map_gadget(output, &mut extractor);
                     let output_wires = extractor.into_wires();
