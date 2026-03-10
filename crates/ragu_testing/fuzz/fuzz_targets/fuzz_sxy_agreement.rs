@@ -48,6 +48,10 @@ fuzz_target!(|input: Input| {
     };
 
     let plan = floor_plan(obj.segment_records());
+    // Key::new requires a non-zero element (it computes the inverse).
+    if input.key_seed == 0 {
+        return;
+    }
     let key = Key::new(Fp::from(input.key_seed));
     let x = Fp::from(input.x_seed);
     let y = Fp::from(input.y_seed);
