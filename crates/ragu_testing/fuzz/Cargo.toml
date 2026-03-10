@@ -20,6 +20,8 @@ ragu_arithmetic = { path = "../../ragu_arithmetic" }
 ragu_primitives = { path = "../../ragu_primitives" }
 ragu_pasta = { path = "../../ragu_pasta", features = ["baked"] }
 ragu_core = { path = "../../ragu_core" }
+ragu_circuits = { path = "../../ragu_circuits" }
+ragu_pcd = { path = "../../ragu_pcd" }
 
 [patch.crates-io]
 addchain = { git = "https://github.com/ebfull/addchain", rev = "da4099a81bc29c895f3ca0ebcaae21c860494c12" }
@@ -51,3 +53,26 @@ test = false
 doc = false
 bench = false
 
+# Structured polynomial revdot vs unstructured dot product
+[[bin]]
+name = "fuzz_revdot"
+path = "fuzz_targets/fuzz_revdot.rs"
+test = false
+doc = false
+bench = false
+
+# Two-layer fold_products invariant
+[[bin]]
+name = "fuzz_fold_revdot"
+path = "fuzz_targets/fuzz_fold_revdot.rs"
+test = false
+doc = false
+bench = false
+
+# Three-way s(X,Y) agreement: sxy vs sx.eval(y) vs sy.eval(x)
+[[bin]]
+name = "fuzz_sxy_agreement"
+path = "fuzz_targets/fuzz_sxy_agreement.rs"
+test = false
+doc = false
+bench = false
