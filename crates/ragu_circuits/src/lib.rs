@@ -296,7 +296,7 @@ where
 
     impl<F: Field, RC: raw::RawCircuit<F>, R: Rank> WiringObject<F, R> for Processed<RC> {
         fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F {
-            wiring::sxy::eval::<_, _, R>(&self.circuit, x, y, floor_plan)
+            wiring::sxy::eval::<_, _, R>(&self.circuit, x, y, floor_plan, &self.metrics.segments)
                 .expect("should succeed if metrics succeeded")
         }
         fn sxy_with_cache(
@@ -312,6 +312,7 @@ where
                 x,
                 y,
                 floor_plan,
+                &self.metrics.segments,
                 type_floor_plan,
                 cache,
             )
