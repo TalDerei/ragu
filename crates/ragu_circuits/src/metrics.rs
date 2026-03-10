@@ -11,10 +11,12 @@
 //! # Fingerprinting
 //!
 //! A routine's fingerprint is the tuple `(TypeId(Input), TypeId(Output),
-//! eval, num_mul, num_lc)`. The [`TypeId`] pairs cheaply narrow equivalence
-//! candidates by type; the constraint counts further partition by shape; the
-//! scalar confirms structural equivalence via random evaluation
-//! (Schwartz–Zippel).
+//! eval, output_eval, num_mul, num_lc)`. The [`TypeId`] pairs cheaply narrow
+//! equivalence candidates by type; the constraint counts further partition by
+//! shape; the `eval` scalar confirms structural equivalence via random
+//! evaluation (Schwartz–Zippel); the `output_eval` scalar captures which
+//! wires flow to which output slots, distinguishing routines that impose the
+//! same constraints but return different wires.
 //!
 //! The fingerprint is wrapped in [`RoutineIdentity`], an enum that
 //! distinguishes the root circuit body ([`Root`](RoutineIdentity::Root)) from
@@ -70,12 +72,17 @@ pub enum RoutineIdentity {
 }
 
 /// A Schwartz–Zippel fingerprint for a routine invocation's constraint
-/// structure.
+/// structure and output wire mapping.
 ///
 /// Two routines share a fingerprint when they have matching [`TypeId`] pairs,
-/// matching evaluation scalars, and matching constraint counts. The scalar is
-/// the low 64 bits of the field element produced by running the routine's
-/// synthesis on the `Counter` driver.
+/// matching evaluation scalars (both constraint and output), and matching
+/// constraint counts.
+///
+/// The `eval` scalar captures the routine's constraint structure: the Horner
+/// accumulation of `enforce_zero` calls over pseudorandom wire evaluations.
+/// The `output_eval` scalar captures which wires flow to which output
+/// slots, distinguishing routines that impose the same constraints
+/// but return different wires (e.g., swapped outputs from nested routines).
 ///
 /// The 64-bit truncation gives ~2^{-64} collision probability per pair,
 /// adequate for floor-planner equivalence classes. If fingerprints are
@@ -93,15 +100,18 @@ pub struct RoutineFingerprint {
     input_kind: TypeId,
     output_kind: TypeId,
     eval: u64,
+    output_eval: u64,
     local_num_multiplication_constraints: usize,
     local_num_linear_constraints: usize,
 }
 
 impl RoutineFingerprint {
     /// Constructs a [`RoutineFingerprint`] from a routine's `Input`/`Output`
-    /// type ids, a field element evaluation, and local constraint counts.
+    /// type ids, constraint and output evaluation scalars, and local constraint
+    /// counts.
     fn of<F: PrimeField, Ro: Routine<F>>(
         eval: F,
+        output_eval: F,
         local_num_multiplication_constraints: usize,
         local_num_linear_constraints: usize,
     ) -> Self {
@@ -109,15 +119,22 @@ impl RoutineFingerprint {
             input_kind: TypeId::of::<Ro::Input>(),
             output_kind: TypeId::of::<Ro::Output>(),
             eval: ragu_arithmetic::low_u64(&eval),
+            output_eval: ragu_arithmetic::low_u64(&output_eval),
             local_num_multiplication_constraints,
             local_num_linear_constraints,
         }
     }
 
-    /// Returns the raw evaluation scalar.
+    /// Returns the raw constraint evaluation scalar.
     #[cfg(test)]
     pub(crate) fn eval(&self) -> u64 {
         self.eval
+    }
+
+    /// Returns the raw output evaluation scalar.
+    #[cfg(test)]
+    pub(crate) fn output_eval(&self) -> u64 {
+        self.output_eval
     }
 }
 
@@ -277,6 +294,13 @@ struct Counter<F> {
     /// `h * y^n + c_1 * y^{n-1} + …`, making the leading power of `y`
     /// always visible.
     h: F,
+
+    /// Base for the output fingerprint geometric sequence.
+    ///
+    /// Used to compute `output_eval`: each output wire's evaluation is
+    /// multiplied by a successive power of `z` and summed, capturing which
+    /// wires flow to which output slots.
+    z: F,
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
@@ -294,6 +318,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let y = point(3);
         let h = point(4);
         let one = point(5);
+        let z = point(6);
 
         Self {
             scope: CounterScope {
@@ -318,6 +343,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             y,
             one,
             h,
+            z,
         }
     }
 
@@ -432,11 +458,25 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
         let output = routine.execute(self, new_input, aux)?;
 
+        // Compute output_eval: accumulate output wire evaluations to capture
+        // which wires flow to which output slots.
+        let output_eval = {
+            let mut acc = OutputAccumulator {
+                current_z: self.z,
+                z: self.z,
+                result: F::ZERO,
+                one: self.one,
+            };
+            let _ = Ro::Output::map_gadget(&output, &mut acc)?;
+            acc.result
+        };
+
         // Extract fingerprint from the child's Horner accumulator and counts.
         let seg = &self.segments[segment_idx];
         self.segments[segment_idx].identity =
             RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
                 self.scope.result,
+                output_eval,
                 seg.num_multiplication_constraints,
                 seg.num_linear_constraints,
             ));
@@ -507,6 +547,39 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
 
     fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
         self.alloc(|| unreachable!())
+    }
+}
+
+/// Accumulates output wire evaluations into a single scalar.
+///
+/// Used to compute the `output_eval` field of [`RoutineFingerprint`].
+/// Each output wire's evaluation is multiplied by a successive power of `z`
+/// and summed, capturing which wires flow to which output slots.
+struct OutputAccumulator<F> {
+    /// Running geometric power: $z^{i+1}$ at output slot $i$.
+    current_z: F,
+    /// Base for the geometric sequence.
+    z: F,
+    /// Accumulated result.
+    result: F,
+    /// Evaluation of the `ONE` wire.
+    one: F,
+}
+
+/// [`WireMap`] for `Counter`→`PhantomData`: extracts output wire evaluations
+/// without producing real wires in the destination.
+impl<F: Field> WireMap<F> for OutputAccumulator<F> {
+    type Src = Counter<F>;
+    type Dst = core::marker::PhantomData<F>;
+
+    fn convert_wire(&mut self, wire: &WireEval<F>) -> Result<()> {
+        let value = match wire {
+            WireEval::One => self.one,
+            WireEval::Value(v) => *v,
+        };
+        self.result += value * self.current_z;
+        self.current_z *= self.z;
+        Ok(())
     }
 }
 
@@ -640,13 +713,26 @@ pub(crate) mod tests {
 
         // Predict (on a wireless emulator) then execute on the counter.
         let aux = Emulator::predict(routine, &new_input)?.into_aux();
-        routine.execute(&mut counter, new_input, aux)?;
+        let output = routine.execute(&mut counter, new_input, aux)?;
+
+        // Compute output_eval from the routine's output wires.
+        let output_eval = {
+            let mut acc = OutputAccumulator {
+                current_z: counter.z,
+                z: counter.z,
+                result: F::ZERO,
+                one: counter.one,
+            };
+            let _ = Ro::Output::map_gadget(&output, &mut acc)?;
+            acc.result
+        };
 
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.
         let seg = &counter.segments[0];
         Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
             counter.scope.result,
+            output_eval,
             seg.num_multiplication_constraints,
             seg.num_linear_constraints,
         )))
