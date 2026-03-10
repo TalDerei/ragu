@@ -152,8 +152,15 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                 key: &registry::Key<F>,
                 floor_plan: &[floor_planner::ConstraintSegment],
             ) -> F {
-                s::sxy::eval::<_, _, R>(&self.circuit, x, y, key, floor_plan)
-                    .expect("should succeed if metrics succeeded")
+                s::sxy::eval::<_, _, R>(
+                    &self.circuit,
+                    x,
+                    y,
+                    key,
+                    floor_plan,
+                    &self.metrics.segments,
+                )
+                .expect("should succeed if metrics succeeded")
             }
             fn sxy_with_cache(
                 &self,
@@ -170,6 +177,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                     y,
                     key,
                     floor_plan,
+                    &self.metrics.segments,
                     type_floor_plan,
                     cache,
                 )

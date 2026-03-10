@@ -43,7 +43,7 @@ use ragu_core::{
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::{floor_plan::RegistryPosition, routines::RoutineId};
+use crate::{RoutineFingerprint, floor_plan::RegistryPosition};
 
 /// Cached polynomial contribution from a routine at a canonical floor plan position.
 ///
@@ -64,13 +64,13 @@ pub struct CachedRoutine<F> {
     pub output_wires: Vec<WireEval<F>>,
 }
 
-/// Cache for routine contributions, keyed by `(RoutineId, canonical_position)`.
+/// Cache for routine contributions, keyed by `(RoutineFingerprint, canonical_position)`.
 ///
 /// Used for inter-circuit memoization: when evaluating multiple circuits,
 /// routines at the same canonical position can reuse cached contributions.
 #[derive(Default, Clone)]
 pub struct MemoCache<F> {
-    entries: BTreeMap<(RoutineId, RegistryPosition), CachedRoutine<F>>,
+    entries: BTreeMap<(RoutineFingerprint, RegistryPosition), CachedRoutine<F>>,
 }
 
 impl<F: Clone> MemoCache<F> {
@@ -84,20 +84,21 @@ impl<F: Clone> MemoCache<F> {
     /// Retrieves a cached routine contribution by canonical position.
     pub fn get(
         &self,
-        routine_id: &RoutineId,
+        fingerprint: &RoutineFingerprint,
         canonical_position: RegistryPosition,
     ) -> Option<&CachedRoutine<F>> {
-        self.entries.get(&(*routine_id, canonical_position))
+        self.entries.get(&(*fingerprint, canonical_position))
     }
 
     /// Stores a routine contribution in the cache.
     pub fn insert(
         &mut self,
-        routine_id: RoutineId,
+        fingerprint: RoutineFingerprint,
         canonical_position: RegistryPosition,
         entry: CachedRoutine<F>,
     ) {
-        self.entries.insert((routine_id, canonical_position), entry);
+        self.entries
+            .insert((fingerprint, canonical_position), entry);
     }
 }
 

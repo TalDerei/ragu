@@ -63,8 +63,8 @@ use ragu_core::{
 use ragu_primitives::GadgetExt;
 
 use crate::{
-    Circuit, DriverScope, floor_plan::FloorPlan, floor_planner::ConstraintSegment,
-    polynomials::Rank, registry, routines::RoutineId,
+    Circuit, DriverScope, RoutineFingerprint, RoutineIdentity, SegmentRecord,
+    floor_plan::FloorPlan, floor_planner::ConstraintSegment, polynomials::Rank, registry,
 };
 
 use super::{
@@ -138,6 +138,9 @@ struct Evaluator<'fp, F, R> {
     /// Floor plan mapping DFS routine index to absolute offsets.
     floor_plan: &'fp [ConstraintSegment],
 
+    /// Per-segment constraint records (from metrics), used to extract fingerprints.
+    segment_records: &'fp [SegmentRecord],
+
     /// Global monotonic DFS counter for routine entries.
     current_routine: usize,
 
@@ -147,8 +150,8 @@ struct Evaluator<'fp, F, R> {
     /// Cache for memoized routine contributions (optional).
     memo_cache: Option<&'fp mut MemoCache<F>>,
 
-    /// Per-routine-type invocation counters for cache key computation.
-    invocation_counts: BTreeMap<RoutineId, usize>,
+    /// Per-fingerprint invocation counters for cache key computation.
+    invocation_counts: BTreeMap<RoutineFingerprint, usize>,
 
     /// Routine nesting depth; memoization only applies at depth 0.
     routine_depth: usize,
@@ -272,11 +275,14 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         let multiplication_start = seg.multiplication_start;
         let linear_start = seg.linear_start;
 
-        // Compute cache key: (routine_id, canonical_position)
-        let routine_id = RoutineId::of::<Ro>();
-        let invocation_index = *self.invocation_counts.get(&routine_id).unwrap_or(&0);
+        // Extract fingerprint from the segment record for this routine.
+        let fingerprint = match self.segment_records[self.current_routine].identity {
+            RoutineIdentity::Routine(fp) => fp,
+            RoutineIdentity::Root => unreachable!("routine segments are never Root"),
+        };
+        let invocation_index = *self.invocation_counts.get(&fingerprint).unwrap_or(&0);
         self.invocation_counts
-            .entry(routine_id)
+            .entry(fingerprint)
             .and_modify(|c| *c += 1)
             .or_insert(1);
 
@@ -287,11 +293,11 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         if can_memoize {
             let type_floor_plan = self.type_floor_plan.unwrap();
             if let Some(canonical_pos) =
-                type_floor_plan.get_invocation(&routine_id, invocation_index)
+                type_floor_plan.get_invocation(&fingerprint, invocation_index)
             {
                 // SAFETY: We just checked memo_cache.is_some()
                 let cache = self.memo_cache.as_ref().unwrap();
-                if let Some(cached) = cache.get(&routine_id, canonical_pos) {
+                if let Some(cached) = cache.get(&fingerprint, canonical_pos) {
                     // Cache hit: reconstruct output without re-executing routine
                     let y_pow_linear_start = self.y.pow_vartime([linear_start as u64]);
                     self.scope.sum += y_pow_linear_start * cached.contribution;
@@ -366,7 +372,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         if can_memoize {
             let type_floor_plan = self.type_floor_plan.unwrap();
             if let Some(canonical_pos) =
-                type_floor_plan.get_invocation(&routine_id, invocation_index)
+                type_floor_plan.get_invocation(&fingerprint, invocation_index)
             {
                 // Extract output wires for caching
                 if let Ok(ref output) = exec_result {
@@ -386,7 +392,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
                     self.memo_cache
                         .as_mut()
                         .unwrap()
-                        .insert(routine_id, canonical_pos, entry);
+                        .insert(fingerprint, canonical_pos, entry);
                 }
             }
         }
@@ -421,6 +427,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     y: F,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
+    segment_records: &[SegmentRecord],
 ) -> Result<F> {
     if x == F::ZERO {
         // The polynomial is zero if x is zero.
@@ -459,6 +466,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         base_u_x,
         base_v_x,
         floor_plan,
+        segment_records,
         current_routine: 0,
         type_floor_plan: None,
         memo_cache: None,
@@ -515,6 +523,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 /// - `y`: The evaluation point for the $Y$ variable.
 /// - `key`: The registry key for constraint binding.
 /// - `floor_plan`: Per-routine absolute offsets (per-circuit).
+/// - `segment_records`: Per-segment constraint records for fingerprint lookup.
 /// - `type_floor_plan`: Canonical routine positions for cache keys.
 /// - `cache`: Shared cache for inter-circuit memoization.
 pub(crate) fn eval_with_cache<F: Field, C: Circuit<F>, R: Rank>(
@@ -523,6 +532,7 @@ pub(crate) fn eval_with_cache<F: Field, C: Circuit<F>, R: Rank>(
     y: F,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
+    segment_records: &[SegmentRecord],
     type_floor_plan: &FloorPlan,
     cache: &mut MemoCache<F>,
 ) -> Result<F> {
@@ -560,6 +570,7 @@ pub(crate) fn eval_with_cache<F: Field, C: Circuit<F>, R: Rank>(
         base_u_x,
         base_v_x,
         floor_plan,
+        segment_records,
         current_routine: 0,
         type_floor_plan: Some(type_floor_plan),
         memo_cache: Some(cache),
