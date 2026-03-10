@@ -131,8 +131,7 @@ pub struct DeepFingerprint {
 }
 
 /// Extracts a deterministic `u64` from a [`TypeId`] by feeding its
-/// [`Hash`](core::hash::Hash) output through a passthrough
-/// [`Hasher`](core::hash::Hasher).
+/// [`Hash`] output through a passthrough [`Hasher`].
 ///
 /// [`TypeId`]: core::any::TypeId
 fn type_id_u64(id: TypeId) -> u64 {
@@ -856,5 +855,26 @@ pub(crate) mod tests {
     #[test]
     fn dangling_alloc_in_routine() {
         super::eval::<Fp, _>(&DanglingAllocCircuit).expect("metrics eval should succeed");
+    }
+
+    /// Test-only wrapper exposing the private `deep_hash` function for
+    /// property-based testing in sibling test modules.
+    pub(crate) fn deep_hash_wrapper(
+        input_kind: TypeId,
+        output_kind: TypeId,
+        eval: u64,
+        num_mul: usize,
+        num_lc: usize,
+        output_eval: u64,
+        children: &[u64],
+    ) -> u64 {
+        let shallow = ShallowFingerprint {
+            input_kind,
+            output_kind,
+            eval,
+            local_num_multiplication_constraints: num_mul,
+            local_num_linear_constraints: num_lc,
+        };
+        super::deep_hash(&shallow, output_eval, children)
     }
 }
