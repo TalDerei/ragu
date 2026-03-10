@@ -11,7 +11,7 @@ use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 use crate::{
     Circuit, WithAux,
-    metrics::{self, RoutineFingerprint, RoutineIdentity},
+    metrics::{self, DeepFingerprint, RoutineIdentity},
 };
 
 /// Canonical single-square routine.
@@ -1267,7 +1267,7 @@ impl Routine<Fp> for OneWireEnforcePair {
 
 fn fingerprint_triple(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, (Element<'_, _>, Element<'_, _>))]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1286,7 +1286,7 @@ fn fingerprint_quad(
         Fp,
         Input = Kind![Fp; ((Element<'_, _>, Element<'_, _>), (Element<'_, _>, Element<'_, _>))],
     >,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1303,7 +1303,7 @@ fn fingerprint_quad(
 
 fn fingerprint_elem(
     routine: &impl Routine<Fp, Input = Kind![Fp; Element<'_, _>]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let mut sim = Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let input = Element::alloc(&mut sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1313,7 +1313,7 @@ fn fingerprint_elem(
     }
 }
 
-fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> RoutineFingerprint {
+fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> DeepFingerprint {
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &()).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
@@ -1322,7 +1322,7 @@ fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> Routin
 
 fn fingerprint_pair(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1335,7 +1335,7 @@ fn fingerprint_pair(
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
 /// through `Counter::routine` (the production path for input remapping).
-fn fingerprint_via_eval<Ro>(routine: &Ro) -> RoutineFingerprint
+fn fingerprint_via_eval<Ro>(routine: &Ro) -> DeepFingerprint
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
         + Clone
@@ -1556,12 +1556,15 @@ fn test_mixed_constraints() {
     assert_ne!(mixed, fingerprint_elem(&LinearOnly));
 }
 
-/// Pure delegation wrappers are nesting-depth-invariant; metrics produces correct segment count.
+/// Pure delegation wrappers share the same shallow fingerprint (same constraint
+/// shape) but differ in their deep fingerprint (different recursive subtree).
 #[test]
 fn test_triple_nesting() {
     let triple = fingerprint_elem(&TripleNesting);
-    assert_eq!(triple, fingerprint_elem(&PureNesting));
-    assert_ne!(triple, fingerprint_elem(&SquareOnce));
+    let single = fingerprint_elem(&PureNesting);
+    assert_eq!(triple.shallow(), single.shallow());
+    assert_ne!(triple.deep(), single.deep());
+    assert_ne!(triple.shallow(), fingerprint_elem(&SquareOnce).shallow());
 
     let metrics = metrics::eval(&SingleRoutineCircuit(TripleNesting)).unwrap();
     assert_eq!(metrics.segments.len(), 4);
