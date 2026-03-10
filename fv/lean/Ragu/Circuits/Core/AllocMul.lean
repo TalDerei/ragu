@@ -1,5 +1,4 @@
 import Clean.Circuit
-import Clean.Utils.Primes
 
 namespace Ragu.Circuits.Core.AllocMul
 variable {p : ℕ} [Fact p.Prime]
@@ -12,17 +11,15 @@ deriving ProvableStruct
 
 
 def main (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
-  let ⟨x, y, z⟩ <- (witness fun _env => default : Circuit (F p) (Var Row (F p)))
+  let ⟨x, y, z⟩ ← (witness fun _env => default : Circuit (F p) (Var Row (F p)))
   assertZero (x*y - z)
   return ⟨x, y, z⟩
-
 
 def Assumptions (_inputs : Unit) := True
 
 def Spec (_inputsinputs : Unit) (out_point : Row (F p)) :=
   out_point.x * out_point.y = out_point.z
 
--- #eval! main (p:=pBabybear) default |>.operations 0
 instance elaborated : ElaboratedCircuit (F p) unit Row where
   main
   localLength _ := 3

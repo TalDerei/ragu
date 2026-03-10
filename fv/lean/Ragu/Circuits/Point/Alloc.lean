@@ -26,16 +26,21 @@ def main (_input : Unit) : Circuit (F p) (Var Point (F p)) := do
 def Assumptions (_input : Unit) := True
 
 def Spec (_input : Unit) (out : Point (F p)) :=
-  out.y * out.y = out.x * out.x * out.x + 5
+  out.y^2 = out.x^3 + 5
 
--- #eval! main (p:=pBabybear) default |>.operations 0 |>.toFlat
 instance elaborated : ElaboratedCircuit (F p) unit Point where
   main
   localLength _ := 9
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
-  sorry
+  simp [circuit_norm,
+    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions, Element.AllocSquare.Spec,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec, Element.Mul.main] at h_holds ⊢
+  obtain ⟨c1, c2, c3, c4⟩ := h_holds
+  rw [add_neg_eq_zero, c2, c1, c3] at c4
+  rw [←c4]
+  ring
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
   sorry
