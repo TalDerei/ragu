@@ -1,0 +1,121 @@
+//! Fuzz the folding-revdot invariant using structured polynomials.
+//!
+//! The core accumulation identity: for polynomials folded by a scale factor,
+//!
+//!   fold(lhs, s).revdot(fold(rhs, s))
+//!     == sum_i sum_j (s^i * s^j * lhs[i].revdot(rhs[j]))
+//!     == sum_i (s^{2i} * ky[i]) + sum_{i≠j} (s^{i+j} * error[i,j])
+//!
+//! This fuzzer verifies the first part: that folding then revdotting
+//! equals the Horner-evaluated linear combination of all pairwise revdots.
+//! It exercises sparse polynomials with varying vector lengths and partial
+//! chunk sizes.
+//!
+//! Invariant:
+//!   Polynomial::fold(lhs, s).revdot(&Polynomial::fold(rhs, t))
+//!   == sum_{i,j} s^i * t^j * lhs[i].revdot(&rhs[j])
+
+#![no_main]
+
+use arbitrary::Arbitrary;
+use ff::Field;
+use libfuzzer_sys::fuzz_target;
+use pasta_curves::Fp;
+use ragu_circuits::polynomials::{TestRank, Rank, structured::Polynomial};
+
+#[derive(Arbitrary, Debug)]
+struct Input {
+    /// Number of polynomial pairs (clamped to 1..=8)
+    count: u8,
+    /// Per-polynomial vector lengths (u, v, w, d)
+    lens: Vec<[u8; 4]>,
+    /// Coefficient seeds
+    coeffs: Vec<u64>,
+    /// Folding challenge seeds
+    s_seed: u64,
+    t_seed: u64,
+}
+
+fn build_poly(
+    lens: &[u8; 4],
+    coeffs: &mut impl Iterator<Item = Fp>,
+) -> Polynomial<Fp, TestRank> {
+    let n = TestRank::n();
+    let clamp = |l: u8| (l as usize) % (n + 1);
+    let mut poly = Polynomial::new();
+
+    let fwd = poly.forward();
+    for _ in 0..clamp(lens[0]) {
+        fwd.a.push(coeffs.next().unwrap_or(Fp::ZERO));
+    }
+    for _ in 0..clamp(lens[1]) {
+        fwd.b.push(coeffs.next().unwrap_or(Fp::ZERO));
+    }
+    for _ in 0..clamp(lens[2]) {
+        fwd.c.push(coeffs.next().unwrap_or(Fp::ZERO));
+    }
+    drop(fwd);
+    let bwd = poly.backward();
+    for _ in 0..clamp(lens[3]) {
+        bwd.c.push(coeffs.next().unwrap_or(Fp::ZERO));
+    }
+    poly
+}
+
+fuzz_target!(|input: Input| {
+    let count = ((input.count as usize) % 8).max(1);
+    if input.coeffs.len() < count * 8 {
+        return;
+    }
+
+    let s = Fp::from(input.s_seed);
+    let t = Fp::from(input.t_seed);
+
+    let mut coeff_iter = input.coeffs.iter().map(|&v| Fp::from(v));
+
+    let lhs: Vec<_> = (0..count)
+        .map(|i| build_poly(input.lens.get(i * 2).unwrap_or(&[0; 4]), &mut coeff_iter))
+        .collect();
+    let rhs: Vec<_> = (0..count)
+        .map(|i| build_poly(input.lens.get(i * 2 + 1).unwrap_or(&[0; 4]), &mut coeff_iter))
+        .collect();
+
+    // Method 1: fold then revdot
+    let folded_lhs = Polynomial::fold(lhs.iter(), s);
+    let folded_rhs = Polynomial::fold(rhs.iter(), t);
+    let folded_revdot = folded_lhs.revdot(&folded_rhs);
+
+    // Method 2: sum of s^i * t^j * lhs[i].revdot(&rhs[j])
+    let mut expected = Fp::ZERO;
+    // fold uses Horner: acc = acc*s + poly, so the first element gets s^{n-1}
+    // and the last gets s^0. Compute powers accordingly.
+    let s_powers: Vec<Fp> = {
+        let mut powers = vec![Fp::ZERO; count];
+        let mut p = Fp::ONE;
+        for i in (0..count).rev() {
+            powers[i] = p;
+            p *= s;
+        }
+        powers
+    };
+    let t_powers: Vec<Fp> = {
+        let mut powers = vec![Fp::ZERO; count];
+        let mut p = Fp::ONE;
+        for i in (0..count).rev() {
+            powers[i] = p;
+            p *= t;
+        }
+        powers
+    };
+
+    for i in 0..count {
+        for j in 0..count {
+            expected += s_powers[i] * t_powers[j] * lhs[i].revdot(&rhs[j]);
+        }
+    }
+
+    assert_eq!(
+        folded_revdot, expected,
+        "fold-then-revdot != sum of pairwise revdots for count={count}"
+    );
+});
