@@ -58,6 +58,8 @@ use ragu_core::{
     routines::Routine,
 };
 
+use core::hash::{Hash, Hasher};
+
 use super::{
     Circuit,
     raw::RawCircuit,
@@ -128,17 +130,35 @@ pub struct DeepFingerprint {
     deep: u64,
 }
 
-/// Computes the recursive deep hash from a shallow fingerprint, output
-/// evaluation, and child deep hashes.
+/// Extracts a deterministic `u64` from a [`TypeId`] by feeding its
+/// [`Hash`](core::hash::Hash) output through a passthrough
+/// [`Hasher`](core::hash::Hasher).
 ///
-/// Uses BLAKE2b to fold: `eval`, constraint counts, `output_eval`, child
-/// count, and each child's deep hash into a single 64-bit digest.
-/// [`TypeId`] fields are intentionally excluded — they are already captured
-/// in [`ShallowFingerprint`]'s `Eq`/`Hash` impl.
+/// [`TypeId`]: core::any::TypeId
+fn type_id_u64(id: TypeId) -> u64 {
+    struct PassU64(u64);
+    impl core::hash::Hasher for PassU64 {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+        fn write(&mut self, b: &[u8]) {
+            self.0 = u64::from_ne_bytes(b.try_into().unwrap());
+        }
+    }
+    let mut h = PassU64(0);
+    id.hash(&mut h);
+    h.finish()
+}
+
+/// Computes the recursive deep hash from all [`ShallowFingerprint`] fields
+/// (including [`TypeId`] pairs), `output_eval`, child count, and each
+/// child's deep hash, producing a single 64-bit BLAKE2b digest.
 ///
 /// [`TypeId`]: core::any::TypeId
 fn deep_hash(shallow: &ShallowFingerprint, output_eval: u64, children: &[u64]) -> u64 {
     let mut state = blake2b_simd::Params::new().personal(b"FIXME").to_state();
+    state.update(&type_id_u64(shallow.input_kind).to_le_bytes());
+    state.update(&type_id_u64(shallow.output_kind).to_le_bytes());
     state.update(&shallow.eval.to_le_bytes());
     state.update(&(shallow.local_num_gates as u64).to_le_bytes());
     state.update(&(shallow.local_num_constraints as u64).to_le_bytes());
