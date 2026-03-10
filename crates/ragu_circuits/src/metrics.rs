@@ -10,13 +10,22 @@
 //!
 //! # Fingerprinting
 //!
-//! A routine's fingerprint is the tuple `(TypeId(Input), TypeId(Output),
-//! eval, output_eval, num_mul, num_lc)`. The [`TypeId`] pairs cheaply narrow
-//! equivalence candidates by type; the constraint counts further partition by
-//! shape; the `eval` scalar confirms structural equivalence via random
-//! evaluation (Schwartz–Zippel); the `output_eval` scalar captures which
-//! wires flow to which output slots, distinguishing routines that impose the
-//! same constraints but return different wires.
+//! Routine fingerprints come in two levels:
+//!
+//! - **Shallow** ([`ShallowFingerprint`]): the tuple `(TypeId(Input),
+//!   TypeId(Output), eval, num_mul, num_lc)`. Captures only the routine's own
+//!   constraint shape — type pairs, constraint counts, and the Schwartz–Zippel
+//!   evaluation scalar. Two routines with the same shallow fingerprint impose
+//!   the same local constraints (with overwhelming probability) but may differ
+//!   in output wire mapping or nested subtree structure. Floor planning uses
+//!   shallow fingerprints to group routines with the same constraint shape.
+//!
+//! - **Deep** ([`DeepFingerprint`]): extends the shallow fingerprint with
+//!   `output_eval` (which wires flow to which output slots) and a recursive
+//!   `deep` hash that folds in the deep hashes of all direct child routines.
+//!   Two routines with the same deep fingerprint are fully equivalent —
+//!   same constraint structure, same output wire mapping, same recursive
+//!   subtree structure. Memoization uses deep fingerprints.
 //!
 //! The fingerprint is wrapped in [`RoutineIdentity`], an enum that
 //! distinguishes the root circuit body ([`Root`](RoutineIdentity::Root)) from
@@ -25,13 +34,13 @@
 //! traits, forcing callers to explicitly handle the root variant rather than
 //! accidentally including it in equivalence maps.
 //!
-//! The scalar is the routine's $s(X,Y)$ contribution (see
+//! The `eval` scalar is the routine's $s(X,Y)$ contribution (see
 //! [`sxy::eval`](super::s::sxy::eval)) evaluated at deterministic
 //! pseudorandom points derived from a domain-separated BLAKE2b hash: four
 //! independent geometric sequences are assigned to the $a$, $b$, $c$, $d$
-//! wires and constraint values are accumulated via Horner's rule. If two routines produce
-//! the same fingerprint, they are structurally equivalent with overwhelming
-//! probability.
+//! wires and constraint values are accumulated via Horner's rule. If two
+//! routines produce the same shallow fingerprint, they are structurally
+//! equivalent with overwhelming probability.
 //!
 //! [`TypeId`]: core::any::TypeId
 
@@ -69,27 +78,23 @@ use super::{
 pub enum RoutineIdentity {
     /// The root circuit body (record 0). Cannot be floated or memoized.
     Root,
-    /// An actual routine invocation with a Schwartz–Zippel fingerprint.
-    Routine(RoutineFingerprint),
+    /// An actual routine invocation with a deep fingerprint.
+    Routine(DeepFingerprint),
 }
 
-/// A Schwartz–Zippel fingerprint for a routine invocation's constraint
-/// structure and output wire mapping.
+/// Constraint-shape fingerprint for a single routine invocation.
 ///
-/// Two routines share a fingerprint when they have matching [`TypeId`] pairs,
-/// matching evaluation scalars (both constraint and output), and matching
-/// constraint counts.
+/// Captures only the routine's *local* constraint structure: type pairs,
+/// constraint counts, and the Schwartz–Zippel evaluation scalar. Two routines
+/// with the same shallow fingerprint impose the same local constraints (with
+/// overwhelming probability) but may differ in output wire mapping or nested
+/// subtree structure.
 ///
-/// The `eval` scalar captures the routine's constraint structure: the Horner
-/// accumulation of `enforce_zero` calls over pseudorandom wire evaluations.
-/// The `output_eval` scalar captures which wires flow to which output
-/// slots, distinguishing routines that impose the same constraints
-/// but return different wires (e.g., swapped outputs from nested routines).
+/// Floor planning uses shallow fingerprints to group routines with the same
+/// constraint shape.
 ///
 /// The 64-bit truncation gives ~2^{-64} collision probability per pair,
-/// adequate for floor-planner equivalence classes. If fingerprints are
-/// ever used for security-critical decisions, store the full field
-/// representation (`[u8; 32]`) instead — the cost is negligible.
+/// adequate for floor-planner equivalence classes.
 ///
 /// The constraint counts duplicate the values in the enclosing
 /// [`SegmentRecord`]. This is intentional: it makes the fingerprint a
@@ -98,45 +103,91 @@ pub enum RoutineIdentity {
 ///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RoutineFingerprint {
+pub struct ShallowFingerprint {
     input_kind: TypeId,
     output_kind: TypeId,
     eval: u64,
-    output_eval: u64,
     local_num_gates: usize,
     local_num_constraints: usize,
 }
 
-impl RoutineFingerprint {
-    /// Constructs a [`RoutineFingerprint`] from a routine's `Input`/`Output`
-    /// type ids, constraint and output evaluation scalars, and local constraint
-    /// counts.
+/// Full recursive fingerprint for a routine invocation.
+///
+/// Extends [`ShallowFingerprint`] with `output_eval` (which wires flow to
+/// which output slots) and a recursive `deep` hash that folds in the deep
+/// hashes of all direct child routines. Two routines with the same deep
+/// fingerprint are fully equivalent: same constraint structure, same output
+/// wire mapping, same recursive subtree structure.
+///
+/// Memoization uses deep fingerprints.
+///
+/// [`TypeId`]: core::any::TypeId
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DeepFingerprint {
+    shallow: ShallowFingerprint,
+    output_eval: u64,
+    deep: u64,
+}
+
+/// Computes the recursive deep hash from a shallow fingerprint, output
+/// evaluation, and child deep hashes.
+///
+/// Uses BLAKE2b to fold: `eval`, constraint counts, `output_eval`, child
+/// count, and each child's deep hash into a single 64-bit digest.
+fn deep_hash(shallow: &ShallowFingerprint, output_eval: u64, children: &[u64]) -> u64 {
+    let mut state = blake2b_simd::Params::new().personal(b"FIXME").to_state();
+    state.update(&shallow.eval.to_le_bytes());
+    state.update(&(shallow.local_num_gates as u64).to_le_bytes());
+    state.update(&(shallow.local_num_constraints as u64).to_le_bytes());
+    state.update(&output_eval.to_le_bytes());
+    state.update(&(children.len() as u64).to_le_bytes());
+    for child in children {
+        state.update(&child.to_le_bytes());
+    }
+    let hash = state.finalize();
+    u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
+}
+
+impl DeepFingerprint {
+    /// Constructs a [`DeepFingerprint`] from a routine's type ids, evaluation
+    /// scalars, local constraint counts, and child deep hashes.
     fn of<F: PrimeField, Ro: Routine<F>>(
         eval: F,
         output_eval: F,
         local_num_gates: usize,
         local_num_constraints: usize,
+        children_deep: &[u64],
     ) -> Self {
-        Self {
+        let shallow = ShallowFingerprint {
             input_kind: TypeId::of::<Ro::Input>(),
             output_kind: TypeId::of::<Ro::Output>(),
             eval: ragu_arithmetic::low_u64(&eval),
-            output_eval: ragu_arithmetic::low_u64(&output_eval),
             local_num_gates,
             local_num_constraints,
+        };
+        let output_eval = ragu_arithmetic::low_u64(&output_eval);
+        let deep = deep_hash(&shallow, output_eval, children_deep);
+        Self {
+            shallow,
+            output_eval,
+            deep,
         }
+    }
+
+    /// Returns the shallow fingerprint (constraint shape only).
+    pub fn shallow(&self) -> &ShallowFingerprint {
+        &self.shallow
+    }
+
+    /// Returns the recursive deep hash.
+    pub fn deep(&self) -> u64 {
+        self.deep
     }
 
     /// Returns the raw constraint evaluation scalar.
     #[cfg(test)]
     pub(crate) fn eval(&self) -> u64 {
-        self.eval
-    }
-
-    /// Returns the raw output evaluation scalar.
-    #[cfg(test)]
-    pub(crate) fn output_eval(&self) -> u64 {
-        self.output_eval
+        self.shallow.eval
     }
 }
 
@@ -260,6 +311,9 @@ struct CounterScope<F> {
 
     /// Horner accumulator for the fingerprint evaluation result.
     result: F,
+
+    /// Deep hashes of direct child routines, accumulated during execution.
+    child_deep_hashes: Vec<u64>,
 }
 
 /// A [`Driver`] that simultaneously counts constraints and computes routine
@@ -274,7 +328,7 @@ struct CounterScope<F> {
 /// Nested routine outputs are treated as auxiliary inputs to the caller: on
 /// return, output wires are remapped to fresh allocations in the parent scope
 /// rather than folding the child's fingerprint scalar. This makes each
-/// routine's fingerprint capture only its *internal* constraint structure.
+/// routine's fingerprint capture only its own constraint structure.
 struct Counter<F> {
     scope: CounterScope<F>,
     num_constraints: usize,
@@ -368,6 +422,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_d: x3,
                 remap_current: x_remap,
                 result: h,
+                child_deep_hashes: Vec::new(),
             },
             num_constraints: 0,
             num_gates: 0,
@@ -481,6 +536,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_d: self.x3,
                 remap_current: self.x_remap,
                 result: self.h,
+                child_deep_hashes: Vec::new(),
             },
         );
 
@@ -510,16 +566,18 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 
         // Extract fingerprint from the child's Horner accumulator and counts.
         let seg = &self.segments[segment_idx];
-        self.segments[segment_idx].identity =
-            RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
-                self.scope.result,
-                output_eval,
-                seg.num_gates,
-                seg.num_constraints,
-            ));
+        let fingerprint = DeepFingerprint::of::<F, Ro>(
+            self.scope.result,
+            output_eval,
+            seg.num_gates,
+            seg.num_constraints,
+            &self.scope.child_deep_hashes,
+        );
+        self.segments[segment_idx].identity = RoutineIdentity::Routine(fingerprint);
 
-        // Restore parent scope.
+        // Restore parent scope and record this child's deep hash.
         self.scope = saved;
+        self.scope.child_deep_hashes.push(fingerprint.deep);
 
         // Remap child output wires as fresh tokens in the parent context.
         // The child's geometric sequences share bases with the parent (both
@@ -548,7 +606,7 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
 
 /// Accumulates output wire evaluations into a single scalar.
 ///
-/// Used to compute the `output_eval` field of [`RoutineFingerprint`].
+/// Used to compute the `output_eval` field of [`DeepFingerprint`].
 /// Each output wire's evaluation is multiplied by a successive power of `z`
 /// and summed, capturing which wires flow to which output slots.
 struct OutputAccumulator<F> {
@@ -705,11 +763,12 @@ pub(crate) mod tests {
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.
         let seg = &counter.segments[0];
-        Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
+        Ok(RoutineIdentity::Routine(DeepFingerprint::of::<F, Ro>(
             counter.scope.result,
             output_eval,
             seg.num_gates,
             seg.num_constraints,
+            &counter.scope.child_deep_hashes,
         )))
     }
 

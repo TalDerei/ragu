@@ -32,7 +32,7 @@ pub mod staging;
 mod trace;
 mod trivial;
 
-pub use metrics::{RoutineFingerprint, RoutineIdentity, SegmentRecord};
+pub use metrics::{DeepFingerprint, RoutineIdentity, SegmentRecord, ShallowFingerprint};
 pub use trace::Trace;
 
 #[cfg(test)]
