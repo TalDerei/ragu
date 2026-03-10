@@ -1832,3 +1832,205 @@ fn test_typeid_one_wire_constraint() {
     assert_eq!(a.eval(), b.eval());
     assert_ne!(a, b);
 }
+
+mod proptest_fingerprint {
+    use super::*;
+    use crate::metrics::tests::deep_hash_wrapper;
+    use core::any::TypeId;
+    use proptest::prelude::*;
+
+    fn dhw(
+        input_kind: TypeId,
+        output_kind: TypeId,
+        eval: u64,
+        num_mul: usize,
+        num_lc: usize,
+        output_eval: u64,
+        children: &[u64],
+    ) -> u64 {
+        deep_hash_wrapper(
+            input_kind,
+            output_kind,
+            eval,
+            num_mul,
+            num_lc,
+            output_eval,
+            children,
+        )
+    }
+
+    fn tid_a() -> TypeId {
+        TypeId::of::<u8>()
+    }
+    fn tid_b() -> TypeId {
+        TypeId::of::<u16>()
+    }
+
+    fn fingerprint_square_n(n: usize) -> DeepFingerprint {
+        match n {
+            1 => fingerprint_elem(&SquareN::<1>),
+            2 => fingerprint_elem(&SquareN::<2>),
+            3 => fingerprint_elem(&SquareN::<3>),
+            4 => fingerprint_elem(&SquareN::<4>),
+            5 => fingerprint_elem(&SquareN::<5>),
+            6 => fingerprint_elem(&SquareN::<6>),
+            7 => fingerprint_elem(&SquareN::<7>),
+            8 => fingerprint_elem(&SquareN::<8>),
+            _ => unreachable!(),
+        }
+    }
+
+    proptest! {
+        // 1. deep_hash determinism
+        #[test]
+        fn deep_hash_determinism(
+            eval in any::<u64>(), num_mul in 0usize..100, num_lc in 0usize..100,
+            output_eval in any::<u64>(), children in prop::collection::vec(any::<u64>(), 0..8),
+        ) {
+            let a = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            let b = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            prop_assert_eq!(a, b);
+        }
+
+        // 2. deep_hash single-field sensitivity (6 fields)
+        #[test]
+        fn deep_hash_field_sensitivity(
+            eval in any::<u64>(), num_mul in 0usize..100, num_lc in 0usize..100,
+            output_eval in any::<u64>(), children in prop::collection::vec(any::<u64>(), 0..4),
+            alt_eval in any::<u64>(), alt_mul in 0usize..100, alt_lc in 0usize..100,
+            alt_oe in any::<u64>(),
+        ) {
+            let base = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            // input_kind
+            let v = dhw(tid_b(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            prop_assert_ne!(base, v, "input_kind");
+            // output_kind
+            let v = dhw(tid_a(), tid_a(), eval, num_mul, num_lc, output_eval, &children);
+            prop_assert_ne!(base, v, "output_kind");
+            // eval
+            prop_assume!(eval != alt_eval);
+            let v = dhw(tid_a(), tid_b(), alt_eval, num_mul, num_lc, output_eval, &children);
+            prop_assert_ne!(base, v, "eval");
+            // num_mul
+            prop_assume!(num_mul != alt_mul);
+            let v = dhw(tid_a(), tid_b(), eval, alt_mul, num_lc, output_eval, &children);
+            prop_assert_ne!(base, v, "num_mul");
+            // num_lc
+            prop_assume!(num_lc != alt_lc);
+            let v = dhw(tid_a(), tid_b(), eval, num_mul, alt_lc, output_eval, &children);
+            prop_assert_ne!(base, v, "num_lc");
+            // output_eval
+            prop_assume!(output_eval != alt_oe);
+            let v = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, alt_oe, &children);
+            prop_assert_ne!(base, v, "output_eval");
+        }
+
+        // 3. deep_hash child count discrimination
+        #[test]
+        fn deep_hash_child_count(
+            eval in any::<u64>(), output_eval in any::<u64>(),
+            base_children in prop::collection::vec(any::<u64>(), 1..8),
+        ) {
+            let full = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &base_children);
+            let shorter = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &base_children[..base_children.len() - 1]);
+            prop_assert_ne!(full, shorter, "different child counts must differ");
+        }
+
+        // 4. deep_hash child ordering (swap two)
+        #[test]
+        fn deep_hash_child_swap(
+            eval in any::<u64>(), output_eval in any::<u64>(),
+            children in prop::collection::vec(any::<u64>(), 2..8),
+            i in any::<prop::sample::Index>(), j in any::<prop::sample::Index>(),
+        ) {
+            let i = i.index(children.len());
+            let j = j.index(children.len());
+            prop_assume!(i != j && children[i] != children[j]);
+            let mut swapped = children.clone();
+            swapped.swap(i, j);
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &children);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &swapped);
+            prop_assert_ne!(a, b, "swapping children must change hash");
+        }
+
+        // 5. deep_hash permutation sensitivity (shuffle)
+        #[test]
+        fn deep_hash_permutation(
+            eval in any::<u64>(), output_eval in any::<u64>(),
+            mut children in prop::collection::vec(any::<u64>(), 3..8),
+            seed in any::<u64>(),
+        ) {
+            let original = children.clone();
+            // Simple deterministic shuffle via seed
+            let n = children.len();
+            for k in 0..n {
+                let swap_idx = (seed.wrapping_mul(k as u64 + 1).wrapping_add(7)) as usize % n;
+                children.swap(k, swap_idx);
+            }
+            prop_assume!(children != original);
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &original);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &children);
+            prop_assert_ne!(a, b, "permutation must change hash");
+        }
+
+        // 6. deep_hash framing: [0, x] vs [x]
+        #[test]
+        fn deep_hash_framing(
+            eval in any::<u64>(), output_eval in any::<u64>(),
+            x in any::<u64>(),
+        ) {
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &[0, x]);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &[x]);
+            prop_assert_ne!(a, b, "length prefix prevents [0,x] vs [x] confusion");
+        }
+
+        // 7. SquareN sensitivity: N != M => different DeepFingerprint
+        #[test]
+        fn square_n_sensitivity(n in 1usize..=8, m in 1usize..=8) {
+            prop_assume!(n != m);
+            prop_assert_ne!(
+                fingerprint_square_n(n), fingerprint_square_n(m),
+                "SquareN<{}> vs SquareN<{}>", n, m
+            );
+        }
+
+        // 8. SquareN determinism
+        #[test]
+        fn square_n_determinism(n in 1usize..=8) {
+            prop_assert_eq!(fingerprint_square_n(n), fingerprint_square_n(n));
+        }
+    }
+
+    // 9. Shallow equality for pure delegation (no local constraints)
+    #[test]
+    fn shallow_eq_pure_delegation() {
+        let pure = fingerprint_elem(&PureNesting);
+        let triple = fingerprint_elem(&TripleNesting);
+        assert_eq!(pure.shallow(), triple.shallow());
+    }
+
+    // 10. Deep inequality for different nesting depths
+    #[test]
+    fn deep_ne_nesting_depths() {
+        let pure = fingerprint_elem(&PureNesting);
+        let triple = fingerprint_elem(&TripleNesting);
+        assert_ne!(pure.deep(), triple.deep());
+    }
+
+    // 11. TypeId discrimination in deep_hash
+    #[test]
+    fn typeid_discrimination_in_deep_hash() {
+        let a = dhw(tid_a(), tid_a(), 42, 1, 1, 99, &[]);
+        let b = dhw(tid_b(), tid_a(), 42, 1, 1, 99, &[]);
+        let c = dhw(tid_a(), tid_b(), 42, 1, 1, 99, &[]);
+        assert_ne!(
+            a, b,
+            "different input TypeId must produce different deep hash"
+        );
+        assert_ne!(
+            a, c,
+            "different output TypeId must produce different deep hash"
+        );
+        assert_ne!(b, c, "swapping TypeId positions must differ");
+    }
+}
