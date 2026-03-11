@@ -112,9 +112,9 @@ fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
         Coeff::Zero => "0".to_owned(),
         Coeff::One => "1".to_owned(),
         Coeff::Two => "2".to_owned(),
-        Coeff::NegativeOne => format!("{:?}", F::ONE.neg()),
-        Coeff::Arbitrary(f) => format!("{f:?}"),
-        Coeff::NegativeArbitrary(f) => format!("-({f:?})"),
+        Coeff::NegativeOne => format!("({:?} : Expression CircuitField)", F::ONE.neg()),
+        Coeff::Arbitrary(f) => format!("({f:?} : Expression CircuitField)"),
+        Coeff::NegativeArbitrary(f) => format!("({:?} : Expression CircuitField)", f.neg()),
     }
 }
 
@@ -127,7 +127,7 @@ fn display_expr<F: Field + std::fmt::Debug>(expr: &Expr<F>) -> String {
                 format!("(var {})", i - 1)
             }
         }
-        Expr::InputVar(i) => format!("(input_var[{i}])"),
+        Expr::InputVar(i) => format!("(input_var.get {i})"),
         Expr::Const(c) => display_coeff(c),
         Expr::Add(l, r) => format!("({} + {})", display_expr(l), display_expr(r)),
         Expr::Mul(l, r) => format!("({} * {})", display_expr(l), display_expr(r)),
@@ -152,7 +152,9 @@ pub trait CircuitInstance {
         let mut dr = ExtractionDriver::<Self::Field>::new();
         let wires = Self::circuit(&mut dr).expect("circuit failed");
 
-        println!("def exported_operations : Operations CircuitField := [");
+        println!(
+            "def exported_operations (input_var : Var Inputs CircuitField) : Operations CircuitField := ["
+        );
         for op in &dr.ops {
             match op {
                 Op::Witness { count } => {
@@ -166,7 +168,9 @@ pub trait CircuitInstance {
         println!("]");
         println!();
 
-        print!("def exported_output : List (Expression CircuitField) := [");
+        print!(
+            "def exported_output (input_var : Var Inputs CircuitField) : List (Expression CircuitField) := ["
+        );
         for (i, expr) in wires.iter().enumerate() {
             if i > 0 {
                 print!(", ");
