@@ -80,10 +80,7 @@ fn main() {
     println!("def operations : Operations CircuitField := [");
     for op in &dr.ops {
         match op {
-            Op::Witness {
-                first_idx: _,
-                count,
-            } => {
+            Op::Witness { count } => {
                 println!("  Operation.witness {count} (fun _env => default),");
             }
             Op::Assert(expr) => {

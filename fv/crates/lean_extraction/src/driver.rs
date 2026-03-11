@@ -87,10 +87,7 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
     /// waste two extra wire slots) to keep allocations compact.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<Expr<F>> {
         let idx = self.alloc_wire();
-        self.ops.push(Op::Witness {
-            first_idx: idx,
-            count: 1,
-        });
+        self.ops.push(Op::Witness { count: 1 });
         Ok(Expr::Var(idx))
     }
 
@@ -113,10 +110,7 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
         let b = self.alloc_wire();
         let c = self.alloc_wire();
 
-        self.ops.push(Op::Witness {
-            first_idx: a,
-            count: 3,
-        });
+        self.ops.push(Op::Witness { count: 3 });
 
         // a * b - c = 0
         let constraint = Expr::Add(
