@@ -35,6 +35,8 @@ use crate::linexp::ExprLc;
 pub struct ExtractionDriver<F: Field> {
     /// Next wire index to assign on allocation.
     next_wire: usize,
+    /// Next input wire index to assign on input allocation.
+    next_input_wire: usize,
     /// Ordered sequence of operations recorded during synthesis.
     pub ops: Vec<Op<F>>,
     _phantom: PhantomData<F>,
@@ -47,6 +49,7 @@ impl<F: Field> ExtractionDriver<F> {
     pub fn new() -> Self {
         ExtractionDriver {
             next_wire: 1,
+            next_input_wire: 0,
             ops: Vec::new(),
             _phantom: PhantomData,
         }
@@ -57,6 +60,14 @@ impl<F: Field> ExtractionDriver<F> {
         let idx = self.next_wire;
         self.next_wire += 1;
         idx
+    }
+
+    /// Allocates `n` input wires.
+    /// NOTE: those are not part of the "main" exported trace.
+    pub fn alloc_input_wires(&mut self, n: usize) -> Vec<Expr<F>> {
+        let start = self.next_input_wire;
+        self.next_input_wire += n;
+        (start..start + n).map(Expr::InputVar).collect()
     }
 }
 

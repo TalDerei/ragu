@@ -20,6 +20,8 @@ use ragu_arithmetic::Coeff;
 pub enum Expr<F: Field> {
     /// A physical wire identified by its allocation index.
     Var(usize),
+    /// A physical input wire identified by its allocation index.
+    InputVar(usize),
     /// A field element constant (stored symbolically as [`Coeff`]).
     Const(Coeff<F>),
     /// Sum of two sub-expressions.
