@@ -2235,6 +2235,50 @@ mod proptest_fingerprint {
             let b = fingerprint_elem(&InterpretedRoutine(extended));
             prop_assert_ne!(a, b, "appending an op should change fingerprint");
         }
+
+        /// Swapping two enforce_zero ops that produce different LC values
+        /// (EnforceAcc references a wire; TrivialEnforce contributes zero)
+        /// changes the eval scalar even though constraint counts are
+        /// identical.  Tests Horner order sensitivity (Schwartz–Zippel).
+        #[test]
+        fn interpreted_enforce_order_sensitivity(prefix in arb_ops()) {
+            let mut ab = prefix.clone();
+            ab.push(Op::EnforceAcc);
+            ab.push(Op::TrivialEnforce);
+
+            let mut ba = prefix;
+            ba.push(Op::TrivialEnforce);
+            ba.push(Op::EnforceAcc);
+
+            let fp_ab = fingerprint_elem(&InterpretedRoutine(ab));
+            let fp_ba = fingerprint_elem(&InterpretedRoutine(ba));
+
+            // Same ops reordered ⇒ identical constraint counts, but the
+            // Horner accumulation is order-sensitive: different LC values
+            // land at different powers of y, producing distinct evals.
+            prop_assert_ne!(fp_ab.eval(), fp_ba.eval(),
+                "swapped enforce ops should produce different eval scalars");
+        }
+
+        /// Appending NestSquare vs NestDeep to any prefix yields the same
+        /// shallow fingerprint (both add zero local constraints) but
+        /// different deep fingerprints (different child subtree hashes).
+        #[test]
+        fn interpreted_nesting_depth_discrimination(prefix in arb_ops()) {
+            let mut with_shallow = prefix.clone();
+            with_shallow.push(Op::NestSquare);
+
+            let mut with_deep = prefix;
+            with_deep.push(Op::NestDeep);
+
+            let fp_s = fingerprint_elem(&InterpretedRoutine(with_shallow));
+            let fp_d = fingerprint_elem(&InterpretedRoutine(with_deep));
+
+            prop_assert_eq!(fp_s.shallow(), fp_d.shallow(),
+                "NestSquare and NestDeep should have identical shallow fingerprints");
+            prop_assert_ne!(fp_s.deep(), fp_d.deep(),
+                "NestSquare and NestDeep should have different deep hashes");
+        }
     }
 
     /// NestSquare and NestDeep are both pure delegation wrappers: same
@@ -2246,6 +2290,19 @@ mod proptest_fingerprint {
         let two_level = fingerprint_elem(&InterpretedRoutine(vec![Op::NestDeep]));
         assert_eq!(one_level.shallow(), two_level.shallow());
         assert_ne!(one_level.deep(), two_level.deep());
+    }
+
+    /// `[]` and `[AddSelf]` share the same eval, num_mul, and num_lc
+    /// (AddSelf adds no constraints) but differ in `output_eval`
+    /// (the output wire is doubled). Proves `output_eval` is
+    /// load-bearing in the fingerprint.
+    #[test]
+    fn output_eval_is_load_bearing() {
+        let passthrough = fingerprint_elem(&InterpretedRoutine(vec![]));
+        let doubled = fingerprint_elem(&InterpretedRoutine(vec![Op::AddSelf]));
+        assert_eq!(passthrough.shallow(), doubled.shallow());
+        assert_ne!(passthrough.output_eval(), doubled.output_eval());
+        assert_ne!(passthrough, doubled);
     }
 
     /// Interpreted op sequences reproduce the fingerprints of their
