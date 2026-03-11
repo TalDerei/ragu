@@ -138,7 +138,9 @@ fuzz_target!(|input: Input| {
                 }
                 Op::IsZero(a) => {
                     let a = a as usize % elen;
-                    let _ = elems[a].is_zero(dr);
+                    if let Ok(b) = elems[a].is_zero(dr) {
+                        bools.push(b);
+                    }
                 }
                 Op::DivNonzero(a, b) => {
                     let (a, b) = (a as usize % elen, b as usize % elen);

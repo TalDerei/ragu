@@ -12,6 +12,11 @@ use core::cell::Cell;
 use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
+use ragu_arithmetic::Cycle;
+use ragu_core::maybe::Maybe;
+use ragu_pasta::Pasta;
+use ragu_primitives::poseidon::Sponge;
+use ragu_primitives::{Element, Simulator};
 
 fn special_value(idx: u8) -> Fp {
     match idx % 8 {
@@ -25,11 +30,6 @@ fn special_value(idx: u8) -> Fp {
         _ => Fp::from(u64::MAX),
     }
 }
-use ragu_arithmetic::Cycle;
-use ragu_core::maybe::Maybe;
-use ragu_pasta::Pasta;
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Element, Simulator};
 
 #[derive(Arbitrary, Debug, Clone, Copy)]
 enum Op {
