@@ -216,6 +216,12 @@ impl DeepFingerprint {
     pub(crate) fn eval(&self) -> u64 {
         self.shallow.eval
     }
+
+    /// Returns the output wire evaluation scalar.
+    #[cfg(test)]
+    pub(crate) fn output_eval(&self) -> u64 {
+        self.output_eval
+    }
 }
 
 /// Constraint counts for one segment of the circuit, collected during synthesis.
