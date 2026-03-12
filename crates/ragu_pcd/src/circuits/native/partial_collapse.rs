@@ -163,9 +163,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             unified_output.mu.instance(),
             unified_output.nu.instance(),
         )?;
-        unified_output.mu.fill(mu.clone());
-        unified_output.nu.fill(nu.clone());
         let fold_products = fold_revdot::FoldProducts::with_product(dr, &mu, munu)?;
+        unified_output.mu.fill(mu);
+        unified_output.nu.fill(nu);
 
         // Assemble k(y) values from multiple sources. The ordering must match
         // claims's iteration order for correct folding correspondence.

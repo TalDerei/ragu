@@ -162,8 +162,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             unified_output.mu_prime.instance(),
             unified_output.nu_prime.instance(),
         )?;
-        unified_output.mu_prime.fill(mu_prime.clone());
-        unified_output.nu_prime.fill(nu_prime.clone());
 
         // Compute the final folded revdot claim c via layer 2 reduction.
         // The collapsed values from layer 1 (verified by partial_collapse) serve
@@ -171,6 +169,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         {
             let fold_products =
                 fold_revdot::FoldProducts::with_product(dr, &mu_prime, mu_prime_nu_prime)?;
+            unified_output.mu_prime.fill(mu_prime);
+            unified_output.nu_prime.fill(nu_prime);
             let computed_c = fold_products.fold_products_n::<FP>(
                 dr,
                 &error_n.error_terms,
