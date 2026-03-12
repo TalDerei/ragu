@@ -158,9 +158,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Get layer 1 folding challenges from the unified instance.
-        let mu = unified_output.mu.get(dr)?;
-        let nu = unified_output.nu.get(dr)?;
-        let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
+        // alloc_mul captures the product mu*nu as a free c wire, saving one
+        // multiplication gate compared to separate alloc + mul.
+        let (mu, nu, munu) = Element::alloc_mul(
+            dr,
+            unified_output.mu.instance(),
+            unified_output.nu.instance(),
+        )?;
+        unified_output.mu.fill(mu.clone());
+        unified_output.nu.fill(nu.clone());
+        let fold_products = fold_revdot::FoldProducts::with_product(dr, &mu, munu)?;
 
         // Assemble k(y) values from multiple sources. The ordering must match
         // claims's iteration order for correct folding correspondence.

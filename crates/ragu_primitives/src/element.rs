@@ -73,6 +73,41 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         })
     }
 
+    /// Allocates two elements and returns them along with their product.
+    ///
+    /// This costs one multiplication constraint but produces three usable
+    /// elements. The product comes from the c wire of the multiplication
+    /// gate, constrained by the protocol's multiplication identity
+    /// $a_i \cdot b_i = c_i$.
+    pub fn alloc_mul(
+        dr: &mut D,
+        a_assignment: DriverValue<D, D::F>,
+        b_assignment: DriverValue<D, D::F>,
+    ) -> Result<(Self, Self, Self)> {
+        let product = D::just(|| *a_assignment.snag() * *b_assignment.snag());
+        let (a, b, c) = dr.mul(|| {
+            Ok((
+                Coeff::Arbitrary(*a_assignment.snag()),
+                Coeff::Arbitrary(*b_assignment.snag()),
+                Coeff::Arbitrary(*product.snag()),
+            ))
+        })?;
+        Ok((
+            Element {
+                value: a_assignment,
+                wire: a,
+            },
+            Element {
+                value: b_assignment,
+                wire: b,
+            },
+            Element {
+                value: product,
+                wire: c,
+            },
+        ))
+    }
+
     /// Allocates an element $a$ with the provided witness assignment and
     /// squares it in a single step. Returns $(a, a^2)$.
     ///
