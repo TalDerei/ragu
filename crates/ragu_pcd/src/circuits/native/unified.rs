@@ -70,34 +70,6 @@ macro_rules! unified_slot_new {
     };
 }
 
-/// If a slot was set/verified, marks it on the instance's coverage
-/// (panicking if already covered).
-macro_rules! unified_coverage_cover {
-    ($field_type:ident, $coverage:expr, $was_set:expr, $field:ident) => {
-        if $was_set {
-            assert!(
-                !$coverage.$field,
-                concat!(
-                    "slot `",
-                    stringify!($field),
-                    "` covered by multiple circuits"
-                ),
-            );
-            $coverage.$field = true;
-        }
-    };
-}
-
-/// Asserts that a slot is covered.
-macro_rules! unified_coverage_assert_complete {
-    ($field_type:ident, $self:expr, $field:ident) => {
-        assert!(
-            $self.$field,
-            concat!("slot `", stringify!($field), "` not covered by any circuit"),
-        );
-    };
-}
-
 /// Generates the unified instance types: `Output`, `Instance`, `OutputBuilder`.
 ///
 /// This macro reduces boilerplate by generating all related types from a single
@@ -227,7 +199,11 @@ macro_rules! define_unified_instance {
                     $( $field: $field.0, )+
                 };
                 let instance = self.instance.map(move |mut inst| {
-                    $( unified_coverage_cover!($field_type, inst.coverage, $field.1, $field); )+
+                    $(
+                        if $field.1 {
+                            Coverage::cover(&mut inst.coverage.$field, stringify!($field));
+                        }
+                    )+
                     inst
                 });
                 Ok((output, instance))
@@ -244,8 +220,19 @@ macro_rules! define_unified_instance {
         }
 
         impl Coverage {
+            /// Marks a coverage flag, panicking on double-cover.
+            fn cover(flag: &mut bool, name: &str) {
+                assert!(!*flag, "slot `{name}` covered by multiple circuits");
+                *flag = true;
+            }
+
+            /// Asserts that a coverage flag has been set.
+            fn assert_covered(flag: bool, name: &str) {
+                assert!(flag, "slot `{name}` not covered by any circuit");
+            }
+
             fn assert_complete(self) {
-                $( unified_coverage_assert_complete!($field_type, self, $field); )+
+                $( Self::assert_covered(self.$field, stringify!($field)); )+
             }
         }
     };
@@ -304,8 +291,27 @@ define_unified_instance! {
 /// or allocate on-demand (via [`get`](Self::get)). This avoids redundant wire
 /// allocations when the same value is computed by multiple code paths.
 ///
-/// Each slot stores a pre-extracted instance value and an allocation
-/// function that converts it into a circuit gadget.
+/// `W` is the native (non-circuit) value type for the field; `T` is the
+/// corresponding circuit gadget type.
+///
+/// Each slot holds a pre-extracted `W` witness value and an allocation
+/// function `W → T`. A circuit fills the slot using one of three methods,
+/// or leaves it for `finish` to handle via [`take`](Self::take):
+///
+/// | Method | Caller | Source of value | Marks covered? |
+/// |--------|--------|----------------|----------------|
+/// | [`get`](Self::get)    | circuit | allocated from witness `W` | no  |
+/// | [`set`](Self::set)    | circuit | caller-supplied `T`        | yes |
+/// | [`verify`](Self::verify) | circuit | allocated from witness `W` | yes |
+/// | [`take`](Self::take)  | `finish` | allocated from witness `W` | no  |
+///
+/// Use [`get`](Self::get) when the circuit needs the allocated `T` during
+/// synthesis (e.g., to pass into a constraint). Omit it and let `finish`
+/// call [`take`](Self::take) when the circuit does not reference the field
+/// at all.
+///
+/// "Covered" means this circuit takes responsibility for constraining the
+/// field's correctness.
 pub struct Slot<'dr, D: Driver<'dr>, T, W: Send> {
     value: Option<T>,
     instance: DriverValue<D, W>,
@@ -547,15 +553,82 @@ mod tests {
     #[should_panic(expected = "covered by multiple circuits")]
     fn coverage_catches_element_overlap() {
         let mut cov = Coverage::default();
-        unified_coverage_cover!(Element, cov, true, w);
-        unified_coverage_cover!(Element, cov, true, w);
+        Coverage::cover(&mut cov.w, "w");
+        Coverage::cover(&mut cov.w, "w");
     }
 
     #[test]
     #[should_panic(expected = "covered by multiple circuits")]
     fn coverage_catches_point_overlap() {
         let mut cov = Coverage::default();
-        unified_coverage_cover!(Point, cov, true, nested_preamble_commitment);
-        unified_coverage_cover!(Point, cov, true, nested_preamble_commitment);
+        Coverage::cover(
+            &mut cov.nested_preamble_commitment,
+            "nested_preamble_commitment",
+        );
+        Coverage::cover(
+            &mut cov.nested_preamble_commitment,
+            "nested_preamble_commitment",
+        );
+    }
+
+    type Dr = Emulator<ragu_core::drivers::emulator::Wireless<Empty, pasta_curves::Fp>>;
+    type Sl = Slot<'static, Dr, Element<'static, Dr>, pasta_curves::Fp>;
+
+    /// Helper: creates two independent element slots and a fresh emulator.
+    fn two_element_slots() -> (Dr, Sl, Sl) {
+        let dr = Emulator::counter();
+        let a = Slot::new(Empty, Element::alloc);
+        let b = Slot::new(Empty, Element::alloc);
+        (dr, a, b)
+    }
+
+    /// `get` allocates from witness, does NOT mark covered.
+    #[test]
+    fn slot_get_allocates_without_coverage() {
+        let (mut dr, mut a, mut b) = two_element_slots();
+        a.get(&mut dr).expect("get a");
+        b.get(&mut dr).expect("get b");
+        let (_, a_set) = a.take(&mut dr).expect("take a");
+        let (_, b_set) = b.take(&mut dr).expect("take b");
+        assert!(!a_set, "get() must not mark slot a as covered");
+        assert!(!b_set, "get() must not mark slot b as covered");
+    }
+
+    /// `set` stores a caller-supplied value and marks covered.
+    #[test]
+    fn slot_set_stores_value_and_marks_covered() {
+        let (mut dr, mut a, b) = two_element_slots();
+        let val_a = Element::alloc(&mut dr, Empty).expect("alloc a");
+        a.set(val_a);
+        // b left untouched — should remain uncovered.
+        let (_, a_set) = a.take(&mut dr).expect("take a");
+        let (_, b_set) = b.take(&mut dr).expect("take b");
+        assert!(a_set, "set() must mark slot a as covered");
+        assert!(!b_set, "set() on a must not affect slot b");
+    }
+
+    /// `verify` allocates from witness AND marks covered.
+    #[test]
+    fn slot_verify_allocates_and_marks_covered() {
+        let (mut dr, mut a, mut b) = two_element_slots();
+        let _ = a.verify(&mut dr).expect("verify a");
+        // b only gets `get` — should remain uncovered.
+        b.get(&mut dr).expect("get b");
+        let (_, a_set) = a.take(&mut dr).expect("take a");
+        let (_, b_set) = b.take(&mut dr).expect("take b");
+        assert!(a_set, "verify() must mark slot a as covered");
+        assert!(!b_set, "verify() on a must not affect slot b");
+    }
+
+    /// `take` on an untouched slot allocates from witness, does NOT mark covered.
+    #[test]
+    fn slot_take_untouched_allocates_without_coverage() {
+        let (mut dr, a, mut b) = two_element_slots();
+        // a is never touched by the circuit — finish calls take directly.
+        b.verify(&mut dr).expect("verify b");
+        let (_, a_set) = a.take(&mut dr).expect("take a");
+        let (_, b_set) = b.take(&mut dr).expect("take b");
+        assert!(!a_set, "untouched slot a must not be marked as covered");
+        assert!(b_set, "verified slot b must be marked as covered");
     }
 }
