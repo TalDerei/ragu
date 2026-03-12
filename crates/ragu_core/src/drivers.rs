@@ -241,13 +241,12 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        // Default: pass the d-value as c to reuse the mul implementation.
-        // This is sound only for drivers that skip constraint checks (e.g.,
-        // emulators). Drivers that compute polynomial structure must override.
-        self.mul(|| {
-            let (a, b, d) = values()?;
-            Ok((a, b, d))
-        })
+        // Suppress unused-variable warnings for drivers that never call this.
+        let _ = values;
+        unimplemented!(
+            "this driver does not support zero_product_mul; \
+             override required for correct d-wire placement"
+        )
     }
 
     /// Asks the driver to create a virtual wire that is the linear combination
