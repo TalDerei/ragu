@@ -347,6 +347,9 @@ impl Perspective for Backward {}
 ///
 /// The caller is responsible for ensuring that none of the exposed vectors
 /// exceed [`A::n()`](super::Rank::n) in length.
+///
+/// In the forward perspective, `a→u`, `b→v`, `c→w`, `d→d`.
+/// In the backward perspective, `a→v`, `b→u`, `c→d`, `d→w`.
 pub struct View<'a, F, R: Rank, M: Perspective> {
     /// The A wires of multiplication gates.
     pub a: &'a mut Vec<F>,
@@ -356,6 +359,9 @@ pub struct View<'a, F, R: Rank, M: Perspective> {
 
     /// The C wires of multiplication gates.
     pub c: &'a mut Vec<F>,
+
+    /// The D wires of multiplication gates (available at zero-product gates).
+    pub d: &'a mut Vec<F>,
 
     _marker: core::marker::PhantomData<(R, M)>,
 }
@@ -367,6 +373,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             a: &mut self.u,
             b: &mut self.v,
             c: &mut self.w,
+            d: &mut self.d,
             _marker: core::marker::PhantomData,
         }
     }
@@ -378,6 +385,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             a: &mut self.v,
             b: &mut self.u,
             c: &mut self.d,
+            d: &mut self.w,
             _marker: core::marker::PhantomData,
         }
     }
