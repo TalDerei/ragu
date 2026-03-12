@@ -152,6 +152,7 @@ pub trait CircuitInstance {
         let mut dr = ExtractionDriver::<Self::Field>::new();
         let wires = Self::circuit(&mut dr).expect("circuit failed");
 
+        println!("set_option linter.unusedVariables false in");
         println!(
             "def exported_operations (input_var : Var Inputs CircuitField) : Operations CircuitField := ["
         );
@@ -168,6 +169,7 @@ pub trait CircuitInstance {
         println!("]");
         println!();
 
+        println!("set_option linter.unusedVariables false in");
         print!(
             "def exported_output (input_var : Var Inputs CircuitField) : List (Expression CircuitField) := ["
         );
