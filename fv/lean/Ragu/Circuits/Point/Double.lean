@@ -37,7 +37,10 @@ def Assumptions (curveParams : Spec.CurveParams (F p)) (input : Spec.Point (F p)
   curveParams.noOrderTwoPoints
 
 def Spec (curveParams : Spec.CurveParams (F p)) (input : Spec.Point (F p)) (output : Spec.Point (F p)) :=
-  output = input.double ∧
+  (match input.double with
+  | none => False -- this case never happens
+  | some double => output = double)
+  ∧
   output.isOnCurve curveParams
 
 instance elaborated : ElaboratedCircuit (F p) Spec.Point Spec.Point where
@@ -65,17 +68,17 @@ theorem soundness (curveParams : Spec.CurveParams (F p)) : Soundness (F p) elabo
   rw [c3] at c4
   clear c1 c2
 
-  simp [Spec.Point.double]
+  have hy : input_y ≠ 0 := h_order ⟨input_x, input_y⟩ h_membership
+  simp only [Spec.Point.double, if_neg hy]
 
   constructor
   · rw [c3, c4]
     ring_nf
-    simp only [and_self]
   · rw [c3, c4]
-    have h := Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_membership h_order
-    simp [Spec.Point.double] at h
-    ring_nf at ⊢ h
-    exact h
+    have h_d := Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_membership h_order
+    simp only [Spec.Point.double, if_neg hy] at h_d
+    ring_nf at ⊢ h_d
+    exact h_d
 
 
 theorem completeness (curveParams : Spec.CurveParams (F p)) : Completeness (F p) elaborated (Assumptions curveParams) := by
