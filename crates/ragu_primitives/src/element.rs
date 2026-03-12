@@ -74,7 +74,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         })
     }
 
-    /// Allocates two elements and returns them along with their product.
+    /// Allocates two fresh elements and returns them along with their product.
     ///
     /// This costs one multiplication constraint but produces three usable
     /// elements. The product comes from the free c wire of the
@@ -82,6 +82,10 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// identity $a_i \cdot b_i = c_i$. When a product is needed
     /// downstream, prefer this over separate allocations followed by a
     /// multiply — the c wire is obtained at no extra gate cost.
+    ///
+    /// This is only appropriate when both operands need fresh wires. To
+    /// multiply elements that already have wires, use [`Element::mul`].
+    /// To square, use [`Element::alloc_square`] which enforces `a == b`.
     pub fn alloc_mul(
         dr: &mut D,
         a_assignment: DriverValue<D, D::F>,
