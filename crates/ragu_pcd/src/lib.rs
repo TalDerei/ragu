@@ -218,7 +218,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 self.seed(rng, step::internal::trivial::Trivial::new(), ())
                     .expect("seeded trivial seed should not fail")
                     .0
-                    .proof
+                    .into_parts()
+                    .0
             })
             .clone()
             .carry(())
@@ -236,7 +237,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: Pcd<'source, C, R, H>,
         rng: &mut RNG,
     ) -> Result<Pcd<'source, C, R, H>> {
-
         // Seed a trivial proof for rerandomization.
         // TODO: this is a temporary hack that allows the base case logic to be simple
         let seeded_trivial = self.seeded_trivial_pcd(rng);

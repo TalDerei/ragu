@@ -216,7 +216,8 @@ fn rerandomization_preserves_header_data() {
 
     // Header data should be preserved (non-unit comparison)
     assert_eq!(
-        *original.data(), *rerandomized.data(),
+        *original.data(),
+        *rerandomized.data(),
         "rerandomization should preserve header data"
     );
     assert_eq!(
