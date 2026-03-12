@@ -470,6 +470,18 @@ mod proptests {
             .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
     }
 
+    /// Strategy that explicitly targets degenerate and extreme field values
+    /// alongside random ones.
+    fn arb_fe_with_edges() -> impl Strategy<Value = F> {
+        prop_oneof![
+            Just(F::ZERO),
+            Just(F::ONE),
+            Just(-F::ONE),
+            Just(F::ONE.double()),
+            arb_fe(),
+        ]
+    }
+
     proptest! {
         #[test]
         fn element_add_sub_roundtrip(a_fe in arb_fe(), b_fe in arb_fe()) {
@@ -503,6 +515,28 @@ mod proptests {
             } else {
                 return Err(TestCaseError::fail("missing simulated result"));
             }
+        }
+
+        // alloc_mul must produce exactly 0 allocations, 1 multiplication,
+        // and 0 linear constraints, with correct witness values.
+        #[test]
+        fn alloc_mul_constraint_cost(a_fe in arb_fe_with_edges(), b_fe in arb_fe_with_edges()) {
+            let mut actual = None;
+            let sim = Simulator::simulate((a_fe, b_fe), |dr, witness| {
+                let (a_w, b_w) = witness.cast();
+                dr.reset();
+                let (a, b, c) = Element::alloc_mul(dr, a_w, b_w)?;
+                actual = Some((*a.value().take(), *b.value().take(), *c.value().take()));
+                Ok(())
+            }).map_err(|e| TestCaseError::fail(format!("{e:?}")))?;
+
+            let (a_val, b_val, c_val) = actual.unwrap();
+            prop_assert_eq!(a_val, a_fe);
+            prop_assert_eq!(b_val, b_fe);
+            prop_assert_eq!(c_val, a_fe * b_fe);
+            prop_assert_eq!(sim.num_allocations(), 0);
+            prop_assert_eq!(sim.num_multiplications(), 1);
+            prop_assert_eq!(sim.num_linear_constraints(), 0);
         }
     }
 }
@@ -565,34 +599,6 @@ fn test_invert() -> Result<()> {
 
     inv(F::from(4578u64))?;
     assert!(inv(F::ZERO).is_err());
-
-    Ok(())
-}
-
-#[test]
-fn test_alloc_mul() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    let a_fe = F::from(7u64);
-    let b_fe = F::from(13u64);
-
-    let sim = Simulator::simulate((a_fe, b_fe), |dr, witness| {
-        let (a, b) = witness.cast();
-        dr.reset();
-        let (a, b, c) = Element::alloc_mul(dr, a, b)?;
-
-        assert_eq!(*a.value().take(), a_fe);
-        assert_eq!(*b.value().take(), b_fe);
-        assert_eq!(*c.value().take(), a_fe * b_fe);
-
-        Ok(())
-    })?;
-
-    // alloc_mul uses exactly one multiplication gate, no allocations, no LCs.
-    assert_eq!(sim.num_allocations(), 0);
-    assert_eq!(sim.num_multiplications(), 1);
-    assert_eq!(sim.num_linear_constraints(), 0);
 
     Ok(())
 }
