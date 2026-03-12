@@ -202,22 +202,22 @@ impl SegmentRecord {
 /// execution without computing actual values.
 pub struct CircuitMetrics {
     /// The number of linear constraints, including those for instance enforcement.
-    pub num_linear_constraints: usize,
+    pub(crate) num_linear_constraints: usize,
 
     /// The number of multiplication constraints, including those used for allocations.
-    pub num_multiplication_constraints: usize,
+    pub(crate) num_multiplication_constraints: usize,
 
     /// The degree of the instance polynomial $k(Y)$.
     // TODO(ebfull): not sure if we'll need this later
     #[allow(dead_code)]
-    pub degree_ky: usize,
+    pub(crate) degree_ky: usize,
 
     /// Per-segment constraint records in DFS synthesis order.
     ///
     /// See [`SegmentRecord`] for the indexing convention: index 0 is the
     /// root segment (not backed by a [`Routine`]); indices 1+ each correspond
     /// to a [`Routine`] invocation.
-    pub segments: Vec<SegmentRecord>,
+    pub(crate) segments: Vec<SegmentRecord>,
 }
 
 /// Per-routine state that is saved and restored across routine boundaries.
