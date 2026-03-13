@@ -79,6 +79,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 unified_ky,
             };
 
+            // Assert alignment between concrete k(y) count and non-stage claims.
+            assert_eq!(
+                native::num_concrete_ky(&ky_source),
+                builder.a.len() - builder.num_stages,
+                "native k(y) / claim count mismatch"
+            );
+
             native::ky_values(&ky_source)
                 .zip(builder.a.iter().zip(builder.b.iter()))
                 .all(|(ky, (a, b))| a.revdot(b) == ky)
@@ -92,6 +99,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let mut nested_builder =
                 claims::Builder::new(&self.nested_registry, y_nested, z_nested);
             claims::nested::build(&nested_source, &mut nested_builder)?;
+
+            // Assert alignment between concrete k(y) count and non-stage claims.
+            assert_eq!(
+                nested::num_concrete_ky(),
+                nested_builder.a.len() - nested_builder.num_stages,
+                "nested k(y) / claim count mismatch"
+            );
 
             let ky_source = nested::SingleProofKySource::<C::ScalarField>::new();
             nested::ky_values(&ky_source)
@@ -139,7 +153,7 @@ mod native {
         native::{KySource, RxComponent},
     };
 
-    pub use crate::components::claims::native::ky_values;
+    pub use crate::components::claims::native::{ky_values, num_concrete_ky};
 
     pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
         pub proof: &'rx Proof<C, R>,
@@ -199,7 +213,7 @@ mod nested {
         nested::{KySource, RxComponent},
     };
 
-    pub use crate::components::claims::nested::ky_values;
+    pub use crate::components::claims::nested::{ky_values, num_concrete_ky};
 
     /// Source for nested field rx polynomials for single-proof verification.
     pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
