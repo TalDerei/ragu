@@ -73,7 +73,7 @@ pub struct Builder<'m, 'rx, A, F: PrimeField, R: Rank> {
     pub a: Vec<A>,
     /// The accumulated `b` polynomials for revdot claims.
     pub b: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
-    /// Number of stage claims (k(y) = 0) added by [`stage_impl`].
+    /// Number of stage claims (k(y) = 0) added by `stage_impl`.
     pub num_stages: usize,
 }
 
