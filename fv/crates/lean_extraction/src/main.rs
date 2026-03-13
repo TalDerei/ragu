@@ -7,7 +7,8 @@ mod linexp;
 use instance::CircuitInstance;
 
 use crate::instances::{
-    point_alloc::PointAllocInstance, point_double::PointDoubleInstance, point_neg::PointNegInstance,
+    point_add::PointAddInstance, point_alloc::PointAllocInstance,
+    point_double::PointDoubleInstance, point_neg::PointNegInstance,
 };
 
 fn main() {
@@ -21,5 +22,9 @@ fn main() {
 
     println!("-- Point doubling instance:");
     PointDoubleInstance::export();
+    println!("-----------------");
+
+    println!("-- Point add instance:");
+    PointAddInstance::export();
     println!("-----------------");
 }
