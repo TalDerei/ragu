@@ -33,9 +33,7 @@ def exported_operations (input_var : Var Inputs CircuitField) : Operations Circu
 set_option linter.unusedVariables false in
 def exported_output (input_var : Var Inputs CircuitField) : List (Expression CircuitField) := [((var 8) + ((0x40000000000000000000000000000000224698fc094cf91b992d30ed00000000 : Expression CircuitField) * ((input_var.get 0) + (input_var.get 0)))), ((var 11) + ((0x40000000000000000000000000000000224698fc094cf91b992d30ed00000000 : Expression CircuitField) * (input_var.get 1)))]
 
-def EpAffineParams: Circuits.Point.Spec.CurveParams CircuitField := {b := 5}
-
-def circuit := (Circuits.Point.Double.circuit EpAffineParams).main (F:=CircuitField)
+def circuit := (Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams).main (F:=CircuitField)
 
 def deserializeInput (input : Var Inputs CircuitField) : Var Circuits.Point.Spec.Point CircuitField :=
   {

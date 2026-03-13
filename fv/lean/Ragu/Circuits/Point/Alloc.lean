@@ -7,7 +7,7 @@ import Ragu.Circuits.Point.Spec
 namespace Ragu.Circuits.Point.Alloc
 variable {p : ℕ} [Fact p.Prime]
 
-def main (curveParams : Spec.CurveParams (F p)) (_input : Unit) : Circuit (F p) (Var Spec.Point (F p)) := do
+def main (curveParams : Spec.CurveParams p) (_input : Unit) : Circuit (F p) (Var Spec.Point (F p)) := do
   let ⟨x, x2⟩ ← subcircuit Element.AllocSquare.circuit default
   let x3 ← subcircuit Element.Mul.circuit ⟨x, x2⟩
   let ⟨y, y2⟩ ← subcircuit Element.AllocSquare.circuit default
@@ -19,14 +19,14 @@ def main (curveParams : Spec.CurveParams (F p)) (_input : Unit) : Circuit (F p) 
 
 def Assumptions (_input : Unit) := True
 
-def Spec (curveParams : Spec.CurveParams (F p)) (_input : Unit) (out : Spec.Point (F p)) :=
+def Spec (curveParams : Spec.CurveParams p) (_input : Unit) (out : Spec.Point (F p)) :=
   out.isOnCurve curveParams
 
-instance elaborated (curveParams : Spec.CurveParams (F p)) : ElaboratedCircuit (F p) unit Spec.Point where
+instance elaborated (curveParams : Spec.CurveParams p) : ElaboratedCircuit (F p) unit Spec.Point where
   main := main curveParams
   localLength _ := 9
 
-theorem soundness (curveParams : Spec.CurveParams (F p)) : Soundness (F p) (elaborated curveParams) Assumptions (Spec curveParams) := by
+theorem soundness (curveParams : Spec.CurveParams p) : Soundness (F p) (elaborated curveParams) Assumptions (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm, Spec.Point.isOnCurve,
     Element.AllocSquare.circuit, Element.AllocSquare.Assumptions, Element.AllocSquare.Spec,
@@ -36,10 +36,10 @@ theorem soundness (curveParams : Spec.CurveParams (F p)) : Soundness (F p) (elab
   rw [←c4]
   ring
 
-theorem completeness (curveParams : Spec.CurveParams (F p)) : Completeness (F p) (elaborated curveParams) Assumptions := by
+theorem completeness (curveParams : Spec.CurveParams p) : Completeness (F p) (elaborated curveParams) Assumptions := by
   sorry
 
-def circuit (curveParams : Spec.CurveParams (F p)) : FormalCircuit (F p) unit Spec.Point :=
+def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) unit Spec.Point :=
   {
     (elaborated curveParams) with
     Assumptions,

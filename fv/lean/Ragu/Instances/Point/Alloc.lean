@@ -28,9 +28,7 @@ def exported_operations (input_var : Var Inputs CircuitField) : Operations Circu
 set_option linter.unusedVariables false in
 def exported_output (input_var : Var Inputs CircuitField) : List (Expression CircuitField) := [(var 0), (var 6)]
 
-def EpAffineParams: Circuits.Point.Spec.CurveParams CircuitField := {b := 5}
-
-def circuit := (Circuits.Point.Alloc.circuit EpAffineParams).main (F:=CircuitField)
+def circuit := (Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams).main (F:=CircuitField)
 
 theorem same_circuit (input : Var Inputs CircuitField):
     ((circuit input).operations 0).toFlat = (exported_operations input).toFlat := by

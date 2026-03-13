@@ -11,17 +11,19 @@ structure Point (F : Type) where
 deriving ProvableStruct
 
 /--
-  NOTE: supports only short Weierstrass curves with a = 0
+  Short Weierstrass curves with a = 0.
 
-  TODO: replace with Weierstrass in Mathlib
+  `h_small_order` is a proof that the element ζ has order 3 in the base field
 -/
-structure CurveParams (F : Type) where
-  b : F
+structure CurveParams (base_p : ℕ) where
+  b : F base_p
+  ζ : F base_p
+  h_small_order : ζ^3 = 1
 
-def Point.isOnCurve (point : Point (F p)) (curveParams : CurveParams (F p)) : Prop :=
+def Point.isOnCurve (point : Point (F p)) (curveParams : CurveParams p) : Prop :=
   point.y^2 = point.x^3 + curveParams.b
 
-def CurveParams.noOrderTwoPoints (curveParams : CurveParams (F p)) : Prop :=
+def CurveParams.noOrderTwoPoints (curveParams : CurveParams p) : Prop :=
   (∀ point : Spec.Point (F p), (point.isOnCurve curveParams) → point.y ≠ 0)
 
 
@@ -43,8 +45,12 @@ def Point.double (point : Point (F p)) : Option (Point (F p)) :=
   }
 
 -- concrete pasta curves parameters
-def EpAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.Fp := {b := 5}
-def EqAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.Fq := {b := 5}
+def EpAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.p :=
+{
+  b := 5,
+  ζ := 0x12ccca834acdba712caad5dc57aab1b01d1f8bd237ad31491dad5ebdfdfe4ab9,
+  h_small_order := by native_decide
+}
 
 end Ragu.Circuits.Point.Spec
 
@@ -52,7 +58,7 @@ namespace Ragu.Circuits.Point.Lemmas
 variable {p : ℕ} [Fact p.Prime] [NeZero (2 : F p)]
 open Spec
 
-lemma double_preserves_membership (point : Point (F p)) (curveParams: CurveParams (F p))
+lemma double_preserves_membership (point : Point (F p)) (curveParams: CurveParams p)
     (h_membership: point.isOnCurve curveParams) (h_order : curveParams.noOrderTwoPoints) :
     match point.double with
     | none =>

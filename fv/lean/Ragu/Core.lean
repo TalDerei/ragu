@@ -20,7 +20,6 @@ def Fq := F q
 instance : Field (F p) := inferInstance
 instance : Field (F q) := inferInstance
 
-
 -- 2 is not zero in both fields
 instance : NeZero (2 : F p) where
   out := by native_decide
