@@ -1,3 +1,5 @@
+<!-- BEGIN SYNC: this section must be kept in sync with README.md -->
+
 # Requirements
 
 * The minimum supported [Rust](https://rust-lang.org/) version is currently
@@ -25,3 +27,5 @@ Ragu's approach to `std` and `no_std` follows four principles:
    ecosystem.
 
 [`alloc`]: https://doc.rust-lang.org/alloc/
+
+<!-- END SYNC -->

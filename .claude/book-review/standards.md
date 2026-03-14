@@ -94,6 +94,21 @@ Specific anti-patterns to avoid:
   isolation. Flag them when they repeat within a section or when
   several appear together — not on a single occurrence.
 
+## Synced Content
+
+Some content appears in both the README and the book, delimited by
+`<!-- BEGIN SYNC -->` / `<!-- END SYNC -->` HTML comments. The canonical
+pairs are:
+
+| README section | Book page |
+|---------------|-----------|
+| `## Requirements` | `book/src/guide/requirements.md` |
+
+When reviewing changes inside a synced block, verify that the
+corresponding file contains identical content. Flag any drift as
+`must-fix`. When editing a synced block (e.g. during fix-up), update
+both files in the same change.
+
 ## Deferred Issues
 
 The file `book/FIXME.md` tracks known issues that were identified during
