@@ -64,16 +64,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.
         let mut iters = [
-            factor_iter(left.p.poly.iter_coeffs(), left.challenges.u),
-            factor_iter(right.p.poly.iter_coeffs(), right.challenges.u),
+            factor_iter(left.p.poly.iter_coeffs(), *left.challenges.u),
+            factor_iter(right.p.poly.iter_coeffs(), *right.challenges.u),
             factor_iter(left.query.registry_xy_poly.iter_coeffs(), w),
             factor_iter(right.query.registry_xy_poly.iter_coeffs(), w),
-            factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), left.challenges.y),
-            factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), right.challenges.y),
+            factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), *left.challenges.y),
+            factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), *right.challenges.y),
             factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), y),
             factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), y),
-            factor_iter(error_m.registry_wy_poly.iter_coeffs(), left.challenges.x),
-            factor_iter(error_m.registry_wy_poly.iter_coeffs(), right.challenges.x),
+            factor_iter(error_m.registry_wy_poly.iter_coeffs(), *left.challenges.x),
+            factor_iter(error_m.registry_wy_poly.iter_coeffs(), *right.challenges.x),
             factor_iter(error_m.registry_wy_poly.iter_coeffs(), x),
             factor_iter(query.registry_xy_poly.iter_coeffs(), w),
             factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(PreambleStage)),

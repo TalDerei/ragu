@@ -19,8 +19,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
     ) -> Result<proof::SPrime<C, R>> {
-        let x0 = left.challenges.x;
-        let x1 = right.challenges.x;
+        let x0 = *left.challenges.x;
+        let x1 = *right.challenges.x;
 
         let native_registry_wx0_poly = registry_at_w.wx(x0);
         let native_registry_wx0_blind = C::CircuitField::random(&mut *rng);
