@@ -67,10 +67,11 @@ use crate::components::claims::{
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 
 use super::InternalCircuitIndex;
+use super::InternalCircuitValues;
 use super::{
     stages::{
         eval as native_eval, preamble as native_preamble,
-        query::{self as native_query, ChildEvaluations, FixedRegistryEvaluations},
+        query::{self as native_query, ChildEvaluations},
     },
     unified::{self, OutputBuilder},
 };
@@ -261,23 +262,6 @@ struct ChallengeDenominators<'dr, D: Driver<'dr>> {
     xz: Element<'dr, D>,
 }
 
-/// Denominators for internal circuit omega^j evaluation points.
-struct InternalCircuitDenominators<'dr, D: Driver<'dr>> {
-    preamble_stage: Element<'dr, D>,
-    error_n_stage: Element<'dr, D>,
-    error_m_stage: Element<'dr, D>,
-    query_stage: Element<'dr, D>,
-    eval_stage: Element<'dr, D>,
-    error_m_final_staged: Element<'dr, D>,
-    error_n_final_staged: Element<'dr, D>,
-    eval_final_staged: Element<'dr, D>,
-    hashes_1_circuit: Element<'dr, D>,
-    hashes_2_circuit: Element<'dr, D>,
-    partial_collapse_circuit: Element<'dr, D>,
-    full_collapse_circuit: Element<'dr, D>,
-    compute_v_circuit: Element<'dr, D>,
-}
-
 /// Denominator component of all quotient polynomial evaluations.
 ///
 /// Each denominator represents $(u - x_i)^{-1}$ where $x_i$ is an evaluation
@@ -292,7 +276,7 @@ struct Denominators<'dr, D: Driver<'dr>> {
     left: ChildDenominators<'dr, D>,
     right: ChildDenominators<'dr, D>,
     challenges: ChallengeDenominators<'dr, D>,
-    internal: InternalCircuitDenominators<'dr, D>,
+    internal: InternalCircuitValues<Element<'dr, D>>,
 }
 
 impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
@@ -308,8 +292,6 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     where
         D::F: ff::PrimeField,
     {
-        use super::InternalCircuitIndex::*;
-
         let xz = x.mul(dr, z)?;
 
         let mut inverter = Inverter::with_base(u.clone());
@@ -327,19 +309,8 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         let challenges_y = inverter.add(dr, y)?;
         let challenges_xz = inverter.add(dr, &xz)?;
 
-        let preamble_stage = inverter.add_circuit(dr, PreambleStage)?;
-        let error_n_stage = inverter.add_circuit(dr, ErrorNStage)?;
-        let error_m_stage = inverter.add_circuit(dr, ErrorMStage)?;
-        let query_stage = inverter.add_circuit(dr, QueryStage)?;
-        let eval_stage = inverter.add_circuit(dr, EvalStage)?;
-        let error_m_final_staged = inverter.add_circuit(dr, ErrorMFinalStaged)?;
-        let error_n_final_staged = inverter.add_circuit(dr, ErrorNFinalStaged)?;
-        let eval_final_staged = inverter.add_circuit(dr, EvalFinalStaged)?;
-        let hashes_1_circuit = inverter.add_circuit(dr, Hashes1Circuit)?;
-        let hashes_2_circuit = inverter.add_circuit(dr, Hashes2Circuit)?;
-        let partial_collapse_circuit = inverter.add_circuit(dr, PartialCollapseCircuit)?;
-        let full_collapse_circuit = inverter.add_circuit(dr, FullCollapseCircuit)?;
-        let compute_v_circuit = inverter.add_circuit(dr, ComputeVCircuit)?;
+        let circuit_indices =
+            InternalCircuitValues::try_from_fn(|id| inverter.add_circuit(dr, id))?;
 
         let inverted = inverter.invert(dr)?;
 
@@ -362,21 +333,9 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
                 y: inverted[challenges_y].clone(),
                 xz: inverted[challenges_xz].clone(),
             },
-            internal: InternalCircuitDenominators {
-                preamble_stage: inverted[preamble_stage].clone(),
-                error_n_stage: inverted[error_n_stage].clone(),
-                error_m_stage: inverted[error_m_stage].clone(),
-                query_stage: inverted[query_stage].clone(),
-                eval_stage: inverted[eval_stage].clone(),
-                error_m_final_staged: inverted[error_m_final_staged].clone(),
-                error_n_final_staged: inverted[error_n_final_staged].clone(),
-                eval_final_staged: inverted[eval_final_staged].clone(),
-                hashes_1_circuit: inverted[hashes_1_circuit].clone(),
-                hashes_2_circuit: inverted[hashes_2_circuit].clone(),
-                partial_collapse_circuit: inverted[partial_collapse_circuit].clone(),
-                full_collapse_circuit: inverted[full_collapse_circuit].clone(),
-                compute_v_circuit: inverted[compute_v_circuit].clone(),
-            },
+            internal: InternalCircuitValues::from_fn(|id| {
+                inverted[*circuit_indices.get(id)].clone()
+            }),
         })
     }
 }
@@ -445,7 +404,7 @@ struct EvaluationProcessor<'a, 'dr, D: Driver<'dr>> {
     dr: &'a mut D,
     z: &'a Element<'dr, D>,
     txz: &'a Element<'dr, D>,
-    fixed_registry: &'a FixedRegistryEvaluations<'dr, D>,
+    fixed_registry: &'a InternalCircuitValues<Element<'dr, D>>,
     ax: Vec<Element<'dr, D>>,
     bx: Vec<Element<'dr, D>>,
 }
@@ -455,7 +414,7 @@ impl<'a, 'dr, D: Driver<'dr>> EvaluationProcessor<'a, 'dr, D> {
         dr: &'a mut D,
         z: &'a Element<'dr, D>,
         txz: &'a Element<'dr, D>,
-        fixed_registry: &'a FixedRegistryEvaluations<'dr, D>,
+        fixed_registry: &'a InternalCircuitValues<Element<'dr, D>>,
     ) -> Self {
         Self {
             dr,
@@ -493,7 +452,7 @@ impl<'a, 'dr, D: Driver<'dr>> Processor<&'a Element<'dr, D>, &'a Element<'dr, D>
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'a Element<'dr, D>>,
     ) {
-        let sy = self.fixed_registry.circuit_registry(id);
+        let sy = self.fixed_registry.get(id);
 
         let mut sum = Element::zero(self.dr);
 
@@ -513,7 +472,7 @@ impl<'a, 'dr, D: Driver<'dr>> Processor<&'a Element<'dr, D>, &'a Element<'dr, D>
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'a Element<'dr, D>>,
     ) -> Result<()> {
-        let sy = self.fixed_registry.circuit_registry(id);
+        let sy = self.fixed_registry.get(id);
 
         // a(xz) = fold of all rx(xz) with z (Horner's rule)
         self.ax.push(Element::fold(self.dr, rxs, self.z)?);
@@ -638,21 +597,9 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HE
         (&eval.registry_xy,            &query.registry_wxy,                              &d.challenges.w),
     ].into_iter()
     // m(\omega^j, x, y) evaluations for each internal index j
-    .chain([
-        (&query.fixed_registry.preamble_stage,           &d.internal.preamble_stage),
-        (&query.fixed_registry.error_n_stage,            &d.internal.error_n_stage),
-        (&query.fixed_registry.error_m_stage,            &d.internal.error_m_stage),
-        (&query.fixed_registry.query_stage,              &d.internal.query_stage),
-        (&query.fixed_registry.eval_stage,               &d.internal.eval_stage),
-        (&query.fixed_registry.error_m_final_staged,     &d.internal.error_m_final_staged),
-        (&query.fixed_registry.error_n_final_staged,     &d.internal.error_n_final_staged),
-        (&query.fixed_registry.eval_final_staged,        &d.internal.eval_final_staged),
-        (&query.fixed_registry.hashes_1_circuit,         &d.internal.hashes_1_circuit),
-        (&query.fixed_registry.hashes_2_circuit,         &d.internal.hashes_2_circuit),
-        (&query.fixed_registry.partial_collapse_circuit, &d.internal.partial_collapse_circuit),
-        (&query.fixed_registry.full_collapse_circuit,    &d.internal.full_collapse_circuit),
-        (&query.fixed_registry.compute_v_circuit,        &d.internal.compute_v_circuit),
-    ].into_iter().map(|(v, denom)| (&eval.registry_xy, v, denom)))
+    .chain(InternalCircuitIndex::ALL.iter().map(|&id| {
+        (&eval.registry_xy, query.fixed_registry.get(id), d.internal.get(id))
+    }))
     .chain([
         // m(circuit_id_i, x, y) evaluations for the ith child proof
         (&eval.registry_xy,            &query.left.current_registry_xy_at_child_circuit_id,  &d.left.circuit_id),

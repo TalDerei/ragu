@@ -32,26 +32,9 @@ use core::marker::PhantomData;
 
 use crate::Proof;
 
-use crate::circuits::native::{InternalCircuitIndex, NUM_INTERNAL_CIRCUITS};
+use crate::circuits::native::{InternalCircuitIndex, InternalCircuitValues, NUM_INTERNAL_CIRCUITS};
 
 pub(crate) use InternalCircuitIndex::QueryStage as STAGING_ID;
-
-/// Pre-computed evaluations of registry_xy at each internal circuit's omega^j.
-pub struct FixedRegistryWitness<F> {
-    pub preamble_stage: F,
-    pub error_n_stage: F,
-    pub error_m_stage: F,
-    pub query_stage: F,
-    pub eval_stage: F,
-    pub error_m_final_staged: F,
-    pub error_n_final_staged: F,
-    pub eval_final_staged: F,
-    pub hashes_1_circuit: F,
-    pub hashes_2_circuit: F,
-    pub partial_collapse_circuit: F,
-    pub full_collapse_circuit: F,
-    pub compute_v_circuit: F,
-}
 
 /// Witness for a child proof's polynomial evaluations.
 pub struct ChildEvaluationsWitness<F> {
@@ -139,7 +122,7 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
 /// Witness data for the query stage.
 pub struct Witness<C: Cycle> {
     /// Pre-computed registry_xy evaluations at each internal circuit's omega^j.
-    pub fixed_registry: FixedRegistryWitness<C::CircuitField>,
+    pub fixed_registry: InternalCircuitValues<C::CircuitField>,
     /// m(w, x, y) - verifies registry_xy/registry_wy consistency at current coordinates.
     pub registry_wxy: C::CircuitField,
     /// Left child proof polynomial evaluations.
@@ -148,87 +131,52 @@ pub struct Witness<C: Cycle> {
     pub right: ChildEvaluationsWitness<C::CircuitField>,
 }
 
-/// Evaluations of registry_xy at each internal circuit's circuit_id (omega^j).
-#[derive(Gadget)]
-pub struct FixedRegistryEvaluations<'dr, D: Driver<'dr>> {
-    #[ragu(gadget)]
-    pub preamble_stage: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub error_n_stage: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub error_m_stage: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub query_stage: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub eval_stage: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub error_m_final_staged: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub error_n_final_staged: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub eval_final_staged: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub hashes_1_circuit: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub hashes_2_circuit: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub partial_collapse_circuit: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub full_collapse_circuit: Element<'dr, D>,
-    #[ragu(gadget)]
-    pub compute_v_circuit: Element<'dr, D>,
+/// Allocate [`InternalCircuitValues`] of [`Element`]s from pre-computed witness
+/// values.
+pub(crate) fn alloc_fixed_registry<'dr, D: Driver<'dr>>(
+    dr: &mut D,
+    witness: DriverValue<D, &InternalCircuitValues<D::F>>,
+) -> Result<InternalCircuitValues<Element<'dr, D>>> {
+    InternalCircuitValues::try_from_fn(|id| {
+        Element::alloc(dr, witness.as_ref().map(|w| *w.get(id)))
+    })
 }
 
-impl<'dr, D: Driver<'dr>> FixedRegistryEvaluations<'dr, D> {
-    /// Allocate fixed registry evaluations from pre-computed witness values.
-    pub fn alloc(dr: &mut D, witness: DriverValue<D, &FixedRegistryWitness<D::F>>) -> Result<Self> {
-        Ok(FixedRegistryEvaluations {
-            preamble_stage: Element::alloc(dr, witness.as_ref().map(|w| w.preamble_stage))?,
-            error_n_stage: Element::alloc(dr, witness.as_ref().map(|w| w.error_n_stage))?,
-            error_m_stage: Element::alloc(dr, witness.as_ref().map(|w| w.error_m_stage))?,
-            query_stage: Element::alloc(dr, witness.as_ref().map(|w| w.query_stage))?,
-            eval_stage: Element::alloc(dr, witness.as_ref().map(|w| w.eval_stage))?,
-            error_m_final_staged: Element::alloc(
-                dr,
-                witness.as_ref().map(|w| w.error_m_final_staged),
-            )?,
-            error_n_final_staged: Element::alloc(
-                dr,
-                witness.as_ref().map(|w| w.error_n_final_staged),
-            )?,
-            eval_final_staged: Element::alloc(dr, witness.as_ref().map(|w| w.eval_final_staged))?,
-            hashes_1_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_1_circuit))?,
-            hashes_2_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.hashes_2_circuit))?,
-            partial_collapse_circuit: Element::alloc(
-                dr,
-                witness.as_ref().map(|w| w.partial_collapse_circuit),
-            )?,
-            full_collapse_circuit: Element::alloc(
-                dr,
-                witness.as_ref().map(|w| w.full_collapse_circuit),
-            )?,
-            compute_v_circuit: Element::alloc(dr, witness.as_ref().map(|w| w.compute_v_circuit))?,
-        })
+impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for InternalCircuitValues<Element<'dr, D>> {
+    type Kind = InternalCircuitValues<Element<'static, PhantomData<D::F>>>;
+}
+
+// SAFETY: `Element` is `Send` when `D::Wire: Send`, and `InternalCircuitValues`
+// is a plain product of `Element`s, so the same implication holds.
+unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
+    for InternalCircuitValues<Element<'static, PhantomData<F>>>
+{
+    type Rebind<'dr, D: Driver<'dr, F = F>> = InternalCircuitValues<Element<'dr, D>>;
+
+    fn map_gadget<
+        'src,
+        'dst,
+        WM: ragu_core::convert::WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+    >(
+        this: &InternalCircuitValues<Element<'src, WM::Src>>,
+        wm: &mut WM,
+    ) -> Result<InternalCircuitValues<Element<'dst, WM::Dst>>> {
+        InternalCircuitValues::try_from_fn(|id| this.get(id).map(wm))
     }
 
-    /// Look up the registry evaluation for the given internal circuit index.
-    pub fn circuit_registry(&self, id: InternalCircuitIndex) -> &Element<'dr, D> {
-        use InternalCircuitIndex::*;
-        match id {
-            Hashes1Circuit => &self.hashes_1_circuit,
-            Hashes2Circuit => &self.hashes_2_circuit,
-            PartialCollapseCircuit => &self.partial_collapse_circuit,
-            FullCollapseCircuit => &self.full_collapse_circuit,
-            ComputeVCircuit => &self.compute_v_circuit,
-            PreambleStage => &self.preamble_stage,
-            ErrorMStage => &self.error_m_stage,
-            ErrorNStage => &self.error_n_stage,
-            QueryStage => &self.query_stage,
-            EvalStage => &self.eval_stage,
-            ErrorMFinalStaged => &self.error_m_final_staged,
-            ErrorNFinalStaged => &self.error_n_final_staged,
-            EvalFinalStaged => &self.eval_final_staged,
+    fn enforce_equal_gadget<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &InternalCircuitValues<Element<'dr, D2>>,
+        b: &InternalCircuitValues<Element<'dr, D2>>,
+    ) -> Result<()> {
+        for &id in &InternalCircuitIndex::ALL {
+            a.get(id).enforce_equal(dr, b.get(id))?;
         }
+        Ok(())
     }
 }
 
@@ -345,7 +293,7 @@ impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
 pub struct Output<'dr, D: Driver<'dr>> {
     /// Fixed registry evaluations at each internal circuit's omega^j.
     #[ragu(gadget)]
-    pub fixed_registry: FixedRegistryEvaluations<'dr, D>,
+    pub fixed_registry: InternalCircuitValues<Element<'dr, D>>,
     /// m(w, x, y) - verifies registry_xy/registry_wy consistency at current coordinates.
     #[ragu(gadget)]
     pub registry_wxy: Element<'dr, D>,
@@ -371,7 +319,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        // FixedRegistryEvaluations (13) + registry_wxy (1) + 2 * ChildEvaluations (16 each)
+        // InternalCircuitValues (13) + registry_wxy (1) + 2 * ChildEvaluations (16 each)
         NUM_INTERNAL_CIRCUITS + 1 + 2 * 16
     }
 
@@ -383,8 +331,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
-        let fixed_registry =
-            FixedRegistryEvaluations::alloc(dr, witness.as_ref().map(|w| &w.fixed_registry))?;
+        let fixed_registry = alloc_fixed_registry(dr, witness.as_ref().map(|w| &w.fixed_registry))?;
         let registry_wxy = Element::alloc(dr, witness.as_ref().map(|w| w.registry_wxy))?;
         let left = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.left))?;
         let right = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.right))?;

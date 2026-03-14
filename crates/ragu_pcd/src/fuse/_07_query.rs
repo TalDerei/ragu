@@ -18,7 +18,7 @@ use rand::CryptoRng;
 use crate::{
     Application, Proof,
     circuits::{
-        native::InternalCircuitIndex, native::stages::query as native,
+        native::InternalCircuitValues, native::stages::query as native,
         nested::stages::query as nested,
     },
     proof,
@@ -39,8 +39,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        use InternalCircuitIndex::*;
-
         let w = *w.value().take();
         let x = *x.value().take();
         let y = *y.value().take();
@@ -49,29 +47,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let registry_xy_poly = self.native_registry.xy(x, y);
         let registry_xy_blind = C::CircuitField::random(&mut *rng);
 
-        let registry_at = |idx: InternalCircuitIndex| -> C::CircuitField {
-            let circuit_id = idx.circuit_index();
-            registry_xy_poly.eval(circuit_id.omega_j())
-        };
-
         let query_witness = native::Witness {
-            fixed_registry: native::FixedRegistryWitness {
-                // TODO: these can all be evaluated at the same time; in fact,
-                // that's what registry.xy is supposed to allow.
-                preamble_stage: registry_at(PreambleStage),
-                error_m_stage: registry_at(ErrorMStage),
-                error_n_stage: registry_at(ErrorNStage),
-                query_stage: registry_at(QueryStage),
-                eval_stage: registry_at(EvalStage),
-                error_m_final_staged: registry_at(ErrorMFinalStaged),
-                error_n_final_staged: registry_at(ErrorNFinalStaged),
-                eval_final_staged: registry_at(EvalFinalStaged),
-                hashes_1_circuit: registry_at(Hashes1Circuit),
-                hashes_2_circuit: registry_at(Hashes2Circuit),
-                partial_collapse_circuit: registry_at(PartialCollapseCircuit),
-                full_collapse_circuit: registry_at(FullCollapseCircuit),
-                compute_v_circuit: registry_at(ComputeVCircuit),
-            },
+            // TODO: these can all be evaluated at the same time; in fact,
+            // that's what registry.xy is supposed to allow.
+            fixed_registry: InternalCircuitValues::from_fn(|id| {
+                registry_xy_poly.eval(id.circuit_index().omega_j())
+            }),
             registry_wxy: registry_xy_poly.eval(w),
             left: native::ChildEvaluationsWitness::from_proof(
                 left,
