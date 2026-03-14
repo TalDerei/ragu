@@ -43,9 +43,6 @@ pub struct RxTriple<C: Cycle, R: Rank> {
 /// is expected, catching a class of subtle protocol bugs at compile time.
 /// Use [`Deref`] (`*challenge`) to obtain the underlying field element for
 /// arithmetic.
-///
-/// Follows the same pattern as halo2's
-/// [`ChallengeScalar`](https://github.com/zcash/halo2).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Challenge<F, T> {
     inner: F,
