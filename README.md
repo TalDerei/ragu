@@ -16,6 +16,22 @@
 * [Crate documentation](https://docs.rs/ragu) is available for official Ragu crate releases.
 * Unofficial (internal) library documentation is [continually rendered](https://tachyon.z.cash/ragu/internal/ragu/) from the `main` branch. This is primarily for developers of Ragu.
 
+## Minimum Supported Rust Version
+
+Requires Rust **1.90** or higher. The minimum supported Rust version (MSRV) may be changed in the future, but it will be done with a minor version bump.
+
+## Controlling Parallelism
+
+`ragu` uses [`maybe-rayon`](https://crates.io/crates/maybe-rayon) for parallel computation. Parallelism is enabled via the `multicore` feature flag, which is **on by default**. The number of threads can be controlled with the `RAYON_NUM_THREADS` environment variable.
+
+To disable parallelism (e.g. for `no_std` or single-threaded targets):
+
+```
+cargo build --no-default-features
+```
+
+This will cause `ragu` to perform all computation on a single thread, which will significantly degrade performance.
+
 ## License
 
 This library is distributed under the terms of both the MIT license and the Apache License (Version 2.0). See [LICENSE-APACHE](./LICENSE-APACHE), [LICENSE-MIT](./LICENSE-MIT) and [COPYRIGHT](./COPYRIGHT).
