@@ -28,7 +28,10 @@ use crate::{
     Application, Pcd, Proof, RAGU_TAG,
     components::claims::{Source, native::RxComponent},
     components::transcript::Transcript,
-    proof,
+    proof::{
+        self, ChallengeAlpha, ChallengeMu, ChallengeMuPrime, ChallengeNu, ChallengeNuPrime,
+        ChallengePreBeta, ChallengeU, ChallengeW, ChallengeX, ChallengeY, ChallengeZ,
+    },
     step::Step,
 };
 
@@ -67,14 +70,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             self.compute_preamble(rng, &left, &right, &application)?;
         let preamble_commitment = Point::constant(&mut dr, preamble.nested_commitment)?;
         preamble_commitment.write(&mut dr, &mut transcript)?;
-        let w = transcript.challenge(&mut dr)?;
+        let w = transcript.typed_challenge::<ChallengeW>(&mut dr)?;
         let registry_at_w = self.native_registry.at(*w.value().take());
 
         let s_prime = self.compute_s_prime(rng, &registry_at_w, &left, &right)?;
         let s_prime_commitment = Point::constant(&mut dr, s_prime.nested_s_prime_commitment)?;
         s_prime_commitment.write(&mut dr, &mut transcript)?;
-        let y = transcript.challenge(&mut dr)?;
-        let z = transcript.challenge(&mut dr)?;
+        let y = transcript.typed_challenge::<ChallengeY>(&mut dr)?;
+        let z = transcript.typed_challenge::<ChallengeZ>(&mut dr)?;
 
         let (error_m, error_m_witness, claims) =
             self.compute_errors_m(rng, &registry_at_w, &y, &z, &left, &right)?;
@@ -92,8 +95,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             .map(|e| *e.value().take())
             .collect_fixed()?;
 
-        let mu = transcript.challenge(&mut dr)?;
-        let nu = transcript.challenge(&mut dr)?;
+        let mu = transcript.typed_challenge::<ChallengeMu>(&mut dr)?;
+        let nu = transcript.typed_challenge::<ChallengeNu>(&mut dr)?;
 
         let (error_n, error_n_witness, a, b) = self.compute_errors_n(
             rng,
@@ -107,32 +110,32 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
         let error_n_commitment = Point::constant(&mut dr, error_n.nested_commitment)?;
         error_n_commitment.write(&mut dr, &mut transcript)?;
-        let mu_prime = transcript.challenge(&mut dr)?;
-        let nu_prime = transcript.challenge(&mut dr)?;
+        let mu_prime = transcript.typed_challenge::<ChallengeMuPrime>(&mut dr)?;
+        let nu_prime = transcript.typed_challenge::<ChallengeNuPrime>(&mut dr)?;
 
         let ab = self.compute_ab(rng, a, b, &mu_prime, &nu_prime)?;
         let ab_commitment = Point::constant(&mut dr, ab.nested_commitment)?;
         ab_commitment.write(&mut dr, &mut transcript)?;
-        let x = transcript.challenge(&mut dr)?;
+        let x = transcript.typed_challenge::<ChallengeX>(&mut dr)?;
 
         let (query, query_witness) =
             self.compute_query(rng, &w, &x, &y, &z, &error_m, &left, &right)?;
         let query_commitment = Point::constant(&mut dr, query.nested_commitment)?;
         query_commitment.write(&mut dr, &mut transcript)?;
-        let alpha = transcript.challenge(&mut dr)?;
+        let alpha = transcript.typed_challenge::<ChallengeAlpha>(&mut dr)?;
 
         let f = self.compute_f(
             rng, &w, &y, &z, &x, &alpha, &s_prime, &error_m, &ab, &query, &left, &right,
         )?;
         let f_commitment = Point::constant(&mut dr, f.nested_commitment)?;
         f_commitment.write(&mut dr, &mut transcript)?;
-        let u = transcript.challenge(&mut dr)?;
+        let u = transcript.typed_challenge::<ChallengeU>(&mut dr)?;
 
         let (eval, eval_witness) =
             self.compute_eval(rng, &u, &left, &right, &s_prime, &error_m, &ab, &query)?;
         let eval_commitment = Point::constant(&mut dr, eval.nested_commitment)?;
         eval_commitment.write(&mut dr, &mut transcript)?;
-        let pre_beta = transcript.challenge(&mut dr)?;
+        let pre_beta = transcript.typed_challenge::<ChallengePreBeta>(&mut dr)?;
 
         let p = self.compute_p(
             &pre_beta, &u, &left, &right, &s_prime, &error_m, &ab, &query, &f,

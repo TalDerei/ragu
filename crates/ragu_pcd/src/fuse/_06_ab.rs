@@ -45,7 +45,7 @@ use crate::{
     Application,
     circuits::nested,
     components::fold_revdot::{self, NativeParameters},
-    proof,
+    proof::{self, Challenge, ChallengeMuPrime, ChallengeNuPrime},
 };
 
 type NativeN = <NativeParameters as fold_revdot::Parameters>::N;
@@ -56,8 +56,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         a: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
-        mu_prime: &Element<'dr, D>,
-        nu_prime: &Element<'dr, D>,
+        mu_prime: &Challenge<Element<'dr, D>, ChallengeMuPrime>,
+        nu_prime: &Challenge<Element<'dr, D>, ChallengeNuPrime>,
     ) -> Result<proof::AB<C, R>>
     where
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,

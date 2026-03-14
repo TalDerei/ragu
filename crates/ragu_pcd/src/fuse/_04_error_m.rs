@@ -25,7 +25,7 @@ use crate::{
         claims,
         fold_revdot::{self, NativeParameters},
     },
-    proof,
+    proof::{self, Challenge, ChallengeY, ChallengeZ},
 };
 
 use super::FuseProofSource;
@@ -35,8 +35,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         registry_at_w: &RegistryAt<'_, C::CircuitField, R>,
-        y: &Element<'dr, D>,
-        z: &Element<'dr, D>,
+        y: &Challenge<Element<'dr, D>, ChallengeY>,
+        z: &Challenge<Element<'dr, D>, ChallengeZ>,
         left: &'rx Proof<C, R>,
         right: &'rx Proof<C, R>,
     ) -> Result<(

@@ -26,18 +26,21 @@ use rand::CryptoRng;
 use alloc::vec::Vec;
 
 use crate::{
-    Application, Proof, circuits::native::InternalCircuitIndex, circuits::nested::stages::f, proof,
+    Application, Proof,
+    circuits::native::InternalCircuitIndex,
+    circuits::nested::stages::f,
+    proof::{self, Challenge, ChallengeAlpha, ChallengeW, ChallengeX, ChallengeY, ChallengeZ},
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_f<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        w: &Element<'dr, D>,
-        y: &Element<'dr, D>,
-        z: &Element<'dr, D>,
-        x: &Element<'dr, D>,
-        alpha: &Element<'dr, D>,
+        w: &Challenge<Element<'dr, D>, ChallengeW>,
+        y: &Challenge<Element<'dr, D>, ChallengeY>,
+        z: &Challenge<Element<'dr, D>, ChallengeZ>,
+        x: &Challenge<Element<'dr, D>, ChallengeX>,
+        alpha: &Challenge<Element<'dr, D>, ChallengeAlpha>,
         s_prime: &proof::SPrime<C, R>,
         error_m: &proof::ErrorM<C, R>,
         ab: &proof::AB<C, R>,

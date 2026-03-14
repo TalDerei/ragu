@@ -31,7 +31,7 @@ use crate::{
         claims,
         fold_revdot::{self, NativeParameters},
     },
-    proof,
+    proof::{self, Challenge, ChallengeMu, ChallengeNu, ChallengeY},
 };
 
 type NativeN = <NativeParameters as fold_revdot::Parameters>::N;
@@ -43,9 +43,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, NativeParameters>,
         claims: claims::Builder<'_, '_, C::CircuitField, R>,
-        y: &Element<'dr, D>,
-        mu: &Element<'dr, D>,
-        nu: &Element<'dr, D>,
+        y: &Challenge<Element<'dr, D>, ChallengeY>,
+        mu: &Challenge<Element<'dr, D>, ChallengeMu>,
+        nu: &Challenge<Element<'dr, D>, ChallengeNu>,
         sponge_state_elements: FixedVec<
             C::CircuitField,
             ragu_primitives::poseidon::PoseidonStateLen<C::CircuitField, C::CircuitPoseidon>,

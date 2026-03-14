@@ -22,7 +22,7 @@ use rand::CryptoRng;
 use crate::{
     Application, Proof,
     circuits::{self, native, native::stages::query, nested},
-    proof,
+    proof::{self, Challenge, ChallengeW, ChallengeX, ChallengeY, ChallengeZ},
 };
 use native::InternalCircuitIndex;
 
@@ -30,10 +30,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     pub(super) fn compute_query<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        w: &Element<'dr, D>,
-        x: &Element<'dr, D>,
-        y: &Element<'dr, D>,
-        z: &Element<'dr, D>,
+        w: &Challenge<Element<'dr, D>, ChallengeW>,
+        x: &Challenge<Element<'dr, D>, ChallengeX>,
+        y: &Challenge<Element<'dr, D>, ChallengeY>,
+        z: &Challenge<Element<'dr, D>, ChallengeZ>,
         error_m: &proof::ErrorM<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
