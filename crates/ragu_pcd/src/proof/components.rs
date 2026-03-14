@@ -1,3 +1,6 @@
+use core::marker::PhantomData;
+use core::ops::Deref;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -11,6 +14,86 @@ use ragu_core::{
 use ragu_primitives::Element;
 
 use alloc::vec::Vec;
+
+/// A field element tagged with a phantom type marker indicating its protocol
+/// role as a specific Fiat-Shamir challenge.
+///
+/// The phantom tag `T` prevents accidentally passing one challenge where another
+/// is expected, catching a class of subtle protocol bugs at compile time.
+/// Use [`Deref`] (`*challenge`) to obtain the underlying field element for
+/// arithmetic.
+///
+/// Follows the same pattern as halo2's
+/// [`ChallengeScalar`](https://github.com/zcash/halo2).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Challenge<F, T> {
+    inner: F,
+    _marker: PhantomData<T>,
+}
+
+impl<F, T> Challenge<F, T> {
+    pub(crate) fn new(value: F) -> Self {
+        Self {
+            inner: value,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F, T> Deref for Challenge<F, T> {
+    type Target = F;
+
+    fn deref(&self) -> &F {
+        &self.inner
+    }
+}
+
+// ZST markers for each challenge role in the protocol. These are phantom type
+// parameters only — never instantiated as values.
+
+/// Registry evaluation point $w$, squeezed after the preamble commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeW;
+
+/// First folding challenge $y$, squeezed after the $s'$ commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeY;
+
+/// Second folding challenge $z$, squeezed after the $s'$ commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeZ;
+
+/// First folding layer challenge $\mu$, squeezed after the error\_m commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeMu;
+
+/// First folding layer challenge $\nu$, squeezed after the error\_m commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeNu;
+
+/// Second folding layer challenge $\mu'$, squeezed after the error\_n commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeMuPrime;
+
+/// Second folding layer challenge $\nu'$, squeezed after the error\_n commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeNuPrime;
+
+/// Polynomial commitment challenge $x$, squeezed after the ab commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeX;
+
+/// Query polynomial challenge $\alpha$, squeezed after the query commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeAlpha;
+
+/// Final polynomial evaluation challenge $u$, squeezed after the eval commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengeU;
+
+/// Pre-endoscalar beta challenge, squeezed after the eval commitment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChallengePreBeta;
 
 #[derive(Clone)]
 pub(crate) struct Application<C: Cycle, R: Rank> {
@@ -128,18 +211,18 @@ pub(crate) struct P<C: Cycle, R: Rank> {
 
 #[derive(Clone)]
 pub(crate) struct Challenges<C: Cycle> {
-    pub(crate) w: C::CircuitField,
-    pub(crate) y: C::CircuitField,
-    pub(crate) z: C::CircuitField,
-    pub(crate) mu: C::CircuitField,
-    pub(crate) nu: C::CircuitField,
-    pub(crate) mu_prime: C::CircuitField,
-    pub(crate) nu_prime: C::CircuitField,
-    pub(crate) x: C::CircuitField,
-    pub(crate) alpha: C::CircuitField,
-    pub(crate) u: C::CircuitField,
+    pub(crate) w: Challenge<C::CircuitField, ChallengeW>,
+    pub(crate) y: Challenge<C::CircuitField, ChallengeY>,
+    pub(crate) z: Challenge<C::CircuitField, ChallengeZ>,
+    pub(crate) mu: Challenge<C::CircuitField, ChallengeMu>,
+    pub(crate) nu: Challenge<C::CircuitField, ChallengeNu>,
+    pub(crate) mu_prime: Challenge<C::CircuitField, ChallengeMuPrime>,
+    pub(crate) nu_prime: Challenge<C::CircuitField, ChallengeNuPrime>,
+    pub(crate) x: Challenge<C::CircuitField, ChallengeX>,
+    pub(crate) alpha: Challenge<C::CircuitField, ChallengeAlpha>,
+    pub(crate) u: Challenge<C::CircuitField, ChallengeU>,
     /// Pre-endoscalar beta challenge. Effective beta is derived via endoscalar extraction.
-    pub(crate) pre_beta: C::CircuitField,
+    pub(crate) pre_beta: Challenge<C::CircuitField, ChallengePreBeta>,
 }
 
 impl<C: Cycle> Challenges<C> {
@@ -160,33 +243,33 @@ impl<C: Cycle> Challenges<C> {
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
         Self {
-            w: *w.value().take(),
-            y: *y.value().take(),
-            z: *z.value().take(),
-            mu: *mu.value().take(),
-            nu: *nu.value().take(),
-            mu_prime: *mu_prime.value().take(),
-            nu_prime: *nu_prime.value().take(),
-            x: *x.value().take(),
-            alpha: *alpha.value().take(),
-            u: *u.value().take(),
-            pre_beta: *pre_beta.value().take(),
+            w: Challenge::new(*w.value().take()),
+            y: Challenge::new(*y.value().take()),
+            z: Challenge::new(*z.value().take()),
+            mu: Challenge::new(*mu.value().take()),
+            nu: Challenge::new(*nu.value().take()),
+            mu_prime: Challenge::new(*mu_prime.value().take()),
+            nu_prime: Challenge::new(*nu_prime.value().take()),
+            x: Challenge::new(*x.value().take()),
+            alpha: Challenge::new(*alpha.value().take()),
+            u: Challenge::new(*u.value().take()),
+            pre_beta: Challenge::new(*pre_beta.value().take()),
         }
     }
 
     pub(crate) fn trivial() -> Self {
         Self {
-            w: C::CircuitField::ZERO,
-            y: C::CircuitField::ZERO,
-            z: C::CircuitField::ZERO,
-            mu: C::CircuitField::ZERO,
-            nu: C::CircuitField::ZERO,
-            mu_prime: C::CircuitField::ZERO,
-            nu_prime: C::CircuitField::ZERO,
-            x: C::CircuitField::ZERO,
-            alpha: C::CircuitField::ZERO,
-            u: C::CircuitField::ZERO,
-            pre_beta: C::CircuitField::ZERO,
+            w: Challenge::new(C::CircuitField::ZERO),
+            y: Challenge::new(C::CircuitField::ZERO),
+            z: Challenge::new(C::CircuitField::ZERO),
+            mu: Challenge::new(C::CircuitField::ZERO),
+            nu: Challenge::new(C::CircuitField::ZERO),
+            mu_prime: Challenge::new(C::CircuitField::ZERO),
+            nu_prime: Challenge::new(C::CircuitField::ZERO),
+            x: Challenge::new(C::CircuitField::ZERO),
+            alpha: Challenge::new(C::CircuitField::ZERO),
+            u: Challenge::new(C::CircuitField::ZERO),
+            pre_beta: Challenge::new(C::CircuitField::ZERO),
         }
     }
 }
