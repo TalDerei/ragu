@@ -292,3 +292,82 @@ pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
     pub(crate) compute_v_blind: C::CircuitField,
     pub(crate) compute_v_commitment: C::HostCurve,
 }
+
+/// Verify that `Challenge<F, T>` is zero-cost, produces distinct types per
+/// ZST marker, derefs transparently, and that typed function boundaries
+/// reject mismatched tags at compile time.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::any::TypeId;
+    use core::mem::size_of;
+    use ff::Field;
+    use ragu_pasta::{Fp, Pasta};
+
+    #[test]
+    fn challenge_is_zero_cost() {
+        assert_eq!(size_of::<Challenge<Fp, ChallengeW>>(), size_of::<Fp>());
+        assert_eq!(size_of::<Challenge<Fp, ChallengeX>>(), size_of::<Fp>());
+        assert_eq!(size_of::<Challenge<u64, ChallengeY>>(), size_of::<u64>());
+    }
+
+    #[test]
+    fn deref_round_trip() {
+        let value = Fp::from(42u64);
+        let challenge = Challenge::<Fp, ChallengeW>::new(value);
+        assert_eq!(*challenge, value);
+    }
+
+    #[test]
+    fn distinct_tags_produce_distinct_types() {
+        assert_ne!(
+            TypeId::of::<Challenge<Fp, ChallengeW>>(),
+            TypeId::of::<Challenge<Fp, ChallengeX>>(),
+        );
+        assert_ne!(
+            TypeId::of::<Challenge<Fp, ChallengeY>>(),
+            TypeId::of::<Challenge<Fp, ChallengeZ>>(),
+        );
+        assert_ne!(
+            TypeId::of::<Challenge<Fp, ChallengeMu>>(),
+            TypeId::of::<Challenge<Fp, ChallengeNu>>(),
+        );
+        assert_eq!(
+            TypeId::of::<Challenge<Fp, ChallengeW>>(),
+            TypeId::of::<Challenge<Fp, ChallengeW>>(),
+        );
+    }
+
+    #[test]
+    fn typed_boundary_accepts_correct_challenge() {
+        fn needs_x(c: &Challenge<Fp, ChallengeX>) -> Fp {
+            **c * Fp::from(2u64)
+        }
+
+        let challenge_w = Challenge::<Fp, ChallengeW>::new(Fp::from(10u64));
+        let challenge_x = Challenge::<Fp, ChallengeX>::new(Fp::from(5u64));
+
+        let result = needs_x(&challenge_x);
+        assert_eq!(result, Fp::from(10u64));
+
+        // needs_x(&challenge_w) would not compile:
+        //   expected Challenge<Fp, ChallengeX>, found Challenge<Fp, ChallengeW>
+        let _ = challenge_w;
+    }
+
+    #[test]
+    fn trivial_challenges_are_zero() {
+        let trivial = Challenges::<Pasta>::trivial();
+        assert_eq!(*trivial.w, Fp::ZERO);
+        assert_eq!(*trivial.y, Fp::ZERO);
+        assert_eq!(*trivial.z, Fp::ZERO);
+        assert_eq!(*trivial.mu, Fp::ZERO);
+        assert_eq!(*trivial.nu, Fp::ZERO);
+        assert_eq!(*trivial.mu_prime, Fp::ZERO);
+        assert_eq!(*trivial.nu_prime, Fp::ZERO);
+        assert_eq!(*trivial.x, Fp::ZERO);
+        assert_eq!(*trivial.alpha, Fp::ZERO);
+        assert_eq!(*trivial.u, Fp::ZERO);
+        assert_eq!(*trivial.pre_beta, Fp::ZERO);
+    }
+}
