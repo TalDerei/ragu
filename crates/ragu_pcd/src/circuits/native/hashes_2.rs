@@ -78,6 +78,10 @@ use super::{
     unified::{self, OutputBuilder},
 };
 use crate::components::{fold_revdot, transcript::Transcript};
+use crate::proof::{
+    ChallengeAlpha, ChallengeMu, ChallengeMuPrime, ChallengeNu, ChallengeNuPrime, ChallengePreBeta,
+    ChallengeU, ChallengeX,
+};
 
 pub(crate) use super::InternalCircuitIndex::Hashes2Circuit as CIRCUIT_ID;
 
@@ -170,10 +174,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         // and squeeze mu, nu (challenges from error_m absorption)
         let mut resumed =
             Transcript::resume_from_state(error_n.sponge_state, C::circuit_poseidon(self.params));
-        let mu = resumed.challenge(dr)?;
+        let mu = resumed.challenge::<ChallengeMu>(dr)?.into_inner();
         unified_output.mu.set(mu);
 
-        let nu = resumed.challenge(dr)?;
+        let nu = resumed.challenge::<ChallengeNu>(dr)?.into_inner();
         unified_output.nu.set(nu);
 
         // Transition back to absorb mode for the rest of the transcript
@@ -183,8 +187,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let (mu_prime, nu_prime) = {
             let nested_error_n_commitment = unified_output.nested_error_n_commitment.verify(dr)?;
             nested_error_n_commitment.write(dr, &mut transcript)?;
-            let mu_prime = transcript.challenge(dr)?;
-            let nu_prime = transcript.challenge(dr)?;
+            let mu_prime = transcript.challenge::<ChallengeMuPrime>(dr)?.into_inner();
+            let nu_prime = transcript.challenge::<ChallengeNuPrime>(dr)?.into_inner();
             (mu_prime, nu_prime)
         };
         unified_output.mu_prime.set(mu_prime);
@@ -194,7 +198,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let x = {
             let nested_ab_commitment = unified_output.nested_ab_commitment.verify(dr)?;
             nested_ab_commitment.write(dr, &mut transcript)?;
-            transcript.challenge(dr)?
+            transcript.challenge::<ChallengeX>(dr)?.into_inner()
         };
         unified_output.x.set(x);
 
@@ -202,7 +206,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let alpha = {
             let nested_query_commitment = unified_output.nested_query_commitment.verify(dr)?;
             nested_query_commitment.write(dr, &mut transcript)?;
-            transcript.challenge(dr)?
+            transcript.challenge::<ChallengeAlpha>(dr)?.into_inner()
         };
         unified_output.alpha.set(alpha.clone());
 
@@ -210,7 +214,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let u = {
             let nested_f_commitment = unified_output.nested_f_commitment.verify(dr)?;
             nested_f_commitment.write(dr, &mut transcript)?;
-            transcript.challenge(dr)?
+            transcript.challenge::<ChallengeU>(dr)?.into_inner()
         };
         unified_output.u.set(u);
 
@@ -218,7 +222,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let pre_beta = {
             let nested_eval_commitment = unified_output.nested_eval_commitment.verify(dr)?;
             nested_eval_commitment.write(dr, &mut transcript)?;
-            transcript.challenge(dr)?
+            transcript.challenge::<ChallengePreBeta>(dr)?.into_inner()
         };
         unified_output.pre_beta.set(pre_beta);
 
