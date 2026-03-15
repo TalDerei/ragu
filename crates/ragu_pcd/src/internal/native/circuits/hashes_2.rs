@@ -77,7 +77,8 @@ use super::super::{
     stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
-use crate::components::{fold_revdot, transcript::Transcript};
+use crate::components::transcript::Transcript;
+use crate::internal::fold_revdot;
 
 /// Second hash circuit for Fiat-Shamir challenge derivation.
 ///

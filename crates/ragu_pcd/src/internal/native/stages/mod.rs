@@ -7,7 +7,7 @@ pub mod preamble;
 pub mod query;
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use ff::PrimeField;
     use ragu_circuits::{polynomials::Rank, staging::Stage};
     use ragu_core::{
@@ -16,11 +16,11 @@ pub(crate) mod tests {
         maybe::Empty,
     };
 
-    pub(crate) type R = ragu_circuits::polynomials::ProductionRank;
-    pub(crate) use crate::components::fold_revdot::NativeParameters;
-    pub(crate) use crate::internal::tests::HEADER_SIZE;
+    pub type R = ragu_circuits::polynomials::ProductionRank;
+    pub use crate::internal::native::RevdotParameters;
+    pub use crate::internal::tests::HEADER_SIZE;
 
-    pub(crate) fn assert_stage_values<F, R, S>(stage: &S)
+    pub fn assert_stage_values<F, R, S>(stage: &S)
     where
         F: PrimeField,
         R: Rank,

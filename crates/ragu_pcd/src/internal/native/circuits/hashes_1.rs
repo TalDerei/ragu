@@ -96,7 +96,8 @@ use super::super::{
     unified::{self, OutputBuilder},
 };
 use crate::RAGU_TAG;
-use crate::components::{fold_revdot, suffix::WithSuffix, transcript::Transcript};
+use crate::components::{suffix::WithSuffix, transcript::Transcript};
+use crate::internal::fold_revdot;
 
 /// Public output of the first hash circuit.
 ///

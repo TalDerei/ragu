@@ -61,8 +61,9 @@ use alloc::{vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::claims::{self, Processor, RxComponent};
-use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 use crate::internal::claims::Source;
+use crate::internal::fold_revdot::{Parameters, fold_two_layer};
+use crate::internal::native::RevdotParameters;
 
 use super::super::InternalCircuitIndex;
 use super::super::InternalCircuitValues;
@@ -187,7 +188,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
                 let munu = mu.mul(dr, &nu)?;
                 let mu_prime_nu_prime = mu_prime.mul(dr, &nu_prime)?;
 
-                compute_axbx::<_, NativeParameters>(
+                compute_axbx::<_, RevdotParameters>(
                     dr,
                     &query,
                     &z,

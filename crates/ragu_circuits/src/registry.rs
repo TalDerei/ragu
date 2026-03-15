@@ -171,7 +171,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// 3. Internal steps: Internal step circuits (e.g. rerandomize, trivial)
     /// 4. Application steps: User-defined step circuits
     ///
-    /// This concatenation order must match [`InternalCircuitIndex::ALL`] in
+    /// This concatenation order must match `InternalCircuitIndex::ALL` in
     /// `ragu_pcd`, which derives [`CircuitIndex`] from position in the array.
     pub fn finalize(self) -> Result<Registry<'params, F, R>>
     where

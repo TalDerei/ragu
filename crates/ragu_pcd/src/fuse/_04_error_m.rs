@@ -16,12 +16,7 @@ use rand::CryptoRng;
 
 use crate::{
     Application, Proof,
-    components::fold_revdot::{self, NativeParameters},
-    internal::claims,
-    internal::{
-        native::{claims as native_claims, stages::error_m as native},
-        nested::stages::error_m as nested,
-    },
+    internal::{claims, fold_revdot, native, nested},
     proof,
 };
 
@@ -38,7 +33,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         right: &'rx Proof<C, R>,
     ) -> Result<(
         proof::ErrorM<C, R>,
-        native::Witness<C, NativeParameters>,
+        native::stages::error_m::Witness<C, native::RevdotParameters>,
         claims::Builder<'_, 'rx, C::CircuitField, R>,
     )>
     where
@@ -69,7 +64,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         right: &'rx Proof<C, R>,
     ) -> Result<(
         proof::NativeErrorM<C, R>,
-        native::Witness<C, NativeParameters>,
+        native::stages::error_m::Witness<C, native::RevdotParameters>,
         claims::Builder<'_, 'rx, C::CircuitField, R>,
     )>
     where
@@ -80,14 +75,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let source = FuseProofSource { left, right };
         let mut builder = claims::Builder::new(&self.native_registry, y, z);
-        native_claims::build(&source, &mut builder)?;
+        native::claims::build(&source, &mut builder)?;
 
-        let error_m_witness = native::Witness::<C, NativeParameters> {
-            error_terms: fold_revdot::compute_errors_m::<_, R, NativeParameters>(
+        let error_m_witness = native::stages::error_m::Witness::<C, native::RevdotParameters> {
+            error_terms: fold_revdot::compute_errors_m::<_, R, native::RevdotParameters>(
                 &builder.a, &builder.b,
             ),
         };
-        let native_rx = native::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(&error_m_witness)?;
+        let native_rx =
+            native::stages::error_m::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
+                &error_m_witness,
+            )?;
 
         let native_blind = C::CircuitField::random(&mut *rng);
 
@@ -119,11 +117,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeErrorM<C, R>,
     ) -> Result<proof::BridgeErrorM<C, R>> {
-        let nested_error_m_witness = nested::Witness {
+        let nested_error_m_witness = nested::stages::error_m::Witness {
             native_error_m: native.commitment,
             registry_wy: native.registry_wy_commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_error_m_witness)?;
+        let rx = nested::stages::error_m::Stage::<C::HostCurve, R>::rx(&nested_error_m_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 

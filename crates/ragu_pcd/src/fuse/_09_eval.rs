@@ -13,7 +13,7 @@ use rand::CryptoRng;
 
 use crate::{
     Application, Proof,
-    internal::{native::stages::eval as native, nested::stages::eval as nested},
+    internal::{native, nested},
     proof,
 };
 
@@ -28,7 +28,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         error_m: &proof::ErrorM<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
-    ) -> Result<(proof::Eval<C, R>, native::Witness<C::CircuitField>)>
+    ) -> Result<(
+        proof::Eval<C, R>,
+        native::stages::eval::Witness<C::CircuitField>,
+    )>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
@@ -56,16 +59,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         error_m: &proof::ErrorM<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
-    ) -> Result<(proof::NativeEval<C, R>, native::Witness<C::CircuitField>)>
+    ) -> Result<(
+        proof::NativeEval<C, R>,
+        native::stages::eval::Witness<C::CircuitField>,
+    )>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
         let u = *u.value().take();
 
-        let eval_witness = native::Witness {
-            left: native::ChildEvaluationsWitness::from_proof(left, u),
-            right: native::ChildEvaluationsWitness::from_proof(right, u),
-            current: native::CurrentStepWitness {
+        let eval_witness = native::stages::eval::Witness {
+            left: native::stages::eval::ChildEvaluationsWitness::from_proof(left, u),
+            right: native::stages::eval::ChildEvaluationsWitness::from_proof(right, u),
+            current: native::stages::eval::CurrentStepWitness {
                 // TODO: the registry evaluations here could _theoretically_ be more
                 // efficient if they're computed simultaneously with assistance
                 // from the registry itself, rather than individually evaluated for
@@ -78,7 +84,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_xy: query.native.registry_xy_poly.eval(u),
             },
         };
-        let rx = native::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;
+        let rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;
         let blind = C::CircuitField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
 
@@ -97,10 +103,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeEval<C, R>,
     ) -> Result<proof::BridgeEval<C, R>> {
-        let nested_eval_witness = nested::Witness {
+        let nested_eval_witness = nested::stages::eval::Witness {
             native_eval: native.commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_eval_witness)?;
+        let rx = nested::stages::eval::Stage::<C::HostCurve, R>::rx(&nested_eval_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 

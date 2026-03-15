@@ -6,9 +6,19 @@ use ragu_circuits::{
     registry::{CircuitIndex, RegistryBuilder},
 };
 use ragu_core::Result;
+use ragu_primitives::vec::ConstLen;
 
-use super::NativeParameters;
+use crate::internal::fold_revdot::Parameters;
 use crate::step;
+
+/// Default parameters for native revdot folding
+#[derive(Clone, Copy, Default)]
+pub struct RevdotParameters;
+
+impl Parameters for RevdotParameters {
+    type N = ConstLen<19>;
+    type M = ConstLen<7>;
+}
 
 pub mod stages;
 
@@ -173,10 +183,10 @@ pub(crate) fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 registry.register_internal_mask::<stages::preamble::Stage<C, R, HEADER_SIZE>>()?
             }
             ErrorMStage => {
-                registry.register_internal_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+                registry.register_internal_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             ErrorNStage => {
-                registry.register_internal_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+                registry.register_internal_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             QueryStage => {
                 registry.register_internal_mask::<stages::query::Stage<C, R, HEADER_SIZE>>()?
@@ -185,25 +195,25 @@ pub(crate) fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 registry.register_internal_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
             }
             ErrorMFinalStaged => {
-                registry.register_internal_final_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+                registry.register_internal_final_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             ErrorNFinalStaged => {
-                registry.register_internal_final_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+                registry.register_internal_final_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             EvalFinalStaged => {
                 registry.register_internal_final_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
             }
             Hashes1Circuit => {
-                registry.register_internal_circuit(circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits))?
+                registry.register_internal_circuit(circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, RevdotParameters>::new(params, log2_circuits))?
             }
             Hashes2Circuit => {
-                registry.register_internal_circuit(circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params))?
+                registry.register_internal_circuit(circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, RevdotParameters>::new(params))?
             }
             PartialCollapseCircuit => {
-                registry.register_internal_circuit(circuits::partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+                registry.register_internal_circuit(circuits::partial_collapse::Circuit::<C, R, HEADER_SIZE, RevdotParameters>::new())?
             }
             FullCollapseCircuit => {
-                registry.register_internal_circuit(circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+                registry.register_internal_circuit(circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, RevdotParameters>::new())?
             }
             ComputeVCircuit => {
                 registry.register_internal_circuit(circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new())?

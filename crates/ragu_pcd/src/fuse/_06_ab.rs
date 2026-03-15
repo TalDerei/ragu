@@ -39,12 +39,11 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    components::fold_revdot::{self, NativeParameters},
-    internal::nested::stages::ab as nested,
+    internal::{fold_revdot, native, nested},
     proof,
 };
 
-type NativeN = <NativeParameters as fold_revdot::Parameters>::N;
+type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_ab<'dr, D, RNG: CryptoRng>(
@@ -81,9 +80,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime_inv = mu_prime.invert().expect("mu_prime must be non-zero");
         let mu_prime_nu_prime = mu_prime * nu_prime;
 
-        let a_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(a, mu_prime_inv);
+        let a_poly = fold_revdot::fold_polys_n::<_, R, native::RevdotParameters>(a, mu_prime_inv);
         let a_blind = C::CircuitField::random(&mut *rng);
-        let b_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(b, mu_prime_nu_prime);
+        let b_poly =
+            fold_revdot::fold_polys_n::<_, R, native::RevdotParameters>(b, mu_prime_nu_prime);
         let b_blind = C::CircuitField::random(&mut *rng);
         let host_gen = C::host_generators(self.params);
         let [a_commitment, b_commitment] = ragu_arithmetic::batch_to_affine([
@@ -109,11 +109,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeAB<C, R>,
     ) -> Result<proof::BridgeAB<C, R>> {
-        let nested_ab_witness = nested::Witness {
+        let nested_ab_witness = nested::stages::ab::Witness {
             a: native.a_commitment,
             b: native.b_commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_ab_witness)?;
+        let rx = nested::stages::ab::Stage::<C::HostCurve, R>::rx(&nested_ab_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 

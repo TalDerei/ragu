@@ -64,7 +64,7 @@ use super::super::{
     stages::{error_n, preamble},
     unified::{self, OutputBuilder},
 };
-use crate::components::fold_revdot;
+use crate::internal::fold_revdot;
 
 /// Circuit that verifies layer 2 of the two-layer revdot reduction.
 ///

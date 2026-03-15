@@ -1,7 +1,7 @@
 use super::*;
 use crate::*;
 use native::{
-    InternalCircuitIndex,
+    InternalCircuitIndex, RevdotParameters,
     stages::{error_m, error_n, eval, preamble, query},
 };
 use ragu_circuits::staging::{Stage, StageExt};
@@ -19,8 +19,8 @@ pub(crate) const HEADER_SIZE: usize = 65;
 const NUM_APP_STEPS: usize = 6000;
 
 type Preamble = preamble::Stage<Pasta, R, HEADER_SIZE>;
-type ErrorN = error_n::Stage<Pasta, R, HEADER_SIZE, NativeParameters>;
-type ErrorM = error_m::Stage<Pasta, R, HEADER_SIZE, NativeParameters>;
+type ErrorN = error_n::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
+type ErrorM = error_m::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
 type Query = query::Stage<Pasta, R, HEADER_SIZE>;
 type Eval = eval::Stage<Pasta, R, HEADER_SIZE>;
 

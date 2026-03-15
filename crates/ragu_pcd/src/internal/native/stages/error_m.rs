@@ -18,7 +18,7 @@ use ragu_primitives::{
 
 use core::marker::PhantomData;
 
-use crate::components::fold_revdot::{self, ErrorTermsLen};
+use crate::internal::fold_revdot::{self, ErrorTermsLen};
 
 /// Witness data for the error_m stage (layer 1).
 ///
@@ -82,12 +82,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 mod tests {
     use super::*;
     use crate::internal::native::stages::tests::{
-        HEADER_SIZE, NativeParameters, R, assert_stage_values,
+        HEADER_SIZE, R, RevdotParameters, assert_stage_values,
     };
     use ragu_pasta::Pasta;
 
     #[test]
     fn stage_values_matches_wire_count() {
-        assert_stage_values(&Stage::<Pasta, R, { HEADER_SIZE }, NativeParameters>::default());
+        assert_stage_values(&Stage::<Pasta, R, { HEADER_SIZE }, RevdotParameters>::default());
     }
 }

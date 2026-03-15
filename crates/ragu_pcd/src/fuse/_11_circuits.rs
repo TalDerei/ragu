@@ -6,8 +6,7 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    components::fold_revdot::NativeParameters,
-    internal::{self, native, native::total_circuit_counts},
+    internal::{native, native::total_circuit_counts},
     proof,
 };
 
@@ -25,10 +24,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         eval: &proof::Eval<C, R>,
         p: &proof::P<C, R>,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
-        error_n_witness: &native::stages::error_n::Witness<C, NativeParameters>,
-        error_m_witness: &native::stages::error_m::Witness<C, NativeParameters>,
-        query_witness: &internal::native::stages::query::Witness<C>,
-        eval_witness: &internal::native::stages::eval::Witness<C::CircuitField>,
+        error_n_witness: &native::stages::error_n::Witness<C, native::RevdotParameters>,
+        error_m_witness: &native::stages::error_m::Witness<C, native::RevdotParameters>,
+        query_witness: &native::stages::query::Witness<C>,
+        eval_witness: &native::stages::eval::Witness<C::CircuitField>,
         challenges: &proof::Challenges<C>,
     ) -> Result<proof::InternalCircuits<C, R>> {
         let unified = native::unified::Instance {
@@ -56,30 +55,36 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             coverage: Default::default(),
         };
 
-        let (hashes_1_trace, unified) =
-            native::circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
-                self.params,
-                total_circuit_counts(self.num_application_steps).1,
-            )
-            .rx(native::circuits::hashes_1::Witness {
-                unified,
-                preamble_witness,
-                error_n_witness,
-            })?;
+        let (hashes_1_trace, unified) = native::circuits::hashes_1::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            native::RevdotParameters,
+        >::new(
+            self.params,
+            total_circuit_counts(self.num_application_steps).1,
+        )
+        .rx(native::circuits::hashes_1::Witness {
+            unified,
+            preamble_witness,
+            error_n_witness,
+        })?;
         let hashes_1_rx = self.native_registry.assemble(
             &hashes_1_trace,
             native::InternalCircuitIndex::Hashes1Circuit.circuit_index(),
         )?;
         let hashes_1_rx_blind = C::CircuitField::random(&mut *rng);
 
-        let (hashes_2_trace, unified) =
-            native::circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
-                self.params,
-            )
-            .rx(native::circuits::hashes_2::Witness {
-                unified,
-                error_n_witness,
-            })?;
+        let (hashes_2_trace, unified) = native::circuits::hashes_2::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            native::RevdotParameters,
+        >::new(self.params)
+        .rx(native::circuits::hashes_2::Witness {
+            unified,
+            error_n_witness,
+        })?;
         let hashes_2_rx = self.native_registry.assemble(
             &hashes_2_trace,
             native::InternalCircuitIndex::Hashes2Circuit.circuit_index(),
@@ -90,7 +95,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             C,
             R,
             HEADER_SIZE,
-            NativeParameters,
+            native::RevdotParameters,
         >::new()
         .rx(native::circuits::partial_collapse::Witness {
             preamble_witness,
@@ -104,13 +109,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
         let partial_collapse_rx_blind = C::CircuitField::random(&mut *rng);
 
-        let (full_collapse_trace, unified) =
-            native::circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
-                .rx(native::circuits::full_collapse::Witness {
-                    unified,
-                    preamble_witness,
-                    error_n_witness,
-                })?;
+        let (full_collapse_trace, unified) = native::circuits::full_collapse::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            native::RevdotParameters,
+        >::new()
+        .rx(native::circuits::full_collapse::Witness {
+            unified,
+            preamble_witness,
+            error_n_witness,
+        })?;
         let full_collapse_rx = self.native_registry.assemble(
             &full_collapse_trace,
             native::InternalCircuitIndex::FullCollapseCircuit.circuit_index(),

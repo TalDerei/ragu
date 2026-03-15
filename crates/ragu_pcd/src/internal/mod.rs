@@ -4,10 +4,9 @@
 //! verification logic, including proof components and internal circuit registration.
 
 pub(crate) mod claims;
+pub(crate) mod fold_revdot;
 pub(crate) mod native;
 pub(crate) mod nested;
-
-pub(crate) use crate::components::fold_revdot::NativeParameters;
 
 #[cfg(test)]
 pub(crate) mod tests;

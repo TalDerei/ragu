@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 
 use crate::{
     Application, Proof,
-    internal::{native::InternalCircuitIndex, nested::stages::f as nested},
+    internal::{native, nested},
     proof,
 };
 
@@ -82,8 +82,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let xz = x * z;
         let alpha = *alpha.value().take();
 
-        let omega_j =
-            |idx: InternalCircuitIndex| -> C::CircuitField { idx.circuit_index().omega_j() };
+        let omega_j = |idx: native::InternalCircuitIndex| -> C::CircuitField {
+            idx.circuit_index().omega_j()
+        };
 
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.
@@ -157,7 +158,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(right.circuits.compute_v_rx.iter_coeffs(), xz),
         ];
 
-        let mut internal = InternalCircuitIndex::ALL
+        let mut internal = native::InternalCircuitIndex::ALL
             .map(|id| factor_iter(query.native.registry_xy_poly.iter_coeffs(), omega_j(id)));
 
         let mut coeffs = Vec::new();
@@ -186,10 +187,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeF<C, R>,
     ) -> Result<proof::BridgeF<C, R>> {
-        let nested_f_witness = nested::Witness {
+        let nested_f_witness = nested::stages::f::Witness {
             native_f: native.commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_f_witness)?;
+        let rx = nested::stages::f::Stage::<C::HostCurve, R>::rx(&nested_f_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 

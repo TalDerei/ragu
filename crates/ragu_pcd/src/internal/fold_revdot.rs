@@ -27,15 +27,6 @@ pub trait Parameters: 'static + Send + Sync + Clone + Copy + Default {
     type M: Len;
 }
 
-/// Default parameters for native revdot folding
-#[derive(Clone, Copy, Default)]
-pub struct NativeParameters;
-
-impl Parameters for NativeParameters {
-    type N = ConstLen<19>;
-    type M = ConstLen<7>;
-}
-
 /// Represents the number of "error" terms produced during a folding operation
 /// of many `revdot` claims.
 ///
@@ -275,6 +266,8 @@ mod tests {
     use ragu_pasta::Fp;
     use ragu_primitives::{Simulator, vec::CollectFixed};
     use rand::SeedableRng;
+
+    use crate::internal::native::RevdotParameters;
 
     /// Test parameters with configurable N and M.
     #[derive(Clone, Copy, Default)]
@@ -859,11 +852,11 @@ mod tests {
 
     #[test]
     fn test_native_parameters_correctness() -> Result<()> {
-        // Test with actual NativeParameters (M=6, N=18)
+        // Test with actual RevdotParameters (M=6, N=18)
 
         let mut rng = rand::rng();
-        let m = <NativeParameters as Parameters>::M::len();
-        let _n = <NativeParameters as Parameters>::N::len();
+        let m = <RevdotParameters as Parameters>::M::len();
+        let _n = <RevdotParameters as Parameters>::N::len();
 
         // Use a subset of the full capacity to keep test fast
         let count: usize = 20; // Less than M*N=108
@@ -880,9 +873,9 @@ mod tests {
         let mu_inv = mu.invert().unwrap();
         let munu = mu * nu;
 
-        // Fold with NativeParameters
-        let folded_lhs = fold_polys_m::<Fp, TestRank, NativeParameters>(&lhs, mu_inv);
-        let folded_rhs = fold_polys_m::<Fp, TestRank, NativeParameters>(&rhs, munu);
+        // Fold with RevdotParameters
+        let folded_lhs = fold_polys_m::<Fp, TestRank, RevdotParameters>(&lhs, mu_inv);
+        let folded_rhs = fold_polys_m::<Fp, TestRank, RevdotParameters>(&rhs, munu);
 
         // Verify at least the first few groups
         let dr = &mut Emulator::execute();
@@ -891,7 +884,7 @@ mod tests {
         let fold_products = FoldProducts::new(dr, &mu_elem, &nu_elem)?;
 
         let ky_values: Vec<Fp> = lhs.iter().zip(&rhs).map(|(l, r)| l.revdot(r)).collect();
-        let error_m = compute_errors_m::<Fp, TestRank, NativeParameters>(&lhs, &rhs);
+        let error_m = compute_errors_m::<Fp, TestRank, RevdotParameters>(&lhs, &rhs);
 
         // Check first 4 groups (those with actual data)
         let num_groups = count.div_ceil(m);
@@ -912,12 +905,12 @@ mod tests {
                 FixedVec::from_fn(|i| Element::constant(dr, error_m[g][i]));
 
             let computed =
-                fold_products.fold_products_m::<NativeParameters>(dr, &error_group, &ky_group)?;
+                fold_products.fold_products_m::<RevdotParameters>(dr, &error_group, &ky_group)?;
             let computed_val = *computed.value().take();
 
             assert_eq!(
                 expected, computed_val,
-                "NativeParameters: group {} invariant failed",
+                "RevdotParameters: group {} invariant failed",
                 g
             );
         }

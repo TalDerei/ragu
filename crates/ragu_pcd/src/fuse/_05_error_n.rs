@@ -22,30 +22,22 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    components::fold_revdot::{self, NativeParameters},
-    internal::claims,
     internal::{
-        native::{
-            claims as native_claims,
-            stages::{
-                error_m as native_error_m, error_n as native,
-                error_n::{ChildKyValues, KyValues},
-                preamble as native_preamble,
-            },
-        },
-        nested::stages::error_n as nested,
+        claims, fold_revdot, native,
+        native::stages::error_n::{ChildKyValues, KyValues},
+        nested,
     },
     proof,
 };
 
-type NativeN = <NativeParameters as fold_revdot::Parameters>::N;
+type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_errors_n<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        preamble_witness: &native_preamble::Witness<'_, C, R, HEADER_SIZE>,
-        error_m_witness: &native_error_m::Witness<C, NativeParameters>,
+        preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
+        error_m_witness: &native::stages::error_m::Witness<C, native::RevdotParameters>,
         claims: claims::Builder<'_, '_, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
@@ -56,7 +48,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         >,
     ) -> Result<(
         proof::ErrorN<C, R>,
-        native::Witness<C, NativeParameters>,
+        native::stages::error_n::Witness<C, native::RevdotParameters>,
         FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
     )>
@@ -68,8 +60,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nu = *nu.value().take();
         let mu_inv = mu.invert().expect("mu must be non-zero");
         let munu = mu * nu;
-        let a = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claims.a, mu_inv);
-        let b = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claims.b, munu);
+        let a = fold_revdot::fold_polys_m::<_, R, native::RevdotParameters>(&claims.a, mu_inv);
+        let b = fold_revdot::fold_polys_m::<_, R, native::RevdotParameters>(&claims.b, munu);
         drop(claims);
 
         let (ky, collapsed) = Emulator::emulate_wireless(
@@ -77,7 +69,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             |dr, witness| {
                 let (preamble_witness, error_terms_m, y, mu, nu) = witness.cast();
 
-                let preamble = native_preamble::Stage::<C, R, HEADER_SIZE>::default()
+                let preamble = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::default()
                     .witness(dr, preamble_witness.as_ref().map(|w| *w))?;
 
                 let y = Element::alloc(dr, y)?;
@@ -92,7 +84,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let nu = Element::alloc(dr, nu)?;
 
                 // Build k(y) values in claim order.
-                let ky = native_claims::TwoProofKySource {
+                let ky = native::claims::TwoProofKySource {
                     left_raw_c: preamble.left.unified.c.clone(),
                     right_raw_c: preamble.right.unified.c.clone(),
                     left_app: left_application_ky.clone(),
@@ -103,7 +95,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     right_unified: right_unified_ky.clone(),
                     zero: Element::zero(dr),
                 };
-                let mut ky = native_claims::ky_values(&ky);
+                let mut ky = native::claims::ky_values(&ky);
 
                 let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 
@@ -113,7 +105,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     })?;
                     let ky = FixedVec::from_fn(|_| ky.next().unwrap());
 
-                    let v = fold_products.fold_products_m::<NativeParameters>(dr, &errors, &ky)?;
+                    let v = fold_products
+                        .fold_products_m::<native::RevdotParameters>(dr, &errors, &ky)?;
                     Ok(*v.value().take())
                 })?;
 
@@ -134,9 +127,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
         )?;
 
-        let error_terms = fold_revdot::compute_errors_n::<_, R, NativeParameters>(&a, &b);
+        let error_terms = fold_revdot::compute_errors_n::<_, R, native::RevdotParameters>(&a, &b);
 
-        let error_n_witness = native::Witness::<C, NativeParameters> {
+        let error_n_witness = native::stages::error_n::Witness::<C, native::RevdotParameters> {
             error_terms,
             collapsed,
             ky,
@@ -151,9 +144,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     fn compute_native_error_n<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        error_n_witness: &native::Witness<C, NativeParameters>,
+        error_n_witness: &native::stages::error_n::Witness<C, native::RevdotParameters>,
     ) -> Result<proof::NativeErrorN<C, R>> {
-        let rx = native::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(error_n_witness)?;
+        let rx = native::stages::error_n::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
+            error_n_witness,
+        )?;
         let blind = C::CircuitField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
 
@@ -169,10 +164,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeErrorN<C, R>,
     ) -> Result<proof::BridgeErrorN<C, R>> {
-        let nested_error_n_witness = nested::Witness {
+        let nested_error_n_witness = nested::stages::error_n::Witness {
             native_error_n: native.commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_error_n_witness)?;
+        let rx = nested::stages::error_n::Stage::<C::HostCurve, R>::rx(&nested_error_n_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 

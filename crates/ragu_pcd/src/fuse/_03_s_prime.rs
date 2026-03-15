@@ -9,7 +9,7 @@ use ragu_circuits::{polynomials::Rank, registry::RegistryAt, staging::StageExt};
 use ragu_core::Result;
 use rand::CryptoRng;
 
-use crate::{Application, Proof, internal::nested::stages::s_prime as nested, proof};
+use crate::{Application, Proof, internal::nested, proof};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_s_prime<RNG: CryptoRng>(
@@ -62,11 +62,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         native: &proof::NativeSPrime<C, R>,
     ) -> Result<proof::BridgeSPrime<C, R>> {
-        let nested_s_prime_witness = nested::Witness {
+        let nested_s_prime_witness = nested::stages::s_prime::Witness {
             registry_wx0: native.registry_wx0_commitment,
             registry_wx1: native.registry_wx1_commitment,
         };
-        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_s_prime_witness)?;
+        let rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(&nested_s_prime_witness)?;
         let blind = C::ScalarField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
 
