@@ -10,9 +10,15 @@
 
 > ⚠️ **Ragu is under heavy development and has not undergone auditing.** Do not use this software in production.
 
-<!-- BEGIN SYNC: this section must be kept in sync with book/src/guide/requirements.md -->
+## Resources
+
+* [The Ragu Book](https://tachyon.z.cash/ragu/) provides high-level documentation about Ragu, how it can be used, how it is designed, and how to contribute. The source code for the book lives in this repository in the [`book`](https://github.com/tachyon-zcash/ragu/tree/main/book) subdirectory.
+* [Crate documentation](https://docs.rs/ragu) is available for official Ragu crate releases.
+* Unofficial (internal) library documentation is [continually rendered](https://tachyon.z.cash/ragu/internal/ragu/) from the `main` branch. This is primarily for developers of Ragu.
 
 ## Requirements
+
+<!-- BEGIN SYNC: this section must be kept in sync with book/src/guide/requirements.md -->
 
 * The minimum supported [Rust](https://rust-lang.org/) version is currently
   **1.90.0**.
@@ -20,7 +26,7 @@
   dependencies that are not already used in
   [Zebra](https://github.com/ZcashFoundation/zebra).
 
-### `no_std` Support
+## `no_std` Support
 
 Ragu's approach to `std` and `no_std` follows four principles:
 
@@ -41,12 +47,6 @@ Ragu's approach to `std` and `no_std` follows four principles:
 [`alloc`]: https://doc.rust-lang.org/alloc/
 
 <!-- END SYNC -->
-
-## Resources
-
-* [The Ragu Book](https://tachyon.z.cash/ragu/) provides high-level documentation about Ragu, how it can be used, how it is designed, and how to contribute. The source code for the book lives in this repository in the [`book`](https://github.com/tachyon-zcash/ragu/tree/main/book) subdirectory.
-* [Crate documentation](https://docs.rs/ragu) is available for official Ragu crate releases.
-* Unofficial (internal) library documentation is [continually rendered](https://tachyon.z.cash/ragu/internal/ragu/) from the `main` branch. This is primarily for developers of Ragu.
 
 ## License
 
