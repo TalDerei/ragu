@@ -30,19 +30,7 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
     /// Create child evaluations witness from a proof evaluated at point u.
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank>(proof: &Proof<C, R>, u: F) -> Self {
         ChildEvaluationsWitness {
-            rx: RxValues {
-                preamble: proof.preamble.native.rx.eval(u),
-                error_m: proof.error_m.native.rx.eval(u),
-                error_n: proof.error_n.native.rx.eval(u),
-                query: proof.query.native.rx.eval(u),
-                eval: proof.eval.native.rx.eval(u),
-                application: proof.application.rx.eval(u),
-                hashes_1: proof.circuits.hashes_1_rx.eval(u),
-                hashes_2: proof.circuits.hashes_2_rx.eval(u),
-                partial_collapse: proof.circuits.partial_collapse_rx.eval(u),
-                full_collapse: proof.circuits.full_collapse_rx.eval(u),
-                compute_v: proof.circuits.compute_v_rx.eval(u),
-            },
+            rx: RxValues::from_fn(|id| proof.rx_poly(id).eval(u)),
             a_poly: proof.ab.native.a_poly.eval(u),
             b_poly: proof.ab.native.b_poly.eval(u),
             registry_xy_poly: proof.query.native.registry_xy_poly.eval(u),

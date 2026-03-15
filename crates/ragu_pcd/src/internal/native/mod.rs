@@ -247,7 +247,6 @@ impl<T> RxValues<T> {
     }
 
     /// Construct from a closure called once per variant in [`ALL`](RxIndex::ALL) order.
-    #[cfg(test)]
     pub fn from_fn(mut f: impl FnMut(RxIndex) -> T) -> Self {
         match Self::try_from_fn(|id| Ok::<_, core::convert::Infallible>(f(id))) {
             Ok(v) => v,
