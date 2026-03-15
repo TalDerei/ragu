@@ -155,7 +155,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(right.circuits.compute_v_rx.iter_coeffs(), xz),
         ];
 
-        let mut coeffs = Vec::new();
+        let mut coeffs = Vec::with_capacity(R::num_coeffs());
         while let Some(first) = iters[0].next() {
             let c = iters[1..]
                 .iter_mut()
