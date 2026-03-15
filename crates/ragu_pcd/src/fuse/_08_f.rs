@@ -73,7 +73,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        use InternalCircuitIndex::*;
         use ragu_arithmetic::factor_iter;
 
         let w = *w.value().take();
@@ -88,7 +87,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.
-        let mut iters = [
+        let mut pre = [
             factor_iter(left.p.native.poly.iter_coeffs(), left.challenges.u),
             factor_iter(right.p.native.poly.iter_coeffs(), right.challenges.u),
             factor_iter(left.query.native.registry_xy_poly.iter_coeffs(), w),
@@ -113,58 +112,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             ),
             factor_iter(error_m.native.registry_wy_poly.iter_coeffs(), x),
             factor_iter(query.native.registry_xy_poly.iter_coeffs(), w),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(PreambleStage),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorMStage),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorNStage),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(QueryStage),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(EvalStage),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorMFinalStaged),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorNFinalStaged),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(EvalFinalStaged),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(Hashes1Circuit),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(Hashes2Circuit),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(PartialCollapseCircuit),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(FullCollapseCircuit),
-            ),
-            factor_iter(
-                query.native.registry_xy_poly.iter_coeffs(),
-                omega_j(ComputeVCircuit),
-            ),
+        ];
+
+        let mut internal = InternalCircuitIndex::ALL
+            .map(|id| factor_iter(query.native.registry_xy_poly.iter_coeffs(), omega_j(id)));
+
+        let mut post = [
             factor_iter(
                 query.native.registry_xy_poly.iter_coeffs(),
                 left.application.circuit_id.omega_j(),
@@ -208,9 +161,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ];
 
         let mut coeffs = Vec::new();
-        while let Some(first) = iters[0].next() {
-            let c = iters[1..]
+        while let Some(first) = pre[0].next() {
+            let c = pre[1..]
                 .iter_mut()
+                .chain(internal.iter_mut())
+                .chain(post.iter_mut())
                 .fold(first, |acc, iter| alpha * acc + iter.next().unwrap());
             coeffs.push(c);
         }
