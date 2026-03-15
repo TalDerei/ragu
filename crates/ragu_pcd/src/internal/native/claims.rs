@@ -40,7 +40,7 @@ use crate::internal::claims::{Builder, Source, sum_polynomials};
 /// [`full_collapse`]: crate::internal::native::circuits::full_collapse
 /// [`compute_v`]: crate::internal::native::circuits::compute_v
 /// [`unified::InternalOutputKind`]: crate::internal::native::unified::InternalOutputKind
-pub const NUM_UNIFIED_CIRCUITS: usize = 4;
+const NUM_UNIFIED_CIRCUITS: usize = 4;
 
 /// Enum identifying which native field rx polynomial to retrieve from a proof.
 #[derive(Clone, Copy, Debug)]
