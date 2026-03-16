@@ -14,20 +14,19 @@ mod _08_f;
 mod _09_eval;
 mod _10_p;
 mod _11_circuits;
+pub(crate) mod claims;
 
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{
-    polynomials::{Rank, structured},
-    registry::CircuitIndex,
-};
+use ragu_circuits::polynomials::Rank;
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 use rand::CryptoRng;
 
 use crate::{
-    Application, Pcd, Proof, RAGU_TAG, internal::claims::Source, internal::native::RxComponent,
-    internal::transcript::Transcript, proof, step::Step,
+    Application, Pcd, Proof, RAGU_TAG, internal::transcript::Transcript, proof, step::Step,
 };
+
+use claims::FuseProofSource;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
@@ -73,8 +72,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = transcript.challenge(&mut dr)?;
         let z = transcript.challenge(&mut dr)?;
 
+        let source = FuseProofSource {
+            left: &left,
+            right: &right,
+        };
+
         let (error_m, error_m_witness, claims) =
-            self.compute_errors_m(rng, &native_registry, &y, &z, &left, &right)?;
+            self.compute_errors_m(rng, &native_registry, &y, &z, &source)?;
         let error_m_commitment = Point::constant(&mut dr, error_m.bridge.commitment)?;
         error_m_commitment.write(&mut dr, &mut transcript)?;
 
@@ -174,32 +178,5 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
 
         Ok((proof.carry(application_data), application_aux))
-    }
-}
-
-pub(crate) struct FuseProofSource<'rx, C: Cycle, R: Rank> {
-    pub(crate) left: &'rx Proof<C, R>,
-    pub(crate) right: &'rx Proof<C, R>,
-}
-
-impl<'rx, C: Cycle, R: Rank> Source for FuseProofSource<'rx, C, R> {
-    type RxComponent = RxComponent;
-    type Rx = &'rx structured::Polynomial<C::CircuitField, R>;
-    type AppCircuitId = CircuitIndex;
-
-    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
-        [
-            self.left.native_rx(component),
-            self.right.native_rx(component),
-        ]
-        .into_iter()
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
-        [
-            self.left.application.circuit_id,
-            self.right.application.circuit_id,
-        ]
-        .into_iter()
     }
 }
