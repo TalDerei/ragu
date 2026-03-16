@@ -58,6 +58,18 @@ pub(crate) struct NativeRx<C: Cycle, R: Rank> {
     pub(crate) commitment: C::HostCurve,
 }
 
+impl<C: Cycle, R: Rank> NativeRx<C, R> {
+    pub(crate) fn as_triple(
+        &self,
+    ) -> (
+        &structured::Polynomial<C::CircuitField, R>,
+        C::CircuitField,
+        C::HostCurve,
+    ) {
+        (&self.rx, self.blind, self.commitment)
+    }
+}
+
 pub(crate) type NativePreamble<C, R> = NativeRx<C, R>;
 
 #[derive(Clone)]
@@ -246,12 +258,7 @@ impl<C: Cycle> Challenges<C> {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct CircuitProof<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
+pub(crate) type CircuitProof<C, R> = NativeRx<C, R>;
 
 pub(crate) type InternalCircuits<C, R> =
     crate::internal::native::CircuitProofValues<CircuitProof<C, R>>;

@@ -92,43 +92,31 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     ) {
         use RxIndex::*;
         match idx {
-            Preamble => (
-                &self.preamble.native.rx,
-                self.preamble.native.blind,
-                self.preamble.native.commitment,
-            ),
+            Preamble => self.preamble.native.as_triple(),
             ErrorM => (
                 &self.error_m.native.rx,
                 self.error_m.native.blind,
                 self.error_m.native.commitment,
             ),
-            ErrorN => (
-                &self.error_n.native.rx,
-                self.error_n.native.blind,
-                self.error_n.native.commitment,
-            ),
+            ErrorN => self.error_n.native.as_triple(),
             Query => (
                 &self.query.native.rx,
                 self.query.native.blind,
                 self.query.native.commitment,
             ),
-            Eval => (
-                &self.eval.native.rx,
-                self.eval.native.blind,
-                self.eval.native.commitment,
-            ),
+            Eval => self.eval.native.as_triple(),
             Application => (
                 &self.application.rx,
                 self.application.blind,
                 self.application.commitment,
             ),
-            Hashes1 | Hashes2 | PartialCollapse | FullCollapse | ComputeV => {
-                let p = self.circuits.get(
+            Hashes1 | Hashes2 | PartialCollapse | FullCollapse | ComputeV => self
+                .circuits
+                .get(
                     CircuitProofIndex::from_rx_index(idx)
                         .expect("circuit variant maps to CircuitProofIndex"),
-                );
-                (&p.rx, p.blind, p.commitment)
-            }
+                )
+                .as_triple(),
         }
     }
 
