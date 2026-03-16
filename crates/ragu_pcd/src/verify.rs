@@ -419,7 +419,9 @@ mod tests {
     /// the assertion.
     #[test]
     fn ky_claim_alignment_assertion_catches_misalignment() {
-        use crate::components::claims::{self, native::KySource};
+        use crate::internal::claims;
+        use crate::internal::native::claims as native_claims;
+        use native_claims::KySource;
 
         type F = <Pasta as Cycle>::CircuitField;
 
@@ -430,7 +432,7 @@ mod tests {
         let z = F::from(43u64);
         let source = super::native::SingleProofSource::<Pasta, TestR> { proof: &proof };
         let mut builder = claims::Builder::new(&app.native_registry, y, z);
-        claims::native::build(&source, &mut builder).unwrap();
+        native_claims::build(&source, &mut builder).unwrap();
 
         let total_claims = builder.a.len();
         let non_stage_claims = total_claims - builder.num_stages;
@@ -452,7 +454,7 @@ mod tests {
             "correct source should align"
         );
 
-        let correct_ky: alloc::vec::Vec<F> = claims::native::ky_values(&correct_source)
+        let correct_ky: alloc::vec::Vec<F> = native_claims::ky_values(&correct_source)
             .take(total_claims)
             .collect();
 
@@ -487,12 +489,12 @@ mod tests {
         let misaligned = MisalignedSource(F::from(2u64), F::from(3u64), F::from(4u64));
 
         assert_ne!(
-            claims::native::num_concrete_ky(&misaligned),
+            native_claims::num_concrete_ky(&misaligned),
             non_stage_claims,
             "misaligned source should be caught by the assertion"
         );
 
-        let misaligned_ky: alloc::vec::Vec<F> = claims::native::ky_values(&misaligned)
+        let misaligned_ky: alloc::vec::Vec<F> = native_claims::ky_values(&misaligned)
             .take(total_claims)
             .collect();
 
