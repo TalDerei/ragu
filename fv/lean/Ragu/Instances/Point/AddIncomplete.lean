@@ -41,8 +41,6 @@ def exportedOutput (input_var : Var (ProvableVector field inputLen) (F p)) : Vec
   (var 2),
 ]
 
-def circuit := Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams (p:=Core.Primes.p)
-
 def deserializeInput (input : Var (ProvableVector field inputLen) (F p)) : Var Circuits.Point.AddIncomplete.Inputs (F p) :=
   {
     P1 := ⟨input.get 0, input.get 1⟩,
@@ -72,6 +70,7 @@ def formal_instance : Core.Statements.FormalInstance where
 
   Assumptions input :=
     input.P1.isOnCurve Circuits.Point.Spec.EpAffineParams ∧ input.P2.isOnCurve Circuits.Point.Spec.EpAffineParams
+
   Spec input output :=
     let ⟨P1, P2, nonzero⟩ := input
     (
