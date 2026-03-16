@@ -64,9 +64,9 @@ structure FormalInstance where
     (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
 
   -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
-  same_spec : ∀ input : Input (F p), ∀ output : Output (F p), (Spec input output) = (reimplementation.Spec input output)
+  same_spec : ∀ input : Input (F p), ∀ output : Output (F p), (Spec input output) ↔ (reimplementation.Spec input output)
 
   -- NOTE: this can be relaxed by proving that the reimplementation assumptions are implied by the instance assumptions instead
-  same_assumptions : ∀ input : Input (F p), (Assumptions input) = (reimplementation.Assumptions input)
+  same_assumptions : ∀ input : Input (F p), (Assumptions input) ↔ (reimplementation.Assumptions input)
 
 end Ragu.Core.Statements
