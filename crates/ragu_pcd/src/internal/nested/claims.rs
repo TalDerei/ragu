@@ -156,7 +156,7 @@ pub fn num_concrete_ky() -> usize {
 ///
 /// See [`native::ky_values`] for notes on the infinite zero tail.
 ///
-/// [`native::ky_values`]: super::native::ky_values
+/// [`native::ky_values`]: crate::internal::native::claims::ky_values
 pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     let num_steps = super::NUM_ENDOSCALING_STEPS;
 
