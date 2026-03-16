@@ -50,12 +50,15 @@ impl<C: Cycle, R: Rank> Bridge<C, R> {
     }
 }
 
+/// A committed structured rx polynomial on the host curve.
 #[derive(Clone)]
-pub(crate) struct NativePreamble<C: Cycle, R: Rank> {
+pub(crate) struct NativeRx<C: Cycle, R: Rank> {
     pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
     pub(crate) blind: C::CircuitField,
     pub(crate) commitment: C::HostCurve,
 }
+
+pub(crate) type NativePreamble<C, R> = NativeRx<C, R>;
 
 #[derive(Clone)]
 pub(crate) struct Preamble<C: Cycle, R: Rank> {
@@ -95,12 +98,7 @@ pub(crate) struct ErrorM<C: Cycle, R: Rank> {
     pub(crate) bridge: Bridge<C, R>,
 }
 
-#[derive(Clone)]
-pub(crate) struct NativeErrorN<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
+pub(crate) type NativeErrorN<C, R> = NativeRx<C, R>;
 
 #[derive(Clone)]
 pub(crate) struct ErrorN<C: Cycle, R: Rank> {
@@ -154,12 +152,7 @@ pub(crate) struct F<C: Cycle, R: Rank> {
     pub(crate) bridge: Bridge<C, R>,
 }
 
-#[derive(Clone)]
-pub(crate) struct NativeEval<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
+pub(crate) type NativeEval<C, R> = NativeRx<C, R>;
 
 #[derive(Clone)]
 pub(crate) struct Eval<C: Cycle, R: Rank> {

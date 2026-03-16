@@ -62,10 +62,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             R,
             HEADER_SIZE,
             native::RevdotParameters,
-        >::new(
-            self.params,
-            log2_circuits,
-        )
+        >::new(self.params, log2_circuits)
         .rx(native::circuits::hashes_1::Witness {
             unified,
             preamble_witness,
