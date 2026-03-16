@@ -21,7 +21,7 @@ use alloc::vec;
 
 use crate::header::Header;
 use crate::internal::endoscalar::NumStepsLen;
-use crate::internal::native::{RxComponent, RxIndex};
+use crate::internal::native::{CircuitProofIndex, RxComponent, RxIndex};
 use crate::internal::nested::NUM_ENDOSCALING_POINTS;
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
@@ -91,11 +91,11 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
             Query => &self.query.native.rx,
             Eval => &self.eval.native.rx,
             Application => &self.application.rx,
-            Hashes1 => &self.circuits.hashes_1_rx,
-            Hashes2 => &self.circuits.hashes_2_rx,
-            PartialCollapse => &self.circuits.partial_collapse_rx,
-            FullCollapse => &self.circuits.full_collapse_rx,
-            ComputeV => &self.circuits.compute_v_rx,
+            Hashes1 => &self.circuits.get(CircuitProofIndex::Hashes1).rx,
+            Hashes2 => &self.circuits.get(CircuitProofIndex::Hashes2).rx,
+            PartialCollapse => &self.circuits.get(CircuitProofIndex::PartialCollapse).rx,
+            FullCollapse => &self.circuits.get(CircuitProofIndex::FullCollapse).rx,
+            ComputeV => &self.circuits.get(CircuitProofIndex::ComputeV).rx,
         }
     }
 
@@ -239,23 +239,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
             },
             challenges: Challenges::trivial(),
-            circuits: InternalCircuits {
-                hashes_1_rx: zero_structured_host.clone(),
-                hashes_1_blind: host_blind,
-                hashes_1_commitment: host_commitment,
-                hashes_2_rx: zero_structured_host.clone(),
-                hashes_2_blind: host_blind,
-                hashes_2_commitment: host_commitment,
-                partial_collapse_rx: zero_structured_host.clone(),
-                partial_collapse_blind: host_blind,
-                partial_collapse_commitment: host_commitment,
-                full_collapse_rx: zero_structured_host.clone(),
-                full_collapse_blind: host_blind,
-                full_collapse_commitment: host_commitment,
-                compute_v_rx: zero_structured_host,
-                compute_v_blind: host_blind,
-                compute_v_commitment: host_commitment,
-            },
+            circuits: crate::internal::native::CircuitProofValues::from_fn(|_| CircuitProof {
+                rx: zero_structured_host.clone(),
+                blind: host_blind,
+                commitment: host_commitment,
+            }),
         }
     }
 }

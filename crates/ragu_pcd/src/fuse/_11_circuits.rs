@@ -163,21 +163,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ]);
 
         Ok(proof::InternalCircuits {
-            hashes_1_rx,
-            hashes_1_blind: hashes_1_rx_blind,
-            hashes_1_commitment: hashes_1_rx_commitment,
-            hashes_2_rx,
-            hashes_2_blind: hashes_2_rx_blind,
-            hashes_2_commitment: hashes_2_rx_commitment,
-            partial_collapse_rx,
-            partial_collapse_blind: partial_collapse_rx_blind,
-            partial_collapse_commitment: partial_collapse_rx_commitment,
-            full_collapse_rx,
-            full_collapse_blind: full_collapse_rx_blind,
-            full_collapse_commitment: full_collapse_rx_commitment,
-            compute_v_rx,
-            compute_v_blind: compute_v_rx_blind,
-            compute_v_commitment: compute_v_rx_commitment,
+            hashes_1: proof::CircuitProof {
+                rx: hashes_1_rx,
+                blind: hashes_1_rx_blind,
+                commitment: hashes_1_rx_commitment,
+            },
+            hashes_2: proof::CircuitProof {
+                rx: hashes_2_rx,
+                blind: hashes_2_rx_blind,
+                commitment: hashes_2_rx_commitment,
+            },
+            partial_collapse: proof::CircuitProof {
+                rx: partial_collapse_rx,
+                blind: partial_collapse_rx_blind,
+                commitment: partial_collapse_rx_commitment,
+            },
+            full_collapse: proof::CircuitProof {
+                rx: full_collapse_rx,
+                blind: full_collapse_rx_blind,
+                commitment: full_collapse_rx_commitment,
+            },
+            compute_v: proof::CircuitProof {
+                rx: compute_v_rx,
+                blind: compute_v_rx_blind,
+                commitment: compute_v_rx_commitment,
+            },
         })
     }
 }

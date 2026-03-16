@@ -254,20 +254,11 @@ impl<C: Cycle> Challenges<C> {
 }
 
 #[derive(Clone)]
-pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
-    pub(crate) hashes_1_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) hashes_1_blind: C::CircuitField,
-    pub(crate) hashes_1_commitment: C::HostCurve,
-    pub(crate) hashes_2_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) hashes_2_blind: C::CircuitField,
-    pub(crate) hashes_2_commitment: C::HostCurve,
-    pub(crate) partial_collapse_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) partial_collapse_blind: C::CircuitField,
-    pub(crate) partial_collapse_commitment: C::HostCurve,
-    pub(crate) full_collapse_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) full_collapse_blind: C::CircuitField,
-    pub(crate) full_collapse_commitment: C::HostCurve,
-    pub(crate) compute_v_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) compute_v_blind: C::CircuitField,
-    pub(crate) compute_v_commitment: C::HostCurve,
+pub(crate) struct CircuitProof<C: Cycle, R: Rank> {
+    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) blind: C::CircuitField,
+    pub(crate) commitment: C::HostCurve,
 }
+
+pub(crate) type InternalCircuits<C, R> =
+    crate::internal::native::CircuitProofValues<CircuitProof<C, R>>;

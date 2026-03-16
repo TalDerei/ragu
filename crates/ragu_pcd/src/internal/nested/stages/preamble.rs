@@ -6,6 +6,7 @@ use ragu_arithmetic::{CurveAffine, Cycle};
 use ragu_circuits::polynomials::Rank;
 
 use crate::Proof;
+use crate::internal::native::CircuitProofIndex;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -42,11 +43,17 @@ impl<C: CurveAffine> ChildWitness<C> {
     pub fn from_proof<CC: Cycle<HostCurve = C>, R: Rank>(proof: &Proof<CC, R>) -> Self {
         Self {
             application: proof.application.commitment,
-            hashes_1: proof.circuits.hashes_1_commitment,
-            hashes_2: proof.circuits.hashes_2_commitment,
-            partial_collapse: proof.circuits.partial_collapse_commitment,
-            full_collapse: proof.circuits.full_collapse_commitment,
-            compute_v: proof.circuits.compute_v_commitment,
+            hashes_1: proof.circuits.get(CircuitProofIndex::Hashes1).commitment,
+            hashes_2: proof.circuits.get(CircuitProofIndex::Hashes2).commitment,
+            partial_collapse: proof
+                .circuits
+                .get(CircuitProofIndex::PartialCollapse)
+                .commitment,
+            full_collapse: proof
+                .circuits
+                .get(CircuitProofIndex::FullCollapse)
+                .commitment,
+            compute_v: proof.circuits.get(CircuitProofIndex::ComputeV).commitment,
         }
     }
 }

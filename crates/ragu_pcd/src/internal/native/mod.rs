@@ -290,6 +290,77 @@ pub enum RxComponent {
     Rx(RxIndex),
 }
 
+/// Index for the 5 native circuit proof outputs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CircuitProofIndex {
+    Hashes1,
+    Hashes2,
+    PartialCollapse,
+    FullCollapse,
+    ComputeV,
+}
+
+const NUM_CIRCUIT_PROOFS: usize = 5;
+
+impl CircuitProofIndex {
+    /// All variants in canonical order.
+    pub const ALL: [Self; NUM_CIRCUIT_PROOFS] = [
+        Self::Hashes1,
+        Self::Hashes2,
+        Self::PartialCollapse,
+        Self::FullCollapse,
+        Self::ComputeV,
+    ];
+}
+
+/// Per-circuit-proof storage indexed by [`CircuitProofIndex`].
+#[derive(Clone)]
+pub struct CircuitProofValues<T> {
+    pub hashes_1: T,
+    pub hashes_2: T,
+    pub partial_collapse: T,
+    pub full_collapse: T,
+    pub compute_v: T,
+}
+
+impl<T> CircuitProofValues<T> {
+    /// Look up the value for the given circuit proof index.
+    pub fn get(&self, id: CircuitProofIndex) -> &T {
+        use CircuitProofIndex::*;
+        match id {
+            Hashes1 => &self.hashes_1,
+            Hashes2 => &self.hashes_2,
+            PartialCollapse => &self.partial_collapse,
+            FullCollapse => &self.full_collapse,
+            ComputeV => &self.compute_v,
+        }
+    }
+
+    /// Construct from a closure called once per variant in [`ALL`](CircuitProofIndex::ALL) order.
+    pub fn from_fn(mut f: impl FnMut(CircuitProofIndex) -> T) -> Self {
+        match Self::try_from_fn(|id| Ok::<_, core::convert::Infallible>(f(id))) {
+            Ok(v) => v,
+            Err(e) => match e {},
+        }
+    }
+
+    /// Fallible construction from a closure called once per variant.
+    ///
+    /// The closure is called in [`ALL`](CircuitProofIndex::ALL) order.
+    pub fn try_from_fn<E>(
+        mut f: impl FnMut(CircuitProofIndex) -> core::result::Result<T, E>,
+    ) -> core::result::Result<Self, E> {
+        use CircuitProofIndex::*;
+        Ok(CircuitProofValues {
+            hashes_1: f(Hashes1)?,
+            hashes_2: f(Hashes2)?,
+            partial_collapse: f(PartialCollapse)?,
+            full_collapse: f(FullCollapse)?,
+            compute_v: f(ComputeV)?,
+        })
+    }
+}
+
 /// Registers internal native circuits and masks into the provided registry.
 ///
 /// Does not register internal steps (rerandomize, trivial); those are
