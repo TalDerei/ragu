@@ -26,6 +26,10 @@ pub mod circuits;
 pub mod claims;
 pub mod unified;
 
+/// Identifies one of the 13 internal circuits registered by [`register_all`].
+///
+/// Variants are grouped into native circuits, native stage masks, and
+/// final stage masks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InternalCircuitIndex {
     // Native circuits
