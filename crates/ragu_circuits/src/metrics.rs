@@ -143,10 +143,11 @@ fn type_id_u64(id: TypeId) -> u64 {
         fn finish(&self) -> u64 {
             self.0
         }
-        fn write(&mut self, _: &[u8]) {
-            // TypeId::Hash calls write_u64; if this fallback is ever
-            // reached the assumption no longer holds.
-            unreachable!("TypeId::Hash should call write_u64");
+        fn write(&mut self, bytes: &[u8]) {
+            // Fallback if TypeId::Hash ever stops calling write_u64.
+            for (i, &b) in bytes.iter().enumerate().take(8) {
+                self.0 |= (b as u64) << (i * 8);
+            }
         }
         fn write_u64(&mut self, i: u64) {
             self.0 = i;
@@ -175,7 +176,11 @@ fn deep_hash(shallow: &ShallowFingerprint, output_eval: u64, children: &[u64]) -
         state.update(&child.to_le_bytes());
     }
     let hash = state.finalize();
-    u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
+    u64::from_le_bytes(
+        hash.as_array()[..8]
+            .try_into()
+            .expect("BLAKE2b output is 64 bytes"),
+    )
 }
 
 impl DeepFingerprint {
@@ -590,7 +595,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Compute output_eval: accumulate output wire evaluations to capture
         // which wires flow to which output slots.
         let output_eval = {
-            let mut acc = OutputAccumulator {
+            let mut acc = OutputEvaluator {
                 current_z: self.z,
                 z: self.z,
                 result: F::ZERO,
@@ -640,12 +645,12 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
     }
 }
 
-/// Accumulates output wire evaluations into a single scalar.
+/// Evaluates output wire mappings into a single scalar.
 ///
 /// Used to compute the `output_eval` field of [`DeepFingerprint`].
 /// Each output wire's evaluation is multiplied by a successive power of `z`
 /// and summed, capturing which wires flow to which output slots.
-struct OutputAccumulator<F> {
+struct OutputEvaluator<F> {
     /// Running geometric power: $z^{i+1}$ at output slot $i$.
     current_z: F,
     /// Base for the geometric sequence.
@@ -658,7 +663,7 @@ struct OutputAccumulator<F> {
 
 /// [`WireMap`] extracts output wire evaluations without
 /// producing real wires in the destination.
-impl<F: Field> WireMap<F> for OutputAccumulator<F> {
+impl<F: Field> WireMap<F> for OutputEvaluator<F> {
     type Src = Counter<F>;
     type Dst = core::marker::PhantomData<F>;
 
@@ -786,7 +791,7 @@ pub(crate) mod tests {
 
         // Compute output_eval from the routine's output wires.
         let output_eval = {
-            let mut acc = OutputAccumulator {
+            let mut acc = OutputEvaluator {
                 current_z: counter.z,
                 z: counter.z,
                 result: F::ZERO,
