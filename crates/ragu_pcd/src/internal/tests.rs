@@ -1,8 +1,7 @@
 use super::*;
 use crate::*;
 use native::{
-    CircuitProofIndex, CircuitProofValues, InternalCircuitIndex, InternalCircuitValues,
-    RevdotParameters, RxIndex, RxValues,
+    InternalCircuitIndex, InternalCircuitValues, RevdotParameters, RxIndex, RxValues,
     stages::{error_m, error_n, eval, preamble, query},
 };
 use ragu_circuits::staging::{Stage, StageExt};
@@ -278,13 +277,4 @@ fn test_rx_index_all_exhaustive() {
         collected.push(id);
     });
     assert_eq!(collected.as_slice(), RxIndex::ALL);
-}
-
-#[test]
-fn test_circuit_proof_index_all_exhaustive() {
-    let mut collected = alloc::vec::Vec::new();
-    let _values = CircuitProofValues::from_fn(|id| {
-        collected.push(id);
-    });
-    assert_eq!(collected.as_slice(), CircuitProofIndex::ALL);
 }

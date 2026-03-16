@@ -304,20 +304,7 @@ pub enum CircuitProofIndex {
     ComputeV,
 }
 
-#[cfg(test)]
-const NUM_CIRCUIT_PROOFS: usize = 5;
-
 impl CircuitProofIndex {
-    /// All variants in canonical order.
-    #[cfg(test)]
-    const ALL: [Self; NUM_CIRCUIT_PROOFS] = [
-        Self::Hashes1,
-        Self::Hashes2,
-        Self::PartialCollapse,
-        Self::FullCollapse,
-        Self::ComputeV,
-    ];
-
     /// Maps an [`RxIndex`] circuit variant to its [`CircuitProofIndex`].
     ///
     /// Returns `None` for non-circuit `RxIndex` variants (stages and application).
@@ -356,7 +343,7 @@ impl<T> CircuitProofValues<T> {
         }
     }
 
-    /// Construct from a closure called once per variant in [`ALL`](CircuitProofIndex::ALL) order.
+    /// Construct from a closure called once per variant in declaration order.
     pub fn from_fn(mut f: impl FnMut(CircuitProofIndex) -> T) -> Self {
         match Self::try_from_fn(|id| Ok::<_, core::convert::Infallible>(f(id))) {
             Ok(v) => v,
@@ -366,7 +353,7 @@ impl<T> CircuitProofValues<T> {
 
     /// Fallible construction from a closure called once per variant.
     ///
-    /// The closure is called in [`ALL`](CircuitProofIndex::ALL) order.
+    /// The closure is called in declaration order.
     pub fn try_from_fn<E>(
         mut f: impl FnMut(CircuitProofIndex) -> core::result::Result<T, E>,
     ) -> core::result::Result<Self, E> {
