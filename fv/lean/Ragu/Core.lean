@@ -32,6 +32,13 @@ end Ragu.Core.Primes
 
 namespace Ragu.Core.Statements
 
+/-- Erase witness computation functions from flat operations,
+    replacing them with `default`. This allows comparing circuit
+    structure (constraints) while ignoring witness generation,
+    which is not faithfully reproduced in the circuit export. -/
+def FlatOperation.eraseCompute {F : Type} [Field F] : FlatOperation F → FlatOperation F
+  | .witness m _ => .witness m (fun _ => default)
+  | op => op
 
 structure FormalInstance where
   p : ℕ
@@ -52,21 +59,20 @@ structure FormalInstance where
   deserializeInput : Var (ProvableVector field inputLen) (F p) → Var Input (F p)
   serializeOutput : Var Output (F p) → Var (ProvableVector field outputLen) (F p)
 
-  Assumptions (_ : Input (F p)) : Prop := True
   Spec : Input (F p) → Output (F p) → Prop
 
-  reimplementation : FormalCircuit (F p) Input Output
+  reimplementation : GeneralFormalCircuit (F p) Input Output
 
-  same_circuit : ∀ (input : Var (ProvableVector field inputLen) (F p)) ,
-    (input |> deserializeInput |> reimplementation |>.operations 0).toFlat = (exportedOperations input).toFlat
+  -- Compare circuit constraints, ignoring witness generation
+  same_constraints : ∀ (input : Var (ProvableVector field inputLen) (F p)),
+    (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
+    = (exportedOperations input).toFlat.map FlatOperation.eraseCompute
 
   same_output : ∀ (input : Var (ProvableVector field inputLen) (F p)),
     (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
 
   -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
-  same_spec : ∀ input : Input (F p), ∀ output : Output (F p), (Spec input output) ↔ (reimplementation.Spec input output)
-
-  -- NOTE: this can be relaxed by proving that the reimplementation assumptions are implied by the instance assumptions instead
-  same_assumptions : ∀ input : Input (F p), (Assumptions input) ↔ (reimplementation.Assumptions input)
+  same_spec : ∀ input : Input (F p), ∀ output : Output (F p),
+    (Spec input output) ↔ (reimplementation.Spec input output (fun _ _ => #[]))
 
 end Ragu.Core.Statements

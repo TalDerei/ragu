@@ -9,33 +9,35 @@ structure Square (F : Type) where
   a_sq : F
 deriving ProvableStruct
 
-def main (_input : Unit) : Circuit (F p) (Var Square (F p)) := do
-  let ⟨x, y, z⟩ ← subcircuit Core.AllocMul.circuit default
+def main (idx : ℕ) (_input : Unit) : Circuit (F p) (Var Square (F p)) := do
+  let ⟨x, y, z⟩ ← Core.AllocMul.circuit idx default
   assertZero (x - y)
   return ⟨x, z⟩
 
-def Assumptions (_input : Unit) := True
+def Assumptions (idx : ℕ) (_input : Unit) (data : ProverData (F p)) :=
+  let w := Core.AllocMul.readRow data idx
+  w.x = w.y ∧ w.x * w.y = w.z
 
-def Spec (_input : Unit) (out : Square (F p)) :=
+def Spec (_input : Unit) (out : Square (F p)) (_data : ProverData (F p)) :=
   out.a_sq = out.a^2
 
-instance elaborated : ElaboratedCircuit (F p) unit Square where
-  main
+instance elaborated (idx : ℕ) : ElaboratedCircuit (F p) unit Square where
+  main := main idx
   localLength _ := 3
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness (idx : ℕ) : GeneralFormalCircuit.Soundness (F p) (elaborated idx) Spec := by
   circuit_proof_start
-  simp [Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec] at h_holds
+  simp [Core.AllocMul.circuit, Core.AllocMul.Spec] at h_holds
   obtain ⟨c1, c2⟩ := h_holds
   rw [add_neg_eq_zero] at c2
   rw [←c2] at c1
   rw [←c1]
   ring
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness (idx : ℕ) : GeneralFormalCircuit.Completeness (F p) (elaborated idx) (Assumptions idx) := by
   sorry
 
-def circuit : FormalCircuit (F p) unit Square :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+def circuit (idx : ℕ) : GeneralFormalCircuit (F p) unit Square :=
+  { elaborated idx with Assumptions := Assumptions idx, Spec, soundness := soundness idx, completeness := completeness idx }
 
 end Ragu.Circuits.Element.AllocSquare

@@ -65,23 +65,21 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  Assumptions input :=
-    input.isOnCurve Circuits.Point.Spec.EpAffineParams ∧
-    Circuits.Point.Spec.EpAffineParams.noOrderTwoPoints
-
   Spec input output :=
+    input.isOnCurve Circuits.Point.Spec.EpAffineParams →
+    Circuits.Point.Spec.EpAffineParams.noOrderTwoPoints →
     (match input.double with
     | none => False -- this case never happens
     | some double => output = double)
     ∧
     output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
+  reimplementation := Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams 0
 
-  reimplementation := Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
-
-  same_circuit := by
+  same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, FormalCircuit.toSubcircuit,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
@@ -92,7 +90,7 @@ def formal_instance : Core.Statements.FormalInstance where
     constructor
   same_output := by
     intro input;
-    simp [circuit_norm, FormalCircuit.toSubcircuit,
+    simp [circuit_norm, GeneralFormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
@@ -101,10 +99,18 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     constructor <;> rfl
   same_spec := by
-    intro input output;
-    simp [Circuits.Point.Double.circuit, Circuits.Point.Double.Spec]
-    intro h1
-    aesop
-  same_assumptions := by intro input; rfl
+    intro input output
+    constructor
+    · intro h h1 h2
+      generalize input.double = d at h ⊢
+      cases d with
+      | none => exact h h1 h2
+      | some _ => exact h h1 h2
+    · intro h h1 h2
+      simp only [Circuits.Point.Double.circuit, Circuits.Point.Double.Spec] at h
+      generalize input.double = d at h ⊢
+      cases d with
+      | none => exact h h1 h2
+      | some _ => exact h h1 h2
 
 end Ragu.Instances.Point.Double

@@ -9,32 +9,40 @@ structure Input (F : Type) where
   y : F
 deriving ProvableStruct
 
-def main (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
-  let ⟨x, y, z⟩ ← subcircuit Core.AllocMul.circuit default
+def main (idx : ℕ) (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
+  let ⟨x, y, z⟩ ← Core.AllocMul.circuit idx default
   assertZero (x - input.x)
   assertZero (y - input.y)
   return z
 
-def Assumptions (_input : Input (F p)) := True
+def Assumptions (idx : ℕ) (input : Input (F p)) (data : ProverData (F p)) :=
+  let w := Core.AllocMul.readRow data idx
+  w.x = input.x ∧ w.y = input.y ∧ w.x * w.y = w.z
 
-def Spec (input : Input (F p)) (out : field (F p)) :=
+def Spec (input : Input (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
   out = input.x * input.y
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated (idx : ℕ) : ElaboratedCircuit (F p) Input field where
+  main := main idx
   localLength _ := 3
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness (idx : ℕ) : GeneralFormalCircuit.Soundness (F p) (elaborated idx) Spec := by
   circuit_proof_start
-  simp [Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec] at h_holds
+  simp [Core.AllocMul.circuit, Core.AllocMul.Spec] at h_holds
   obtain ⟨c1, c2, c3⟩ := h_holds
   rw [add_neg_eq_zero] at c2 c3
   rw [←c2, ←c3, c1]
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness (idx : ℕ) : GeneralFormalCircuit.Completeness (F p) (elaborated idx) (Assumptions idx) := by
   sorry
 
-def circuit : FormalCircuit (F p) Input field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+def circuit (idx : ℕ) : GeneralFormalCircuit (F p) Input field :=
+  {
+    elaborated idx with
+    Assumptions := Assumptions idx,
+    Spec,
+    soundness := soundness idx,
+    completeness := completeness idx
+  }
 
 end Ragu.Circuits.Element.Mul

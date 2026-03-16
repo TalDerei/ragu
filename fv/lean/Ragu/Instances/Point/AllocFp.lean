@@ -57,14 +57,14 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  Assumptions input := True
   Spec input output := output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
-  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams
+  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams 0
 
-  same_circuit := by
+  same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, FormalCircuit.toSubcircuit,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit,
       Circuits.Point.Alloc.circuit, Circuits.Point.Alloc.elaborated, Circuits.Point.Alloc.main,
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.AllocSquare.circuit, Circuits.Element.AllocSquare.elaborated, Circuits.Element.AllocSquare.main,
@@ -72,6 +72,5 @@ def formal_instance : Core.Statements.FormalInstance where
     rfl
   same_output := by intro input; rfl
   same_spec := by intro input output; rfl
-  same_assumptions := by intro input; rfl
 
 end Ragu.Instances.Point.AllocFp
