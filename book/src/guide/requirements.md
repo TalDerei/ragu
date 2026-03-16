@@ -12,8 +12,10 @@
 
 Ragu's approach to `std` and `no_std` follows four principles:
 
-1. **No `std` by default.** All library crates are `#![no_std]` and expose
-   an optional `std` feature flag for opting in.
+1. **`no_std` compatible.** All library crates are `#![no_std]` and gate
+   standard-library usage behind an optional `std` feature flag. The
+   default `multicore` feature implies `std`; to build without it, use
+   `--no-default-features`.
 2. **`alloc` is required.** All library crates depend on the [`alloc`]
    crate for heap-allocated types such as `Vec` and `Box`. In practice
    this means Ragu can target environments that provide a global
