@@ -41,14 +41,11 @@ use alloc::vec::Vec;
 
 use crate::{
     Application,
-    internal::{
-        fold_revdot::{self, TrackedPoly},
-        native, nested,
-    },
+    internal::{fold_revdot, native, nested},
     proof,
 };
 
-use super::claims::{FuseAtom, FuseProofSource};
+use super::claims::{FuseAtom, FuseProofSource, TrackedPoly};
 
 type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 

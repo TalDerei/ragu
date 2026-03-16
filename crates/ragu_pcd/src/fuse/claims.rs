@@ -12,8 +12,9 @@
 //! directly from the child proofs.
 
 use alloc::{borrow::Cow, vec::Vec};
+use core::borrow::Borrow;
 
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, structured},
@@ -25,10 +26,100 @@ use crate::{
     Proof,
     internal::{
         claims::{Builder, Source, sum_polynomials},
-        fold_revdot::{CommitmentDecomposition, TrackedPoly},
+        fold_revdot::Foldable,
         native::{InternalCircuitIndex, RxComponent, claims::Processor},
     },
 };
+
+/// Tracks how a polynomial decomposes as a linear combination of source
+/// polynomials, so that the corresponding commitment can be computed from
+/// the source commitments via a small MSM.
+///
+/// Each term `(key, coefficient)` records that this polynomial includes
+/// `coefficient * source[key]`. The same key may appear multiple times;
+/// duplicates are summed during resolution. The key type `K` is chosen by
+/// the caller (the fuse path uses [`FuseAtom`]).
+#[derive(Clone)]
+pub(super) struct CommitmentDecomposition<K, F: Field> {
+    pub(super) terms: Vec<(K, F)>,
+}
+
+impl<K, F: Field> Default for CommitmentDecomposition<K, F> {
+    fn default() -> Self {
+        Self { terms: Vec::new() }
+    }
+}
+
+impl<K: Copy, F: Field> CommitmentDecomposition<K, F> {
+    /// Decomposition for a single source polynomial with coefficient one.
+    pub(super) fn single(key: K) -> Self {
+        Self {
+            terms: Vec::from([(key, F::ONE)]),
+        }
+    }
+}
+
+/// A polynomial paired with its [`CommitmentDecomposition`].
+///
+/// In the fuse pipeline, the `A` polynomials need to carry their
+/// corresponding commitments so that `a_commitment` can be computed cheaply.
+/// Rather than materializing the commitment at each fold step, we track the
+/// linear combination of source polynomials and resolve to commitments once
+/// at the end. Implements [`Foldable`] so it flows through [`fold_polys_m`]
+/// / [`fold_polys_n`] transparently.
+///
+/// The polynomial is held as a [`Cow`] to avoid cloning borrowed polynomials
+/// during claim building; the fold itself always produces owned results.
+///
+/// [`Cow`]: alloc::borrow::Cow
+/// [`fold_polys_m`]: crate::internal::fold_revdot::fold_polys_m
+/// [`fold_polys_n`]: crate::internal::fold_revdot::fold_polys_n
+#[derive(Clone)]
+pub(super) struct TrackedPoly<'a, K, F: Field, R: Rank> {
+    pub(super) poly: Cow<'a, structured::Polynomial<F, R>>,
+    pub(super) decomp: CommitmentDecomposition<K, F>,
+}
+
+impl<K, F: Field, R: Rank> Default for TrackedPoly<'_, K, F, R> {
+    fn default() -> Self {
+        Self {
+            poly: Default::default(),
+            decomp: Default::default(),
+        }
+    }
+}
+
+impl<'a, K: Copy, F: Field, R: Rank> TrackedPoly<'a, K, F, R> {
+    pub(super) fn new(
+        poly: Cow<'a, structured::Polynomial<F, R>>,
+        decomp: CommitmentDecomposition<K, F>,
+    ) -> Self {
+        Self { poly, decomp }
+    }
+
+    pub(super) fn single(poly: Cow<'a, structured::Polynomial<F, R>>, key: K) -> Self {
+        Self::new(poly, CommitmentDecomposition::single(key))
+    }
+}
+
+impl<K: Copy, F: Field, R: Rank> Foldable<F> for TrackedPoly<'_, K, F, R> {
+    fn fold_scale(&mut self, by: F) {
+        self.poly.to_mut().scale(by);
+        for (_, coeff) in &mut self.decomp.terms {
+            *coeff *= by;
+        }
+    }
+    fn fold_add_assign(&mut self, other: &Self) {
+        self.poly.to_mut().add_assign(&other.poly);
+        self.decomp.terms.extend_from_slice(&other.decomp.terms);
+    }
+}
+
+impl<K, F: Field, R: Rank> Borrow<structured::Polynomial<F, R>> for TrackedPoly<'_, K, F, R> {
+    fn borrow(&self) -> &structured::Polynomial<F, R> {
+        &self.poly
+    }
+}
 
 /// A polynomial reference paired with a key that identifies the corresponding
 /// commitment in the child proofs.

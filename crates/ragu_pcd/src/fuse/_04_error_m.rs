@@ -16,15 +16,11 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    internal::{
-        claims,
-        fold_revdot::{self, TrackedPoly},
-        native, nested,
-    },
+    internal::{claims, fold_revdot, native, nested},
     proof,
 };
 
-use super::claims::{FuseAtom, FuseProofSource};
+use super::claims::{FuseAtom, FuseProofSource, TrackedPoly};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_errors_m<'dr, 'rx, D, RNG: CryptoRng>(

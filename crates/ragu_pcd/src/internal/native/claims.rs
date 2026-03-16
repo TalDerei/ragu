@@ -50,16 +50,13 @@ const NUM_UNIFIED_CIRCUITS: usize = 4;
 /// - **Polynomial context** ([`Builder`]): `Rx` is a polynomial
 ///   reference. The processor accumulates polynomials for error term
 ///   construction.
-/// - **Fuse path** ([`Builder`] with [`TrackedPoly`] `A`): `Rx` is an
-///   [`Atom`](crate::fuse::claims::Atom) pairing a polynomial reference
-///   with a [`FuseAtom`](crate::fuse::claims::FuseAtom) key for commitment
-///   decomposition tracking.
+/// - **Fuse path** ([`Builder`] with `TrackedPoly` `A`): `Rx` is an
+///   `Atom` pairing a polynomial reference with a `FuseAtom` key for
+///   commitment decomposition tracking (see `fuse::claims`).
 /// - **Evaluation context**: `Rx` carries a single evaluated field element at
 ///   $xz$. Both the `ax` and `bx` vectors derive from this shared evaluation:
 ///   `ax` uses $r\_i(xz)$ directly (since $A$ has no dilation), while `bx` adds
 ///   $s\_y + t(xz)$.
-///
-/// [`TrackedPoly`]: crate::internal::fold_revdot::TrackedPoly
 pub trait Processor<Rx, AppCircuitId> {
     /// Process a raw claim (a/b directly, $k(y) = c$).
     fn raw_claim(&mut self, a: Rx, b: Rx);

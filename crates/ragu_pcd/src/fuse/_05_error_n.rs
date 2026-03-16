@@ -24,7 +24,7 @@ use crate::{
     Application,
     internal::{
         claims,
-        fold_revdot::{self, TrackedPoly},
+        fold_revdot,
         native,
         native::stages::error_n::{ChildKyValues, KyValues},
         nested,
@@ -32,7 +32,7 @@ use crate::{
     proof,
 };
 
-use super::claims::FuseAtom;
+use super::claims::{FuseAtom, TrackedPoly};
 
 type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
