@@ -34,7 +34,8 @@ theorem soundness (idx : ℕ) : GeneralFormalCircuit.Soundness (F p) (elaborated
   ring
 
 theorem completeness (idx : ℕ) : GeneralFormalCircuit.Completeness (F p) (elaborated idx) (Assumptions idx) := by
-  sorry
+  circuit_proof_start [Mul.circuit, Mul.Assumptions]
+  exact h_assumptions
 
 def circuit (idx : ℕ) : GeneralFormalCircuit (F p) Element Element :=
   { elaborated idx with Assumptions := Assumptions idx, Spec, soundness := soundness idx, completeness := completeness idx }
