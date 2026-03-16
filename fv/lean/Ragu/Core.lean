@@ -28,3 +28,45 @@ instance : NeZero (2 : F p) where
   out := by native_decide
 
 end Ragu.Core.Primes
+
+
+namespace Ragu.Core.Statements
+
+
+structure FormalInstance where
+  p : ℕ
+  pPrime : Fact p.Prime := by infer_instance
+
+  inputLen : ℕ
+  outputLen : ℕ
+
+  exportedOperations : Var (ProvableVector field inputLen) (F p) → Operations (F p)
+  exportedOutput : Var (ProvableVector field inputLen) (F p) → Vector (Expression (F p)) outputLen
+
+  Input : TypeMap
+  InputProvable : ProvableType Input := by infer_instance
+
+  Output : TypeMap
+  OutputProvable : ProvableType Output := by infer_instance
+
+  deserializeInput : Var (ProvableVector field inputLen) (F p) → Var Input (F p)
+  serializeOutput : Var Output (F p) → Var (ProvableVector field outputLen) (F p)
+
+  Assumptions (_ : Input (F p)) : Prop := True
+  Spec : Input (F p) → Output (F p) → Prop
+
+  reimplementation : FormalCircuit (F p) Input Output
+
+  same_circuit : ∀ (input : Var (ProvableVector field inputLen) (F p)) ,
+    (input |> deserializeInput |> reimplementation |>.operations 0).toFlat = (exportedOperations input).toFlat
+
+  same_output : ∀ (input : Var (ProvableVector field inputLen) (F p)),
+    (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
+
+  -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
+  same_spec : ∀ input : Input (F p), ∀ output : Output (F p), (Spec input output) = (reimplementation.Spec input output)
+
+  -- NOTE: this can be relaxed by proving that the reimplementation assumptions are implied by the instance assumptions instead
+  same_assumptions : ∀ input : Input (F p), (Assumptions input) = (reimplementation.Assumptions input)
+
+end Ragu.Core.Statements
