@@ -50,15 +50,22 @@ impl<const NUM_POINTS: usize> Len for InputsLen<NUM_POINTS> {
     }
 }
 
+/// Compute the number of endoscaling steps for `num_points` curve points.
+///
+/// This is `ceil((num_points - 1) / ENDOSCALINGS_PER_STEP).max(1)`.
+pub(crate) const fn num_steps(num_points: usize) -> usize {
+    assert!(num_points > 0);
+    let inputs = num_points - 1;
+    let steps = inputs.div_ceil(ENDOSCALINGS_PER_STEP);
+    if steps > 1 { steps } else { 1 }
+}
+
 /// Number of steps (= interstitials) for `NUM_POINTS`.
 pub struct NumStepsLen<const NUM_POINTS: usize>;
 
 impl<const NUM_POINTS: usize> Len for NumStepsLen<NUM_POINTS> {
     fn len() -> usize {
-        InputsLen::<NUM_POINTS>::len()
-            .div_ceil(ENDOSCALINGS_PER_STEP)
-            // Ensure at least 1 step even when NUM_POINTS == 1 (no inputs).
-            .max(1)
+        num_steps(NUM_POINTS)
     }
 }
 

@@ -10,9 +10,8 @@ use ragu_circuits::{
     staging::MultiStage,
 };
 use ragu_core::Result;
-use ragu_primitives::vec::Len;
 
-use crate::internal::endoscalar::{EndoscalarStage, EndoscalingStep, NumStepsLen, PointsStage};
+use crate::internal::endoscalar;
 
 /// Number of curve points accumulated during `compute_p` for nested field
 /// endoscaling verification.
@@ -22,14 +21,18 @@ use crate::internal::endoscalar::{EndoscalarStage, EndoscalingStep, NumStepsLen,
 /// - 6 stage proof components (registry_wx0, registry_wx1, registry_wy, ab.a, ab.b, registry_xy)
 /// - 1 f.commitment (base polynomial)
 ///
-/// The endoscaling circuits process these 37 points across
-/// `NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()` = 9 steps.
+/// The endoscaling circuits process these points across
+/// [`NUM_ENDOSCALING_STEPS`] steps.
 pub const NUM_ENDOSCALING_POINTS: usize = 37;
+
+/// Number of endoscaling steps, derived from [`NUM_ENDOSCALING_POINTS`] via
+/// [`endoscalar::num_steps`].
+const NUM_ENDOSCALING_STEPS: usize = endoscalar::num_steps(NUM_ENDOSCALING_POINTS);
 
 /// Index of internal nested circuits registered into the registry.
 ///
 /// These correspond to the circuit objects registered in [`register_all`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InternalCircuitIndex {
     /// `EndoscalingStep` circuit at given step.
     EndoscalingStep(u32),
@@ -41,19 +44,42 @@ pub enum InternalCircuitIndex {
     PointsFinalStaged,
 }
 
+/// The number of internal circuits registered by [`register_all`],
+/// equal to the number of entries in [`InternalCircuitIndex::ALL`].
+pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 3;
+
 impl InternalCircuitIndex {
+    /// All variants in canonical iteration order.
+    ///
+    /// This order must match the registry finalization concatenation order
+    /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
+    /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
+    /// derives indices from position in this array.
+    pub const ALL: [Self; NUM_INTERNAL_CIRCUITS] = unwrap_all(Self::all_slots());
+
+    const fn all_slots() -> [Option<Self>; NUM_INTERNAL_CIRCUITS] {
+        let mut slots = [None; NUM_INTERNAL_CIRCUITS];
+        let mut i = 0;
+        while i < NUM_ENDOSCALING_STEPS {
+            slots[i] = Some(Self::EndoscalingStep(i as u32));
+            i += 1;
+        }
+        slots[NUM_ENDOSCALING_STEPS] = Some(Self::EndoscalarStage);
+        slots[NUM_ENDOSCALING_STEPS + 1] = Some(Self::PointsStage);
+        slots[NUM_ENDOSCALING_STEPS + 2] = Some(Self::PointsFinalStaged);
+        slots
+    }
+
     /// Convert to a [`CircuitIndex`] for registry lookup.
     ///
     /// Circuit indices follow the `RegistryBuilder::finalize()` concatenation
     /// order: internal circuits first, then internal masks.
     pub fn circuit_index(self) -> CircuitIndex {
-        let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len() as u32;
-        match self {
-            Self::EndoscalingStep(step) => CircuitIndex::from_u32(step),
-            Self::EndoscalarStage => CircuitIndex::from_u32(num_steps),
-            Self::PointsStage => CircuitIndex::from_u32(num_steps + 1),
-            Self::PointsFinalStaged => CircuitIndex::from_u32(num_steps + 2),
-        }
+        let pos = Self::ALL
+            .iter()
+            .position(|&v| v == self)
+            .expect("every variant appears in ALL");
+        CircuitIndex::new(pos)
     }
 }
 
@@ -68,22 +94,53 @@ pub mod stages;
 pub fn register_all<'params, C: Cycle, R: Rank>(
     mut registry: RegistryBuilder<'params, C::ScalarField, R>,
 ) -> Result<RegistryBuilder<'params, C::ScalarField, R>> {
+    let initial_internal_circuits = registry.num_internal_circuits();
+
     // Circuits first, then masks — matching RegistryBuilder::finalize()
     // concatenation order and InternalCircuitIndex::circuit_index().
-    let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
-    for step in 0..num_steps {
-        let step_circuit = EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
-        let staged = MultiStage::new(step_circuit);
-        registry = registry.register_internal_circuit(staged)?;
+    for &id in &InternalCircuitIndex::ALL {
+        use InternalCircuitIndex::*;
+        registry = match id {
+            EndoscalingStep(step) => {
+                let step_circuit =
+                    endoscalar::EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(
+                        step as usize,
+                    );
+                let staged = MultiStage::new(step_circuit);
+                registry.register_internal_circuit(staged)?
+            }
+            EndoscalarStage => {
+                registry.register_internal_mask::<endoscalar::EndoscalarStage>()?
+            }
+            PointsStage => {
+                registry.register_internal_mask::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
+            }
+            PointsFinalStaged => {
+                registry.register_internal_final_mask::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
+            }
+        };
     }
 
-    registry = registry.register_internal_mask::<EndoscalarStage>()?;
-
-    registry =
-        registry.register_internal_mask::<PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?;
-
-    registry = registry
-        .register_internal_final_mask::<PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?;
+    assert_eq!(
+        registry.num_internal_circuits(),
+        initial_internal_circuits + NUM_INTERNAL_CIRCUITS,
+        "internal circuit count mismatch"
+    );
 
     Ok(registry)
+}
+
+/// Unwraps every element of an `Option` array at compile time.
+///
+/// Panics (at compile time) if any slot is `None`.
+const fn unwrap_all<T: Copy, const N: usize>(slots: [Option<T>; N]) -> [T; N] {
+    // The filler is immediately overwritten for every index; it exists only
+    // because `[T; N]` requires an initializer in const context.
+    let mut arr = [slots[0].unwrap(); N];
+    let mut i = 1;
+    while i < N {
+        arr[i] = slots[i].unwrap();
+        i += 1;
+    }
+    arr
 }

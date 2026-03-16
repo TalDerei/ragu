@@ -79,11 +79,7 @@ where
     S: Source<RxComponent = RxComponent>,
     P: Processor<S::Rx>,
 {
-    use super::NUM_ENDOSCALING_POINTS;
-    use crate::internal::endoscalar::NumStepsLen;
-    use ragu_primitives::vec::Len;
-
-    let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
+    let num_steps = super::NUM_ENDOSCALING_STEPS;
 
     use RxComponent::*;
 
@@ -139,11 +135,7 @@ pub trait KySource {
 /// - `num_steps` ones (for EndoscalingStep circuit checks, single-proof verification)
 /// - Infinite zeros (for stage checks)
 pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
-    use super::NUM_ENDOSCALING_POINTS;
-    use crate::internal::endoscalar::NumStepsLen;
-    use ragu_primitives::vec::Len;
-
-    let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
+    let num_steps = super::NUM_ENDOSCALING_STEPS;
 
     // Circuit checks: k(y) = 1 (for single-proof, num_circuit_claims = num_steps)
     core::iter::repeat_n(source.one(), num_steps)
