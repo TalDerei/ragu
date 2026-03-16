@@ -55,6 +55,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             coverage: Default::default(),
         };
 
+        let (_, log2_circuits) = total_circuit_counts(self.num_application_steps);
+
         let (hashes_1_trace, unified) = native::circuits::hashes_1::Circuit::<
             C,
             R,
@@ -62,7 +64,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native::RevdotParameters,
         >::new(
             self.params,
-            total_circuit_counts(self.num_application_steps).1,
+            log2_circuits,
         )
         .rx(native::circuits::hashes_1::Witness {
             unified,
