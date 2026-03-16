@@ -64,7 +64,7 @@ theorem same_circuit (input : Var Inputs CircuitField):
   constructor
 
 theorem same_output (input : Var Inputs CircuitField) :
-    ((circuit (deserializeInput input)).output 0 |> serializeOutput) = exported_output input := by
+    ((deserializeInput input) |> circuit |>.output 0 |> serializeOutput) = exported_output input:= by
   simp [circuit_norm, FormalCircuit.toSubcircuit,
     circuit, deserializeInput, serializeOutput,
     Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,

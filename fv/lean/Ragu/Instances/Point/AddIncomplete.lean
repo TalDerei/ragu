@@ -34,7 +34,7 @@ set_option linter.unusedVariables false in
 def exported_output (input_var : Var Inputs CircuitField) : Vector (Expression CircuitField) 3 := #v[
   (((var 8) + ((0x40000000000000000000000000000000224698fc094cf91b992d30ed00000000 : Expression CircuitField) * (input_var.get 0))) + ((0x40000000000000000000000000000000224698fc094cf91b992d30ed00000000 : Expression CircuitField) * (input_var.get 2))),
   ((var 11) + ((0x40000000000000000000000000000000224698fc094cf91b992d30ed00000000 : Expression CircuitField) * (input_var.get 1))),
-  (var 2)
+  (var 2),
 ]
 
 
@@ -67,7 +67,7 @@ theorem same_circuit (input : Var Inputs CircuitField):
   constructor
 
 theorem same_output (input : Var Inputs CircuitField) :
-    ((circuit (deserializeInput input)).output 0 |> serializeOutput) = exported_output input:= by
+    ((deserializeInput input) |> circuit |>.output 0 |> serializeOutput) = exported_output input:= by
   simp [circuit_norm, FormalCircuit.toSubcircuit,
     circuit, deserializeInput, serializeOutput,
     Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,

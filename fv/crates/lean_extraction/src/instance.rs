@@ -171,14 +171,12 @@ pub trait CircuitInstance {
 
         println!("set_option linter.unusedVariables false in");
         println!("@[reducible]");
-        print!(
-            "def exported_output (input_var : Var Inputs CircuitField) : List (Expression CircuitField) := ["
+        println!(
+            "def exported_output (input_var : Var Inputs CircuitField) : Vector (Expression CircuitField) {} := #v[",
+            wires.len()
         );
-        for (i, expr) in wires.iter().enumerate() {
-            if i > 0 {
-                print!(", ");
-            }
-            print!("{}", display_expr(expr));
+        for expr in wires.iter() {
+            println!("  {},", display_expr(expr));
         }
         println!("]");
     }

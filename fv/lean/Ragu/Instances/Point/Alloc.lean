@@ -54,7 +54,7 @@ theorem same_circuit (input : Var Inputs CircuitField):
   rfl
 
 theorem same_output (input : Var Inputs CircuitField) :
-    ((circuit (deserializeInput input)).output 0 |> serializeOutput) = exported_output input := by
+  ((deserializeInput input) |> circuit |>.output 0 |> serializeOutput) = exported_output input:= by
   simp [circuit_norm,
     circuit, serializeOutput,
     Circuits.Point.Alloc.circuit, Circuits.Point.Alloc.elaborated, Circuits.Point.Alloc.main,
