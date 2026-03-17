@@ -23,31 +23,29 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var field (F p)) := do
 
   return quotient
 
-def Assumptions (input : Inputs (F p)) (_data : ProverData (F p)) :=
+def Assumptions (input : Inputs (F p)) :=
   input.y ≠ 0
 
--- Spec is conditional: soundness does not use assumptions
-def Spec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
-  input.y ≠ 0 → out = input.x / input.y
+def Spec (input : Inputs (F p)) (out : field (F p)) :=
+  out = input.x / input.y
 
 instance elaborated : ElaboratedCircuit (F p) Inputs field where
   main := main
   localLength _ := 3
 
-theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Spec := by
+theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2 c3
   rw [←c2, ←c3] at c1
-  intro h
-  exact eq_div_of_mul_eq h c1
+  exact eq_div_of_mul_eq h_assumptions c1
 
-theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) elaborated Assumptions := by
   circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
   have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, Core.AllocMul.Row, List.sum] at h0 h1 h2
+  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
   norm_num at h0 h1 h2
   simp at h0 h1 h2
   rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
@@ -57,7 +55,7 @@ theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assump
   · ring
   · ring
 
-def circuit : GeneralFormalCircuit (F p) Inputs field :=
+def circuit : FormalCircuit (F p) Inputs field :=
   {
     elaborated with
     Assumptions,

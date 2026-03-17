@@ -17,26 +17,26 @@ def main (input : Var Element (F p)) : Circuit (F p) (Var Element (F p)) := do
     wire := ←Mul.circuit ⟨x, x⟩
   }
 
-def Assumptions (_input : Element (F p)) (_data : ProverData (F p)) :=
+def Assumptions (_input : Element (F p)) :=
   True
 
-def Spec (input : Element (F p)) (out : Element (F p)) (_data : ProverData (F p)) :=
+def Spec (input : Element (F p)) (out : Element (F p)) :=
   out.wire = input.wire^2
 
 instance elaborated : ElaboratedCircuit (F p) Element Element where
   main := main
   localLength _ := 3
 
-theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Spec := by
+theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
-  simp [circuit_norm, Mul.circuit, Mul.Spec] at h_holds ⊢
+  simp [circuit_norm, Mul.circuit, Mul.Spec, Mul.Assumptions] at h_holds ⊢
   rw [h_holds]
   ring
 
-theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) elaborated Assumptions := by
   circuit_proof_start [Mul.circuit, Mul.Assumptions]
 
-def circuit : GeneralFormalCircuit (F p) Element Element :=
+def circuit : FormalCircuit (F p) Element Element :=
   { elaborated with Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.Square

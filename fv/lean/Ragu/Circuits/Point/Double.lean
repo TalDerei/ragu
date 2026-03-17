@@ -43,9 +43,9 @@ instance elaborated : ElaboratedCircuit (F p) Spec.Point Spec.Point where
 theorem soundness (curveParams : Spec.CurveParams p) : GeneralFormalCircuit.Soundness (F p) elaborated (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
-    Element.Square.circuit, Element.Square.Spec,
-    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
-    Element.Mul.circuit, Element.Mul.Spec
+    Element.Square.circuit, Element.Square.Spec, Element.Square.Assumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.Spec, Element.DivNonzero.Assumptions,
+    Element.Mul.circuit, Element.Mul.Spec, Element.Mul.Assumptions
   ] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
 
