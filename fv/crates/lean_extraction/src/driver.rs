@@ -69,6 +69,10 @@ impl<F: Field> ExtractionDriver<F> {
         self.next_input_wire += n;
         (start..start + n).map(Expr::InputVar).collect()
     }
+
+    pub fn input_wire_count(&self) -> usize {
+        self.next_input_wire
+    }
 }
 
 impl<F: Field> Default for ExtractionDriver<F> {

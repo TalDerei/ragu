@@ -25,9 +25,9 @@ fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
         Coeff::Zero => "0".to_owned(),
         Coeff::One => "1".to_owned(),
         Coeff::Two => "2".to_owned(),
-        Coeff::NegativeOne => format!("({:?} : Expression CircuitField)", F::ONE.neg()),
-        Coeff::Arbitrary(f) => format!("({f:?} : Expression CircuitField)"),
-        Coeff::NegativeArbitrary(f) => format!("({:?} : Expression CircuitField)", f.neg()),
+        Coeff::NegativeOne => format!("({:?} : Expression (F p))", F::ONE.neg()),
+        Coeff::Arbitrary(f) => format!("({f:?} : Expression (F p))"),
+        Coeff::NegativeArbitrary(f) => format!("({:?} : Expression (F p))", f.neg()),
     }
 }
 
@@ -47,14 +47,29 @@ fn display_expr<F: Field + std::fmt::Debug>(expr: &Expr<F>) -> String {
     }
 }
 
+pub fn render_reducible_definition(name: &str, value: impl std::fmt::Display) -> String {
+    format!("@[reducible]\ndef {name} := {value}\n")
+}
+
 pub fn render_field_definition<F: FieldExporter>() -> String {
-    format!("@[reducible]\n{}\n", F::get_field_definition())
+    render_reducible_definition(
+        "p",
+        F::get_field_definition().trim_start_matches("def p := "),
+    )
+}
+
+pub fn render_input_len(input_len: usize) -> String {
+    render_reducible_definition("inputLen", input_len)
+}
+
+pub fn render_output_len(output_len: usize) -> String {
+    render_reducible_definition("outputLen", output_len)
 }
 
 pub fn render_exported_operations<F: Field + std::fmt::Debug>(ops: &[Op<F>]) -> String {
     let mut output = String::from(
         "set_option linter.unusedVariables false in\n\
-def exported_operations (input_var : Var Inputs CircuitField) : Operations CircuitField := [\n",
+def exportedOperations (input_var : Var (ProvableVector field inputLen) (F p)) : Operations (F p) := [\n",
     );
 
     for op in ops {
@@ -79,15 +94,14 @@ pub fn render_exported_output<F: Field + std::fmt::Debug>(wires: &[Expr<F>]) -> 
     let mut output = format!(
         "set_option linter.unusedVariables false in\n\
 @[reducible]\n\
-def exported_output (input_var : Var Inputs CircuitField) : Vector (Expression CircuitField) {} := #v[\n",
-        wires.len()
+def exportedOutput (input_var : Var (ProvableVector field inputLen) (F p)) : Vector (Expression (F p)) outputLen := #v[\n"
     );
 
-    for expr in wires {
-        output.push_str(&format!("  {},\n", display_expr(expr)));
+    for (index, expr) in wires.iter().enumerate() {
+        let suffix = if index + 1 == wires.len() { "" } else { "," };
+        output.push_str(&format!("  {}{suffix}\n", display_expr(expr)));
     }
 
     output.push(']');
-    output.push('\n');
     output
 }

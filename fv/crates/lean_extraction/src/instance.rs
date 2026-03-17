@@ -6,6 +6,7 @@ use ragu_core::gadgets::Gadget;
 
 use crate::codegen::{
     FieldExporter, render_exported_operations, render_exported_output, render_field_definition,
+    render_input_len, render_output_len,
 };
 use crate::driver::ExtractionDriver;
 use crate::expr::Expr;
@@ -120,15 +121,23 @@ pub trait CircuitInstance {
     fn circuit(dr: &mut ExtractionDriver<Self::Field>)
     -> ragu_core::Result<Vec<Expr<Self::Field>>>;
 
-    /// Run the circuit and print the Lean definitions for operations and output.
-    fn export() {
+    fn render_generated() -> String {
         let mut dr = ExtractionDriver::<Self::Field>::new();
         let wires = Self::circuit(&mut dr).expect("circuit failed");
+        let input_len = dr.input_wire_count();
 
-        print!("{}", render_field_definition::<Self::Field>());
-        println!();
-        print!("{}", render_exported_operations(&dr.ops));
-        println!();
-        print!("{}", render_exported_output(&wires));
+        format!(
+            "{}\n{}\n{}\n{}\n{}",
+            render_field_definition::<Self::Field>(),
+            render_input_len(input_len),
+            render_output_len(wires.len()),
+            render_exported_operations(&dr.ops),
+            render_exported_output(&wires),
+        )
+    }
+
+    /// Run the circuit and print the Lean definitions for operations and output.
+    fn export() {
+        print!("{}", Self::render_generated());
     }
 }
