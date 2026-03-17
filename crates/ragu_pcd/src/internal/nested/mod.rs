@@ -90,12 +90,36 @@ impl InternalCircuitIndex {
 /// [`NestedP`](crate::proof::components::NestedP).
 #[derive(Clone, Copy, Debug)]
 pub enum RxIndex {
+    /// EndoscalingStep circuit rx polynomial (indexed by step number).
+    EndoscalingStep(u32),
     /// EndoscalarStage rx polynomial.
     EndoscalarStage,
     /// PointsStage rx polynomial.
     PointsStage,
-    /// EndoscalingStep circuit rx polynomial (indexed by step number).
-    EndoscalingStep(u32),
+}
+
+/// The number of rx components in the nested field,
+/// equal to the number of entries in [`RxIndex::ALL`].
+pub const NUM_RX_COMPONENTS: usize = NUM_ENDOSCALING_STEPS + 2;
+
+impl RxIndex {
+    /// All variants in canonical order (circuits, then stages).
+    ///
+    /// Must maintain the same ordering convention as
+    /// [`native::RxIndex::ALL`](super::native::RxIndex::ALL).
+    pub const ALL: [Self; NUM_RX_COMPONENTS] = unwrap_all(Self::all_slots());
+
+    const fn all_slots() -> [Option<Self>; NUM_RX_COMPONENTS] {
+        let mut slots = [None; NUM_RX_COMPONENTS];
+        let mut i = 0;
+        while i < NUM_ENDOSCALING_STEPS {
+            slots[i] = Some(Self::EndoscalingStep(i as u32));
+            i += 1;
+        }
+        slots[NUM_ENDOSCALING_STEPS] = Some(Self::EndoscalarStage);
+        slots[NUM_ENDOSCALING_STEPS + 1] = Some(Self::PointsStage);
+        slots
+    }
 }
 
 pub mod claims;

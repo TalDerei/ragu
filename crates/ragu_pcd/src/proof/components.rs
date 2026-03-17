@@ -166,9 +166,9 @@ pub(crate) struct NativeP<C: Cycle, R: Rank> {
 
 #[derive(Clone)]
 pub(crate) struct NestedP<C: Cycle, R: Rank> {
+    pub(crate) step_rxs: Vec<structured::Polynomial<C::ScalarField, R>>,
     pub(crate) endoscalar_rx: structured::Polynomial<C::ScalarField, R>,
     pub(crate) points_rx: structured::Polynomial<C::ScalarField, R>,
-    pub(crate) step_rxs: Vec<structured::Polynomial<C::ScalarField, R>>,
 }
 
 #[derive(Clone)]

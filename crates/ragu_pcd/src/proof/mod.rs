@@ -101,9 +101,9 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
     fn index(&self, idx: nested::RxIndex) -> &structured::Polynomial<C::ScalarField, R> {
         use nested::RxIndex::*;
         match idx {
+            EndoscalingStep(step) => &self.p.nested.step_rxs[step as usize],
             EndoscalarStage => &self.p.nested.endoscalar_rx,
             PointsStage => &self.p.nested.points_rx,
-            EndoscalingStep(step) => &self.p.nested.step_rxs[step as usize],
         }
     }
 }
@@ -249,12 +249,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     v: C::CircuitField::ZERO,
                 },
                 nested: NestedP {
-                    endoscalar_rx: zero_structured_nested.clone(),
-                    points_rx: zero_structured_nested.clone(),
                     step_rxs: vec![
                         zero_structured_nested.clone();
                         NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()
                     ],
+                    endoscalar_rx: zero_structured_nested.clone(),
+                    points_rx: zero_structured_nested.clone(),
                 },
             },
             challenges: Challenges::trivial(),

@@ -197,9 +197,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 v,
             },
             nested: proof::NestedP {
+                step_rxs,
                 endoscalar_rx,
                 points_rx,
-                step_rxs,
             },
         })
     }
