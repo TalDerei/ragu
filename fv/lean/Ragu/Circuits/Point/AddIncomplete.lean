@@ -25,16 +25,16 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Outputs (F p)) := do
 
   -- delta = (y2 - y1) / (x2 - x1)
   let tmp := x2 - x1
-  let nonzero_out ← Element.Mul.circuit ⟨nonzero, tmp⟩
+  let nonzero_out ← subcircuit Element.Mul.circuit ⟨nonzero, tmp⟩
 
-  let delta ← Element.DivNonzero.circuit ⟨y2 - y1, tmp⟩
+  let delta ← subcircuit Element.DivNonzero.circuit ⟨y2 - y1, tmp⟩
 
   -- x3 = delta^2 - x1 - x2
-  let ⟨delta2⟩ ← Element.Square.circuit ⟨delta⟩
+  let ⟨delta2⟩ ← subcircuit Element.Square.circuit ⟨delta⟩
   let x3 := delta2 - x1 - x2
 
   -- y3 = delta * (x1 - x3) - y1
-  let delta_mul_x_diff ← Element.Mul.circuit ⟨delta, x1 - x3⟩
+  let delta_mul_x_diff ← subcircuit Element.Mul.circuit ⟨delta, x1 - x3⟩
   let y3 := delta_mul_x_diff - y1
 
   return {
