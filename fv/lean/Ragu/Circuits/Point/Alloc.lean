@@ -16,7 +16,9 @@ variable {p : ℕ} [Fact p.Prime]
 --   assertZero ((x3 + (curveParams.b * 1)) - y2)
 --   return ⟨x, y⟩
 --
--- Inlined to raw witness + assertZero for completeness proof access to env-readRow mappings
+-- Inlined to raw witness + assertZero for completeness proof access to env-readRow mappings.
+-- To undo this inlining, the Clean framework needs to expose how sub-circuit witnesses
+-- map to environment entries (i.e., connect readRow indices to env.get offsets).
 def main (curveParams : Spec.CurveParams p) (idx : ℕ) (_input : Unit) : Circuit (F p) (Var Spec.Point (F p)) := do
   -- AllocSquare(x): idx
   let ⟨w0x, w0y, w0z⟩ ← (witness fun env => Core.AllocMul.readRow env.data idx
