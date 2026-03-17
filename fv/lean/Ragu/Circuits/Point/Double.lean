@@ -24,6 +24,8 @@ def main (input : Var Spec.Point (F p)) : Circuit (F p) (Var Spec.Point (F p)) :
 
 def Assumptions (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (_data : ProverData (F p)) :=
   input.isOnCurve curveParams ∧
+  -- for the circuit to be sound, there must not exist points of order 2 on the curve,
+  -- therefore soundness is also conditioned on the following property:
   curveParams.noOrderTwoPoints
 
 -- Spec is conditional on curve membership and no order-2 points
