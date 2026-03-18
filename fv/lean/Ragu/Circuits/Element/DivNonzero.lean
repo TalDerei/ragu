@@ -9,93 +9,53 @@ structure Inputs (F : Type) where
   y : F
 deriving ProvableStruct
 
--- w maps as: (quotient, denominator, numerator) i.e. quotient * denominator = numerator
-def main (input : Var Inputs (F p)) : Circuit (F p) (Var field (F p)) := do
-  let ⟨quotient, denominator, numerator⟩ ← (witness fun env =>
-    let xv := Expression.eval env input.x
-    let yv := Expression.eval env input.y
-    ⟨xv / yv, yv, xv⟩
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
-  assertZero (quotient * denominator - numerator)
-
+-- quotient * denominator = numerator, with denominator = y, numerator = x
+def main (idx : ℕ) (input : Var Inputs (F p)) : Circuit (F p) (Var field (F p)) := do
+  let ⟨quotient, denominator, numerator⟩ ← Core.AllocMul.circuit idx ()
   assertZero (input.x - numerator)
   assertZero (input.y - denominator)
-
   return quotient
 
-def Assumptions (input : Inputs (F p)) := input.y ≠ 0
-
-def Spec (input : Inputs (F p)) (out : field (F p)) :=
-  out = input.x / input.y
-
-instance elaborated : ElaboratedCircuit (F p) Inputs field where
-  main
-  localLength _ := 3
-
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  obtain ⟨c1, c2, c3⟩ := h_holds
-  rw [add_neg_eq_zero] at c1 c2 c3
-  rw [←c2, ←c3] at c1
-  exact eq_div_of_mul_eq h_assumptions c1
-
-theorem completeness : Completeness (F p) elaborated Assumptions := by
-  circuit_proof_start
-  have h0 := h_env (0 : Fin 3)
-  have h1 := h_env (1 : Fin 3)
-  have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
-  simp at h0 h1 h2
-  rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
-  rw [h0, h1, h2]
-  refine ⟨?_, ?_, ?_⟩
-  · rw [add_neg_eq_zero]; field_simp [h_assumptions]
-  · ring
-  · ring
-
-def circuit : FormalCircuit (F p) Inputs field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
-
--- General versions with weaker assumptions for completeness
-
-def GeneralAssumptions (input : Inputs (F p)) (_data : ProverData (F p)) :=
-  input.y ≠ 0 ∨ input.x = 0
+def GeneralAssumptions (idx : ℕ) (input : Inputs (F p)) (data : ProverData (F p)) :=
+  let row := Core.AllocMul.readRow data idx
+  row.y = input.y ∧ row.z = input.x ∧ (input.y ≠ 0 ∨ input.x = 0)
 
 def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
   input.y ≠ 0 → out = input.x / input.y
 
-theorem generalSoundness : GeneralFormalCircuit.Soundness (F p) elaborated GeneralSpec := by
-  circuit_proof_start
-  obtain ⟨c1, c2, c3⟩ := h_holds
-  rw [add_neg_eq_zero] at c1 c2 c3
-  rw [←c2, ←c3] at c1
+instance elaborated (idx : ℕ) : ElaboratedCircuit (F p) Inputs field where
+  main := main idx
+  localLength _ := 3
+
+theorem generalSoundness (idx : ℕ) : GeneralFormalCircuit.Soundness (F p) (elaborated idx) GeneralSpec := by
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec
+  ]
+  obtain ⟨h_mul, h_x, h_y⟩ := h_holds
+  rw [add_neg_eq_zero] at h_x h_y
   intro h_y_ne
-  exact eq_div_of_mul_eq h_y_ne c1
+  rw [←h_x, ←h_y] at h_mul
+  exact eq_div_of_mul_eq h_y_ne h_mul
 
-theorem generalCompleteness : GeneralFormalCircuit.Completeness (F p) elaborated GeneralAssumptions := by
-  circuit_proof_start
-  have h0 := h_env (0 : Fin 3)
-  have h1 := h_env (1 : Fin 3)
-  have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
-  simp at h0 h1 h2
-  rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
-  rw [h0, h1, h2]
-  refine ⟨?_, ?_, ?_⟩
-  · rw [add_neg_eq_zero]
-    rcases h_assumptions with h_y_ne | h_x_zero
-    · field_simp [h_y_ne]
-    · simp only [] at h_x_zero; rw [h_x_zero]; simp
-  · ring
-  · ring
+theorem generalCompleteness (idx : ℕ) : GeneralFormalCircuit.Completeness (F p) (elaborated idx) (GeneralAssumptions idx) := by
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions,
+    Core.AllocMul.Spec, Core.AllocMul.CompletenessSpec
+  ]
+  obtain ⟨_, h_eq⟩ := h_env
+  simp only [GeneralAssumptions] at h_assumptions
+  obtain ⟨h_y_eq, h_z_eq, _⟩ := h_assumptions
+  have h_eq_z := congr_arg Core.AllocMul.Row.z h_eq
+  have h_eq_y := congr_arg Core.AllocMul.Row.y h_eq
+  simp only [] at h_eq_z h_eq_y h_y_eq h_z_eq
+  rw [add_neg_eq_zero, add_neg_eq_zero]
+  exact ⟨by rw [h_eq_z, h_z_eq], by rw [h_eq_y, h_y_eq]⟩
 
-def generalCircuit : GeneralFormalCircuit (F p) Inputs field :=
-  { elaborated with
-    Assumptions := GeneralAssumptions,
+def generalCircuit (idx : ℕ) : GeneralFormalCircuit (F p) Inputs field :=
+  { elaborated idx with
+    Assumptions := GeneralAssumptions idx,
     Spec := GeneralSpec,
-    soundness := generalSoundness,
-    completeness := generalCompleteness }
+    soundness := generalSoundness idx,
+    completeness := generalCompleteness idx }
 
 end Ragu.Circuits.Element.DivNonzero

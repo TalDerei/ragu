@@ -97,7 +97,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     )
 
   reimplementation :=
-    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
+    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams 0
 
   same_constraints := by
     intro input
@@ -107,6 +107,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
       Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor; rfl)
     constructor
@@ -117,6 +118,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
       Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor <;> congr)
   same_spec := by

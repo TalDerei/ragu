@@ -52,7 +52,7 @@ def serializeOutput (output: Var Circuits.Point.Spec.Point (F p)) : Vector (Expr
     output.y
   ]
 
-def formal_instance : Core.Statements.FormalInstance where
+def formal_instance : Core.Statements.GeneralFormalInstance where
   p
   inputLen
   outputLen
@@ -75,32 +75,33 @@ def formal_instance : Core.Statements.FormalInstance where
     output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
   reimplementation :=
-    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
+    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams 0
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm, FormalCircuit.toSubcircuit,
+      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
-      Circuits.Element.DivNonzero.circuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
     intro input;
-    simp [circuit_norm, FormalCircuit.toSubcircuit,
+    simp [circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
-      Circuits.Element.DivNonzero.circuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     constructor <;> rfl
   same_spec := by
     intro input output
     dsimp only [Circuits.Point.Double.circuit,
-      Circuits.Point.Double.Assumptions,
       Circuits.Point.Double.Spec]
     aesop
 
