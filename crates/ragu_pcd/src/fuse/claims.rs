@@ -26,7 +26,7 @@ use crate::{
     Proof,
     internal::{
         claims::{Builder, Source, sum_polynomials},
-        fold_revdot::Foldable,
+        fold_revdot::{self, Foldable},
         native::{InternalCircuitIndex, RxComponent, claims::Processor},
     },
 };
@@ -248,22 +248,11 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FuseAtom, F, R>, Circu
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = Atom<'rx, FuseAtom, F, R>>,
     ) -> Result<()> {
-        let atoms: Vec<_> = rxs.collect();
-        let folded = self.fold_stage_polys(atoms.iter().map(|a| a.poly));
-
-        // Compute z-power decomposition matching the Horner fold in
-        // `fold_stage_polys`. The fold gives item i coefficient z^(n-1-i).
-        let z = self.z;
-        let mut terms = Vec::with_capacity(atoms.len());
-        let mut z_pow = F::ONE;
-        for atom in atoms.iter().rev() {
-            terms.push((atom.key, z_pow));
-            z_pow *= z;
-        }
-        terms.reverse();
-        let decomp = CommitmentDecomposition { terms };
-
-        self.stage_impl(id.circuit_index(), TrackedPoly::new(folded, decomp));
+        let tracked: Vec<_> = rxs
+            .map(|a| TrackedPoly::single(Cow::Borrowed(a.poly), a.key))
+            .collect();
+        let folded = fold_revdot::fold(&tracked, self.z);
+        self.stage_impl(id.circuit_index(), folded);
         Ok(())
     }
 }
