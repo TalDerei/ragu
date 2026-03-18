@@ -97,14 +97,12 @@ def formal_instance : Core.Statements.FormalInstance where
     )
 
   reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) _ _
-      (Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams)
+    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
-      FormalCircuit.isGeneralFormalCircuit,
+      Operations.toFlat, circuit_norm, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
@@ -114,8 +112,7 @@ def formal_instance : Core.Statements.FormalInstance where
     constructor
   same_output := by
     intro input;
-    simp [circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
-      FormalCircuit.isGeneralFormalCircuit,
+    simp [circuit_norm, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
@@ -124,8 +121,7 @@ def formal_instance : Core.Statements.FormalInstance where
     repeat (constructor <;> congr)
   same_spec := by
     intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Point.AddIncomplete.circuit,
+    dsimp only [Circuits.Point.AddIncomplete.circuit,
       Circuits.Point.AddIncomplete.Assumptions,
       Circuits.Point.AddIncomplete.Spec]
     aesop

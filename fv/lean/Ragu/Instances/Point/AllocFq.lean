@@ -44,7 +44,7 @@ def serializeOutput (output: Var Circuits.Point.Spec.Point (F p)) : Vector (Expr
     output.y
   ]
 
-def formal_instance : Core.Statements.FormalInstance where
+def formal_instance : Core.Statements.GeneralFormalInstance where
   p
   inputLen
   outputLen
