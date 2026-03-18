@@ -98,6 +98,18 @@ macro_rules! define_bridge_stage {
                     })
                 }
             }
+
+            #[cfg(test)]
+            mod tests {
+                use super::*;
+                use crate::internal::tests::{R, assert_stage_values};
+                use ragu_pasta::EqAffine;
+
+                #[test]
+                fn stage_values_matches_wire_count() {
+                    assert_stage_values(&Stage::<EqAffine, R>::default());
+                }
+            }
         }
     };
 

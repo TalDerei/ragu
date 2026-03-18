@@ -8,6 +8,34 @@ use ragu_circuits::staging::{Stage, StageExt};
 use ragu_pasta::{Pasta, fp, fq};
 pub type R = ragu_circuits::polynomials::ProductionRank;
 
+use ff::PrimeField;
+use ragu_circuits::polynomials::Rank;
+use ragu_core::{
+    drivers::emulator::{Emulator, Wireless},
+    gadgets::{Bound, Gadget},
+    maybe::Empty,
+};
+
+pub fn assert_stage_values<F, R, S>(stage: &S)
+where
+    F: PrimeField,
+    R: Rank,
+    S: Stage<F, R>,
+    for<'dr> Bound<'dr, Emulator<Wireless<Empty, F>>, S::OutputKind>:
+        Gadget<'dr, Emulator<Wireless<Empty, F>>>,
+{
+    let mut emulator = Emulator::counter();
+    let output = stage
+        .witness(&mut emulator, Empty)
+        .expect("allocation should succeed");
+
+    assert_eq!(
+        output.num_wires().expect("wire counting should succeed"),
+        S::values(),
+        "Stage::values() does not match actual wire count"
+    );
+}
+
 // When changing HEADER_SIZE, update the constraint counts by running:
 //   cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture
 // Then copy-paste the output into the check_constraints! calls in the test below.
