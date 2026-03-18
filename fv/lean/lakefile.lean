@@ -10,4 +10,4 @@ package Ragu where
 @[default_target]
 lean_lib Ragu where
 
-require clean from "../../../clean"
+require clean from git "https://github.com/Verified-zkEVM/clean" @ "completeness-spec"
