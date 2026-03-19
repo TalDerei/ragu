@@ -7,7 +7,7 @@
 //! - Circuit checks ([`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)): $k(y) = 1$
 //! - Stage checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 //!   [`PointsStage`](InternalCircuitIndex::PointsStage),
-//!   `PointsFinalStaged`): $k(y) = 0$
+//!   `PointsFinalStaged`, and all `Bridge*` variants): $k(y) = 0$
 
 use alloc::borrow::Cow;
 
@@ -15,19 +15,8 @@ use ff::PrimeField;
 use ragu_circuits::polynomials::{Rank, structured};
 use ragu_core::Result;
 
-use super::InternalCircuitIndex;
+use super::{InternalCircuitIndex, RxIndex};
 use crate::internal::claims::{Builder, Source, sum_polynomials};
-
-/// Enum identifying which nested field rx polynomial to retrieve from a proof.
-#[derive(Clone, Copy, Debug)]
-pub enum RxComponent {
-    /// EndoscalarStage rx polynomial.
-    EndoscalarStage,
-    /// PointsStage rx polynomial.
-    PointsStage,
-    /// EndoscalingStep circuit rx polynomial (indexed by step number).
-    EndoscalingStep(u32),
-}
 
 /// Trait for processing nested claim values into accumulated outputs.
 ///
@@ -71,51 +60,64 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R
 /// 1. Circuit checks ($k(y) = 1$): [`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)
 ///    for each step, interleaved across proofs
 /// 2. Stage checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
-///    [`PointsStage`](InternalCircuitIndex::PointsStage), `PointsFinalStaged`
+///    [`PointsStage`](InternalCircuitIndex::PointsStage), `PointsFinalStaged`,
+///    and all `Bridge*` variants
 ///
 /// This ordering must match the ky_elements ordering from [`ky_values`].
 pub fn build<S, P>(source: &S, processor: &mut P) -> Result<()>
 where
-    S: Source<RxComponent = RxComponent>,
+    S: Source<RxComponent = RxIndex>,
     P: Processor<S::Rx>,
 {
-    use super::NUM_ENDOSCALING_POINTS;
-    use crate::internal::endoscalar::NumStepsLen;
-    use ragu_primitives::vec::Len;
-
-    let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
-
-    use RxComponent::*;
-
-    // 1. Circuit checks FIRST (k(y) = 1)
-    // Process all EndoscalingStep circuits (interleaved across proofs)
-    // Each circuit claim needs: step_rx + endoscalar_rx + points_rx
-    for step in 0..num_steps {
-        for ((step_rx, endo_rx), pts_rx) in source
-            .rx(EndoscalingStep(step as u32))
-            .zip(source.rx(EndoscalarStage))
-            .zip(source.rx(PointsStage))
-        {
-            processor.internal_circuit(
-                InternalCircuitIndex::EndoscalingStep(step as u32),
-                [step_rx, endo_rx, pts_rx].into_iter(),
-            );
+    for &id in &InternalCircuitIndex::ALL {
+        use InternalCircuitIndex::*;
+        match id {
+            EndoscalingStep(step) => {
+                for ((step_rx, endo_rx), pts_rx) in source
+                    .rx(RxIndex::EndoscalingStep(step))
+                    .zip(source.rx(RxIndex::EndoscalarStage))
+                    .zip(source.rx(RxIndex::PointsStage))
+                {
+                    processor.internal_circuit(id, [step_rx, endo_rx, pts_rx].into_iter());
+                }
+            }
+            EndoscalarStage => {
+                processor.stage(id, source.rx(RxIndex::EndoscalarStage))?;
+            }
+            PointsStage => {
+                processor.stage(id, source.rx(RxIndex::PointsStage))?;
+            }
+            PointsFinalStaged => {
+                let num_steps = super::NUM_ENDOSCALING_STEPS;
+                let final_rxs = (0..num_steps)
+                    .flat_map(|step| source.rx(RxIndex::EndoscalingStep(step as u32)));
+                processor.stage(id, final_rxs)?;
+            }
+            BridgePreamble => {
+                processor.stage(id, source.rx(RxIndex::BridgePreamble))?;
+            }
+            BridgeSPrime => {
+                processor.stage(id, source.rx(RxIndex::BridgeSPrime))?;
+            }
+            BridgeInnerError => {
+                processor.stage(id, source.rx(RxIndex::BridgeInnerError))?;
+            }
+            BridgeOuterError => {
+                processor.stage(id, source.rx(RxIndex::BridgeOuterError))?;
+            }
+            BridgeAB => {
+                processor.stage(id, source.rx(RxIndex::BridgeAB))?;
+            }
+            BridgeQuery => {
+                processor.stage(id, source.rx(RxIndex::BridgeQuery))?;
+            }
+            BridgeF => {
+                processor.stage(id, source.rx(RxIndex::BridgeF))?;
+            }
+            BridgeEval => {
+                processor.stage(id, source.rx(RxIndex::BridgeEval))?;
+            }
         }
-    }
-
-    // 2. Stage checks SECOND (k(y) = 0)
-    processor.stage(
-        InternalCircuitIndex::EndoscalarStage,
-        source.rx(EndoscalarStage),
-    )?;
-
-    processor.stage(InternalCircuitIndex::PointsStage, source.rx(PointsStage))?;
-
-    // PointsFinalStaged - final stage check
-    // Aggregates all EndoscalingStep rxs from all proofs
-    {
-        let final_rxs = (0..num_steps).flat_map(|step| source.rx(EndoscalingStep(step as u32)));
-        processor.stage(InternalCircuitIndex::PointsFinalStaged, final_rxs)?;
     }
 
     Ok(())
@@ -139,11 +141,7 @@ pub trait KySource {
 /// - `num_steps` ones (for EndoscalingStep circuit checks, single-proof verification)
 /// - Infinite zeros (for stage checks)
 pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
-    use super::NUM_ENDOSCALING_POINTS;
-    use crate::internal::endoscalar::NumStepsLen;
-    use ragu_primitives::vec::Len;
-
-    let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
+    let num_steps = super::NUM_ENDOSCALING_STEPS;
 
     // Circuit checks: k(y) = 1 (for single-proof, num_circuit_claims = num_steps)
     core::iter::repeat_n(source.one(), num_steps)

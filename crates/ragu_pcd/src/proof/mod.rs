@@ -22,6 +22,7 @@ use alloc::vec;
 use crate::header::Header;
 use crate::internal::endoscalar::NumStepsLen;
 use crate::internal::native::{RxComponent, RxIndex};
+use crate::internal::nested;
 use crate::internal::nested::NUM_ENDOSCALING_POINTS;
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
@@ -64,8 +65,8 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) application: Application<C, R>,
     pub(crate) preamble: Preamble<C, R>,
     pub(crate) s_prime: SPrime<C, R>,
-    pub(crate) error_m: ErrorM<C, R>,
-    pub(crate) error_n: ErrorN<C, R>,
+    pub(crate) inner_error: InnerError<C, R>,
+    pub(crate) outer_error: OuterError<C, R>,
     pub(crate) ab: AB<C, R>,
     pub(crate) query: Query<C, R>,
     pub(crate) f: F<C, R>,
@@ -81,16 +82,36 @@ impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
         use RxIndex::*;
         match idx {
             Preamble => &self.preamble.native,
-            ErrorM => &self.error_m.native.rx_triple,
-            ErrorN => &self.error_n.native,
+            InnerError => &self.inner_error.native.rx_triple,
+            OuterError => &self.outer_error.native,
             Query => &self.query.native.rx_triple,
             Eval => &self.eval.native,
             Application => &self.application.rx_triple,
             Hashes1 => &self.circuits.hashes_1,
             Hashes2 => &self.circuits.hashes_2,
-            PartialCollapse => &self.circuits.partial_collapse,
-            FullCollapse => &self.circuits.full_collapse,
+            InnerCollapse => &self.circuits.inner_collapse,
+            OuterCollapse => &self.circuits.outer_collapse,
             ComputeV => &self.circuits.compute_v,
+        }
+    }
+}
+
+impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
+    type Output = structured::Polynomial<C::ScalarField, R>;
+    fn index(&self, idx: nested::RxIndex) -> &structured::Polynomial<C::ScalarField, R> {
+        use nested::RxIndex::*;
+        match idx {
+            EndoscalingStep(step) => &self.p.nested.step_rxs[step as usize],
+            EndoscalarStage => &self.p.nested.endoscalar_rx,
+            PointsStage => &self.p.nested.points_rx,
+            BridgePreamble => &self.preamble.bridge.rx,
+            BridgeSPrime => &self.s_prime.bridge.rx,
+            BridgeInnerError => &self.inner_error.bridge.rx,
+            BridgeOuterError => &self.outer_error.bridge.rx,
+            BridgeAB => &self.ab.bridge.rx,
+            BridgeQuery => &self.query.bridge.rx,
+            BridgeF => &self.f.bridge.rx,
+            BridgeEval => &self.eval.bridge.rx,
         }
     }
 }
@@ -101,9 +122,20 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         Pcd { proof: self, data }
     }
 
-    /// Returns the rx polynomial for the given [`RxIndex`].
-    pub(crate) fn rx_poly(&self, idx: RxIndex) -> &structured::Polynomial<C::CircuitField, R> {
+    /// Returns the native-field rx polynomial for the given [`RxIndex`].
+    pub(crate) fn native_rx_poly(
+        &self,
+        idx: RxIndex,
+    ) -> &structured::Polynomial<C::CircuitField, R> {
         &self[idx].rx
+    }
+
+    /// Returns the nested-field rx polynomial for the given [`nested::RxIndex`].
+    pub(crate) fn nested_rx_poly(
+        &self,
+        idx: nested::RxIndex,
+    ) -> &structured::Polynomial<C::ScalarField, R> {
+        &self[idx]
     }
 
     /// Returns the native-field rx polynomial for the given [`RxComponent`].
@@ -126,7 +158,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 
     pub(crate) fn trivial_proof(&self) -> Proof<C, R> {
         let host_blind = C::CircuitField::ONE;
-        let nested_blind = C::ScalarField::ONE;
+        let bridge_blind = C::ScalarField::ONE;
 
         let zero_structured_host = structured::Polynomial::<C::CircuitField, R>::new();
         let zero_structured_nested = structured::Polynomial::<C::ScalarField, R>::new();
@@ -134,13 +166,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 
         let host_commitment =
             zero_structured_host.commit_to_affine(C::host_generators(self.params), host_blind);
-        let nested_commitment = zero_structured_nested
-            .commit_to_affine(C::nested_generators(self.params), nested_blind);
+        let bridge_commitment = zero_structured_nested
+            .commit_to_affine(C::nested_generators(self.params), bridge_blind);
 
         let trivial_bridge = Bridge {
             rx: zero_structured_nested.clone(),
-            blind: nested_blind,
-            commitment: nested_commitment,
+            blind: bridge_blind,
+            commitment: bridge_commitment,
         };
 
         let trivial_rx_triple = || RxTriple {
@@ -171,8 +203,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
                 bridge: trivial_bridge.clone(),
             },
-            error_m: ErrorM {
-                native: NativeErrorM {
+            inner_error: InnerError {
+                native: NativeInnerError {
                     registry_wy_poly: zero_structured_host.clone(),
                     registry_wy_blind: host_blind,
                     registry_wy_commitment: host_commitment,
@@ -180,7 +212,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
                 bridge: trivial_bridge.clone(),
             },
-            error_n: ErrorN {
+            outer_error: OuterError {
                 native: trivial_rx_triple(),
                 bridge: trivial_bridge.clone(),
             },
@@ -225,20 +257,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     v: C::CircuitField::ZERO,
                 },
                 nested: NestedP {
-                    endoscalar_rx: zero_structured_nested.clone(),
-                    points_rx: zero_structured_nested.clone(),
                     step_rxs: vec![
                         zero_structured_nested.clone();
                         NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()
                     ],
+                    endoscalar_rx: zero_structured_nested.clone(),
+                    points_rx: zero_structured_nested.clone(),
                 },
             },
             challenges: Challenges::trivial(),
             circuits: InternalCircuits {
                 hashes_1: trivial_rx_triple(),
                 hashes_2: trivial_rx_triple(),
-                partial_collapse: trivial_rx_triple(),
-                full_collapse: trivial_rx_triple(),
+                inner_collapse: trivial_rx_triple(),
+                outer_collapse: trivial_rx_triple(),
                 compute_v: trivial_rx_triple(),
             },
         }

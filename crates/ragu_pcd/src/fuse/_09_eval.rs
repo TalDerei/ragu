@@ -25,7 +25,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &proof::SPrime<C, R>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
     ) -> Result<(
@@ -36,7 +36,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField>,
     {
         let (native_eval, eval_witness) =
-            self.compute_native_eval(rng, u, left, right, s_prime, error_m, ab, query)?;
+            self.compute_native_eval(rng, u, left, right, s_prime, inner_error, ab, query)?;
 
         let bridge = proof::Bridge::commit(
             self.params,
@@ -62,7 +62,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &proof::SPrime<C, R>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
     ) -> Result<(
@@ -84,7 +84,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 // each of these restrictions.
                 registry_wx0: s_prime.native.registry_wx0_poly.eval(u),
                 registry_wx1: s_prime.native.registry_wx1_poly.eval(u),
-                registry_wy: error_m.native.registry_wy_poly.eval(u),
+                registry_wy: inner_error.native.registry_wy_poly.eval(u),
                 a_poly: ab.native.a_poly.eval(u),
                 b_poly: ab.native.b_poly.eval(u),
                 registry_xy: query.native.registry_xy_poly.eval(u),

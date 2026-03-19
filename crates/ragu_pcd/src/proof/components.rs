@@ -87,7 +87,7 @@ pub(crate) struct SPrime<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeErrorM<C: Cycle, R: Rank> {
+pub(crate) struct NativeInnerError<C: Cycle, R: Rank> {
     pub(crate) registry_wy_poly: structured::Polynomial<C::CircuitField, R>,
     pub(crate) registry_wy_blind: C::CircuitField,
     pub(crate) registry_wy_commitment: C::HostCurve,
@@ -95,13 +95,13 @@ pub(crate) struct NativeErrorM<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct ErrorM<C: Cycle, R: Rank> {
-    pub(crate) native: NativeErrorM<C, R>,
+pub(crate) struct InnerError<C: Cycle, R: Rank> {
+    pub(crate) native: NativeInnerError<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 
 #[derive(Clone)]
-pub(crate) struct ErrorN<C: Cycle, R: Rank> {
+pub(crate) struct OuterError<C: Cycle, R: Rank> {
     pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
@@ -166,9 +166,9 @@ pub(crate) struct NativeP<C: Cycle, R: Rank> {
 
 #[derive(Clone)]
 pub(crate) struct NestedP<C: Cycle, R: Rank> {
+    pub(crate) step_rxs: Vec<structured::Polynomial<C::ScalarField, R>>,
     pub(crate) endoscalar_rx: structured::Polynomial<C::ScalarField, R>,
     pub(crate) points_rx: structured::Polynomial<C::ScalarField, R>,
-    pub(crate) step_rxs: Vec<structured::Polynomial<C::ScalarField, R>>,
 }
 
 #[derive(Clone)]
@@ -246,7 +246,7 @@ impl<C: Cycle> Challenges<C> {
 pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
     pub(crate) hashes_1: RxTriple<C, R>,
     pub(crate) hashes_2: RxTriple<C, R>,
-    pub(crate) partial_collapse: RxTriple<C, R>,
-    pub(crate) full_collapse: RxTriple<C, R>,
+    pub(crate) inner_collapse: RxTriple<C, R>,
+    pub(crate) outer_collapse: RxTriple<C, R>,
     pub(crate) compute_v: RxTriple<C, R>,
 }

@@ -29,7 +29,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         x: &Element<'dr, D>,
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
     ) -> Result<(proof::Query<C, R>, native::stages::query::Witness<C>)>
@@ -37,7 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField>,
     {
         let (native_query, query_witness) =
-            self.compute_native_query(rng, w, x, y, z, error_m, left, right)?;
+            self.compute_native_query(rng, w, x, y, z, inner_error, left, right)?;
 
         let bridge = proof::Bridge::commit(
             self.params,
@@ -64,7 +64,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         x: &Element<'dr, D>,
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
     ) -> Result<(proof::NativeQuery<C, R>, native::stages::query::Witness<C>)>
@@ -92,7 +92,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &error_m.native.registry_wy_poly,
+                &inner_error.native.registry_wy_poly,
             ),
             right: native::stages::query::ChildEvaluationsWitness::from_proof(
                 right,
@@ -100,7 +100,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &error_m.native.registry_wy_poly,
+                &inner_error.native.registry_wy_poly,
             ),
         };
 

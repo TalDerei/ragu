@@ -37,7 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         x: &Element<'dr, D>,
         alpha: &Element<'dr, D>,
         s_prime: &proof::SPrime<C, R>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
         left: &Proof<C, R>,
@@ -47,7 +47,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField>,
     {
         let native = self.compute_native_f(
-            rng, w, y, z, x, alpha, s_prime, error_m, ab, query, left, right,
+            rng,
+            w,
+            y,
+            z,
+            x,
+            alpha,
+            s_prime,
+            inner_error,
+            ab,
+            query,
+            left,
+            right,
         )?;
 
         let bridge = proof::Bridge::commit(
@@ -70,7 +81,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         x: &Element<'dr, D>,
         alpha: &Element<'dr, D>,
         s_prime: &proof::SPrime<C, R>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
         left: &Proof<C, R>,
@@ -112,14 +123,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(s_prime.native.registry_wx0_poly.iter_coeffs(), y),
             factor_iter(s_prime.native.registry_wx1_poly.iter_coeffs(), y),
             factor_iter(
-                error_m.native.registry_wy_poly.iter_coeffs(),
+                inner_error.native.registry_wy_poly.iter_coeffs(),
                 left.challenges.x,
             ),
             factor_iter(
-                error_m.native.registry_wy_poly.iter_coeffs(),
+                inner_error.native.registry_wy_poly.iter_coeffs(),
                 right.challenges.x,
             ),
-            factor_iter(error_m.native.registry_wy_poly.iter_coeffs(), x),
+            factor_iter(inner_error.native.registry_wy_poly.iter_coeffs(), x),
             factor_iter(query.native.registry_xy_poly.iter_coeffs(), w),
             // App circuit registry evals
             factor_iter(
@@ -143,7 +154,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // into both A(xz) (undilated) and B(x) (Z-dilated).
         for proof in [left, right] {
             for &id in &RxIndex::ALL {
-                iters.push(factor_iter(proof.rx_poly(id).iter_coeffs(), xz));
+                iters.push(factor_iter(proof.native_rx_poly(id).iter_coeffs(), xz));
             }
         }
 

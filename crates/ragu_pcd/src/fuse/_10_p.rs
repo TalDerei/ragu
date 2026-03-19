@@ -57,7 +57,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &proof::SPrime<C, R>,
-        error_m: &proof::ErrorM<C, R>,
+        inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
         f: &proof::F<C, R>,
@@ -128,9 +128,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 s_prime.native.registry_wx1_commitment,
             );
             acc.acc(
-                &error_m.native.registry_wy_poly,
-                error_m.native.registry_wy_blind,
-                error_m.native.registry_wy_commitment,
+                &inner_error.native.registry_wy_poly,
+                inner_error.native.registry_wy_blind,
+                inner_error.native.registry_wy_commitment,
             );
             acc.acc(&ab.native.a_poly, ab.native.a_blind, ab.native.a_commitment);
             acc.acc(&ab.native.b_poly, ab.native.b_blind, ab.native.b_commitment);
@@ -197,9 +197,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 v,
             },
             nested: proof::NestedP {
+                step_rxs,
                 endoscalar_rx,
                 points_rx,
-                step_rxs,
             },
         })
     }
