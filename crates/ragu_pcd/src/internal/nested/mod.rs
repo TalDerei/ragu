@@ -36,27 +36,27 @@ const NUM_ENDOSCALING_STEPS: usize = endoscalar::num_steps(NUM_ENDOSCALING_POINT
 pub enum InternalCircuitIndex {
     /// `EndoscalingStep` circuit at given step.
     EndoscalingStep(u32),
-    /// `EndoscalarStage` bonding polynomial.
+    /// `EndoscalarStage` stage mask.
     EndoscalarStage,
-    /// `PointsStage` bonding polynomial.
+    /// `PointsStage` stage mask.
     PointsStage,
-    /// `PointsStage` final bonding polynomial.
+    /// `PointsStage` final stage mask.
     PointsFinalStaged,
-    /// Bridge `preamble` bonding polynomial.
+    /// Bridge `preamble` stage mask.
     BridgePreamble,
-    /// Bridge `s_prime` bonding polynomial.
+    /// Bridge `s_prime` stage mask.
     BridgeSPrime,
-    /// Bridge `inner_error` bonding polynomial.
+    /// Bridge `inner_error` stage mask.
     BridgeInnerError,
-    /// Bridge `outer_error` bonding polynomial.
+    /// Bridge `outer_error` stage mask.
     BridgeOuterError,
-    /// Bridge `ab` bonding polynomial.
+    /// Bridge `ab` stage mask.
     BridgeAB,
-    /// Bridge `query` bonding polynomial.
+    /// Bridge `query` stage mask.
     BridgeQuery,
-    /// Bridge `f` bonding polynomial.
+    /// Bridge `f` stage mask.
     BridgeF,
-    /// Bridge `eval` bonding polynomial.
+    /// Bridge `eval` stage mask.
     BridgeEval,
 }
 
@@ -69,7 +69,7 @@ impl InternalCircuitIndex {
     ///
     /// This order must match the registry finalization concatenation order
     /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
-    /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
+    /// (circuits before bonding polynomials), since [`circuit_index()`](Self::circuit_index)
     /// derives indices from position in this array.
     pub const ALL: [Self; NUM_INTERNAL_CIRCUITS] = super::unwrap_all(Self::all_slots());
 
@@ -191,7 +191,7 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
 ) -> Result<RegistryBuilder<'params, C::ScalarField, R>> {
     let initial_internal_circuits = registry.num_internal_circuits();
 
-    // Circuits first, then masks — matching RegistryBuilder::finalize()
+    // Circuits first, then bonding polynomials — matching RegistryBuilder::finalize()
     // concatenation order and InternalCircuitIndex::circuit_index().
     for &id in &InternalCircuitIndex::ALL {
         use InternalCircuitIndex::*;

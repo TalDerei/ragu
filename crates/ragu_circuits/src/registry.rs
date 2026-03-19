@@ -989,7 +989,7 @@ mod tests {
             .register_internal_step(SquareCircuit { times: 4 })?
             .register_circuit(SquareCircuit { times: 5 })?;
 
-        // num_internal_circuits counts masks + circuits only (not steps)
+        // num_internal_circuits counts bonding polynomials + circuits only (not steps)
         assert_eq!(builder.num_internal_circuits(), 2);
         // num_circuits counts all categories
         assert_eq!(builder.num_circuits(), 5);

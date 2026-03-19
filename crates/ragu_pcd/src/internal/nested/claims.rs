@@ -5,7 +5,7 @@
 //!
 //! The nested claim structure is simpler than native:
 //! - Circuit checks ([`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)): $k(y) = 1$
-//! - Bonding polynomial checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
+//! - Stage mask checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 //!   [`PointsStage`](InternalCircuitIndex::PointsStage),
 //!   `PointsFinalStaged`, and all `Bridge*` variants): $k(y) = 0$
 
@@ -59,7 +59,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R
 /// The ordering is:
 /// 1. Circuit checks ($k(y) = 1$): [`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)
 ///    for each step, interleaved across proofs
-/// 2. Bonding polynomial checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
+/// 2. Stage mask checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 ///    [`PointsStage`](InternalCircuitIndex::PointsStage), `PointsFinalStaged`,
 ///    and all `Bridge*` variants
 ///

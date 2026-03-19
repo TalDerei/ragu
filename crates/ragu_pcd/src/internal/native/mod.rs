@@ -35,13 +35,13 @@ pub enum InternalCircuitIndex {
     InnerCollapseCircuit,
     OuterCollapseCircuit,
     ComputeVCircuit,
-    // Native bonding polynomials
+    // Native stage masks
     PreambleStage,
     InnerErrorStage,
     OuterErrorStage,
     QueryStage,
     EvalStage,
-    // Final bonding polynomials
+    // Final stage masks
     InnerErrorFinalStaged,
     OuterErrorFinalStaged,
     EvalFinalStaged,
@@ -305,7 +305,7 @@ pub enum RxComponent {
     Rx(RxIndex),
 }
 
-/// Registers internal native circuits and masks into the provided registry.
+/// Registers internal native circuits and bonding polynomials into the provided registry.
 ///
 /// Does not register internal steps (rerandomize, trivial); those are
 /// registered by the caller after this function returns.

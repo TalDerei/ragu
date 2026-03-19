@@ -197,7 +197,7 @@ where
                 }
             }
 
-            // Native bonding polynomials (aggregated across all proofs)
+            // Native stage masks (aggregated across all proofs)
             PreambleStage => {
                 processor.bonding(id, source.rx(Rx(Preamble)))?;
             }
@@ -214,7 +214,7 @@ where
                 processor.bonding(id, source.rx(Rx(Eval)))?;
             }
 
-            // Final bonding polynomials
+            // Final stage masks
             InnerErrorFinalStaged => {
                 processor.bonding(id, source.rx(Rx(InnerCollapse)))?;
             }
