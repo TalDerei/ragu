@@ -34,13 +34,13 @@ pub enum InternalCircuitIndex {
     InnerCollapseCircuit,
     OuterCollapseCircuit,
     ComputeVCircuit,
-    // Native stages
+    // Native bonding polynomials
     PreambleStage,
     InnerErrorStage,
     OuterErrorStage,
     QueryStage,
     EvalStage,
-    // Final stage masks
+    // Final bonding polynomials
     InnerErrorFinalStaged,
     OuterErrorFinalStaged,
     EvalFinalStaged,
@@ -63,7 +63,7 @@ impl InternalCircuitIndex {
     ///
     /// This order must match the registry finalization concatenation order
     /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
-    /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
+    /// (circuits before bonding polynomials), since [`circuit_index()`](Self::circuit_index)
     /// derives indices from position in this array.
     pub const ALL: [Self; NUM_INTERNAL_CIRCUITS] = super::unwrap_all(Self::all_slots());
 
@@ -319,28 +319,28 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
         use InternalCircuitIndex::*;
         registry = match id {
             PreambleStage => {
-                registry.register_internal_mask::<stages::preamble::Stage<C, R, HEADER_SIZE>>()?
+                registry.register_internal_bonding_poly::<stages::preamble::Stage<C, R, HEADER_SIZE>>()?
             }
             InnerErrorStage => {
-                registry.register_internal_mask::<stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
+                registry.register_internal_bonding_poly::<stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             OuterErrorStage => {
-                registry.register_internal_mask::<stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
+                registry.register_internal_bonding_poly::<stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             QueryStage => {
-                registry.register_internal_mask::<stages::query::Stage<C, R, HEADER_SIZE>>()?
+                registry.register_internal_bonding_poly::<stages::query::Stage<C, R, HEADER_SIZE>>()?
             }
             EvalStage => {
-                registry.register_internal_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
+                registry.register_internal_bonding_poly::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
             }
             InnerErrorFinalStaged => {
-                registry.register_internal_final_mask::<stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
+                registry.register_internal_final_bonding_poly::<stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             OuterErrorFinalStaged => {
-                registry.register_internal_final_mask::<stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
+                registry.register_internal_final_bonding_poly::<stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>()?
             }
             EvalFinalStaged => {
-                registry.register_internal_final_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
+                registry.register_internal_final_bonding_poly::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
             }
             Hashes1Circuit => {
                 registry.register_internal_circuit(circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, RevdotParameters>::new(params, log2_circuits))?

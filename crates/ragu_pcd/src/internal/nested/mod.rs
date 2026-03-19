@@ -36,27 +36,27 @@ const NUM_ENDOSCALING_STEPS: usize = endoscalar::num_steps(NUM_ENDOSCALING_POINT
 pub enum InternalCircuitIndex {
     /// `EndoscalingStep` circuit at given step.
     EndoscalingStep(u32),
-    /// `EndoscalarStage` stage mask.
+    /// `EndoscalarStage` bonding polynomial.
     EndoscalarStage,
-    /// `PointsStage` stage mask.
+    /// `PointsStage` bonding polynomial.
     PointsStage,
-    /// `PointsStage` final staged mask.
+    /// `PointsStage` final bonding polynomial.
     PointsFinalStaged,
-    /// Bridge `preamble` stage mask.
+    /// Bridge `preamble` bonding polynomial.
     BridgePreamble,
-    /// Bridge `s_prime` stage mask.
+    /// Bridge `s_prime` bonding polynomial.
     BridgeSPrime,
-    /// Bridge `inner_error` stage mask.
+    /// Bridge `inner_error` bonding polynomial.
     BridgeInnerError,
-    /// Bridge `outer_error` stage mask.
+    /// Bridge `outer_error` bonding polynomial.
     BridgeOuterError,
-    /// Bridge `ab` stage mask.
+    /// Bridge `ab` bonding polynomial.
     BridgeAB,
-    /// Bridge `query` stage mask.
+    /// Bridge `query` bonding polynomial.
     BridgeQuery,
-    /// Bridge `f` stage mask.
+    /// Bridge `f` bonding polynomial.
     BridgeF,
-    /// Bridge `eval` stage mask.
+    /// Bridge `eval` bonding polynomial.
     BridgeEval,
 }
 
@@ -101,7 +101,7 @@ impl InternalCircuitIndex {
     /// Convert to a [`CircuitIndex`] for registry lookup.
     ///
     /// Circuit indices follow the `RegistryBuilder::finalize()` concatenation
-    /// order: internal circuits first, then internal masks.
+    /// order: internal circuits first, then internal bonding polynomials.
     pub fn circuit_index(self) -> CircuitIndex {
         let pos = Self::ALL
             .iter()
@@ -205,37 +205,37 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
                 registry.register_internal_circuit(staged)?
             }
             EndoscalarStage => {
-                registry.register_internal_mask::<endoscalar::EndoscalarStage>()?
+                registry.register_internal_bonding_poly::<endoscalar::EndoscalarStage>()?
             }
             PointsStage => {
-                registry.register_internal_mask::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
+                registry.register_internal_bonding_poly::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
             }
             PointsFinalStaged => {
-                registry.register_internal_final_mask::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
+                registry.register_internal_final_bonding_poly::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
             }
             BridgePreamble => {
-                registry.register_internal_mask::<stages::preamble::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::preamble::Stage<C::HostCurve, R>>()?
             }
             BridgeSPrime => {
-                registry.register_internal_mask::<stages::s_prime::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::s_prime::Stage<C::HostCurve, R>>()?
             }
             BridgeInnerError => {
-                registry.register_internal_mask::<stages::inner_error::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::inner_error::Stage<C::HostCurve, R>>()?
             }
             BridgeOuterError => {
-                registry.register_internal_mask::<stages::outer_error::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::outer_error::Stage<C::HostCurve, R>>()?
             }
             BridgeAB => {
-                registry.register_internal_mask::<stages::ab::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::ab::Stage<C::HostCurve, R>>()?
             }
             BridgeQuery => {
-                registry.register_internal_mask::<stages::query::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::query::Stage<C::HostCurve, R>>()?
             }
             BridgeF => {
-                registry.register_internal_mask::<stages::f::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::f::Stage<C::HostCurve, R>>()?
             }
             BridgeEval => {
-                registry.register_internal_mask::<stages::eval::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding_poly::<stages::eval::Stage<C::HostCurve, R>>()?
             }
         };
     }
