@@ -151,8 +151,8 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// linear constraints, with a zero constant term. Stage masks and routing
     /// polynomials are both bonding polynomials produced by different factories.
     ///
-    /// For stage masks, pass [`Stage::mask()`](StageExt::mask) or
-    /// [`Stage::final_mask()`](StageExt::final_mask).
+    /// For stage masks, pass [`StageExt::mask`](crate::staging::StageExt::mask) or
+    /// [`StageExt::final_mask`](crate::staging::StageExt::final_mask).
     pub fn register_internal_bonding(
         mut self,
         bonding_poly: Box<dyn CircuitObject<F, R> + 'params>,
