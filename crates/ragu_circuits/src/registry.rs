@@ -26,7 +26,6 @@ use crate::{
     Circuit, CircuitExt, CircuitObject,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, structured, unstructured},
-    staging::{Stage, StageExt},
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
@@ -146,24 +145,19 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         Ok(self)
     }
 
-    /// Registers an internal bonding polynomial from a stage's mask.
+    /// Registers an internal bonding polynomial.
     ///
     /// Bonding polynomials are witnessless wiring polynomials that encode only
-    /// linear constraints.
-    pub fn register_internal_bonding_poly<S>(mut self) -> Result<Self>
-    where
-        S: Stage<F, R>,
-    {
-        self.internal_bonding_polys.push(S::mask()?);
-        Ok(self)
-    }
-
-    /// Registers an internal bonding polynomial from a stage's final mask.
-    pub fn register_internal_final_bonding_poly<S>(mut self) -> Result<Self>
-    where
-        S: Stage<F, R>,
-    {
-        self.internal_bonding_polys.push(S::final_mask()?);
+    /// linear constraints, with a zero constant term. Stage masks and routing
+    /// polynomials are both bonding polynomials produced by different factories.
+    ///
+    /// For stage masks, pass [`Stage::mask()`](StageExt::mask) or
+    /// [`Stage::final_mask()`](StageExt::final_mask).
+    pub fn register_internal_bonding(
+        mut self,
+        bonding_poly: Box<dyn CircuitObject<F, R> + 'params>,
+    ) -> Result<Self> {
+        self.internal_bonding_polys.push(bonding_poly);
         Ok(self)
     }
 

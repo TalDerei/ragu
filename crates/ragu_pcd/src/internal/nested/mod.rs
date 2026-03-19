@@ -7,7 +7,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
-    staging::MultiStage,
+    staging::{MultiStage, StageExt},
 };
 use ragu_core::Result;
 
@@ -205,38 +205,35 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
                 registry.register_internal_circuit(staged)?
             }
             EndoscalarStage => {
-                registry.register_internal_bonding_poly::<endoscalar::EndoscalarStage>()?
+                registry.register_internal_bonding(endoscalar::EndoscalarStage::mask()?)?
             }
-            PointsStage => {
-                registry.register_internal_bonding_poly::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
-            }
-            PointsFinalStaged => {
-                registry.register_internal_final_bonding_poly::<endoscalar::PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS>>()?
-            }
-            BridgePreamble => {
-                registry.register_internal_bonding_poly::<stages::preamble::Stage<C::HostCurve, R>>()?
-            }
-            BridgeSPrime => {
-                registry.register_internal_bonding_poly::<stages::s_prime::Stage<C::HostCurve, R>>()?
-            }
-            BridgeInnerError => {
-                registry.register_internal_bonding_poly::<stages::inner_error::Stage<C::HostCurve, R>>()?
-            }
-            BridgeOuterError => {
-                registry.register_internal_bonding_poly::<stages::outer_error::Stage<C::HostCurve, R>>()?
-            }
+            PointsStage => registry.register_internal_bonding(endoscalar::PointsStage::<
+                C::HostCurve,
+                NUM_ENDOSCALING_POINTS,
+            >::mask()?)?,
+            PointsFinalStaged => registry.register_internal_bonding(endoscalar::PointsStage::<
+                C::HostCurve,
+                NUM_ENDOSCALING_POINTS,
+            >::final_mask(
+            )?)?,
+            BridgePreamble => registry
+                .register_internal_bonding(stages::preamble::Stage::<C::HostCurve, R>::mask()?)?,
+            BridgeSPrime => registry
+                .register_internal_bonding(stages::s_prime::Stage::<C::HostCurve, R>::mask()?)?,
+            BridgeInnerError => registry
+                .register_internal_bonding(stages::inner_error::Stage::<C::HostCurve, R>::mask()?)?,
+            BridgeOuterError => registry
+                .register_internal_bonding(stages::outer_error::Stage::<C::HostCurve, R>::mask()?)?,
             BridgeAB => {
-                registry.register_internal_bonding_poly::<stages::ab::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding(stages::ab::Stage::<C::HostCurve, R>::mask()?)?
             }
-            BridgeQuery => {
-                registry.register_internal_bonding_poly::<stages::query::Stage<C::HostCurve, R>>()?
-            }
+            BridgeQuery => registry
+                .register_internal_bonding(stages::query::Stage::<C::HostCurve, R>::mask()?)?,
             BridgeF => {
-                registry.register_internal_bonding_poly::<stages::f::Stage<C::HostCurve, R>>()?
+                registry.register_internal_bonding(stages::f::Stage::<C::HostCurve, R>::mask()?)?
             }
-            BridgeEval => {
-                registry.register_internal_bonding_poly::<stages::eval::Stage<C::HostCurve, R>>()?
-            }
+            BridgeEval => registry
+                .register_internal_bonding(stages::eval::Stage::<C::HostCurve, R>::mask()?)?,
         };
     }
 
