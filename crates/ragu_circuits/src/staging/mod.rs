@@ -112,8 +112,11 @@
 //! Assuming stages are well-formed, they can be combined by merely adding them
 //! together with the final staging polynomial, producing the desired $r(X)$.
 
+mod bonding;
 mod builder;
 pub(crate) mod mask;
+
+pub use bonding::{BondingCircuit, BondingDriver};
 
 use ff::Field;
 use ragu_core::{
