@@ -189,6 +189,12 @@ impl<F: Field + FromUniformBytes<64>, B: BondingCircuit<F>, R: Rank> CircuitObje
         poly
     }
 
+    /// Returns constraint counts matching the synthesis shape.
+    ///
+    /// These counts include the `enforce_one` constraint that the synthesis
+    /// drivers emit, even though the polynomial has that contribution stripped.
+    /// This is correct: the counts describe the synthesis structure that the
+    /// floor plan and eval functions expect, not the final polynomial.
     fn constraint_counts(&self) -> (usize, usize) {
         (
             self.metrics.num_multiplication_constraints,
@@ -255,5 +261,42 @@ mod tests {
         let sxy = obj.sxy(x, y, &key, &floor_plan);
         assert_eq!(sxy, obj.sx(x, &key, &floor_plan).eval(y));
         assert_eq!(sxy, obj.sy(y, &key, &floor_plan).eval(x));
+    }
+
+    /// Build a trace with gate 0 as ONE (zeros) and gates 1..n from (a, b) pairs.
+    fn build_trace(gate_values: &[(Fp, Fp)]) -> structured::Polynomial<Fp, R> {
+        let mut rx = structured::Polynomial::new();
+        {
+            let rx = rx.forward();
+            // Gate 0: ONE (all zeros in stage polynomials)
+            rx.a.push(Fp::ZERO);
+            rx.b.push(Fp::ZERO);
+            rx.c.push(Fp::ZERO);
+            for &(a, b) in gate_values {
+                rx.a.push(a);
+                rx.b.push(b);
+                rx.c.push(a * b);
+            }
+        }
+        rx
+    }
+
+    /// Revdot is zero when routed wires are equal, nonzero otherwise.
+    #[test]
+    fn revdot_routing_constraint() {
+        let obj = RouteEqual.into_bonding_object::<R>().unwrap();
+        let floor_plan = floor_planner::floor_plan(obj.segment_records());
+        let key = registry::Key::new(Fp::random(&mut rand::rng()));
+        let y = Fp::random(&mut rand::rng());
+        let sy = obj.sy(y, &key, &floor_plan);
+
+        let v = Fp::random(&mut rand::rng());
+        let w = Fp::random(&mut rand::rng());
+
+        let rx_equal = build_trace(&[(v, Fp::ONE), (v, Fp::ONE)]);
+        assert_eq!(rx_equal.revdot(&sy), Fp::ZERO);
+
+        let rx_unequal = build_trace(&[(v, Fp::ONE), (w, Fp::ONE)]);
+        assert_ne!(rx_unequal.revdot(&sy), Fp::ZERO);
     }
 }
