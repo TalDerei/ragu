@@ -51,7 +51,7 @@ impl<'a, 'dr, D: Driver<'dr>> BondingDriver<'a, 'dr, D> {
 ///
 /// Implementors describe constraints between wire positions using
 /// [`BondingDriver::enforce_zero`]. Wire handles come from the `gates` slice
-/// passed to [`synthesize`](Self::synthesize), where `gates[i]` holds
+/// passed to [`witness`](Self::witness), where `gates[i]` holds
 /// `(a, b, c)` handles for multiplication gate `i + 1` in the polynomial
 /// (gate 0 is reserved for the registry key).
 ///
@@ -62,7 +62,7 @@ pub trait BondingCircuit<F: Field>: Sized + Send + Sync {
     fn num_gates(&self) -> usize;
 
     /// Declare linear constraints between gate wires.
-    fn synthesize<'dr, D: Driver<'dr, F = F>>(
+    fn witness<'dr, D: Driver<'dr, F = F>>(
         &self,
         bd: &mut BondingDriver<'_, 'dr, D>,
         gates: &[(D::Wire, D::Wire, D::Wire)],
@@ -93,7 +93,7 @@ pub trait BondingCircuit<F: Field>: Sized + Send + Sync {
 
 /// Bridges [`BondingCircuit`] to [`Circuit`] so we can reuse the standard
 /// synthesis drivers. Pre-allocates gate wire handles, then hands the
-/// restricted [`BondingDriver`] to the bonding circuit's `synthesize`.
+/// restricted [`BondingDriver`] to the bonding circuit's `witness`.
 struct Adapter<B>(B);
 
 impl<F: Field, B: BondingCircuit<F>> Circuit<F> for Adapter<B> {
@@ -120,7 +120,7 @@ impl<F: Field, B: BondingCircuit<F>> Circuit<F> for Adapter<B> {
             gates.push(dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?);
         }
         let mut bd = BondingDriver(dr, core::marker::PhantomData);
-        self.0.synthesize(&mut bd, &gates)?;
+        self.0.witness(&mut bd, &gates)?;
 
         Ok(((), D::unit()))
     }
@@ -214,7 +214,7 @@ mod tests {
             2
         }
 
-        fn synthesize<'dr, D: Driver<'dr, F = Fp>>(
+        fn witness<'dr, D: Driver<'dr, F = Fp>>(
             &self,
             bd: &mut BondingDriver<'_, 'dr, D>,
             gates: &[(D::Wire, D::Wire, D::Wire)],
