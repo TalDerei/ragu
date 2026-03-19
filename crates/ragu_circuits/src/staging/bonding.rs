@@ -9,6 +9,11 @@
 //! general factory that builds bonding polynomials from arbitrary
 //! `enforce_zero` declarations — suitable for routing polynomials and
 //! other cross-stage linear constraints.
+//!
+//! These are kept as separate factories rather than generalizing `StageMask`
+//! because `StageMask` pushes coefficients sequentially per gate, while
+//! routing constraints span multiple gates in a single `enforce_zero` call,
+//! requiring random access to coefficient positions.
 
 use ff::{Field, FromUniformBytes};
 use ragu_arithmetic::Coeff;
@@ -143,7 +148,7 @@ impl<F: Field + FromUniformBytes<64>, B: BondingCircuit<F>, R: Rank> CircuitObje
         if x == F::ZERO || y == F::ZERO {
             return F::ZERO;
         }
-        
+
         // Remove the ONE wire contribution: x^(4n-1) at y^0.
         s::sxy::eval::<_, _, R>(&self.adapter, x, y, key, floor_plan)
             .expect("should succeed if metrics succeeded")

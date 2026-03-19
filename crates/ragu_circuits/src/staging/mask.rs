@@ -9,6 +9,12 @@ use crate::{
     registry,
 };
 
+/// A specialized bonding polynomial factory for stage well-formedness.
+///
+/// Produces a wiring polynomial that enforces all gate wires outside a
+/// stage's range to be zero. This is a hand-optimized implementation;
+/// for general bonding polynomials (e.g. routing constraints), see
+/// [`BondingCircuit`](super::BondingCircuit).
 #[derive(Clone)]
 pub struct StageMask<R: Rank> {
     skip_multiplications: usize,
