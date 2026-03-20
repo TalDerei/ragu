@@ -1478,7 +1478,10 @@ fn test_nesting() {
     assert_ne!(pure, extra);
 }
 
-/// Zero-constraint routines are distinguished by TypeId pairs alone.
+/// Degenerate routines: EmptyRoutine (() → ()) allocates nothing while
+/// Produce (() → Element) allocates one wire (1 mul gate), so their
+/// routine fingerprints differ by constraint count. Duplicate vs
+/// SquareOnce differ in constraints too.
 #[test]
 fn test_degenerate_cases() {
     assert_ne!(fingerprint_unit(&EmptyRoutine), fingerprint_unit(&Produce));
@@ -1746,102 +1749,111 @@ fn test_wire_collision_via_eval_metrics_identical() {
 }
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
-/// Element)) have zero body constraints, so both leave the Horner
-/// accumulator at the initial seed `h`. Without `input_kind` in the
-/// fingerprint, these would collide.
+/// Element)) have zero body constraints and identical Horner scalars —
+/// same polynomial contribution (routine fingerprints match), but
+/// different memoization identity (deep hashes differ via TypeIds).
 #[test]
-fn test_typeid_necessary_for_input_discrimination() {
+fn test_type_distinct_input_discrimination() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
-    // Confirm the scalar component is identical (both equal to the
-    // untouched Horner seed `h`).
-    assert_eq!(a.eval(), b.eval());
-
-    // The fingerprints must still differ — only TypeId saves us.
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// `Passthrough` (Output = Element) and `Duplicate` (Output =
 /// (Element, Element)) share the same Input type and have zero body
-/// constraints, so their `(scalar, mul_count, linear_count)` triples
-/// are identical.  Without `output_kind` in the fingerprint, these
-/// would collide.
+/// constraints — same polynomial contribution, different memoization
+/// identity.
 #[test]
-fn test_typeid_necessary_for_output_discrimination() {
+fn test_type_distinct_output_discrimination() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_elem(&Duplicate);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
-/// 3 vs 4 input wires both leave the Horner accumulator at the initial
-/// seed `h` (no `enforce_zero` calls); only `input_kind` distinguishes them.
+/// 3 vs 4 input wires produce identical post-remap Counter state.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_triple_vs_quad_input_wires() {
+fn test_type_distinct_triple_vs_quad_input_wires() {
     let a = fingerprint_triple(&PassthroughTriple);
     let b = fingerprint_quad(&PassthroughQuad);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Trivial enforce_zero (empty LC) with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_trivial_enforce_zero() {
+fn test_type_distinct_trivial_enforce_zero() {
     let a = fingerprint_elem(&TrivialEnforce);
     let b = fingerprint_pair(&TrivialEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Input-dependent enforce_zero with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_enforce_first_input() {
+fn test_type_distinct_enforce_first_input() {
     let a = fingerprint_elem(&EnforceInput);
     let b = fingerprint_pair(&EnforceInputPair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// SquareOnce (Output = Element) vs SquareDuplicate (Output = (Element, Element)):
-/// identical body constraints, distinguished by output TypeId.
+/// identical body constraints. Same polynomial contribution, different
+/// memoization identity.
 #[test]
-fn test_typeid_output_with_square() {
+fn test_type_distinct_output_with_square() {
     let a = fingerprint_elem(&SquareOnce);
     let b = fingerprint_elem(&SquareDuplicate);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Passthrough (Element → Element) vs PairPassthrough ((Element, Element) →
 /// (Element, Element)): both TypeIds differ simultaneously.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_both_differ() {
+fn test_type_distinct_both_differ() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&PairPassthrough);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Internal-only constraint (alloc + enforce_zero) with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_internal_only_constraints() {
+fn test_type_distinct_internal_only_constraints() {
     let a = fingerprint_elem(&InternalEnforce);
     let b = fingerprint_pair(&InternalEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Production path cross-check: Passthrough via eval vs DropFirst via pair.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_production_path() {
+fn test_type_distinct_production_path() {
     let a = fingerprint_via_eval(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
@@ -1849,37 +1861,44 @@ fn test_typeid_production_path() {
         fingerprint_via_eval(&Passthrough),
         fingerprint_elem(&Passthrough),
     );
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Nested delegation with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_nested_with_pairing() {
+fn test_type_distinct_nested_with_pairing() {
     let a = fingerprint_elem(&PureNesting);
     let b = fingerprint_pair(&PureNestingPair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// Three Horner steps (3× enforce_zero) with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_multiple_horner_steps() {
+fn test_type_distinct_multiple_horner_steps() {
     let a = fingerprint_elem(&TripleEnforceInput);
     let b = fingerprint_pair(&TripleEnforceInputPair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
 /// ONE wire reference in enforce_zero with 1 vs 2 input wires.
+/// Same polynomial contribution, different memoization identity.
 #[test]
-fn test_typeid_one_wire_constraint() {
+fn test_type_distinct_one_wire_constraint() {
     let a = fingerprint_elem(&OneWireEnforce);
     let b = fingerprint_pair(&OneWireEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.routine(), b.routine());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
