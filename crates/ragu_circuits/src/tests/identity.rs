@@ -11,8 +11,10 @@ use ragu_pasta::Fp;
 use ragu_primitives::{Element, Simulator};
 
 use crate::{
-    Circuit,
+    Circuit, CircuitExt as _,
     metrics::{self, MemoFingerprint, RoutineIdentity},
+    polynomials::TestRank,
+    registry,
 };
 
 /// Canonical single-square routine.
@@ -1849,6 +1851,173 @@ fn test_type_distinct_one_wire_constraint() {
     assert_eq!(a.routine(), b.routine());
     assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
+}
+
+/// Circuit wrapper for `(Element, Element) → Element` routines.
+///
+/// Allocates two input wires via paired allocation (consuming one
+/// multiplication gate, matching [`SingleRoutineCircuit`]'s root
+/// structure), then calls the routine.
+struct PairRoutineCircuit<Ro: Clone>(Ro);
+
+impl<Ro> Circuit<Fp> for PairRoutineCircuit<Ro>
+where
+    Ro: Routine<
+            Fp,
+            Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
+            Output = Kind![Fp; Element<'_, _>],
+        > + Clone
+        + Send
+        + Sync,
+    for<'dr> Ro::Aux<'dr>: Send + Clone,
+{
+    type Instance<'source> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'source> = Fp;
+    type Aux<'source> = ();
+
+    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'source>>,
+    ) -> Result<Bound<'dr, D, Self::Output>>
+    where
+        Self: 'dr,
+    {
+        Element::alloc(dr, instance)
+    }
+
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'source>>,
+    ) -> Result<(
+        Bound<'dr, D, Self::Output>,
+        DriverValue<D, Self::Aux<'source>>,
+    )>
+    where
+        Self: 'dr,
+    {
+        let a = Element::alloc(dr, witness.clone())?;
+        let b = Element::alloc(dr, witness)?;
+        let output = dr.routine(self.0.clone(), (a, b))?;
+        Ok((output, D::just(|| ())))
+    }
+}
+
+/// Verifies that routines with matching [`RoutineFingerprint`] (same
+/// polynomial contribution) produce identical circuit polynomials, even
+/// when their TypeIds differ.
+///
+/// This is the test that catches over-capture: if TypeIds affected the
+/// polynomial, these assertions would fail. Each pair wraps a
+/// single-input routine in [`SingleRoutineCircuit`] and a pair-input
+/// routine in [`PairRoutineCircuit`]. Both wrappers allocate via paired
+/// allocation (one mul gate), so the root segments are structurally
+/// identical. The routines have matching `(eval, num_mul, num_lc)` but
+/// different `Input` TypeIds.
+///
+/// [`RoutineFingerprint`]: crate::RoutineFingerprint
+#[test]
+fn test_typeid_does_not_affect_polynomial() {
+    let x = Fp::random(&mut rand::rng());
+    let y = Fp::random(&mut rand::rng());
+    let k = registry::Key::new(Fp::random(&mut rand::rng()));
+
+    /// Compares s(x,y) for a single-input circuit vs a pair-input circuit
+    /// whose routines share the same `RoutineFingerprint`.
+    fn assert_same_polynomial<RoElem, RoPair>(
+        elem_routine: RoElem,
+        pair_routine: RoPair,
+        x: Fp,
+        y: Fp,
+        k: &registry::Key<Fp>,
+        label: &str,
+    ) where
+        RoElem: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
+            + Clone
+            + Send
+            + Sync,
+        for<'dr> RoElem::Aux<'dr>: Send + Clone,
+        RoPair: Routine<
+                Fp,
+                Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
+                Output = Kind![Fp; Element<'_, _>],
+            > + Clone
+            + Send
+            + Sync,
+        for<'dr> RoPair::Aux<'dr>: Send + Clone,
+    {
+        // Confirm the routine fingerprints (polynomial identity) match.
+        let fp_elem = fingerprint_elem(&elem_routine);
+        let fp_pair = fingerprint_pair(&pair_routine);
+        assert_eq!(
+            fp_elem.routine(),
+            fp_pair.routine(),
+            "{label}: RoutineFingerprint mismatch — test premise violated"
+        );
+
+        let obj_elem = SingleRoutineCircuit(elem_routine)
+            .into_object::<TestRank>()
+            .unwrap();
+        let obj_pair = PairRoutineCircuit(pair_routine)
+            .into_object::<TestRank>()
+            .unwrap();
+
+        let fp_elem = crate::floor_planner::floor_plan(obj_elem.segment_records());
+        let fp_pair = crate::floor_planner::floor_plan(obj_pair.segment_records());
+
+        let sxy_elem = obj_elem.sxy(x, y, k, &fp_elem);
+        let sxy_pair = obj_pair.sxy(x, y, k, &fp_pair);
+
+        assert_eq!(
+            sxy_elem, sxy_pair,
+            "{label}: same RoutineFingerprint but different s(x,y) — \
+             TypeIds affect the polynomial (this would be a soundness issue)"
+        );
+    }
+
+    assert_same_polynomial(Passthrough, DropFirst, x, y, &k, "Passthrough vs DropFirst");
+    assert_same_polynomial(
+        TrivialEnforce,
+        TrivialEnforcePair,
+        x,
+        y,
+        &k,
+        "TrivialEnforce vs TrivialEnforcePair",
+    );
+    assert_same_polynomial(
+        EnforceInput,
+        EnforceInputPair,
+        x,
+        y,
+        &k,
+        "EnforceInput vs EnforceInputPair",
+    );
+    assert_same_polynomial(
+        InternalEnforce,
+        InternalEnforcePair,
+        x,
+        y,
+        &k,
+        "InternalEnforce vs InternalEnforcePair",
+    );
+    assert_same_polynomial(
+        OneWireEnforce,
+        OneWireEnforcePair,
+        x,
+        y,
+        &k,
+        "OneWireEnforce vs OneWireEnforcePair",
+    );
+    assert_same_polynomial(
+        TripleEnforceInput,
+        TripleEnforceInputPair,
+        x,
+        y,
+        &k,
+        "TripleEnforceInput vs TripleEnforceInputPair",
+    );
 }
 
 mod proptest_fingerprint {
