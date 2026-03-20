@@ -254,7 +254,7 @@ mod tests {
     use rand::RngExt;
 
     use crate::{
-        CircuitExt, CircuitObject,
+        CircuitExt, CircuitObject, metrics,
         polynomials::{Rank, structured},
         registry,
         staging::StageBuilder,
@@ -659,6 +659,30 @@ mod tests {
             Fp::ZERO,
             "valid witness should produce well-formed stage polynomial"
         );
+    }
+
+    #[test]
+    fn test_constraint_counts_matches_metrics() {
+        for skip in 0..10 {
+            for num in 0..(R::n() - skip - 1) {
+                let stage_mask = StageMask::<R>::new(skip, num).unwrap();
+                let (mul_from_method, linear_from_method) =
+                    <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
+
+                let metrics = metrics::eval::<Fp, _>(&stage_mask).unwrap();
+
+                assert_eq!(
+                    mul_from_method, metrics.num_multiplication_constraints,
+                    "multiplication constraints mismatch for skip={}, num={}",
+                    skip, num
+                );
+                assert_eq!(
+                    linear_from_method, metrics.num_linear_constraints,
+                    "linear constraints mismatch for skip={}, num={}",
+                    skip, num
+                );
+            }
+        }
     }
 
     #[test]
