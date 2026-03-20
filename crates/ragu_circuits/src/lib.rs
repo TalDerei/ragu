@@ -35,7 +35,7 @@ mod trace;
 mod trivial;
 mod wiring;
 
-pub use metrics::{DeepFingerprint, RoutineIdentity, SegmentRecord, ShallowFingerprint};
+pub use metrics::{MemoFingerprint, RoutineFingerprint, RoutineIdentity, SegmentRecord};
 pub use trace::Trace;
 
 #[cfg(test)]
