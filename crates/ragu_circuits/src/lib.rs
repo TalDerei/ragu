@@ -26,9 +26,9 @@ mod ky;
 mod metrics;
 pub mod polynomials;
 pub mod registry;
-mod trace;
 mod s;
 pub mod staging;
+mod trace;
 mod trivial;
 
 pub use metrics::{RoutineFingerprint, RoutineIdentity, SegmentRecord};
