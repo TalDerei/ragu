@@ -279,11 +279,11 @@ impl<'dr, M: MaybeKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
 
-    fn zero_product_mul(
+    fn alloc_d(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        Ok(((), (), ()))
+        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
+        Ok(((), ()))
     }
 
     fn enforce_zero(&mut self, _: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
@@ -320,12 +320,12 @@ impl<'dr, F: Field> Driver<'dr> for Emulator<Wired<F>> {
         Ok((a.value(), b.value(), c.value()))
     }
 
-    fn zero_product_mul(
+    fn alloc_d(
         &mut self,
-        f: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        let (a, b, d) = f()?;
-        Ok((a.value(), b.value(), d.value()))
+        f: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
+        let (a, b) = f()?;
+        Ok((a.value(), b.value()))
     }
 
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {

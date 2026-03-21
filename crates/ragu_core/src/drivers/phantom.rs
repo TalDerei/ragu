@@ -42,11 +42,11 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
         Ok(((), (), ()))
     }
 
-    fn zero_product_mul(
+    fn alloc_d(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        Ok(((), (), ()))
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
+        Ok(((), ()))
     }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}

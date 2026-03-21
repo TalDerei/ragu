@@ -228,19 +228,19 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)>;
 
-    /// Allocates the wires $(A, B, D)$ for a zero-product gate where $A \cdot
-    /// B = 0$ is structurally enforced.
+    /// Allocates two values via a single gate with layout $(0, a, 0, b)$.
     ///
-    /// The provided closure returns `(a, b, d)` coefficients. The $c$ wire is
-    /// fixed to zero. The returned $D$ wire occupies the polynomial's d-region
-    /// at this gate and can be constrained via [`enforce_zero`](Driver::enforce_zero).
+    /// This is cheaper than two separate [`alloc`](Driver::alloc) calls because
+    /// the first and third wire positions are structurally zero, leaving only
+    /// two nonzero entries in the multiexp.
     ///
-    /// This is useful at gates where the product is algebraically zero (e.g.,
-    /// `x * is_zero = 0`), freeing the d-wire for an extra allocation.
-    fn zero_product_mul(
+    /// The provided closure returns `(a, b)` coefficients. The returned wires
+    /// occupy the second and fourth regions of the structured polynomial at
+    /// this gate.
+    fn alloc_d(
         &mut self,
-        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)>;
+        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)>;
 
     /// Asks the driver to create a virtual wire that is the linear combination
     /// of some existing wires. This may impose some runtime cost for circuit
