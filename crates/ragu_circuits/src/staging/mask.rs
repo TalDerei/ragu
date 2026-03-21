@@ -455,8 +455,6 @@ mod tests {
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
-        // Evaluate via `into_circuit_object` to cross-validate the
-        // hand-rolled `CircuitObject::sxy` on `StageMask`.
         let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
         let plan = floor_planner::floor_plan(generic.segment_records());
         let comparison_sxy = generic.sxy(x, y, &k, &plan) - x_4n_minus_1;
@@ -553,8 +551,6 @@ mod tests {
 
             let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
-            // Evaluate via `into_circuit_object` to cross-validate all
-            // three hand-rolled `CircuitObject` methods.
             let generic = into_circuit_object::<_, _, R>(
                 StageMask::<R>::new(skip, num).unwrap()
             ).unwrap();
