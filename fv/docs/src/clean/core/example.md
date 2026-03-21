@@ -113,7 +113,7 @@ h_holds : (Core.AllocMul.circuit.Assumptions (eval env ()) →
 ```
 
 Let's describe every important hypothesis and the goal:
-- `input_x` and `input_y` are the input field elements. They are field elements.
+- `input_x` and `input_y` are the input field elements.
 - `h_assumptions` is the hypothesis that `Assumptions` hold on the input. In this case it is `input_y ≠ 0`.
 - `h_holds` is the hypothesis that the constraints hold. Remember, we are trying to prove soundness: we need to prove that for every input, under the hypotheses that they satisfy the assumptions and constraints hold, the specification holds as well. 
 - The goal is the specification.
@@ -149,7 +149,9 @@ Let's simplify definitions and statements at constraints and at the goal:
 ```lean
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
-  set allocated := (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀)
+  set quotient := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).x
+  set denominator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).y
+  set numerator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).z
   obtain ⟨c1, c2, c3⟩ := h_holds
   simp [circuit_norm, Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec] at c1 c2 c3 ⊢
 ```

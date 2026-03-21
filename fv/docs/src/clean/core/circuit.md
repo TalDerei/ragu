@@ -22,8 +22,9 @@ The key definition for the `Circuit` monad is `bind`, which defines how circuits
 
 ```lean
 def bind {α β} (f : Circuit F α) (g : α → Circuit F β) : Circuit F β := fun (n : ℕ) =>
-  let (b, ops') := g (f n).1 (n + Operations.localLength (f n).2)
-  (b, (f n).2 ++ ops')
+  let (a, ops) := f n
+  let (b, ops') := g a (n + Operations.localLength ops)
+  (b, ops ++ ops')
 ```
 
 This is the mechanism behind `do` notation. If a circuit fragment `f` emits some operations, then the next fragment `g` starts at the offset after the local witnesses introduced by `f`.
@@ -55,7 +56,7 @@ These two operations correspond to exactly two fundamental circuit definition op
 - **Enforcing some constraints** on the allocated variables. The `Expression` passed to `assertZero` is enforced implicitly to be equal to zero.
 
 
-Finally, Clean exposes helper projections for a circuit:
+Finally, Clean exposes helper projections for results of a circuit:
 
 ```lean
 def operations (circuit : Circuit F α) (offset : ℕ) : Operations F := (circuit offset).2

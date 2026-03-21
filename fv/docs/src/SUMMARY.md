@@ -8,7 +8,7 @@
 
 - [Introduction](./clean/introduction.md)
 - [The Circuit monad](./clean/core/circuit.md)
-- [Example: a tiny multiplication circuit](./clean/core/add.md)
+- [Example: a tiny multiplication circuit](./clean/core/mul.md)
 - [Provable types and structs](./clean/core/provable.md)
 - [Expressions and Environment](./clean/core/expression.md)
 - [Operations](./clean/core/operations.md)
