@@ -22,6 +22,7 @@ use alloc::{vec, vec::Vec};
 use std::sync::mpsc;
 
 use super::{Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, registry, structured};
+use crate::WithAux;
 
 /// A contiguous group of multiplication gates.
 ///
@@ -376,7 +377,7 @@ fn finish<F: Field>(mut segments: Vec<AnnotatedSegment<F>>) -> Trace<F> {
 pub fn eval<'witness, F: Field, C: Circuit<F>>(
     circuit: &C,
     witness: C::Witness<'witness>,
-) -> Result<(Trace<F>, C::Aux<'witness>)> {
+) -> Result<WithAux<Trace<F>, C::Aux<'witness>>> {
     #[cfg(feature = "multicore")]
     {
         let (tx, rx) = mpsc::channel();
@@ -385,9 +386,9 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
             let mut evaluator = Evaluator::new(Vec::new(), s, tx);
 
             let aux = {
-                let (io, aux) = circuit.witness(&mut evaluator, Always::maybe_just(|| witness))?;
-                io.write(&mut evaluator, &mut ())?;
-                aux.take()
+                let cw = circuit.witness(&mut evaluator, Always::maybe_just(|| witness))?;
+                cw.output.write(&mut evaluator, &mut ())?;
+                cw.aux.take()
             };
 
             Ok((evaluator.segments, aux))
@@ -398,7 +399,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
             segments.extend(batch?);
         }
 
-        Ok((finish(segments), aux))
+        Ok(WithAux::new(finish(segments), aux))
     }
 
     #[cfg(not(feature = "multicore"))]
@@ -407,9 +408,9 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
             let mut evaluator = Evaluator::new(Vec::new(), s);
 
             let aux = {
-                let (io, aux) = circuit.witness(&mut evaluator, Always::maybe_just(|| witness))?;
-                io.write(&mut evaluator, &mut ())?;
-                aux.take()
+                let cw = circuit.witness(&mut evaluator, Always::maybe_just(|| witness))?;
+                cw.output.write(&mut evaluator, &mut ())?;
+                cw.aux.take()
             };
 
             let mut segments = evaluator.segments;
@@ -417,7 +418,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
             Ok((segments, aux))
         })?;
 
-        Ok((finish(segments), aux))
+        Ok(WithAux::new(finish(segments), aux))
     }
 }
 
@@ -433,7 +434,7 @@ mod tests {
     fn test_trace() {
         let circuit = SquareCircuit { times: 10 };
         let witness: Fp = Fp::from(3);
-        let (trace, _aux) = eval::<Fp, _>(&circuit, witness).unwrap();
+        let trace = eval::<Fp, _>(&circuit, witness).unwrap().into_output();
         for seg in &trace.segments {
             for i in 0..seg.a.len() {
                 assert_eq!(seg.a[i] * seg.b[i], seg.c[i]);
@@ -485,12 +486,14 @@ mod tests {
             &self,
             dr: &mut D,
             witness: ragu_core::drivers::DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            ragu_core::drivers::DriverValue<D, Self::Aux<'witness>>,
-        )> {
+        ) -> Result<
+            WithAux<
+                Bound<'dr, D, Self::Output>,
+                ragu_core::drivers::DriverValue<D, Self::Aux<'witness>>,
+            >,
+        > {
             let element = Element::alloc(dr, witness)?;
-            Ok((MulOnWrite { element }, D::unit()))
+            Ok(WithAux::new(MulOnWrite { element }, D::unit()))
         }
     }
 
@@ -498,7 +501,7 @@ mod tests {
     fn test_write_gadget_synthesizes_into_trace() {
         let circuit = MulOnWriteCircuit;
         let witness = Fp::from(42u64);
-        let (trace, _) = eval::<Fp, _>(&circuit, witness).unwrap();
+        let trace = eval::<Fp, _>(&circuit, witness).unwrap().into_output();
 
         let root_gates = trace.segments[0].a.len();
         assert_eq!(

@@ -20,6 +20,7 @@ use ff::{Field, WithSmallOrderMulGroup};
 use pasta_curves::group::{Curve, WnafBase, WnafScalar, prime::PrimeCurveAffine};
 use ragu_arithmetic::{CurveAffine, Uendo};
 use ragu_circuits::{
+    WithAux,
     polynomials::Rank,
     staging::{MultiStageCircuit, Stage, StageBuilder},
 };
@@ -277,10 +278,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         &self,
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )> {
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>> {
         let (endoscalar_guard, dr) = dr.add_stage::<EndoscalarStage>()?;
         let (points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_POINTS>>()?;
         let dr = dr.finish();
@@ -321,7 +319,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         // Constrain output
         acc.enforce_equal(dr, &points.interstitials[self.step])?;
 
-        Ok(((), D::unit()))
+        Ok(WithAux::new((), D::unit()))
     }
 }
 
@@ -453,10 +451,12 @@ mod tests {
 
             let endoscalar_rx = <EndoscalarStage as StageExt<Fp, R>>::rx(endoscalar)?;
             let points_rx = <PointsStage<EpAffine, NUM_POINTS> as StageExt<Fp, R>>::rx(&points)?;
-            let (final_trace, _) = staged.trace(EndoscalingStepWitness {
-                endoscalar,
-                points: &points,
-            })?;
+            let final_trace = staged
+                .trace(EndoscalingStepWitness {
+                    endoscalar,
+                    points: &points,
+                })?
+                .into_output();
             let final_rx = registry.assemble(&final_trace, staged_h)?;
 
             let y = Fp::random(&mut rand::rng());
@@ -518,10 +518,12 @@ mod tests {
 
             let staged = MultiStage::new(step_circuit);
 
-            let (final_trace, _) = staged.trace(EndoscalingStepWitness {
-                endoscalar,
-                points: &points,
-            })?;
+            let final_trace = staged
+                .trace(EndoscalingStepWitness {
+                    endoscalar,
+                    points: &points,
+                })?
+                .into_output();
             let final_rx = registry.assemble(&final_trace, staged_h)?;
 
             let y = Fp::random(&mut rand::rng());

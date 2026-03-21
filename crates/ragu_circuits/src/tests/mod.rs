@@ -14,7 +14,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
 use crate::{
-    Circuit, CircuitExt, CircuitObject, floor_planner, into_circuit_object,
+    Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
     polynomials::{Rank, TestRank},
     registry,
 };
@@ -46,17 +46,14 @@ impl Circuit<Fp> for SquareCircuit {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'witness>>,
-    )> {
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
         let mut a = Element::alloc(dr, witness)?;
 
         for _ in 0..self.times {
             a = a.square(dr)?;
         }
 
-        Ok((a, D::unit()))
+        Ok(WithAux::new(a, D::unit()))
     }
 }
 
@@ -113,10 +110,8 @@ fn test_simple_circuit() {
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'witness>>,
-        )> {
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+        {
             let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
             let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
 
@@ -131,11 +126,11 @@ fn test_simple_circuit() {
             let c = a.add(dr, &b);
             let d = a.sub(dr, &b);
 
-            Ok(((c, d), D::unit()))
+            Ok(WithAux::new((c, d), D::unit()))
         }
     }
 
-    let (trace, _) = MySimpleCircuit
+    let trace = MySimpleCircuit
         .trace((
             Fp::from_raw([
                 1833481853729904510,
@@ -150,7 +145,8 @@ fn test_simple_circuit() {
                 2277752110332726989,
             ]),
         ))
-        .unwrap();
+        .unwrap()
+        .into_output();
     type MyRank = TestRank;
 
     let obj = into_circuit_object::<_, _, MyRank>(MySimpleCircuit).unwrap();

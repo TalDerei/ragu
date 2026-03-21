@@ -127,7 +127,7 @@ use ragu_primitives::io::Write;
 use alloc::boxed::Box;
 
 use crate::{
-    BondingObject, Circuit,
+    BondingObject, Circuit, WithAux,
     polynomials::{Rank, structured},
 };
 
@@ -251,10 +251,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
         &self,
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr;
 }
@@ -311,7 +308,7 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F,
         &self,
         dr: &mut D,
         witness: DriverValue<D, S::Witness<'source>>,
-    ) -> Result<(Bound<'dr, D, Self::Output>, DriverValue<D, S::Aux<'source>>)>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, S::Aux<'source>>>>
     where
         Self: 'dr,
     {

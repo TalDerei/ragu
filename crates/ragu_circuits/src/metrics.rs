@@ -534,7 +534,7 @@ pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<Circu
     collector.enforce_zero(|lc| lc)?;
 
     // Circuit synthesis
-    let (io, _) = circuit.witness(&mut collector, Empty)?;
+    let io = circuit.witness(&mut collector, Empty)?.into_output();
     io.write(&mut collector, &mut degree_ky)?;
 
     // Public output constraints
@@ -589,6 +589,7 @@ pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<Circu
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::WithAux;
     use core::marker::PhantomData;
     use ragu_core::{
         drivers::{Driver, DriverValue},
@@ -715,12 +716,10 @@ pub(crate) mod tests {
             &self,
             dr: &mut D,
             _witness: DriverValue<D, Self::Witness<'source>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'source>>,
-        )> {
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+        {
             dr.routine(DanglingAllocRoutine, ())?;
-            Ok(((), D::unit()))
+            Ok(WithAux::new((), D::unit()))
         }
     }
 

@@ -13,7 +13,7 @@ use ragu_core::{
 };
 use ragu_pasta::Fp;
 
-use crate::Circuit;
+use crate::{Circuit, WithAux};
 
 /// Maximum number of wire allocations generated at any one point in a scope.
 const MAX_ALLOCS: usize = 6;
@@ -158,15 +158,12 @@ impl Circuit<Fp> for TreeCircuit {
         &self,
         dr: &mut D,
         _witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr,
     {
         drive_tree(dr, &self.0)?;
-        Ok(((), D::unit()))
+        Ok(WithAux::new((), D::unit()))
     }
 }
 
@@ -183,8 +180,8 @@ proptest! {
 
         let metrics = crate::metrics::eval::<Fp, _>(&circuit)
             .map_err(|e| TestCaseError::fail(format!("metrics: {e:?}")))?;
-        let (trace, _) = crate::trace::eval::<Fp, _>(&circuit, ())
-            .map_err(|e| TestCaseError::fail(format!("rx: {e:?}")))?;
+        let trace = crate::trace::eval::<Fp, _>(&circuit, ())
+            .map_err(|e| TestCaseError::fail(format!("rx: {e:?}")))?.into_output();
 
         prop_assert_eq!(
             metrics.segments.len(),

@@ -253,7 +253,7 @@ mod tests {
     use rand::RngExt;
 
     use crate::{
-        CircuitObject, floor_planner, into_circuit_object, metrics,
+        CircuitObject, WithAux, floor_planner, into_circuit_object, metrics,
         polynomials::{Rank, structured},
         registry,
         staging::StageBuilder,
@@ -283,10 +283,8 @@ mod tests {
             &self,
             dr: &mut D,
             _: DriverValue<D, Self::Witness<'source>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'source>>,
-        )> {
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+        {
             let reserved = self.skip_multiplications + self.num_multiplications + 1;
             assert!(reserved <= R::n());
 
@@ -308,7 +306,7 @@ mod tests {
                 dr.enforce_zero(|lc| lc.add(&c))?;
             }
 
-            Ok(((), D::unit()))
+            Ok(WithAux::new((), D::unit()))
         }
     }
 
@@ -749,12 +747,10 @@ mod tests {
                 &self,
                 dr: &mut D,
                 _witness: DriverValue<D, Self::Witness<'source>>,
-            ) -> Result<(
-                Bound<'dr, D, Self::Output>,
-                DriverValue<D, Self::Aux<'source>>,
-            )> {
+            ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+            {
                 dr.routine(MulOnlyRoutine, ())?;
-                Ok(((), D::unit()))
+                Ok(WithAux::new((), D::unit()))
             }
         }
 

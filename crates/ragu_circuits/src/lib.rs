@@ -49,6 +49,44 @@ use alloc::boxed::Box;
 
 use polynomials::{Rank, structured, unstructured};
 
+/// Bundles a primary value with auxiliary data.
+///
+/// Returned by [`Circuit::witness`] and [`CircuitExt::trace`] to pair the
+/// circuit's output with any auxiliary data produced during synthesis.
+/// Most circuits set `Aux = ()` and callers can use [`into_output`] to
+/// discard the auxiliary component, or [`into_parts`] to destructure both.
+///
+/// [`into_output`]: WithAux::into_output
+/// [`into_parts`]: WithAux::into_parts
+pub struct WithAux<O, A> {
+    /// The primary output value.
+    pub output: O,
+    /// Auxiliary data produced alongside the output.
+    pub aux: A,
+}
+
+impl<O, A> WithAux<O, A> {
+    /// Creates a new `WithAux` from an output and auxiliary data.
+    pub fn new(output: O, aux: A) -> Self {
+        Self { output, aux }
+    }
+
+    /// Discards auxiliary data, returning only the output.
+    pub fn into_output(self) -> O {
+        self.output
+    }
+
+    /// Discards the output, returning only auxiliary data.
+    pub fn into_aux(self) -> A {
+        self.aux
+    }
+
+    /// Destructures into both components.
+    pub fn into_parts(self) -> (O, A) {
+        (self.output, self.aux)
+    }
+}
+
 /// A trait for drivers that carry per-routine state which must be saved and
 /// restored across routine boundaries.
 ///
@@ -110,10 +148,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr;
 }
@@ -127,7 +162,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     fn trace<'witness>(
         &self,
         witness: Self::Witness<'witness>,
-    ) -> Result<(trace::Trace<F>, Self::Aux<'witness>)> {
+    ) -> Result<WithAux<trace::Trace<F>, Self::Aux<'witness>>> {
         trace::eval(self, witness)
     }
 
