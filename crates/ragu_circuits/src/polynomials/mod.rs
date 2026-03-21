@@ -1,5 +1,6 @@
 //! Representations and views of polynomials used in Ragu's proof system.
 
+pub mod sparse;
 pub mod structured;
 pub mod txz;
 pub mod unstructured;
