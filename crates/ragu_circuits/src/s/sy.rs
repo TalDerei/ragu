@@ -345,8 +345,8 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
 
 /// Per-routine state saved and restored across routine boundaries.
 struct SyScope<'table, 'sy, F: Field, R: Rank> {
-    /// Stashed $b$ wire from paired allocation.
-    available_b: Option<Wire<'table, 'sy, F, R>>,
+    /// Stashed $d$ wire from paired allocation.
+    available_d: Option<Wire<'table, 'sy, F, R>>,
     /// Current $y$ power being applied to constraints in this routine.
     current_y: F,
     /// Absolute index of the next multiplication constraint to be written.
@@ -544,16 +544,23 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
 
     /// Allocates a wire using paired allocation.
     ///
-    /// Returns either a stashed $b$ wire from a previous gate, or allocates a
-    /// new gate and stashes its $b$ wire for the next call.
+    /// Returns either a stashed $d$ wire from a previous gate, or allocates a
+    /// new gate and stashes its $d$ wire for the next call.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_b.take() {
+        if let Some(wire) = self.scope.available_d.take() {
             Ok(wire)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
-            self.scope.available_b = Some(b);
+            let index = self.scope.multiplication_constraints;
+            if index == R::n() {
+                return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
+            }
+            self.scope.multiplication_constraints += 1;
 
-            Ok(a)
+            let b = Wire::new(WireIndex::B(index), self.virtual_table);
+            let d = Wire::new(WireIndex::D(index), self.virtual_table);
+
+            self.scope.available_d = Some(d);
+            Ok(b)
         }
     }
 
@@ -614,7 +621,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         // Jump to this routine's absolute position in the polynomial;
         // see the "Routine Scope Jumps" section in the `s` module doc.
         let init_scope = SyScope {
-            available_b: None,
+            available_d: None,
             // When num_linear_constraints == 0 the routine emits no
             // enforce_zero calls, so current_y is never read; use
             // F::ZERO as an inert sentinel.
@@ -713,7 +720,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         {
             let mut evaluator = Evaluator::<'_, '_, '_, F, R> {
                 scope: SyScope {
-                    available_b: None,
+                    available_d: None,
                     // Assertion above prevents this from underflowing.
                     current_y: y.pow_vartime([(root_linear_constraints - 1) as u64]),
                     multiplication_constraints: 0,

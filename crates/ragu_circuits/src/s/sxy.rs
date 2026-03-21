@@ -83,8 +83,8 @@ use super::{
 /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 /// Per-routine state saved and restored across routine boundaries.
 struct SxyScope<F> {
-    /// Stashed $b$ wire from paired allocation.
-    available_b: Option<WireEval<F>>,
+    /// Stashed $d$ wire from paired allocation.
+    available_d: Option<WireEval<F>>,
     /// Running monomial for $a$ wires: $x^{2n - 1 - i}$ at gate $i$.
     current_a_x: F,
     /// Running monomial for $b$ wires: $x^{2n + i}$ at gate $i$.
@@ -221,13 +221,25 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
     /// Allocates a wire using paired allocation.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_b.take() {
-            Ok(wire)
+        if let Some(monomial) = self.scope.available_d.take() {
+            Ok(monomial)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
-            self.scope.available_b = Some(b);
+            let index = self.scope.multiplication_constraints;
+            if index == R::n() {
+                return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
+            }
+            self.scope.multiplication_constraints += 1;
 
-            Ok(a)
+            let b = self.scope.current_b_x;
+            let d = self.scope.current_d_x;
+
+            self.scope.current_a_x *= self.x_inv;
+            self.scope.current_b_x *= self.x;
+            self.scope.current_c_x *= self.x_inv;
+            self.scope.current_d_x *= self.x;
+
+            self.scope.available_d = Some(WireEval::Value(d));
+            Ok(WireEval::Value(b))
         }
     }
 
@@ -278,7 +290,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         // Jump to this routine's absolute position in the polynomial;
         // see the "Routine Scope Jumps" section in the `s` module doc.
         let init_scope = SxyScope {
-            available_b: None,
+            available_d: None,
             current_a_x: self.base_a_x * self.x_inv.pow_vartime([multiplication_start as u64]),
             current_b_x: self.base_b_x * self.x.pow_vartime([multiplication_start as u64]),
             current_c_x: self.base_c_x * self.x_inv.pow_vartime([multiplication_start as u64]),
@@ -359,7 +371,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 
     let mut evaluator = Evaluator::<F, R> {
         scope: SxyScope {
-            available_b: None,
+            available_d: None,
             current_a_x: base_a_x,
             current_b_x: base_b_x,
             current_c_x: base_c_x,
