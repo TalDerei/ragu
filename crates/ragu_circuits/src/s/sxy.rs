@@ -216,28 +216,27 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
     }
 
-    /// Consumes a zero-product gate, returning the $d$-wire monomial $x^i$
-    /// instead of the $c$-wire monomial.
-    fn zero_product_mul(
+    /// Consumes an allocation gate $(0, a, 0, b)$, returning the monomials
+    /// for the two allocated values.
+    fn alloc_d(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
         let index = self.scope.multiplication_constraints;
         if index == R::n() {
             return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
         self.scope.multiplication_constraints += 1;
 
-        let a = self.scope.current_u_x;
-        let b = self.scope.current_v_x;
-        let d = self.scope.current_d_x;
+        let a = self.scope.current_v_x;
+        let b = self.scope.current_d_x;
 
         self.scope.current_u_x *= self.x_inv;
         self.scope.current_v_x *= self.x;
         self.scope.current_w_x *= self.x_inv;
         self.scope.current_d_x *= self.x;
 
-        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(d)))
+        Ok((WireEval::Value(a), WireEval::Value(b)))
     }
 
     /// Computes a linear combination of wire evaluations.

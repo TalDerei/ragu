@@ -403,27 +403,26 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
     }
 
-    /// Consumes a zero-product gate: same as [`mul`](Self::mul) but returns the
-    /// $d$-wire evaluation instead of $c$.
-    fn zero_product_mul(
+    /// Consumes an allocation gate $(0, a, 0, b)$, returning the evaluations
+    /// for the two allocated values.
+    fn alloc_d(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
         if self.counting {
             self.num_multiplication_constraints += 1;
             self.segments[self.scope.current_segment].num_multiplication_constraints += 1;
         }
 
-        let a = self.scope.current_a;
-        let b = self.scope.current_b;
-        let d = self.scope.current_d;
+        let a = self.scope.current_b;
+        let b = self.scope.current_d;
 
         self.scope.current_a *= self.x0;
         self.scope.current_b *= self.x1;
         self.scope.current_c *= self.x2;
         self.scope.current_d *= self.x3;
 
-        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(d)))
+        Ok((WireEval::Value(a), WireEval::Value(b)))
     }
 
     /// Computes a linear combination of wire evaluations.

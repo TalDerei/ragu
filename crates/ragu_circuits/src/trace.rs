@@ -267,18 +267,18 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
         Ok(((), (), ()))
     }
 
-    fn zero_product_mul(
+    fn alloc_d(
         &mut self,
-        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<((), (), ())> {
-        let (a, b, d) = values()?;
+        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<((), ())> {
+        let (a, b) = values()?;
         let seg = &mut self.segments[self.state.current_segment].segment;
-        seg.a.push(a.value());
-        seg.b.push(b.value());
+        seg.a.push(F::ZERO);
+        seg.b.push(a.value());
         seg.c.push(F::ZERO);
-        seg.d.push(d.value());
+        seg.d.push(b.value());
 
-        Ok(((), (), ()))
+        Ok(((), ()))
     }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}

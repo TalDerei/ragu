@@ -553,25 +553,22 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         Ok((a, b, c))
     }
 
-    /// Consumes a zero-product gate, returning wire handles for $(a, b, d)$.
-    ///
-    /// Same as [`mul`](Self::mul) but the third returned wire is a D-wire
-    /// (backward view maps to the w-region) instead of a C-wire.
-    fn zero_product_mul(
+    /// Consumes an allocation gate $(0, a, 0, b)$, returning wire handles
+    /// for $(a, b)$.
+    fn alloc_d(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Self::Wire, Self::Wire)> {
         let index = self.scope.multiplication_constraints;
         if index == R::n() {
             return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
         self.scope.multiplication_constraints += 1;
 
-        let a = Wire::new(WireIndex::A(index), self.virtual_table);
-        let b = Wire::new(WireIndex::B(index), self.virtual_table);
-        let d = Wire::new(WireIndex::D(index), self.virtual_table);
+        let a = Wire::new(WireIndex::B(index), self.virtual_table);
+        let b = Wire::new(WireIndex::D(index), self.virtual_table);
 
-        Ok((a, b, d))
+        Ok((a, b))
     }
 
     /// Creates a virtual wire representing a linear combination.
