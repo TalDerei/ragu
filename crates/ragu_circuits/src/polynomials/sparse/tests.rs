@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use ff::Field;
 use proptest::prelude::*;
 use ragu_pasta::Fp;
@@ -666,4 +666,87 @@ fn iter_coeffs_fully_drain_both_ends() {
     for c in iter {
         assert_eq!(c, Fp::ZERO);
     }
+}
+
+/// Verifies the product identity: for a valid multiplication-gate assignment
+/// (c = a * b), `rx.revdot(rx_dilated + tz) == 0`.
+#[test]
+fn product_identity() {
+    let mut view = View::<_, R, _>::forward();
+    for _ in 0..R::n() {
+        let a = Fp::random(&mut rand::rng());
+        let b = Fp::random(&mut rand::rng());
+        view.a.push(a);
+        view.b.push(b);
+        view.c.push(a * b);
+    }
+    let rx = view.build();
+
+    let mut rzx = rx.clone();
+    let z = Fp::random(&mut rand::rng());
+    rzx.dilate(z);
+    rzx.add_assign(&R::tz::<Fp>(z));
+
+    assert_eq!(rx.revdot(&rzx), Fp::ZERO);
+}
+
+/// Verifies ring-FFT convolution: element-wise revdot of FFT'd polynomials,
+/// followed by IFFT, equals the polynomial of diagonal revdot products.
+#[test]
+fn ring_convolution() {
+    let rand_poly = || Polynomial::<Fp, R>::random(&mut rand::rng());
+
+    let little = ragu_arithmetic::Domain::<Fp>::new(2);
+    let big = ragu_arithmetic::Domain::<Fp>::new(3);
+
+    let mut a_polys: Vec<_> = (0..4).map(|_| rand_poly()).collect();
+    let mut b_polys: Vec<_> = (0..4).map(|_| rand_poly()).collect();
+
+    // Diagonal revdot products.
+    let mut c = vec![];
+    for i in 0..4 {
+        c.push(a_polys[i].revdot(&b_polys[i]));
+    }
+
+    little.ring_ifft::<Polynomial<Fp, R>>(&mut a_polys);
+    let a_polys_collapse = a_polys.clone();
+    a_polys.resize(8, Default::default());
+    big.ring_fft::<Polynomial<Fp, R>>(&mut a_polys);
+
+    little.ring_ifft::<Polynomial<Fp, R>>(&mut b_polys);
+    let b_polys_collapse = b_polys.clone();
+    b_polys.resize(8, Default::default());
+    big.ring_fft::<Polynomial<Fp, R>>(&mut b_polys);
+
+    let mut big_c = vec![];
+    for (a, b) in a_polys.iter().zip(b_polys.iter()).take(8) {
+        big_c.push(a.revdot(b));
+    }
+
+    big.ifft(&mut big_c);
+
+    let x = Fp::random(&mut rand::rng());
+
+    let mut cur = Fp::ONE;
+    let mut a = Polynomial::<Fp, R>::new();
+    let mut b = Polynomial::<Fp, R>::new();
+    for i in 0..4 {
+        let mut tmp = a_polys_collapse[i].clone();
+        tmp.scale(cur);
+        a.add_assign(&tmp);
+
+        let mut tmp = b_polys_collapse[i].clone();
+        tmp.scale(cur);
+        b.add_assign(&tmp);
+
+        cur *= x;
+    }
+    let mut cur = Fp::ONE;
+    let mut cx = Fp::ZERO;
+    for item in big_c.iter().take(8) {
+        cx += *item * cur;
+        cur *= x;
+    }
+
+    assert_eq!(a.revdot(&b), cx);
 }

@@ -54,12 +54,6 @@
 //! view provides direct access to the $a$, $b$, and $c$ coefficient regions.
 //! See [`sparse::View`] for details.
 //!
-//! ### Coefficient Order
-//!
-//! The output polynomial $s(X, y)$ is built via [`sparse::View`],
-//! with each wire type ($a$, $b$, $c$) occupying a separate coefficient
-//! region with its appropriate exponent range.
-//!
 //! [`common`]: super::common
 //! [`sx`]: super::sx
 //! [`sxy`]: super::sxy
@@ -364,7 +358,7 @@ struct SyScope<'table, 'sy, F: Field, R: Rank> {
 /// A [`Driver`] that computes $s(X, y)$ at a fixed $y$.
 ///
 /// Given a fixed evaluation point $y \in \mathbb{F}$, this driver interprets
-/// circuit synthesis operations to produce the structured polynomial $s(X, y)$.
+/// circuit synthesis operations to produce the polynomial $s(X, y)$.
 /// Unlike [`sx`] and [`sxy`] which use immediate evaluation, this driver uses
 /// deferred computation through virtual wires (see [module documentation](self)).
 ///

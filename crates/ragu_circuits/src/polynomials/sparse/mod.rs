@@ -20,7 +20,9 @@
 //!   zero runs.
 //! - [`View`]: a builder that maps four gate-indexed wire buffers to degree
 //!   positions, producing a polynomial via [`View::build`]. Zero elements within
-//!   a wire buffer are preserved in the resulting blocks.
+//!   a wire buffer are **preserved** in the resulting blocks — push only
+//!   non-zero values for maximum compression, or use [`Polynomial::from_coeffs`]
+//!   to strip zeros from a pre-built dense vector.
 //!
 //! Once constructed, the polynomial supports algebraic operations ([`scale`],
 //! [`add_assign`], [`sub_assign`], [`negate`], [`eval`], [`revdot`],
@@ -70,13 +72,13 @@ impl<T, R: Rank> Polynomial<T, R> {
     fn assert_invariants(&self) {
         let mut prev_end: usize = 0;
         for (i, (start, data)) in self.blocks.iter().enumerate() {
-            assert!(!data.is_empty(), "block {i} is empty");
-            assert!(
+            debug_assert!(!data.is_empty(), "block {i} is empty");
+            debug_assert!(
                 *start + data.len() <= R::num_coeffs(),
                 "block {i} exceeds capacity"
             );
             if i > 0 {
-                assert!(
+                debug_assert!(
                     *start >= prev_end,
                     "block {i} overlaps previous (start={start}, prev_end={prev_end})"
                 );
@@ -194,17 +196,15 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             return;
         }
         if self.blocks.is_empty() {
-            self.blocks = other
-                .blocks
-                .iter()
-                .map(|(s, d)| {
-                    let mut v = alloc::vec![F::ZERO; d.len()];
-                    for (o, r) in v.iter_mut().zip(d) {
-                        op(o, r);
-                    }
-                    (*s, v)
-                })
-                .collect();
+            let mut out = Vec::new();
+            for (s, d) in &other.blocks {
+                let mut v = alloc::vec![F::ZERO; d.len()];
+                for (o, r) in v.iter_mut().zip(d) {
+                    op(o, r);
+                }
+                extend_nonzero_runs(&mut out, *s, v);
+            }
+            self.blocks = out;
             return;
         }
 
