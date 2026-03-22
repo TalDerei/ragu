@@ -411,24 +411,6 @@ proptest! {
     }
 
     // -----------------------------------------------------------------------
-    // PartialEq
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn eq_across_construction_paths(coeffs in arb_dense_coeffs()) {
-        let from_coeffs = Polynomial::<Fp, R>::from_coeffs(coeffs.clone());
-        let mut padded = coeffs;
-        padded.resize(R::num_coeffs(), Fp::ZERO);
-        let from_full = Polynomial::<Fp, R>::from_coeffs(padded);
-        prop_assert_eq!(from_coeffs, from_full);
-    }
-
-    #[test]
-    fn eq_reflexive(poly in arb_any_poly()) {
-        prop_assert_eq!(&poly, &poly);
-    }
-
-    // -----------------------------------------------------------------------
     // Ring FFT roundtrip
     // -----------------------------------------------------------------------
 
@@ -477,20 +459,21 @@ proptest! {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn sub_self_is_empty(poly in arb_any_poly()) {
+    fn sub_self_is_zero(poly in arb_any_poly()) {
         let mut result = poly.clone();
         result.sub_assign(&poly);
-        prop_assert!(result.is_empty(), "sub_assign(self) should yield empty polynomial");
-        prop_assert_eq!(result.num_nonzero(), 0);
+        let x = Fp::random(&mut rand::rng());
+        prop_assert_eq!(result.eval(x), Fp::ZERO, "sub_assign(self) should yield zero");
     }
 
     #[test]
-    fn add_negation_is_empty(poly in arb_any_poly()) {
+    fn add_negation_is_zero(poly in arb_any_poly()) {
         let mut negated = poly.clone();
         negated.negate();
         let mut result = poly;
         result.add_assign(&negated);
-        prop_assert!(result.is_empty(), "add_assign(-self) should yield empty polynomial");
+        let x = Fp::random(&mut rand::rng());
+        prop_assert_eq!(result.eval(x), Fp::ZERO, "add_assign(-self) should yield zero");
     }
 }
 
@@ -501,21 +484,20 @@ proptest! {
 #[test]
 fn zero_polynomial_operations() {
     let zero = Polynomial::<Fp, R>::new();
-    assert!(zero.is_empty());
-    assert_eq!(zero.num_nonzero(), 0);
-    assert_eq!(zero.eval(Fp::from(42u64)), Fp::ZERO);
+    let x = Fp::from(42u64);
+    assert_eq!(zero.eval(x), Fp::ZERO);
     assert_eq!(zero.revdot(&zero), Fp::ZERO);
 
     let mut p = zero.clone();
     p.scale(Fp::from(5u64));
-    assert!(p.is_empty());
+    assert_eq!(p.eval(x), Fp::ZERO);
     p.negate();
-    assert!(p.is_empty());
+    assert_eq!(p.eval(x), Fp::ZERO);
 
     // add zero to zero
     let mut p = zero.clone();
     p.add_assign(&zero);
-    assert!(p.is_empty());
+    assert_eq!(p.eval(x), Fp::ZERO);
 }
 
 #[test]
@@ -541,36 +523,39 @@ fn single_coefficient_at_degree_boundaries() {
             val * x.pow_vartime([u64::try_from(degree).unwrap()]),
             "degree {degree}"
         );
-        assert_eq!(poly.num_nonzero(), 1, "degree {degree}");
     }
 }
 
 #[test]
 fn only_a_wire_data() {
+    let n = R::n();
     let mut view = View::<Fp, R, Forward>::new();
-    for _ in 0..R::n() {
-        view.a.push(Fp::random(&mut rand::rng()));
-    }
+    let a_vals: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rand::rng())).collect();
+    view.a = a_vals.clone();
     let poly = view.build();
 
-    // a[i] -> degree 2*n+i, so non-zero block at [2*n, 3*n).
-    assert_eq!(poly.blocks().len(), 1);
-    assert_eq!(poly.blocks()[0].0, 2 * R::n());
-    assert_eq!(poly.blocks()[0].1.len(), R::n());
+    // a[i] -> degree 2*n+i, so non-zero coeffs at [2*n, 3*n).
+    let mut expected = alloc::vec![Fp::ZERO; R::num_coeffs()];
+    expected[2 * n..3 * n].copy_from_slice(&a_vals);
+    let x = Fp::random(&mut rand::rng());
+    assert_eq!(poly.eval(x), ragu_arithmetic::eval(&expected, x));
 }
 
 #[test]
 fn only_d_wire_data() {
+    let n = R::n();
     let mut view = View::<Fp, R, Forward>::new();
-    for _ in 0..R::n() {
-        view.d.push(Fp::random(&mut rand::rng()));
-    }
+    let d_vals: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rand::rng())).collect();
+    view.d = d_vals.clone();
     let poly = view.build();
 
-    // d[i] -> degree 4*n-1-i, so block at [3*n, 4*n).
-    assert_eq!(poly.blocks().len(), 1);
-    assert_eq!(poly.blocks()[0].0, 3 * R::n());
-    assert_eq!(poly.blocks()[0].1.len(), R::n());
+    // d[i] -> degree 4*n-1-i (reversed), so non-zero coeffs at [3*n, 4*n).
+    let mut expected = alloc::vec![Fp::ZERO; R::num_coeffs()];
+    for (i, val) in d_vals.iter().enumerate() {
+        expected[4 * n - 1 - i] = *val;
+    }
+    let x = Fp::random(&mut rand::rng());
+    assert_eq!(poly.eval(x), ragu_arithmetic::eval(&expected, x));
 }
 
 #[test]

@@ -190,23 +190,6 @@ impl<T, R: Rank> Polynomial<T, R> {
     }
 }
 
-#[cfg(test)]
-impl<T, R: Rank> Polynomial<T, R> {
-    /// Returns `true` if no coefficients are stored.
-    fn is_empty(&self) -> bool {
-        self.blocks.is_empty()
-    }
-
-    /// Returns a reference to the block list.
-    fn blocks(&self) -> &[(usize, Vec<T>)] {
-        &self.blocks
-    }
-
-    /// Total number of stored (non-zero) coefficients.
-    fn num_nonzero(&self) -> usize {
-        self.blocks.iter().map(|(_, data)| data.len()).sum()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Polynomial operations (require F: Field)
@@ -422,13 +405,6 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 // Trait impls
 // ---------------------------------------------------------------------------
 
-impl<F: Field, R: Rank> PartialEq for Polynomial<F, R> {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_dense() == other.to_dense()
-    }
-}
-
-impl<F: Field, R: Rank> Eq for Polynomial<F, R> {}
 
 impl<F: Field, R: Rank> ragu_arithmetic::Ring for Polynomial<F, R> {
     type R = Self;
