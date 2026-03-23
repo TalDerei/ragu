@@ -86,11 +86,11 @@ struct SxyScope<F> {
     /// Stashed $b$ wire from paired allocation.
     available_b: Option<WireEval<F>>,
     /// Running monomial for $a$ wires: $x^{2n - 1 - i}$ at gate $i$.
-    current_u_x: F,
+    current_a_x: F,
     /// Running monomial for $b$ wires: $x^{2n + i}$ at gate $i$.
-    current_v_x: F,
+    current_b_x: F,
     /// Running monomial for $c$ wires: $x^{4n - 1 - i}$ at gate $i$.
-    current_w_x: F,
+    current_c_x: F,
     /// Running monomial for $d$ wires: $x^i$ at gate $i$.
     current_d_x: F,
     /// Absolute index of the next multiplication constraint to be written.
@@ -128,10 +128,10 @@ struct Evaluator<'fp, F, R> {
     one: F,
 
     /// Base monomial $x^{2n-1}$, used to compute routine starting monomials.
-    base_u_x: F,
+    base_a_x: F,
 
     /// Base monomial $x^{2n}$, used to compute routine starting monomials.
-    base_v_x: F,
+    base_b_x: F,
 
     /// Base monomial $x^{4n-1}$, used to compute routine starting monomials
     /// for the $c$ wire.
@@ -208,14 +208,14 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         }
         self.scope.multiplication_constraints += 1;
 
-        let a = self.scope.current_u_x;
-        let b = self.scope.current_v_x;
-        let c = self.scope.current_w_x;
+        let a = self.scope.current_a_x;
+        let b = self.scope.current_b_x;
+        let c = self.scope.current_c_x;
         let d = self.scope.current_d_x;
 
-        self.scope.current_u_x *= self.x_inv;
-        self.scope.current_v_x *= self.x;
-        self.scope.current_w_x *= self.x_inv;
+        self.scope.current_a_x *= self.x_inv;
+        self.scope.current_b_x *= self.x;
+        self.scope.current_c_x *= self.x_inv;
         self.scope.current_d_x *= self.x;
 
         Ok((
@@ -274,9 +274,9 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         // see the "Routine Scope Jumps" section in the `s` module doc.
         let init_scope = SxyScope {
             available_b: None,
-            current_u_x: self.base_u_x * self.x_inv.pow_vartime([multiplication_start as u64]),
-            current_v_x: self.base_v_x * self.x.pow_vartime([multiplication_start as u64]),
-            current_w_x: self.base_w_x * self.x_inv.pow_vartime([multiplication_start as u64]),
+            current_a_x: self.base_a_x * self.x_inv.pow_vartime([multiplication_start as u64]),
+            current_b_x: self.base_b_x * self.x.pow_vartime([multiplication_start as u64]),
+            current_c_x: self.base_w_x * self.x_inv.pow_vartime([multiplication_start as u64]),
             current_d_x: self.x.pow_vartime([multiplication_start as u64]),
             multiplication_constraints: multiplication_start,
             linear_constraints: linear_start,
@@ -339,8 +339,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let x_inv = x.invert().expect("x is not zero");
     let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
     let xn2 = xn.square(); // xn2 = x^(2n)
-    let base_u_x = xn2 * x_inv; // x^(2n - 1)
-    let base_v_x = xn2; // x^(2n)
+    let base_a_x = xn2 * x_inv; // x^(2n - 1)
+    let base_b_x = xn2; // x^(2n)
     let xn4 = xn2.square(); // x^(4n)
     let base_w_x = xn4 * x_inv; // x^(4n - 1)
     let one = base_v_x; // x^(2n)
@@ -354,9 +354,9 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let mut evaluator = Evaluator::<F, R> {
         scope: SxyScope {
             available_b: None,
-            current_u_x: base_u_x,
-            current_v_x: base_v_x,
-            current_w_x: base_w_x,
+            current_a_x: base_a_x,
+            current_b_x: base_b_x,
+            current_c_x: base_w_x,
             current_d_x: F::ONE,
             multiplication_constraints: 0,
             linear_constraints: 0,
@@ -367,8 +367,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         x_inv,
         y,
         one,
-        base_u_x,
-        base_v_x,
+        base_a_x,
+        base_b_x,
         base_w_x,
         floor_plan,
         current_routine: 0,

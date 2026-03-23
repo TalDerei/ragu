@@ -75,15 +75,15 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let xinv_y4 = x_inv * y4;
 
         let block = |end: usize, len: usize| -> F {
-            let u = y4 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
-            let v = y3 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
-            let w = y2 * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
+            let a = y4 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
+            let b = y3 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
+            let c = y2 * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
             let d = y * x.pow_vartime([(end + 1) as u64]);
 
             let plus = ragu_arithmetic::geosum::<F>(x_y4, len);
             let minus = ragu_arithmetic::geosum::<F>(xinv_y4, len);
 
-            u * plus + v * minus + w * plus + d * minus
+            a * plus + b * minus + c * plus + d * minus
         };
 
         // Handle the edge case where skip_multiplications is zero.
@@ -115,17 +115,17 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             let x_inv = x.invert().expect("x is not zero");
             let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
             let xn2 = xn.square(); // xn2 = x^(2n)
-            let mut u = xn2 * x_inv; // x^(2n - 1)
-            let mut v = xn2; // x^(2n)
+            let mut a = xn2 * x_inv; // x^(2n - 1)
+            let mut b = xn2; // x^(2n)
             let xn4 = xn2.square(); // x^(4n)
-            let mut w = xn4 * x_inv; // x^(4n - 1)
+            let mut c = xn4 * x_inv; // x^(4n - 1)
             let mut d = F::ONE; // x^0
 
             let mut alloc = || {
-                let out = (u, v, w, d);
-                u *= x_inv;
-                v *= x;
-                w *= x_inv;
+                let out = (a, b, c, d);
+                a *= x_inv;
+                b *= x;
+                c *= x_inv;
                 d *= x;
                 out
             };
