@@ -451,12 +451,14 @@ mod tests {
         let y = Fp::random(&mut rand::rng());
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
-        let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
         let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
         let plan = floor_planner::floor_plan(generic.segment_records());
-        let comparison_sxy = generic.sxy(x, y, &k, &plan) - x_4n_minus_1;
+        let stripped = crate::staging::bonding::Stripped(generic);
+        let comparison_sxy = stripped.sxy(x, y, &k, &plan);
 
         assert_eq!(stage.sxy(x, y, &k, &[]), comparison_sxy);
+        assert_eq!(comparison_sxy, stripped.sx(x, &k, &plan).eval(y));
+        assert_eq!(comparison_sxy, stripped.sy(y, &k, &plan).eval(x));
     }
 
     #[test]
@@ -554,26 +556,12 @@ mod tests {
             ).unwrap();
             let plan = floor_planner::floor_plan(generic.segment_records());
 
-            let check = |x: Fp, y: Fp| {
-                let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+            let stripped = crate::staging::bonding::Stripped(generic);
 
-                // This adjusts for the single "ONE" constraint which is always skipped
-                // in staging witnesses.
-                let sxy = generic.sxy(x, y, &k, &plan) - x_4n_minus_1;
-                let mut sx = generic.sx(x, &k, &plan);
-                {
-                    // Subtract x^(4n-1) from the constant term (degree 0).
-                    let mut correction = sparse::View::forward();
-                    correction.c.push(x_4n_minus_1);
-                    sx.sub_assign(&correction.build());
-                }
-                let mut sy = generic.sy(y, &k, &plan);
-                {
-                    // Subtract 1 from the backward view's c[0], which is degree 4n-1.
-                    let mut correction = sparse::View::backward();
-                    correction.c.push(Fp::ONE);
-                    sy.sub_assign(&correction.build());
-                }
+            let check = |x: Fp, y: Fp| {
+                let sxy = stripped.sxy(x, y, &k, &plan);
+                let sx = stripped.sx(x, &k, &plan);
+                let sy = stripped.sy(y, &k, &plan);
 
                 prop_assert_eq!(sy.eval(x), sxy);
                 prop_assert_eq!(sx.eval(y), sxy);

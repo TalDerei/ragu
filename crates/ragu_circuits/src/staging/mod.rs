@@ -115,6 +115,7 @@
 //! Assuming stages are well-formed, they can be combined by merely adding them
 //! together with the final staging polynomial, producing the desired $r(X)$.
 
+pub(crate) mod bonding;
 mod builder;
 pub(crate) mod mask;
 
