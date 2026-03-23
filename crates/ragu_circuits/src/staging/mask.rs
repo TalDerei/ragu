@@ -70,18 +70,20 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let x_inv = x.invert().expect("x is not zero");
         let y2 = y.square();
         let y3 = y * y2;
-        let x_y3 = x * y3;
-        let xinv_y3 = x_inv * y3;
+        let y4 = y2.square();
+        let x_y4 = x * y4;
+        let xinv_y4 = x_inv * y4;
 
         let block = |end: usize, len: usize| -> F {
-            let w = y * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
-            let v = y2 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
-            let u = y3 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
+            let u = y4 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
+            let v = y3 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
+            let w = y2 * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
+            let d = y * x.pow_vartime([(end + 1) as u64]);
 
-            let plus = ragu_arithmetic::geosum::<F>(x_y3, len);
-            let minus = ragu_arithmetic::geosum::<F>(xinv_y3, len);
+            let plus = ragu_arithmetic::geosum::<F>(x_y4, len);
+            let minus = ragu_arithmetic::geosum::<F>(xinv_y4, len);
 
-            w * plus + v * minus + u * plus
+            u * plus + v * minus + w * plus + d * minus
         };
 
         // Handle the edge case where skip_multiplications is zero.
@@ -92,7 +94,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         };
         let c2 = block(R::n() - 2, reserved);
 
-        y.pow_vartime([(3 * reserved) as u64]) * c1 + c2
+        y.pow_vartime([(4 * reserved) as u64]) * c1 + c2
     }
 
     fn sx(
@@ -117,12 +119,14 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             let mut v = xn2; // x^(2n)
             let xn4 = xn2.square(); // x^(4n)
             let mut w = xn4 * x_inv; // x^(4n - 1)
+            let mut d = F::ONE; // x^0
 
             let mut alloc = || {
-                let out = (u, v, w);
+                let out = (u, v, w, d);
                 u *= x_inv;
                 v *= x;
                 w *= x_inv;
+                d *= x;
                 out
             };
 
@@ -131,10 +135,11 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             // registry level.
             alloc();
 
-            let mut enforce_zero = |out: (F, F, F)| {
+            let mut enforce_zero = |out: (F, F, F, F)| {
                 coeffs.push(out.0);
                 coeffs.push(out.1);
                 coeffs.push(out.2);
+                coeffs.push(out.3);
             };
 
             for _ in 0..self.skip_multiplications {
@@ -167,8 +172,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             return sparse::Polynomial::new();
         }
 
-        let num_linear_from_gates = 3 * (reserved + self.skip_multiplications);
-        // Start at y^{3*(reserved + skip)}: the highest Y-power used by gate
+        let num_linear_from_gates = 4 * (reserved + self.skip_multiplications);
+        // Start at y^{4*(reserved + skip)}: the highest Y-power used by gate
         // constraints. The registry key constraint (formerly counted here as +1)
         // now occupies Y^{4n-1} at the registry level and is excluded.
         let mut yq = y.pow_vartime([num_linear_from_gates as u64]);
@@ -182,6 +187,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
+        view.d.push(F::ZERO);
 
         for _ in 0..self.skip_multiplications {
             view.a.push(yq);
@@ -190,11 +196,14 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             yq *= y_inv;
             view.c.push(yq);
             yq *= y_inv;
+            view.d.push(yq);
+            yq *= y_inv;
         }
         for _ in 0..self.num_multiplications {
             view.a.push(F::ZERO);
             view.b.push(F::ZERO);
             view.c.push(F::ZERO);
+            view.d.push(F::ZERO);
         }
         for _ in 0..reserved {
             view.a.push(yq);
@@ -203,6 +212,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             yq *= y_inv;
             view.c.push(yq);
             yq *= y_inv;
+            view.d.push(yq);
+            yq *= y_inv;
         }
 
         view.build()
@@ -210,9 +221,9 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
     fn constraint_counts(&self) -> (usize, usize) {
         let num_multiplication_constraints = R::n();
-        // 3 constraints per non-multiplied gate + 1 for the ONE constraint.
+        // 4 constraints per non-multiplied gate + 1 for the ONE constraint.
         // The registry key constraint is handled at the registry level.
-        let num_linear_constraints = 3 * (R::n() - self.num_multiplications - 1) + 1;
+        let num_linear_constraints = 4 * (R::n() - self.num_multiplications - 1) + 1;
         (num_multiplication_constraints, num_linear_constraints)
     }
 
@@ -276,10 +287,11 @@ mod tests {
             assert!(reserved <= R::n());
 
             for _ in 0..self.skip_multiplications {
-                let (a, b, c, _) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                let (a, b, c, d) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
                 dr.enforce_zero(|lc| lc.add(&b))?;
                 dr.enforce_zero(|lc| lc.add(&c))?;
+                dr.enforce_zero(|lc| lc.add(&d))?;
             }
 
             for _ in 0..self.num_multiplications {
@@ -287,10 +299,11 @@ mod tests {
             }
 
             for _ in 0..(R::n() - reserved) {
-                let (a, b, c, _) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                let (a, b, c, d) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
                 dr.enforce_zero(|lc| lc.add(&b))?;
                 dr.enforce_zero(|lc| lc.add(&c))?;
+                dr.enforce_zero(|lc| lc.add(&d))?;
             }
 
             Ok(WithAux::new((), D::unit()))
@@ -531,7 +544,7 @@ mod tests {
                 let _ = StageMask::<R>::new(skip, num).expect("skip multiplications");
                 let expected_reserved = R::n() - skip - num - 1;
 
-                let num_linear_from_gates = 3 * (skip + expected_reserved);
+                let num_linear_from_gates = 4 * (skip + expected_reserved);
                 assert!(
                     num_linear_from_gates < R::num_coeffs(),
                     "Reserved computation should not cause overflow"

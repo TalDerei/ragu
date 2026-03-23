@@ -91,6 +91,8 @@ struct SxyScope<F> {
     current_v_x: F,
     /// Running monomial for $c$ wires: $x^{4n - 1 - i}$ at gate $i$.
     current_w_x: F,
+    /// Running monomial for $d$ wires: $x^i$ at gate $i$.
+    current_d_x: F,
     /// Absolute index of the next multiplication constraint to be written.
     /// Initialized to `segment.multiplication_start` on routine entry.
     multiplication_constraints: usize,
@@ -209,16 +211,18 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         let a = self.scope.current_u_x;
         let b = self.scope.current_v_x;
         let c = self.scope.current_w_x;
+        let d = self.scope.current_d_x;
 
         self.scope.current_u_x *= self.x_inv;
         self.scope.current_v_x *= self.x;
         self.scope.current_w_x *= self.x_inv;
+        self.scope.current_d_x *= self.x;
 
         Ok((
             WireEval::Value(a),
             WireEval::Value(b),
             WireEval::Value(c),
-            WireEval::Value(F::ZERO),
+            WireEval::Value(d),
         ))
     }
 
@@ -273,6 +277,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             current_u_x: self.base_u_x * self.x_inv.pow_vartime([multiplication_start as u64]),
             current_v_x: self.base_v_x * self.x.pow_vartime([multiplication_start as u64]),
             current_w_x: self.base_w_x * self.x_inv.pow_vartime([multiplication_start as u64]),
+            current_d_x: self.x.pow_vartime([multiplication_start as u64]),
             multiplication_constraints: multiplication_start,
             linear_constraints: linear_start,
             result: F::ZERO,
@@ -352,6 +357,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             current_u_x: base_u_x,
             current_v_x: base_v_x,
             current_w_x: base_w_x,
+            current_d_x: F::ONE,
             multiplication_constraints: 0,
             linear_constraints: 0,
             result: F::ZERO,

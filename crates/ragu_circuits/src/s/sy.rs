@@ -102,6 +102,7 @@ enum WireIndex {
     A(usize),
     B(usize),
     C(usize),
+    D(usize),
     Virtual(usize),
 }
 
@@ -253,13 +254,14 @@ struct VirtualTable<'sy, F: Field, R: Rank> {
 
     /// Backward-view wire buffers for the polynomial $s(X, y)$.
     ///
-    /// Provides direct mutable access to the $a$, $b$, $c$ coefficient vectors.
-    /// When allocated wires (A/B/C) receive values during resolution, they are
-    /// written here. See the [module documentation](self) for the backward view
-    /// concept.
+    /// Provides direct mutable access to the $a$, $b$, $c$, $d$ coefficient
+    /// vectors. When allocated wires (A/B/C/D) receive values during
+    /// resolution, they are written here. See the [module documentation](self)
+    /// for the backward view concept.
     a: &'sy mut Vec<F>,
     b: &'sy mut Vec<F>,
     c: &'sy mut Vec<F>,
+    d: &'sy mut Vec<F>,
 
     _marker: core::marker::PhantomData<R>,
 }
@@ -270,6 +272,7 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
             WireIndex::A(i) => &mut self.a[i],
             WireIndex::B(i) => &mut self.b[i],
             WireIndex::C(i) => &mut self.c[i],
+            WireIndex::D(i) => &mut self.d[i],
             WireIndex::Virtual(i) => {
                 self.wires[i].value = self.wires[i].value + value;
                 return;
@@ -544,13 +547,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         let a = Wire::new(WireIndex::A(index), self.virtual_table);
         let b = Wire::new(WireIndex::B(index), self.virtual_table);
         let c = Wire::new(WireIndex::C(index), self.virtual_table);
-        // The d-wire is auxiliary with value zero; allocate a virtual wire
-        // with no terms so it resolves to zero when dropped.
-        let d_index = self.virtual_table.borrow_mut().alloc();
-        let d = Wire {
-            index: d_index,
-            table: Some(self.virtual_table),
-        };
+        let d = Wire::new(WireIndex::D(index), self.virtual_table);
 
         Ok((a, b, c, d))
     }
@@ -695,6 +692,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             a: &mut view.a,
             b: &mut view.b,
             c: &mut view.c,
+            d: &mut view.d,
             _marker: core::marker::PhantomData,
         });
 
@@ -704,6 +702,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             table.a.resize(total_multiplications, F::ZERO);
             table.b.resize(total_multiplications, F::ZERO);
             table.c.resize(total_multiplications, F::ZERO);
+            table.d.resize(total_multiplications, F::ZERO);
         }
 
         {
