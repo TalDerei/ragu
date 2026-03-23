@@ -270,11 +270,11 @@ impl<'dr, M: MaybeKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
 
     fn constant(&mut self, _: Coeff<Self::F>) -> Self::Wire {}
 
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        Ok(((), (), ()))
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
+        Ok(((), (), (), ()))
     }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
@@ -301,16 +301,16 @@ impl<'dr, F: Field> Driver<'dr> for Emulator<Wired<F>> {
         coeff.value()
     }
 
-    fn mul(
+    fn gate(
         &mut self,
         f: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         let (a, b, c) = f()?;
 
         // Despite wires existing, the emulator does not enforce multiplication
         // constraints.
 
-        Ok((a.value(), b.value(), c.value()))
+        Ok((a.value(), b.value(), c.value(), F::ZERO))
     }
 
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
@@ -456,7 +456,7 @@ mod tests {
     fn wired_mul_does_not_enforce_constraints() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        let (a, b, c) = dr.mul(|| {
+        let (a, b, c, _) = dr.gate(|| {
             Ok((
                 Coeff::Arbitrary(F::from(3)),
                 Coeff::Arbitrary(F::from(5)),
@@ -548,7 +548,7 @@ mod tests {
 
         let () = dr.constant(Coeff::One);
 
-        let ((), (), ()) = dr.mul(|| {
+        let ((), (), (), ()) = dr.gate(|| {
             called.set(called.get() + 1);
             Ok((
                 Coeff::Arbitrary(F::from(3)),
@@ -578,7 +578,7 @@ mod tests {
 
         let () = dr.alloc(|| Ok(Coeff::One))?;
 
-        let ((), (), ()) = dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+        let ((), (), (), ()) = dr.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
 
         let () = dr.add(|lc| lc);
         Ok(())
@@ -966,7 +966,7 @@ mod tests {
     #[test]
     fn wired_mul_propagates_closure_error() {
         let mut dr = Emulator::<Wired<F>>::extractor();
-        let result = dr.mul(|| Err(crate::Error::InvalidWitness("mul error".into())));
+        let result = dr.gate(|| Err(crate::Error::InvalidWitness("mul error".into())));
         assert!(result.is_err());
     }
 

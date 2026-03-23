@@ -514,7 +514,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         if let Some(wire) = self.scope.available_b.take() {
             Ok(wire)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
+            let (a, b, _, _) = self.gate(|| unreachable!())?;
             self.scope.available_b = Some(b);
 
             Ok(a)
@@ -531,10 +531,10 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
     ///
     /// Returns [`Error::MultiplicationBoundExceeded`] if the gate count reaches
     /// [`Rank::n()`].
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         let index = self.scope.multiplication_constraints;
         if index == R::n() {
             return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
@@ -544,8 +544,15 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         let a = Wire::new(WireIndex::A(index), self.virtual_table);
         let b = Wire::new(WireIndex::B(index), self.virtual_table);
         let c = Wire::new(WireIndex::C(index), self.virtual_table);
+        // The d-wire is auxiliary with value zero; allocate a virtual wire
+        // with no terms so it resolves to zero when dropped.
+        let d_index = self.virtual_table.borrow_mut().alloc();
+        let d = Wire {
+            index: d_index,
+            table: Some(self.virtual_table),
+        };
 
-        Ok((a, b, c))
+        Ok((a, b, c, d))
     }
 
     /// Creates a virtual wire representing a linear combination.
@@ -718,7 +725,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 
             // Allocate the ONE gate (gate 0). The registry key constraint is
             // injected at the registry level, not here.
-            evaluator.mul(|| unreachable!())?;
+            evaluator.gate(|| unreachable!())?;
 
             let mut outputs = vec![];
             let io = circuit.witness(&mut evaluator, Empty)?.into_output();

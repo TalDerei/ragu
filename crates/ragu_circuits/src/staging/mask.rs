@@ -276,18 +276,18 @@ mod tests {
             assert!(reserved <= R::n());
 
             for _ in 0..self.skip_multiplications {
-                let (a, b, c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                let (a, b, c, _) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
                 dr.enforce_zero(|lc| lc.add(&b))?;
                 dr.enforce_zero(|lc| lc.add(&c))?;
             }
 
             for _ in 0..self.num_multiplications {
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             }
 
             for _ in 0..(R::n() - reserved) {
-                let (a, b, c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                let (a, b, c, _) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
                 dr.enforce_zero(|lc| lc.add(&b))?;
                 dr.enforce_zero(|lc| lc.add(&c))?;
@@ -695,7 +695,7 @@ mod tests {
                 _input: Bound<'dr, D, Self::Input>,
                 _aux: DriverValue<D, Self::Aux<'dr>>,
             ) -> Result<Bound<'dr, D, Self::Output>> {
-                dr.mul(|| unreachable!())?;
+                dr.gate(|| unreachable!())?;
                 Ok(())
             }
 

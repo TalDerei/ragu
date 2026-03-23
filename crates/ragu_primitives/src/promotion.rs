@@ -55,10 +55,10 @@ impl<'dr, D: Driver<'dr>> Driver<'dr> for DemotedDriver<D> {
         unreachable!("DemotedDriver cannot be constructed")
     }
 
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         unreachable!("DemotedDriver cannot be constructed")
     }
 

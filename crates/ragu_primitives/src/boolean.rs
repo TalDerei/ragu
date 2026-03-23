@@ -41,7 +41,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     ///
     /// This costs one multiplication constraint and two linear constraints.
     pub fn alloc(dr: &mut D, value: DriverValue<D, bool>) -> Result<Self> {
-        let (a, b, c) = dr.mul(|| {
+        let (a, b, c, _) = dr.gate(|| {
             let value = value.coeff().take();
             Ok((value, value, value))
         })?;
@@ -69,7 +69,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// constraint and two linear constraints.
     pub fn and(&self, dr: &mut D, other: &Self) -> Result<Self> {
         let result = D::just(|| self.value.snag() & other.value.snag());
-        let (a, b, c) = dr.mul(|| {
+        let (a, b, c, _) = dr.gate(|| {
             let a = self.value.coeff().take();
             let b = other.value.coeff().take();
             let c = result.coeff().take();
@@ -158,7 +158,7 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     let is_zero = x.value().map(|v| *v == D::F::ZERO);
 
     // Constraint 1: x * is_zero = 0.
-    let (x_wire, is_zero_wire, zero_product) = dr.mul(|| {
+    let (x_wire, is_zero_wire, zero_product, _) = dr.gate(|| {
         Ok((
             x.value().arbitrary().take(),
             is_zero.coeff().take(),
@@ -169,7 +169,7 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     dr.enforce_zero(|lc| lc.add(&zero_product))?;
 
     // Constraint 2: x * inv = 1 - is_zero.
-    let (x_wire, _, is_not_zero) = dr.mul(|| {
+    let (x_wire, _, is_not_zero, _) = dr.gate(|| {
         Ok((
             x.value().arbitrary().take(),
             x.value()

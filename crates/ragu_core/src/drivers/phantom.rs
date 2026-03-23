@@ -35,11 +35,11 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
     type Wire = ();
     const ONE: Self::Wire = ();
 
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        Ok(((), (), ()))
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
+        Ok(((), (), (), ()))
     }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
@@ -74,7 +74,7 @@ mod tests {
         let mut dr = PhantomData::<F>;
         let called = Cell::new(0u32);
 
-        dr.mul(|| {
+        dr.gate(|| {
             called.set(called.get() + 1);
             Ok((Coeff::One, Coeff::One, Coeff::One))
         })?;
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn phantom_mul_returns_unit_triple() -> Result<()> {
         let mut dr = PhantomData::<F>;
-        let (_a, _b, _c): ((), (), ()) = dr.mul(|| panic!("must not be called"))?;
+        let (_a, _b, _c, _d): ((), (), (), ()) = dr.gate(|| panic!("must not be called"))?;
         Ok(())
     }
 

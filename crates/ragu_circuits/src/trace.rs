@@ -239,23 +239,23 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
             Ok(())
         } else {
             let index = self.segments[self.state.current_segment].segment.a.len();
-            self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+            self.gate(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
             self.state.available_b = Some(index);
             Ok(())
         }
     }
 
-    fn mul(
+    fn gate(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<((), (), ())> {
+    ) -> Result<((), (), (), ())> {
         let (a, b, c) = values()?;
         let seg = &mut self.segments[self.state.current_segment].segment;
         seg.a.push(a.value());
         seg.b.push(b.value());
         seg.c.push(c.value());
 
-        Ok(((), (), ()))
+        Ok(((), (), (), ()))
     }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
@@ -455,7 +455,7 @@ mod tests {
         ) -> Result<()> {
             // These calls synthesize constraints during serialization.
             // If io.write() were removed from trace::eval, they would be lost.
-            dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+            dr.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
             dr.enforce_zero(|lc| lc)?;
             Ok(())
         }

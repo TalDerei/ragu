@@ -185,19 +185,19 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
     /// unconditionally.
     ///
-    /// The default implementation calls [`mul`](Driver::mul), returns the $a$
+    /// The default implementation calls [`gate`](Driver::gate), returns the $a$
     /// wire, and sets $b$ and $c$ to zero to satisfy the multiplication
-    /// constraint—wasting those two wires. Drivers may override this to avoid
-    /// the overhead, e.g. by pairing consecutive allocations into a single
-    /// multiplication gate.
+    /// constraint—wasting the remaining three wires. Drivers may override this
+    /// to avoid the overhead, e.g. by pairing consecutive allocations into a
+    /// single gate.
     ///
     /// # Purity
     ///
-    /// The `Fn` bound reflects the same purity intent as [`mul`](Driver::mul);
-    /// the default implementation wraps this closure in a call to `mul`, but
+    /// The `Fn` bound reflects the same purity intent as [`gate`](Driver::gate);
+    /// the default implementation wraps this closure in a call to `gate`, but
     /// overriding implementations may not invoke it at all.
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        let (a, _, _) = self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+        let (a, _, _, _) = self.gate(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
         Ok(a)
     }
 
@@ -206,8 +206,9 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         self.add(|lc| lc.add_term(&Self::ONE, value))
     }
 
-    /// Asks the driver to allocate the wires $(A, B, C)$ with the constraint $A
-    /// \cdot B = C$.
+    /// Asks the driver to allocate the wires $(A, B, C, D)$ with the
+    /// constraint $A \cdot B = C$. The $D$ wire is auxiliary and not part of
+    /// the multiplication constraint; its value defaults to zero.
     ///
     /// The provided closure may be called by the driver if an assignment is
     /// needed. If it is called, any errors are propagated from it, and the
@@ -223,10 +224,10 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// [`Maybe`]/[`DriverValue`] system provides a stronger guarantee—those
     /// drivers never call this closure, and its body is dead-code-eliminated
     /// after monomorphization.
-    fn mul(
+    fn gate(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)>;
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)>;
 
     /// Asks the driver to create a virtual wire that is the linear combination
     /// of some existing wires. This may impose some runtime cost for circuit

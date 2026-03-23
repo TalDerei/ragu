@@ -146,12 +146,13 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
         Ok(BondingWire::Normal)
     }
 
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(BondingWire, BondingWire, BondingWire)> {
-        self.record("bonding circuits must not call mul");
+    ) -> Result<(BondingWire, BondingWire, BondingWire, BondingWire)> {
+        self.record("bonding circuits must not call gate");
         Ok((
+            BondingWire::Normal,
             BondingWire::Normal,
             BondingWire::Normal,
             BondingWire::Normal,
@@ -288,7 +289,7 @@ mod tests {
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
             let dr = builder.finish();
-            dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             Ok(WithAux::new((), D::unit()))
         }
     }

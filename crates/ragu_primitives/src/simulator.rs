@@ -98,10 +98,10 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
         value.value()
     }
 
-    fn mul(
+    fn gate(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         let (a, b, c) = values()?;
 
         let a = a.value();
@@ -115,7 +115,7 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
         }
 
         self.num_multiplications += 1;
-        Ok((a, b, c))
+        Ok((a, b, c, F::ZERO))
     }
 
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {

@@ -199,7 +199,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         if let Some(monomial) = self.scope.available_b.take() {
             Ok(monomial)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
+            let (a, b, _, _) = self.gate(|| unreachable!())?;
             self.scope.available_b = Some(b);
 
             Ok(a)
@@ -218,10 +218,10 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     ///
     /// Returns [`Error::MultiplicationBoundExceeded`] if the gate count reaches
     /// [`Rank::n()`].
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         let index = self.scope.multiplication_constraints;
         if index == R::n() {
             return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
@@ -236,7 +236,12 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         self.scope.current_v_x *= self.x;
         self.scope.current_w_x *= self.x_inv;
 
-        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
+        Ok((
+            WireEval::Value(a),
+            WireEval::Value(b),
+            WireEval::Value(c),
+            WireEval::Value(F::ZERO),
+        ))
     }
 
     /// Computes a linear combination of wire evaluations.
@@ -373,7 +378,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 
     // Allocate the ONE gate (gate 0). The registry key constraint is
     // injected at the registry level, not here.
-    evaluator.mul(|| unreachable!())?;
+    evaluator.gate(|| unreachable!())?;
 
     let mut outputs = vec![];
     let io = circuit.witness(&mut evaluator, Empty)?.into_output();

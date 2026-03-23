@@ -364,7 +364,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         if let Some(wire) = self.scope.available_b.take() {
             Ok(wire)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
+            let (a, b, _, _) = self.gate(|| unreachable!())?;
             self.scope.available_b = Some(b);
             Ok(a)
         }
@@ -373,10 +373,10 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     /// Consumes a multiplication gate: increments constraint counts and returns
     /// wire values from three independent geometric sequences, advancing each
     /// by its base.
-    fn mul(
+    fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)> {
         if self.counting {
             self.num_multiplication_constraints += 1;
             self.segments[self.scope.current_segment].num_multiplication_constraints += 1;
@@ -390,7 +390,12 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         self.scope.current_b *= self.x1;
         self.scope.current_c *= self.x2;
 
-        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
+        Ok((
+            WireEval::Value(a),
+            WireEval::Value(b),
+            WireEval::Value(c),
+            WireEval::Value(F::ZERO),
+        ))
     }
 
     /// Computes a linear combination of wire evaluations.
@@ -528,7 +533,7 @@ pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<Circu
     let mut degree_ky = 0usize;
 
     // ONE gate
-    collector.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+    collector.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
 
     // Circuit synthesis
     let io = circuit.witness(&mut collector, Empty)?.into_output();
