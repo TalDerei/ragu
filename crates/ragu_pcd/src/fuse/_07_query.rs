@@ -46,6 +46,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let ((fixed_registry, registry_wxy), (left_witness, right_witness)) = maybe_rayon::join(
             || {
                 (
+                    // TODO: these evaluations could be batched by the registry more efficiently in theory.
                     native::InternalCircuitValues::from_fn(|id| {
                         registry_xy_poly.eval(id.circuit_index().omega_j())
                     }),
