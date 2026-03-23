@@ -64,6 +64,24 @@ struct ExportTarget {
     generated_file: fn(&str, &Path) -> (PathBuf, String),
 }
 
+impl ExportTarget {
+    fn root_import_name(&self) -> String {
+        // Drop only the first namespace marker
+        self.name.replacen(".Autogen", "", 1)
+    }
+}
+
+fn generated_ragu_root(autogen_root: &Path) -> (PathBuf, String) {
+    let path = autogen_root.join("Ragu.lean");
+    let mut contents = EXPORT_TARGETS
+        .iter()
+        .map(|target| format!("import {}", target.root_import_name()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    contents.push('\n');
+    (path, contents)
+}
+
 /// Single source of truth for every exported instance: both `export` and `check`
 static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
@@ -133,6 +151,9 @@ fn check_all(autogen_root: &Path) -> std::io::Result<bool> {
         let (path, expected) = (target.generated_file)(target.name, autogen_root);
         check_file(target.name, path, expected, &mut mismatches)?;
     }
+
+    let (path, expected) = generated_ragu_root(autogen_root);
+    check_file("Ragu", path, expected, &mut mismatches)?;
 
     Ok(mismatches == 0)
 }
