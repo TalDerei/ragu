@@ -453,7 +453,7 @@ mod tests {
 
     // The emulator accepts a*b != c without error since it does not enforce constraints.
     #[test]
-    fn wired_mul_does_not_enforce_constraints() -> Result<()> {
+    fn wired_gate_does_not_enforce_constraints() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
         let (a, b, c, _) = dr.gate(|| {
@@ -964,7 +964,7 @@ mod tests {
     }
 
     #[test]
-    fn wired_mul_propagates_closure_error() {
+    fn wired_gate_propagates_closure_error() {
         let mut dr = Emulator::<Wired<F>>::extractor();
         let result = dr.gate(|| Err(crate::Error::InvalidWitness("mul error".into())));
         assert!(result.is_err());

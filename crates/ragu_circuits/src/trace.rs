@@ -438,7 +438,7 @@ mod tests {
         }
     }
 
-    /// Gadget whose [`Write`](ragu_primitives::io::Write) impl calls `dr.mul()`
+    /// Gadget whose [`Write`](ragu_primitives::io::Write) impl calls `dr.gate()`
     /// and `dr.enforce_zero()` during serialization, proving that `io.write()`
     /// in [`eval`] threads the driver to `write_gadget`.
     #[derive(ragu_core::gadgets::Gadget)]
@@ -502,7 +502,7 @@ mod tests {
         let root_gates = trace.segments[0].a.len();
         assert_eq!(
             root_gates, 3,
-            "write_gadget's dr.mul() must produce a trace gate"
+            "write_gadget's dr.gate() must produce a trace gate"
         );
     }
 }

@@ -13,14 +13,15 @@
 //!
 //! $$
 //! s(X, Y) = \sum_{j = 0}^{q - 1} Y^j \left(\sum_{i = 0}^{n - 1} (
-//!   \mathbf{u}\_{i,j} X^{2n - 1 - i} +
-//!   \mathbf{v}\_{i,j} X^{2n + i} +
-//!   \mathbf{w}\_{i,j} X^{4n - 1 - i}
+//!   \mathbf{a}\_{i,j} X^{2n - 1 - i} +
+//!   \mathbf{b}\_{i,j} X^{2n + i} +
+//!   \mathbf{c}\_{i,j} X^{4n - 1 - i} +
+//!   \mathbf{d}\_{i,j} X^{i}
 //! )\right)
 //! $$
 //!
-//! where $\mathbf{u}, \mathbf{v}, \mathbf{w}$ are fixed coefficient matrices
-//! determined by the `enforce_zero` (and indirectly,
+//! where $\mathbf{a}, \mathbf{b}, \mathbf{c}, \mathbf{d}$ are fixed coefficient
+//! matrices determined by the `enforce_zero` (and indirectly,
 //! [`add`](ragu_core::drivers::Driver::add)) calls.
 //!
 //! ### Circuit Synthesis

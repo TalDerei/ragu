@@ -63,7 +63,7 @@ where
     where
         Self: 'a,
     {
-        // Validate: run synthesis with a driver that rejects mul and ONE usage.
+        // Validate: run synthesis with a driver that rejects gate and ONE usage.
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
@@ -105,7 +105,7 @@ impl<F: Field> LinearExpression<BondingWire, F> for RejectOne {
 ///
 /// Bonding circuits may only use [`alloc`](Driver::alloc),
 /// [`add`](Driver::add), and [`enforce_zero`](Driver::enforce_zero) with
-/// normal wires. Calling [`mul`](Driver::gate),
+/// normal wires. Calling [`gate`](Driver::gate),
 /// [`constant`](Driver::constant), or referencing the [`ONE`](Driver::ONE)
 /// wire in any linear constraint records a violation.
 ///
@@ -265,7 +265,7 @@ mod tests {
         }
     }
 
-    /// Circuit that calls `mul` — should be rejected.
+    /// Circuit that calls `gate` — should be rejected.
     struct UsesMul;
 
     impl MultiStageCircuit<Fp, R> for UsesMul {

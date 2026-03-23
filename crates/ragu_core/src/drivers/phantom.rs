@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn phantom_mul_returns_unit_triple() -> Result<()> {
+    fn phantom_gate_returns_unit_tuple() -> Result<()> {
         let mut dr = PhantomData::<F>;
         let (_a, _b, _c, _d): ((), (), (), ()) = dr.gate(|| panic!("must not be called"))?;
         Ok(())

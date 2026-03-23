@@ -20,8 +20,8 @@
 //! The driver redefines each operation as follows:
 //!
 //! - [`gate()`][`Driver::gate`]: Returns wire handles that hold monomial
-//!   evaluations $x^{2n - 1 - i}$, $x^{2n + i}$, $x^{4n - 1 - i}$ for the
-//!   $i$-th gate.
+//!   evaluations $x^{2n - 1 - i}$, $x^{2n + i}$, $x^{4n - 1 - i}$, $x^{i}$
+//!   for the $i$-th gate.
 //!
 //! - [`add()`][`Driver::add`]: Accumulates a linear combination of monomial
 //!   evaluations and returns the sum as a virtual wire.

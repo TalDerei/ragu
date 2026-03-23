@@ -250,10 +250,10 @@ struct Counter<F> {
     num_multiplication_constraints: usize,
     segments: Vec<SegmentRecord>,
 
-    /// When false, `mul` advances geometric sequences but does not increment
+    /// When false, `gate` advances geometric sequences but does not increment
     /// constraint counts.  Used during input and output wire remapping in
     /// [`routine`](Driver::routine), where only `alloc` (and transitively
-    /// `mul`) is reachable via [`WireMap::convert_wire`].
+    /// `gate`) is reachable via [`WireMap::convert_wire`].
     counting: bool,
 
     /// Base for the $a$-wire geometric sequence.
@@ -335,7 +335,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
 
     /// Runs `f` with `counting` set to `false`, restoring it afterward.
     ///
-    /// Used during wire remapping so that `mul` advances geometric
+    /// Used during wire remapping so that `gate` advances geometric
     /// sequences without incrementing constraint counts, and
     /// `enforce_zero` is a no-op.
     fn uncounted<R>(&mut self, f: impl FnOnce(&mut Self) -> Result<R>) -> Result<R> {
@@ -471,7 +471,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // parent's geometric sequences.
         //
         // The remap calls `alloc` for each output wire, which may call
-        // `mul` internally. This has two side effects on the parent scope:
+        // `gate` internally. This has two side effects on the parent scope:
         //
         // 1. Geometric sequences advance — `current_a`, `current_b`,
         //    `current_c` move past the remap gates.
