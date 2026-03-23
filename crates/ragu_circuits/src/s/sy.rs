@@ -550,15 +550,9 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         if let Some(wire) = self.scope.available_d.take() {
             Ok(wire)
         } else {
-            let index = self.scope.multiplication_constraints;
-            if index == R::n() {
-                return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
-            }
-            self.scope.multiplication_constraints += 1;
-
-            let b = Wire::new(WireIndex::B(index), self.virtual_table);
+            let (_, b, _) = self.mul(|| unreachable!())?;
+            let index = self.scope.multiplication_constraints - 1;
             let d = Wire::new(WireIndex::D(index), self.virtual_table);
-
             self.scope.available_d = Some(d);
             Ok(b)
         }
