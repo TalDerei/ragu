@@ -3,7 +3,7 @@
 //! This module produces a [`BondingObject`] from any [`MultiStageCircuit`]
 //! whose witness uses only linear constraints: [`Driver::alloc`],
 //! [`Driver::add`], and [`Driver::enforce_zero`] with normal wires (no
-//! [`Driver::gate`], [`Driver::constant`], or `ONE`-wire references). Because
+//! [`Driver::mul`], [`Driver::constant`], or `ONE`-wire references). Because
 //! the circuit has no multiplication gates, it needs no final trace of its own
 //! and exists purely to enforce wiring between stages.
 //!
@@ -11,7 +11,7 @@
 //! zero, as required of a bonding polynomial. [`StageMask`] is a hand-optimized
 //! bonding polynomial for stage well-formedness masks.
 //!
-//! [`Driver::gate`]: ragu_core::drivers::Driver::gate
+//! [`Driver::mul`]: ragu_core::drivers::Driver::mul
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
 //! [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
 //! [`Driver::constant`]: ragu_core::drivers::Driver::constant
@@ -47,13 +47,13 @@ where
     ///
     /// The witness must use only linear constraints: [`Driver::alloc`],
     /// [`Driver::add`], and [`Driver::enforce_zero`] are permitted (without
-    /// referencing the [`Driver::ONE`] wire), but [`Driver::gate`] and
+    /// referencing the [`Driver::ONE`] wire), but [`Driver::mul`] and
     /// [`Driver::constant`] are rejected.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
     ///
-    /// [`Driver::gate`]: ragu_core::drivers::Driver::gate
+    /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
     /// [`Driver::add`]: ragu_core::drivers::Driver::add
     /// [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
     /// [`Driver::constant`]: ragu_core::drivers::Driver::constant
@@ -63,7 +63,7 @@ where
     where
         Self: 'a,
     {
-        // Validate: run synthesis with a driver that rejects gate and ONE usage.
+        // Validate: run synthesis with a driver that rejects mul/gate and ONE usage.
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
@@ -105,7 +105,7 @@ impl<F: Field> LinearExpression<BondingWire, F> for RejectOne {
 ///
 /// Bonding circuits may only use [`alloc`](Driver::alloc),
 /// [`add`](Driver::add), and [`enforce_zero`](Driver::enforce_zero) with
-/// normal wires. Calling [`gate`](Driver::gate),
+/// normal wires. Calling [`mul`](Driver::mul)/[`gate`](Driver::gate),
 /// [`constant`](Driver::constant), or referencing the [`ONE`](Driver::ONE)
 /// wire in any linear constraint records a violation.
 ///
@@ -150,7 +150,7 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(BondingWire, BondingWire, BondingWire, BondingWire)> {
-        self.record("bonding circuits must not call gate");
+        self.record("bonding circuits must not call mul/gate");
         Ok((
             BondingWire::Normal,
             BondingWire::Normal,
@@ -289,7 +289,7 @@ mod tests {
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
             let dr = builder.finish();
-            dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             Ok(WithAux::new((), D::unit()))
         }
     }

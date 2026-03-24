@@ -74,7 +74,7 @@ mod tests {
         let mut dr = PhantomData::<F>;
         let called = Cell::new(0u32);
 
-        dr.gate(|| {
+        dr.mul(|| {
             called.set(called.get() + 1);
             Ok((Coeff::One, Coeff::One, Coeff::One))
         })?;
@@ -101,9 +101,9 @@ mod tests {
     }
 
     #[test]
-    fn phantom_gate_returns_unit_tuple() -> Result<()> {
+    fn phantom_mul_returns_unit_tuple() -> Result<()> {
         let mut dr = PhantomData::<F>;
-        let (_a, _b, _c, _d): ((), (), (), ()) = dr.gate(|| panic!("must not be called"))?;
+        let (_a, _b, _c): ((), (), ()) = dr.mul(|| panic!("must not be called"))?;
         Ok(())
     }
 

@@ -44,7 +44,7 @@ use ragu_core::drivers::LinearExpression;
 ///
 /// # Variants
 ///
-/// - `Value(F)` — Holds the evaluated monomial for a wire from [`Driver::gate`],
+/// - `Value(F)` — Holds the evaluated monomial for a wire from [`Driver::mul`],
 ///   or a linear combination of such evaluations from [`Driver::add`].
 ///
 /// - `One` — Represents the ONE wire. This variant exists because `Driver::ONE`
@@ -53,7 +53,7 @@ use ragu_core::drivers::LinearExpression;
 ///   [`WireEvalSum::add_term`] resolves `One` to the cached evaluation at
 ///   runtime.
 ///
-/// [`Driver::gate`]: ragu_core::drivers::Driver::gate
+/// [`Driver::mul`]: ragu_core::drivers::Driver::mul
 /// [`Driver::add`]: ragu_core::drivers::Driver::add
 /// [`WireEvalSum::add_term`]: WireEvalSum::add_term
 #[derive(Clone, Copy)]

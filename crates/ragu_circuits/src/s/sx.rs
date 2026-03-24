@@ -19,9 +19,9 @@
 //!
 //! The driver redefines each operation as follows:
 //!
-//! - [`gate()`][`Driver::gate`]: Returns wire handles that hold monomial
-//!   evaluations $x^{2n - 1 - i}$, $x^{2n + i}$, $x^{4n - 1 - i}$, $x^{i}$
-//!   for the $i$-th gate.
+//! - [`mul()`][`Driver::mul`] / [`gate()`][`Driver::gate`]: Returns wire
+//!   handles that hold monomial evaluations $x^{2n - 1 - i}$, $x^{2n + i}$,
+//!   $x^{4n - 1 - i}$, $x^{i}$ for the $i$-th gate.
 //!
 //! - [`add()`][`Driver::add`]: Accumulates a linear combination of monomial
 //!   evaluations and returns the sum as a virtual wire.
@@ -66,6 +66,7 @@
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
 //! [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
+//! [`Driver::mul`]: ragu_core::drivers::Driver::mul
 //! [`Driver::gate`]: ragu_core::drivers::Driver::gate
 //! [`sxy`]: super::sxy
 
@@ -201,7 +202,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         if let Some(monomial) = self.scope.available_b.take() {
             Ok(monomial)
         } else {
-            let (a, b, _, _) = self.gate(|| unreachable!())?;
+            let (a, b, _) = self.mul(|| unreachable!())?;
             self.scope.available_b = Some(b);
 
             Ok(a)
@@ -384,7 +385,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 
     // Allocate the ONE gate (gate 0). The registry key constraint is
     // injected at the registry level, not here.
-    evaluator.gate(|| unreachable!())?;
+    evaluator.mul(|| unreachable!())?;
 
     let mut outputs = vec![];
     let io = circuit.witness(&mut evaluator, Empty)?.into_output();

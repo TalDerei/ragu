@@ -295,7 +295,7 @@ mod tests {
             }
 
             for _ in 0..self.num_multiplications {
-                dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             }
 
             for _ in 0..(R::n() - reserved) {
@@ -708,7 +708,7 @@ mod tests {
                 _input: Bound<'dr, D, Self::Input>,
                 _aux: DriverValue<D, Self::Aux<'dr>>,
             ) -> Result<Bound<'dr, D, Self::Output>> {
-                dr.gate(|| unreachable!())?;
+                dr.mul(|| unreachable!())?;
                 Ok(())
             }
 

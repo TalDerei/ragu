@@ -79,7 +79,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// This costs one multiplication constraint.
     pub fn alloc_square(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<(Self, Self)> {
         let square = D::just(|| assignment.snag().square());
-        let (a, b, c, _) = dr.gate(|| {
+        let (a, b, c) = dr.mul(|| {
             let value = *assignment.as_ref().take();
             Ok((
                 Coeff::Arbitrary(value),
@@ -151,7 +151,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
             a * b
         });
 
-        let (a, b, c, _) = dr.gate(|| {
+        let (a, b, c) = dr.mul(|| {
             Ok((
                 Coeff::Arbitrary(*self.value.snag()),
                 Coeff::Arbitrary(*other.value.snag()),
@@ -247,7 +247,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Enforce that this element times the provided `inverse` (unallocated value) equals one.
     /// Returns the allocated `inverse` element.
     pub fn invert_with(&self, dr: &mut D, inverse: DriverValue<D, D::F>) -> Result<Self> {
-        let (a, b, c, _) = dr.gate(|| {
+        let (a, b, c) = dr.mul(|| {
             Ok((
                 Coeff::Arbitrary(*self.value.snag()),
                 Coeff::Arbitrary(*inverse.snag()),
@@ -282,7 +282,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
                     .ok_or_else(|| Error::InvalidWitness("division by zero".into()))?)
         })?;
 
-        let (quotient, denominator, numerator, _) = dr.gate(|| {
+        let (quotient, denominator, numerator) = dr.mul(|| {
             let c = *self.value().take();
             let b = *by.value().take();
             let a = *quotient_value.snag();

@@ -453,10 +453,10 @@ mod tests {
 
     // The emulator accepts a*b != c without error since it does not enforce constraints.
     #[test]
-    fn wired_gate_does_not_enforce_constraints() -> Result<()> {
+    fn wired_mul_does_not_enforce_constraints() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        let (a, b, c, _) = dr.gate(|| {
+        let (a, b, c) = dr.mul(|| {
             Ok((
                 Coeff::Arbitrary(F::from(3)),
                 Coeff::Arbitrary(F::from(5)),
@@ -548,7 +548,7 @@ mod tests {
 
         let () = dr.constant(Coeff::One);
 
-        let ((), (), (), ()) = dr.gate(|| {
+        let ((), (), ()) = dr.mul(|| {
             called.set(called.get() + 1);
             Ok((
                 Coeff::Arbitrary(F::from(3)),
@@ -578,7 +578,7 @@ mod tests {
 
         let () = dr.alloc(|| Ok(Coeff::One))?;
 
-        let ((), (), (), ()) = dr.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+        let ((), (), ()) = dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
 
         let () = dr.add(|lc| lc);
         Ok(())
@@ -964,9 +964,9 @@ mod tests {
     }
 
     #[test]
-    fn wired_gate_propagates_closure_error() {
+    fn wired_mul_propagates_closure_error() {
         let mut dr = Emulator::<Wired<F>>::extractor();
-        let result = dr.gate(|| Err(crate::Error::InvalidWitness("mul error".into())));
+        let result = dr.mul(|| Err(crate::Error::InvalidWitness("mul error".into())));
         assert!(result.is_err());
     }
 

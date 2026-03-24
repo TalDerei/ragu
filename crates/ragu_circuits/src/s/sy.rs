@@ -517,7 +517,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         if let Some(wire) = self.scope.available_b.take() {
             Ok(wire)
         } else {
-            let (a, b, _, _) = self.gate(|| unreachable!())?;
+            let (a, b, _) = self.mul(|| unreachable!())?;
             self.scope.available_b = Some(b);
 
             Ok(a)
@@ -724,7 +724,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
 
             // Allocate the ONE gate (gate 0). The registry key constraint is
             // injected at the registry level, not here.
-            evaluator.gate(|| unreachable!())?;
+            evaluator.mul(|| unreachable!())?;
 
             let mut outputs = vec![];
             let io = circuit.witness(&mut evaluator, Empty)?.into_output();

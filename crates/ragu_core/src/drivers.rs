@@ -127,7 +127,7 @@ pub trait DriverTypes {
 /// ## Usage
 ///
 /// * Wires can be created with the [`alloc`](Driver::alloc) and
-///   [`gate`](Driver::gate) methods. The [`add`](Driver::add) method can also
+///   [`mul`](Driver::mul) methods. The [`add`](Driver::add) method can also
 ///   create a virtual wire that is defined as a linear combination of some
 ///   existing wires. The [`constant`](Driver::constant) method is a helper for
 ///   creating a wire with a constant value.
@@ -139,7 +139,7 @@ pub trait DriverTypes {
 ///   `Option`-like abstraction called [`Maybe`] which allows for compile-time
 ///   optimization and static analysis of witness data computation and memory.
 /// * Finally, and most importantly, wires can be constrained in two ways:
-///     * The [`gate`](Driver::gate) method enforces a multiplicative constraint
+///     * The [`mul`](Driver::mul) method enforces a multiplicative constraint
 ///       on the created wires; the wires are the inputs and output of a
 ///       multiplication gate of an arithmetic circuit.
 ///     * The [`enforce_zero`](Driver::enforce_zero) method can be used to
@@ -185,25 +185,48 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
     /// unconditionally.
     ///
-    /// The default implementation calls [`gate`](Driver::gate), returns the $a$
+    /// The default implementation calls [`mul`](Driver::mul), returns the $a$
     /// wire, and sets $b$ and $c$ to zero to satisfy the multiplication
-    /// constraint—wasting the remaining three wires. Drivers may override this
-    /// to avoid the overhead, e.g. by pairing consecutive allocations into a
-    /// single gate.
+    /// constraint—wasting those two wires. Drivers may override this to avoid
+    /// the overhead, e.g. by pairing consecutive allocations into a single
+    /// gate.
     ///
     /// # Purity
     ///
-    /// The `Fn` bound reflects the same purity intent as [`gate`](Driver::gate);
-    /// the default implementation wraps this closure in a call to `gate`, but
+    /// The `Fn` bound reflects the same purity intent as [`mul`](Driver::mul);
+    /// the default implementation wraps this closure in a call to `mul`, but
     /// overriding implementations may not invoke it at all.
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        let (a, _, _, _) = self.gate(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+        let (a, _, _) = self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
         Ok(a)
     }
 
     /// Returns a virtual wire that has a fixed constant value.
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {
         self.add(|lc| lc.add_term(&Self::ONE, value))
+    }
+
+    /// Asks the driver to allocate the wires $(A, B, C)$ with the constraint
+    /// $A \cdot B = C$.
+    ///
+    /// This is a convenience wrapper around [`gate`](Driver::gate) that drops
+    /// the auxiliary $D$ wire. Most circuit code should use this method.
+    ///
+    /// The provided closure may be called by the driver if an assignment is
+    /// needed. If it is called, any errors are propagated from it, and the
+    /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
+    /// unconditionally.
+    ///
+    /// # Purity
+    ///
+    /// The `Fn` bound signals that this closure should be side-effect-free;
+    /// see [`gate`](Driver::gate) for details.
+    fn mul(
+        &mut self,
+        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        let (a, b, c, _) = self.gate(values)?;
+        Ok((a, b, c))
     }
 
     /// Asks the driver to allocate the wires $(A, B, C, D)$ with the
@@ -241,7 +264,7 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// # Purity
     ///
     /// The `Fn` bound signals that this closure should be side-effect-free, as
-    /// with [`gate`](Driver::gate). Unlike witness-providing closures, however,
+    /// with [`mul`](Driver::mul). Unlike witness-providing closures, however,
     /// drivers with `MaybeKind = Empty` still call expression-building closures
     /// when they need constraint structure, so `Fn` is the sole type-level
     /// purity signal here.

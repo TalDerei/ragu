@@ -253,7 +253,7 @@ struct Counter<F> {
     /// When false, `gate` advances geometric sequences but does not increment
     /// constraint counts.  Used during input and output wire remapping in
     /// [`routine`](Driver::routine), where only `alloc` (and transitively
-    /// `gate`) is reachable via [`WireMap::convert_wire`].
+    /// `mul`/`gate`) is reachable via [`WireMap::convert_wire`].
     counting: bool,
 
     /// Base for the $a$-wire geometric sequence.
@@ -364,7 +364,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         if let Some(wire) = self.scope.available_b.take() {
             Ok(wire)
         } else {
-            let (a, b, _, _) = self.gate(|| unreachable!())?;
+            let (a, b, _) = self.mul(|| unreachable!())?;
             self.scope.available_b = Some(b);
             Ok(a)
         }
@@ -533,7 +533,7 @@ pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<Circu
     let mut degree_ky = 0usize;
 
     // ONE gate
-    collector.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+    collector.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
 
     // Circuit synthesis
     let io = circuit.witness(&mut collector, Empty)?.into_output();

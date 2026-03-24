@@ -239,7 +239,7 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
             Ok(())
         } else {
             let index = self.segments[self.state.current_segment].segment.a.len();
-            self.gate(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+            self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
             self.state.available_b = Some(index);
             Ok(())
         }
@@ -438,7 +438,7 @@ mod tests {
         }
     }
 
-    /// Gadget whose [`Write`](ragu_primitives::io::Write) impl calls `dr.gate()`
+    /// Gadget whose [`Write`](ragu_primitives::io::Write) impl calls `dr.mul()`
     /// and `dr.enforce_zero()` during serialization, proving that `io.write()`
     /// in [`eval`] threads the driver to `write_gadget`.
     #[derive(ragu_core::gadgets::Gadget)]
@@ -455,7 +455,7 @@ mod tests {
         ) -> Result<()> {
             // These calls synthesize constraints during serialization.
             // If io.write() were removed from trace::eval, they would be lost.
-            dr.gate(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
+            dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
             dr.enforce_zero(|lc| lc)?;
             Ok(())
         }
@@ -502,7 +502,7 @@ mod tests {
         let root_gates = trace.segments[0].a.len();
         assert_eq!(
             root_gates, 3,
-            "write_gadget's dr.gate() must produce a trace gate"
+            "write_gadget's dr.mul() must produce a trace gate"
         );
     }
 }
