@@ -231,8 +231,8 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
     /// unconditionally.
     ///
-    /// The default implementation calls [`mul`](Driver::mul), returns the $a$
-    /// wire, and sets $b$ and $c$ to zero to satisfy the multiplication
+    /// The default implementation calls [`mul`](Driver::mul), returns the $b$
+    /// wire, and sets $a$ and $c$ to zero to satisfy the multiplication
     /// constraint—wasting those two wires. Drivers may override this to avoid
     /// the overhead, e.g. by pairing consecutive allocations into a single
     /// gate.
@@ -243,8 +243,8 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// the default implementation wraps this closure in a call to `mul`, but
     /// overriding implementations may not invoke it at all.
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        let (a, _, _) = self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
-        Ok(a)
+        let (_, b, _) = self.mul(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
+        Ok(b)
     }
 
     /// Returns a virtual wire that has a fixed constant value.
