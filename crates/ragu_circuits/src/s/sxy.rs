@@ -364,9 +364,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         _marker: core::marker::PhantomData,
     };
 
-    // Allocate the ONE gate (gate 0). The registry key constraint that binds
-    // the a-wire of this gate to the registry digest is injected at the
-    // registry level, not here.
+    // Allocate the ONE gate (gate 0). The registry key constraint is
+    // injected at the registry level, not here.
     evaluator.mul(|| unreachable!())?;
 
     let mut outputs = vec![];

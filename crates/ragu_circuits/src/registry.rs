@@ -262,12 +262,11 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// break the self-reference more elegantly without preprocessing or reliance on
 /// public inputs.
 ///
-/// Concretely, we retroactively inject the registry key into each member circuit
-/// of `m` as a special wire `key_wire`, enforced by a simple linear constraint
-/// `key_wire = k`. This binds each circuit's wiring polynomial to the registry
-/// polynomial, and thus the entire registry polynomial to the Fiat-Shamir
-/// transcript without self-reference. The key randomizes the wiring polynomial
-/// directly.
+/// Concretely, the registry key $k$ is injected as the monomial
+/// $k \cdot (XY)^{4n-1}$ at the registry level, binding each circuit's wiring
+/// polynomial to the registry polynomial and thus the entire registry polynomial
+/// to the Fiat-Shamir transcript without self-reference. The key randomizes the
+/// wiring polynomial directly.
 ///
 /// The key is computed during [`RegistryBuilder::finalize`] and used during
 /// polynomial evaluations of circuits in the registry.
@@ -378,17 +377,14 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         self.circuits[usize::from(circuit)].constraint_counts()
     }
 
-    /// Evaluates the registry key contribution $Y^{4n-1} (X^{2n-1} - k
-    /// \cdot X^{4n-1})$ at $(x, y)$, returning a scalar.
+    /// Evaluates the registry key contribution $k \cdot (XY)^{4n-1}$
+    /// at $(x, y)$, returning a scalar.
     fn key_sxy(&self, x: F, y: F) -> F {
-        // x^{2n-1} and x^{4n-1} vanish at x = 0; y^{4n-1} vanishes at y = 0.
         if x == F::ZERO || y == F::ZERO {
             return F::ZERO;
         }
-        let x_2n_minus_1 = x.pow_vartime([(2 * R::n() - 1) as u64]);
-        let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
-        let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
-        y_4n_minus_1 * (x_2n_minus_1 - self.key.value() * x_4n_minus_1)
+        let xy_4n_minus_1 = (x * y).pow_vartime([(4 * R::n() - 1) as u64]);
+        self.key.value() * xy_4n_minus_1
     }
 
     /// Evaluate the registry polynomial unrestricted at $W$.
@@ -403,9 +399,9 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let domain = &self.domain;
         domain.ifft(&mut coeffs[..domain.n()]);
 
-        // The key term Y^{4n-1} * (X^{2n-1} - k * X^{4n-1}) has no W factor,
-        // so it evaluates to the same scalar at every domain point. After IFFT
-        // the contribution lives entirely in the W^0 (DC) coefficient.
+        // The key term k * (XY)^{4n-1} has no W factor, so it evaluates to
+        // the same scalar at every domain point. After IFFT the contribution
+        // lives entirely in the W^0 (DC) coefficient.
         coeffs[0] += key_scalar;
 
         sparse::Polynomial::from_coeffs(coeffs)
@@ -521,17 +517,14 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // Add the registry key contribution at Y^{4n-1}: the a-wire of
-        // gate 0 (X^{2n-1}) minus k times the c-wire of gate 0 (X^{4n-1}).
-        // In the backward view, a[0] maps to X^{2n-1} and c[0] to X^{4n-1}.
-        // The prover sets a[0] = c[0] = 0, so this constraint is trivially
-        // satisfied; its role is to embed k into the wiring polynomial.
-        // When y = 0, every Y^j for j >= 1 vanishes, so the key term is zero.
+        // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
+        // to X, this is k * y^{4n-1} on the c-wire of gate 0 (X^{4n-1}).
+        // The prover sets c[0] = 0, so the constraint is trivially satisfied;
+        // its role is to embed k into the wiring polynomial.
         if y != F::ZERO {
             let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
             let mut key_view = sparse::View::<_, R, _>::backward();
-            key_view.a.push(y_4n_minus_1);
-            key_view.c.push(-self.registry.key.value() * y_4n_minus_1);
+            key_view.c.push(self.registry.key.value() * y_4n_minus_1);
             poly.add_assign(&key_view.build());
         }
 
@@ -550,11 +543,11 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // Add the registry key contribution at Y^{4n-1}: (x^{2n-1} - k * x^{4n-1}).
+        // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
+        // to Y, this is k * x^{4n-1} at Y^{4n-1}.
         if x != F::ZERO {
-            let x_2n_minus_1 = x.pow_vartime([(2 * R::n() - 1) as u64]);
             let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
-            let key_coeff = x_2n_minus_1 - self.registry.key.value() * x_4n_minus_1;
+            let key_coeff = self.registry.key.value() * x_4n_minus_1;
             let mut key_coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
             // Y^{4n-1} is the last coefficient (index num_coeffs() - 1 = 4n - 1),
             // the slot reserved by circuit-level bounds checks.

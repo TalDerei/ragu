@@ -127,8 +127,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             };
 
             // Skip the ONE gate (gate 0) — its wires are consumed but not
-            // constrained here. The registry key constraint that uses gate 0's
-            // a-wire is injected at the registry level.
+            // constrained here. The registry key constraint is injected at the
+            // registry level.
             alloc();
 
             let mut enforce_zero = |out: (F, F, F)| {
@@ -177,8 +177,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let mut view = sparse::View::backward();
 
         // Skip the ONE gate (gate 0). In the backward wire layout b[0] maps
-        // to X^{2n} (the ONE wire). The registry key contribution at a[0] and
-        // c[0] is supplied by RegistryAt::y(), not here.
+        // to X^{2n} (the ONE wire). The registry key contribution at c[0] is
+        // supplied by RegistryAt::y(), not here.
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
@@ -469,14 +469,14 @@ mod tests {
             "ONE wire coefficient should be 1 (y^0 from enforce_one)"
         );
 
-        // The a-wire of gate 0 (key_wire) is not constrained at the circuit
-        // level — the registry key constraint is injected at the registry
-        // level — so its coefficient should be zero.
-        let actual_key_coeff = sy_dense[2 * R::n() - 1];
+        // The a-wire of gate 0 is not constrained at the circuit level —
+        // the registry key constraint is injected at the registry level on
+        // the c-wire only — so its coefficient should be zero.
+        let actual_a0_coeff = sy_dense[2 * R::n() - 1];
         assert_eq!(
-            actual_key_coeff,
+            actual_a0_coeff,
             Fp::ZERO,
-            "key_wire coefficient should be zero (registry key handled at registry level)"
+            "a-wire of gate 0 should be zero (not constrained at circuit level)"
         );
 
         // Verify the expected number of constraints.
