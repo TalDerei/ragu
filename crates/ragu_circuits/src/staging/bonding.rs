@@ -63,6 +63,7 @@ where
     where
         Self: 'a,
     {
+        // Validate: run synthesis with a driver that rejects mul and ONE usage.
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
