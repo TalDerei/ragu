@@ -228,6 +228,9 @@ struct CounterScope<F> {
     /// Running monomial for $c$ wires: $x_2^{i+1}$ at gate $i$.
     current_c: F,
 
+    /// Running monomial for $d$ wires: $x_3^{i+1}$ at gate $i$.
+    current_d: F,
+
     /// Horner accumulator for the fingerprint evaluation result.
     result: F,
 }
@@ -235,8 +238,8 @@ struct CounterScope<F> {
 /// A [`Driver`] that simultaneously counts constraints and computes routine
 /// identity fingerprints via Schwartz–Zippel evaluation.
 ///
-/// Assigns three independent geometric sequences (bases $x_0, x_1, x_2$) to
-/// the $a$, $b$, $c$ wires and accumulates constraint values via Horner's rule
+/// Assigns four independent geometric sequences (bases $x_0, x_1, x_2, x_3$)
+/// to the $a$, $b$, $c$, $d$ wires and accumulates constraint values via Horner's rule
 /// over $y$. When entering a routine, the identity state is saved and reset so
 /// that each routine is fingerprinted independently of its calling context.
 ///
@@ -253,7 +256,7 @@ struct Counter<F> {
     /// When false, `gate` advances geometric sequences but does not increment
     /// constraint counts.  Used during input and output wire remapping in
     /// [`routine`](Driver::routine), where only `alloc` (and transitively
-    /// `mul`/`gate`) is reachable via [`WireMap::convert_wire`].
+    /// `mul`, which calls `gate`) is reachable via [`WireMap::convert_wire`].
     counting: bool,
 
     /// Base for the $a$-wire geometric sequence.
@@ -264,6 +267,9 @@ struct Counter<F> {
 
     /// Base for the $c$-wire geometric sequence.
     x2: F,
+
+    /// Base for the $d$-wire geometric sequence.
+    x3: F,
 
     /// Multiplier for Horner accumulation, applied per [`enforce_zero`] call.
     ///
@@ -303,6 +309,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let x0 = point(0);
         let x1 = point(1);
         let x2 = point(2);
+        let x3 = point(6);
         let y = point(3);
         let h = point(4);
         let one = point(5);
@@ -314,6 +321,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_a: x0,
                 current_b: x1,
                 current_c: x2,
+                current_d: x3,
                 result: h,
             },
             num_linear_constraints: 0,
@@ -327,6 +335,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             x0,
             x1,
             x2,
+            x3,
             y,
             one,
             h,
@@ -354,7 +363,7 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     type LCenforce = WireEvalSum<F>;
 
     /// Consumes a multiplication gate: increments constraint counts and returns
-    /// wire values from three independent geometric sequences, advancing each
+    /// wire values from four independent geometric sequences, advancing each
     /// by its base.
     fn gate(
         &mut self,
@@ -368,16 +377,18 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
         let a = self.scope.current_a;
         let b = self.scope.current_b;
         let c = self.scope.current_c;
+        let d = self.scope.current_d;
 
         self.scope.current_a *= self.x0;
         self.scope.current_b *= self.x1;
         self.scope.current_c *= self.x2;
+        self.scope.current_d *= self.x3;
 
         Ok((
             WireEval::Value(a),
             WireEval::Value(b),
             WireEval::Value(c),
-            WireEval::Value(F::ZERO),
+            WireEval::Value(d),
         ))
     }
 }
@@ -435,6 +446,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_a: self.x0,
                 current_b: self.x1,
                 current_c: self.x2,
+                current_d: self.x3,
                 result: self.h,
             },
         );
