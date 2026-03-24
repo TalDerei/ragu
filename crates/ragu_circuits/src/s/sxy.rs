@@ -215,7 +215,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation with layout $(0, a, 0, b)$.
+    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
         if let Some(monomial) = self.scope.available_d.take() {
             Ok(monomial)

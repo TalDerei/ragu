@@ -246,7 +246,7 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
     const ONE: Self::Wire = ();
 
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        // Packs two allocations into one gate with layout (0, a, 0, b),
+        // Packs two allocations into one gate with layout (0, b, 0, d),
         // which costs less in multiexp than two separate gates.
         if let Some(index) = self.state.available_d.take() {
             let seg = &mut self.segments[self.state.current_segment].segment;

@@ -534,7 +534,7 @@ impl Routine<Fp> for AllocThenEnforce {
 /// Allocates a fresh wire and returns it. No constraints.
 ///
 /// As with [`AllocThenEnforce`], the first alloc consumes the paired
-/// b-wire so that the returned wire comes from a fresh gate.
+/// d-wire so that the returned wire comes from a fresh gate.
 #[derive(Clone)]
 struct AllocOnly;
 

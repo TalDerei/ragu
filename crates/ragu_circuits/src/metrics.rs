@@ -399,7 +399,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type Wire = WireEval<F>;
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation with layout $(0, a, 0, b)$.
+    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
         if let Some(wire) = self.scope.available_d.take() {
             Ok(wire)
@@ -490,7 +490,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // 1. Geometric sequences advance — `current_a`, `current_b`,
         //    `current_c` move past the remap gates.
         // 2. `available_d` changes — the remap may consume a pending
-        //    b-wire or create a new one.
+        //    d-wire or create a new one.
         //
         // Effect (1) is kept; effect (2) is rolled back. The asymmetry is
         // deliberate:
@@ -508,23 +508,23 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Counter-only operation that exists solely to assign parent-scope
         // evaluations to child output wires. If the remap were allowed to
         // mutate `available_d`, the parent's subsequent allocation pattern
-        // would diverge from the real drivers: a pending b-wire could be
+        // would diverge from the real drivers: a pending d-wire could be
         // consumed or created by the remap, changing which wire types
         // subsequent `alloc` calls return. Restoring `available_d` keeps
         // the parent's pairing trajectory identical to the real drivers.
         //
-        // After a routine call where the parent had a pending b-wire, the
+        // After a routine call where the parent had a pending d-wire, the
         // stashed wire retains its pre-call geometric value while the
         // sequences have jumped forward past the remap positions. This
         // creates a non-contiguous gap in the parent's sequence coverage.
         // The gap is harmless — the stashed wire already has a distinct
         // value, and Schwartz–Zippel only requires that all wire
         // evaluations be distinct, not contiguous.
-        let saved_b = self.scope.available_d.take();
+        let saved_d = self.scope.available_d.take();
 
         let parent_output = self.uncounted(|c| Ro::Output::map_gadget(&output, c))?;
 
-        self.scope.available_d = saved_b;
+        self.scope.available_d = saved_d;
 
         Ok(parent_output)
     }
@@ -681,7 +681,7 @@ pub(crate) mod tests {
         )))
     }
 
-    // A routine that allocates exactly one wire, leaving the "b" slot dangling
+    // A routine that allocates exactly one wire, leaving the "d" slot dangling
     // in a pair-allocated driver like `Counter`.
     // This must not panic when processed.
     #[derive(Clone)]

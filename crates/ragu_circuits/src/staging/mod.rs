@@ -365,14 +365,14 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             view.d.push(F::ZERO);
         }
 
-        // Layout: (0, a, 0, b) per gate.
+        // Layout: (0, b, 0, d) per gate.
         for _ in 0..Self::num_multiplications() {
-            let a = values.next().unwrap_or(F::ZERO);
             let b = values.next().unwrap_or(F::ZERO);
+            let d = values.next().unwrap_or(F::ZERO);
             view.a.push(F::ZERO);
-            view.b.push(a);
+            view.b.push(b);
             view.c.push(F::ZERO);
-            view.d.push(b);
+            view.d.push(d);
         }
 
         Ok(view.build())
@@ -412,9 +412,9 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// Returns the generator index for the i-th first-value coefficient of
     /// this stage's alloc gates.
     ///
-    /// With the `(0, a, 0, b)` gate layout, the first allocated value occupies
+    /// With the `(0, b, 0, d)` gate layout, the first allocated value occupies
     /// the B-wire position at degree `2n - 1 - (1 + skip + i)`.
-    fn generator_index_for_a(coefficient_index: usize) -> usize {
+    fn generator_index_for_b(coefficient_index: usize) -> usize {
         assert!(
             coefficient_index < Self::num_multiplications(),
             "coefficient_index {} exceeds num_multiplications {}",

@@ -501,7 +501,7 @@ mod tests {
         view.b.push(Fp::ZERO);
         view.c.push(Fp::ZERO);
         view.d.push(Fp::ZERO);
-        // Layout: (0, a, 0, b) per gate.
+        // Layout: (0, b, 0, d) per gate.
         for &(a, b) in gate_values {
             view.a.push(Fp::ZERO);
             view.b.push(a);
