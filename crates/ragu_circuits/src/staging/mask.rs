@@ -1,11 +1,14 @@
 use ff::Field;
-use ragu_core::Result;
-
-use alloc::vec::Vec;
+use ragu_arithmetic::Coeff;
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue, LinearExpression},
+    gadgets::Bound,
+};
 
 use crate::{
-    CircuitObject,
-    polynomials::{Rank, sparse},
+    WithAux,
+    polynomials::Rank,
 };
 
 #[derive(Clone)]
@@ -55,180 +58,52 @@ impl<R: Rank> StageMask<R> {
     }
 }
 
-impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
-    fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_multiplications + self.num_multiplications < R::n());
-        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
+impl<F: Field, R: Rank> crate::Circuit<F> for StageMask<R> {
+    type Instance<'source> = ();
+    type Witness<'source> = ();
+    type Output = ();
+    type Aux<'source> = ();
 
-        if x == F::ZERO || y == F::ZERO {
-            // If either x or y is zero, the polynomial evaluates to zero
-            // (the constant term of a bonding polynomial is always zero).
-            return F::ZERO;
-        }
-
-        let x_inv = x.invert().expect("x is not zero");
-        let y2 = y.square();
-        let y3 = y * y2;
-        let y4 = y2.square();
-        let x_y4 = x * y4;
-        let xinv_y4 = x_inv * y4;
-
-        let block = |end: usize, len: usize| -> F {
-            let a = y4 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
-            let b = y3 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
-            let c = y2 * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
-            let d = y * x.pow_vartime([(end + 1) as u64]);
-
-            let plus = ragu_arithmetic::geosum::<F>(x_y4, len);
-            let minus = ragu_arithmetic::geosum::<F>(xinv_y4, len);
-
-            a * plus + b * minus + c * plus + d * minus
-        };
-
-        // Handle the edge case where skip_multiplications is zero.
-        let c1 = if self.skip_multiplications > 0 {
-            block(self.skip_multiplications - 1, self.skip_multiplications)
-        } else {
-            F::ZERO
-        };
-        let c2 = block(R::n() - 2, reserved);
-
-        y.pow_vartime([(4 * reserved) as u64]) * c1 + c2
+    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+        &self,
+        _: &mut D,
+        _: DriverValue<D, Self::Instance<'source>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Ok(())
     }
 
-    fn sx(
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
-        x: F,
-        _floor_plan: &[crate::floor_planner::ConstraintSegment],
-    ) -> sparse::Polynomial<F, R> {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_multiplications + self.num_multiplications < R::n());
-        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
-
-        if x == F::ZERO {
-            return sparse::Polynomial::new();
-        }
-
-        let mut coeffs = Vec::with_capacity(R::num_coeffs());
-        {
-            let x_inv = x.invert().expect("x is not zero");
-            let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
-            let xn2 = xn.square(); // xn2 = x^(2n)
-            let mut a = xn2 * x_inv; // x^(2n - 1)
-            let mut b = xn2; // x^(2n)
-            let xn4 = xn2.square(); // x^(4n)
-            let mut c = xn4 * x_inv; // x^(4n - 1)
-            let mut d = F::ONE; // x^0
-
-            let mut alloc = || {
-                let out = (a, b, c, d);
-                a *= x_inv;
-                b *= x;
-                c *= x_inv;
-                d *= x;
-                out
-            };
-
-            // Skip the ONE gate (gate 0) — its wires are consumed but not
-            // constrained here. The registry key constraint is injected at the
-            // registry level.
-            alloc();
-
-            let mut enforce_zero = |out: (F, F, F, F)| {
-                coeffs.push(out.0);
-                coeffs.push(out.1);
-                coeffs.push(out.2);
-                coeffs.push(out.3);
-            };
-
-            for _ in 0..self.skip_multiplications {
-                enforce_zero(alloc());
-            }
-            for _ in 0..self.num_multiplications {
-                alloc();
-            }
-            for _ in 0..reserved {
-                enforce_zero(alloc());
-            }
-        }
-
-        coeffs.push(F::ZERO); // The constant term is always zero.
-        coeffs.reverse();
-
-        sparse::Polynomial::from_coeffs(coeffs)
-    }
-
-    fn sy(
-        &self,
-        y: F,
-        _floor_plan: &[crate::floor_planner::ConstraintSegment],
-    ) -> sparse::Polynomial<F, R> {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_multiplications + self.num_multiplications < R::n());
-        let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
-
-        if y == F::ZERO {
-            return sparse::Polynomial::new();
-        }
-
-        let num_linear_from_gates = 4 * (reserved + self.skip_multiplications);
-        // Start at y^{4*(reserved + skip)}: the highest Y-power used by gate
-        // constraints. The registry key constraint (formerly counted here as +1)
-        // now occupies Y^{4n-1} at the registry level and is excluded.
-        let mut yq = y.pow_vartime([num_linear_from_gates as u64]);
-        let y_inv = y.invert().expect("y is not zero");
-
-        let mut view = sparse::View::backward();
-
-        // Skip the ONE gate (gate 0). In the backward wire layout b[0] maps
-        // to X^{2n} (the ONE wire). The registry key contribution at c[0] is
-        // supplied by RegistryAt::y(), not here.
-        view.a.push(F::ZERO);
-        view.b.push(F::ZERO);
-        view.c.push(F::ZERO);
-        view.d.push(F::ZERO);
+        dr: &mut D,
+        _: DriverValue<D, Self::Witness<'source>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+    {
+        let reserved = self.skip_multiplications + self.num_multiplications + 1;
+        assert!(reserved <= R::n());
 
         for _ in 0..self.skip_multiplications {
-            view.a.push(yq);
-            yq *= y_inv;
-            view.b.push(yq);
-            yq *= y_inv;
-            view.c.push(yq);
-            yq *= y_inv;
-            view.d.push(yq);
-            yq *= y_inv;
+            let (a, b, c, d) =
+                dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.enforce_zero(|lc| lc.add(&a))?;
+            dr.enforce_zero(|lc| lc.add(&b))?;
+            dr.enforce_zero(|lc| lc.add(&c))?;
+            dr.enforce_zero(|lc| lc.add(&d))?;
         }
+
         for _ in 0..self.num_multiplications {
-            view.a.push(F::ZERO);
-            view.b.push(F::ZERO);
-            view.c.push(F::ZERO);
-            view.d.push(F::ZERO);
-        }
-        for _ in 0..reserved {
-            view.a.push(yq);
-            yq *= y_inv;
-            view.b.push(yq);
-            yq *= y_inv;
-            view.c.push(yq);
-            yq *= y_inv;
-            view.d.push(yq);
-            yq *= y_inv;
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
         }
 
-        view.build()
-    }
+        for _ in 0..(R::n() - reserved) {
+            let (a, b, c, d) =
+                dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.enforce_zero(|lc| lc.add(&a))?;
+            dr.enforce_zero(|lc| lc.add(&b))?;
+            dr.enforce_zero(|lc| lc.add(&c))?;
+            dr.enforce_zero(|lc| lc.add(&d))?;
+        }
 
-    fn constraint_counts(&self) -> (usize, usize) {
-        let num_multiplication_constraints = R::n();
-        // 4 constraints per non-multiplied gate + 1 for the ONE constraint.
-        // The registry key constraint is handled at the registry level.
-        let num_linear_constraints = 4 * (R::n() - self.num_multiplications - 1) + 1;
-        (num_multiplication_constraints, num_linear_constraints)
-    }
-
-    fn segment_records(&self) -> &[crate::SegmentRecord] {
-        &[]
+        Ok(WithAux::new((), D::unit()))
     }
 }
 
@@ -239,7 +114,7 @@ mod tests {
     use ff::Field;
     use group::{Curve, prime::PrimeCurveAffine};
     use proptest::prelude::*;
-    use ragu_arithmetic::{Coeff, CurveAffine, Cycle, FixedGenerators, Uendo};
+    use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, Uendo};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
@@ -262,55 +137,6 @@ mod tests {
         super::{Stage, StageExt},
         StageMask,
     };
-
-    impl<F: Field, R: Rank> crate::Circuit<F> for StageMask<R> {
-        type Instance<'source> = ();
-        type Witness<'source> = ();
-        type Output = ();
-        type Aux<'source> = ();
-
-        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
-            &self,
-            _: &mut D,
-            _: DriverValue<D, Self::Instance<'source>>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            Ok(())
-        }
-
-        fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
-            &self,
-            dr: &mut D,
-            _: DriverValue<D, Self::Witness<'source>>,
-        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
-        {
-            let reserved = self.skip_multiplications + self.num_multiplications + 1;
-            assert!(reserved <= R::n());
-
-            for _ in 0..self.skip_multiplications {
-                let (a, b, c, d) =
-                    dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_zero(|lc| lc.add(&a))?;
-                dr.enforce_zero(|lc| lc.add(&b))?;
-                dr.enforce_zero(|lc| lc.add(&c))?;
-                dr.enforce_zero(|lc| lc.add(&d))?;
-            }
-
-            for _ in 0..self.num_multiplications {
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-            }
-
-            for _ in 0..(R::n() - reserved) {
-                let (a, b, c, d) =
-                    dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_zero(|lc| lc.add(&a))?;
-                dr.enforce_zero(|lc| lc.add(&b))?;
-                dr.enforce_zero(|lc| lc.add(&c))?;
-                dr.enforce_zero(|lc| lc.add(&d))?;
-            }
-
-            Ok(WithAux::new((), D::unit()))
-        }
-    }
 
     impl<R: Rank> StageMask<R> {
         /// Returns the generator point for the i-th A coefficient of this stage.
@@ -403,13 +229,15 @@ mod tests {
         let rx2 = MyStage2::rx((p1, p2))?;
 
         let circ1 = MyStage1::mask()?.into_inner();
+        let plan1 = floor_planner::floor_plan(circ1.segment_records());
         let circ2 = MyStage2::mask()?.into_inner();
+        let plan2 = floor_planner::floor_plan(circ2.segment_records());
 
         let z = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
         {
-            let rhs = circ1.sy(y, &[]);
+            let rhs = circ1.sy(y, &plan1);
             assert_eq!(rx1_a.revdot(&rhs), Fp::ZERO);
             assert_eq!(rx1_b.revdot(&rhs), Fp::ZERO);
 
@@ -423,24 +251,29 @@ mod tests {
             assert_eq!(combined.revdot(&rhs), Fp::ZERO);
         }
 
-        assert_eq!(rx1_a.revdot(&circ1.sy(y, &[])), Fp::ZERO);
-        assert_eq!(rx2.revdot(&circ2.sy(y, &[])), Fp::ZERO);
-        assert!(rx1_a.revdot(&circ2.sy(y, &[])) != Fp::ZERO);
-        assert!(rx2.revdot(&circ1.sy(y, &[])) != Fp::ZERO);
+        assert_eq!(rx1_a.revdot(&circ1.sy(y, &plan1)), Fp::ZERO);
+        assert_eq!(rx2.revdot(&circ2.sy(y, &plan2)), Fp::ZERO);
+        assert!(rx1_a.revdot(&circ2.sy(y, &plan2)) != Fp::ZERO);
+        assert!(rx2.revdot(&circ1.sy(y, &plan1)) != Fp::ZERO);
 
         Ok(())
     }
 
     #[test]
     fn test_skip_multiplications_zero() {
-        let stage_mask = StageMask::<R>::new(0, 5).unwrap();
+        let generic = into_circuit_object::<_, _, R>(
+            StageMask::<R>::new(0, 5).unwrap(),
+        )
+        .unwrap();
+        let plan = floor_planner::floor_plan(generic.segment_records());
+        let stripped = crate::staging::bonding::Stripped::new(generic);
 
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let sxy = stage_mask.sxy(x, y, &[]);
-        let sx = stage_mask.sx(x, &[]);
-        let sy = stage_mask.sy(y, &[]);
+        let sxy = stripped.sxy(x, y, &plan);
+        let sx = stripped.sx(x, &plan);
+        let sy = stripped.sy(y, &plan);
 
         assert_eq!(sxy, sx.eval(y));
         assert_eq!(sxy, sy.eval(x));
@@ -449,18 +282,19 @@ mod tests {
     #[test]
     fn test_stage_mask_all_multiplications() {
         // Edge case: skip = 0, num = R::n() - 1, reserved = 0.
-        let stage = StageMask::<R>::new(0, R::n() - 1).unwrap();
+        let generic = into_circuit_object::<_, _, R>(
+            StageMask::<R>::new(0, R::n() - 1).unwrap(),
+        )
+        .unwrap();
+        let plan = floor_planner::floor_plan(generic.segment_records());
+        let stripped = crate::staging::bonding::Stripped::new(generic);
+
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
-        let plan = floor_planner::floor_plan(generic.segment_records());
-        let stripped = crate::staging::bonding::Stripped::new(generic);
-        let comparison_sxy = stripped.sxy(x, y, &plan);
-
-        assert_eq!(stage.sxy(x, y, &[]), comparison_sxy);
-        assert_eq!(comparison_sxy, stripped.sx(x, &plan).eval(y));
-        assert_eq!(comparison_sxy, stripped.sy(y, &plan).eval(x));
+        let sxy = stripped.sxy(x, y, &plan);
+        assert_eq!(sxy, stripped.sx(x, &plan).eval(y));
+        assert_eq!(sxy, stripped.sy(y, &plan).eval(x));
     }
 
     #[test]
@@ -525,14 +359,19 @@ mod tests {
     #[test]
     fn test_stage_mask_reserved_zero() {
         // When reserved = 0, all gates except one are used.
-        let stage = StageMask::<R>::new(0, R::n() - 1).expect("skip multiplications");
+        let generic = into_circuit_object::<_, _, R>(
+            StageMask::<R>::new(0, R::n() - 1).expect("skip multiplications"),
+        )
+        .unwrap();
+        let plan = floor_planner::floor_plan(generic.segment_records());
+        let stripped = crate::staging::bonding::Stripped::new(generic);
 
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let sxy = stage.sxy(x, y, &[]);
-        let sx = stage.sx(x, &[]);
-        let sy = stage.sy(y, &[]);
+        let sxy = stripped.sxy(x, y, &plan);
+        let sx = stripped.sx(x, &plan);
+        let sy = stripped.sy(y, &plan);
 
         assert_eq!(sxy, sx.eval(y));
         assert_eq!(sxy, sy.eval(x));
@@ -560,8 +399,6 @@ mod tests {
         fn test_exy_proptest(skip in 0..R::n(), num in 0..R::n()) {
             prop_assume!(skip + 1 + num <= R::n());
 
-            let stage_mask = StageMask::<R>::new(skip, num).unwrap();
-
             let generic = into_circuit_object::<_, _, R>(
                 StageMask::<R>::new(skip, num).unwrap()
             ).unwrap();
@@ -576,9 +413,6 @@ mod tests {
 
                 prop_assert_eq!(sy.eval(x), sxy);
                 prop_assert_eq!(sx.eval(y), sxy);
-                prop_assert_eq!(stage_mask.sxy(x, y, &[]), sxy);
-                prop_assert_eq!(stage_mask.sx(x, &[]).eval(y), sxy);
-                prop_assert_eq!(stage_mask.sy(y, &[]).eval(x), sxy);
 
                 Ok(())
             };
@@ -654,10 +488,11 @@ mod tests {
         let rx = ConstrainedStage::rx(valid_witness).unwrap();
 
         let stage_mask = ConstrainedStage::mask::<'_>().unwrap().into_inner();
+        let plan = floor_planner::floor_plan(stage_mask.segment_records());
 
         // rx.revdot(&stage_mask) == 0 for well-formed stages
         let y = Fp::random(&mut rand::rng());
-        let sy = stage_mask.sy(y, &[]);
+        let sy = stage_mask.sy(y, &plan);
 
         let check = rx.revdot(&sy);
         assert_eq!(
@@ -672,18 +507,18 @@ mod tests {
         for skip in 0..10 {
             for num in 0..(R::n() - skip - 1) {
                 let stage_mask = StageMask::<R>::new(skip, num).unwrap();
-                let (mul_from_method, linear_from_method) =
-                    <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
+                let circuit_obj = into_circuit_object::<Fp, _, R>(stage_mask.clone()).unwrap();
+                let (mul_from_obj, linear_from_obj) = circuit_obj.constraint_counts();
 
                 let metrics = metrics::eval::<Fp, _>(&stage_mask).unwrap();
 
                 assert_eq!(
-                    mul_from_method, metrics.num_multiplication_constraints,
+                    mul_from_obj, metrics.num_multiplication_constraints,
                     "multiplication constraints mismatch for skip={}, num={}",
                     skip, num
                 );
                 assert_eq!(
-                    linear_from_method, metrics.num_linear_constraints,
+                    linear_from_obj, metrics.num_linear_constraints,
                     "linear constraints mismatch for skip={}, num={}",
                     skip, num
                 );

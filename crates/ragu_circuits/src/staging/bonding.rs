@@ -8,8 +8,9 @@
 //! and exists purely to enforce wiring between stages.
 //!
 //! The `ONE`-wire contribution is stripped so that the constant term in $Y$ is
-//! zero, as required of a bonding polynomial. [`StageMask`] is a hand-optimized
-//! bonding polynomial for stage well-formedness masks.
+//! zero, as required of a bonding polynomial. [`StageMask`] implements
+//! [`Circuit`](crate::Circuit) and is wrapped via the standard
+//! `into_circuit_object` + `Stripped` pipeline.
 //!
 //! [`Driver::mul`]: ragu_core::drivers::Driver::mul
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
