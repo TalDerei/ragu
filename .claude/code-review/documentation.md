@@ -60,6 +60,15 @@ For book vs. rustdoc placement rules, see
 - In non-doc `//` comments, avoid Unicode math symbols. Prefer breaking into
   smaller functions with doc comments that render KaTeX.
 
+## API Contracts
+
+- State the contract; don't spell out consequences of violating it. "Must be
+  smaller than `T`" is sufficient — adding "violations may cause panics or
+  incorrect behavior" is noise, since *any* contract violation can produce
+  incorrect behavior.
+- Exception: `# Safety` sections on `unsafe` items, where the consequences
+  are undefined behavior and the caller must be warned explicitly.
+
 ## Content Guidelines
 
 - Establish documentation ownership: one authoritative location per concept.
