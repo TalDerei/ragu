@@ -109,16 +109,14 @@ use super::{
 /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 /// Per-routine state saved and restored across routine boundaries.
 struct SxScope<F> {
-    /// Stashed $b$ wire from paired allocation.
-    available_b: Option<WireEval<F>>,
+    /// Stashed $d$ wire from paired allocation.
+    available_d: Option<WireEval<F>>,
     /// Running monomial for $a$ wires: $x^{2n - 1 - i}$ at gate $i$.
     current_a_x: F,
     /// Running monomial for $b$ wires: $x^{2n + i}$ at gate $i$.
     current_b_x: F,
     /// Running monomial for $c$ wires: $x^{4n - 1 - i}$ at gate $i$.
     current_c_x: F,
-    /// Running monomial for $d$ wires: $x^i$ at gate $i$.
-    current_d_x: F,
     /// Absolute index of the next multiplication constraint to be written.
     /// Initialized to `segment.multiplication_start` on routine entry.
     multiplication_constraints: usize,
@@ -160,9 +158,13 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// for the $c$ wire.
     base_c_x: F,
 
-    /// Base monomial $x^0$, used to compute routine starting monomials for the
+    /// Correction factor $(x^{-2n})$ that converts a $b$-wire monomial
+    /// $x^{2n+i}$ into the corresponding $d$-wire monomial $x^i$.
+    ///
+    /// Only read by [`gate`](DriverTypes::gate), not by [`mul`](Driver::mul),
+    /// so the extra multiplication is skipped when callers don't need the
     /// $d$ wire.
-    base_d_x: F,
+    b_to_d: F,
 
     /// Floor plan mapping DFS segment index to absolute offsets.
     floor_plan: &'fp [ConstraintSegment],
@@ -177,6 +179,32 @@ struct Evaluator<'fp, F: Field, R: Rank> {
 impl<F: Field, R: Rank> DriverScope<SxScope<F>> for Evaluator<'_, F, R> {
     fn scope(&mut self) -> &mut SxScope<F> {
         &mut self.scope
+    }
+}
+
+impl<F: Field, R: Rank> Evaluator<'_, F, R> {
+    /// Advances the gate counter and running monomials, returning the raw
+    /// $(a, b, c)$ monomial evaluations before advancement.
+    ///
+    /// This is the shared core of [`gate`](DriverTypes::gate) and
+    /// [`mul`](Driver::mul). The $d$-wire monomial ($b \cdot \text{b\_to\_d}$)
+    /// is only computed by `gate`, saving one field multiplication per `mul` call.
+    fn advance_gate(&mut self) -> Result<(F, F, F)> {
+        let index = self.scope.multiplication_constraints;
+        if index == R::n() {
+            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
+        }
+        self.scope.multiplication_constraints += 1;
+
+        let a = self.scope.current_a_x;
+        let b = self.scope.current_b_x;
+        let c = self.scope.current_c_x;
+
+        self.scope.current_a_x *= self.x_inv;
+        self.scope.current_b_x *= self.x;
+        self.scope.current_c_x *= self.x_inv;
+
+        Ok((a, b, c))
     }
 }
 
@@ -201,7 +229,10 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     /// - $a$: multiplied by $x^{-1}$ (decreasing exponent)
     /// - $b$: multiplied by $x$ (increasing exponent)
     /// - $c$: multiplied by $x^{-1}$ (decreasing exponent)
-    /// - $d$: multiplied by $x$ (increasing exponent)
+    ///
+    /// The $d$-wire monomial $x^i$ is derived from $b = x^{2n+i}$ via
+    /// `b_to_d`. This computation is confined to `gate` and skipped
+    /// by the [`mul`](Driver::mul) override.
     ///
     /// # Errors
     ///
@@ -211,21 +242,8 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
-        let index = self.scope.multiplication_constraints;
-        if index == R::n() {
-            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
-        }
-        self.scope.multiplication_constraints += 1;
-
-        let a = self.scope.current_a_x;
-        let b = self.scope.current_b_x;
-        let c = self.scope.current_c_x;
-        let d = self.scope.current_d_x;
-
-        self.scope.current_a_x *= self.x_inv;
-        self.scope.current_b_x *= self.x;
-        self.scope.current_c_x *= self.x_inv;
-        self.scope.current_d_x *= self.x;
+        let (a, b, c) = self.advance_gate()?;
+        let d = b * self.b_to_d;
 
         Ok((
             WireEval::Value(a),
@@ -242,16 +260,25 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation.
+    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(monomial) = self.scope.available_b.take() {
+        if let Some(monomial) = self.scope.available_d.take() {
             Ok(monomial)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
-            self.scope.available_b = Some(b);
-
-            Ok(a)
+            let (_, b, _, d) = self.gate(|| unreachable!())?;
+            self.scope.available_d = Some(d);
+            Ok(b)
         }
+    }
+
+    /// Advances the gate counter and returns $(a, b, c)$ without computing the
+    /// $d$-wire monomial.
+    fn mul(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        let (a, b, c) = self.advance_gate()?;
+        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
     }
 
     /// Computes a linear combination of wire evaluations.
@@ -299,11 +326,10 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
         let init_scope = SxScope {
-            available_b: None,
+            available_d: None,
             current_a_x: self.base_a_x * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
             current_b_x: self.base_b_x * self.x.pow_vartime([seg.multiplication_start as u64]),
             current_c_x: self.base_c_x * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
-            current_d_x: self.base_d_x * self.x.pow_vartime([seg.multiplication_start as u64]),
             multiplication_constraints: seg.multiplication_start,
             linear_constraints: seg.linear_start,
         };
@@ -361,8 +387,9 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let base_b_x = xn2;
     let xn4 = xn2.square();
     let base_c_x = xn4 * x_inv;
+    let xn_inv = x_inv.pow_vartime([R::n() as u64]);
+    let base_b_x_inv = xn_inv.square();
     let one = base_b_x;
-    let base_d_x = F::ONE;
 
     let mut evaluator = Evaluator::<F, R> {
         // Zero-initialized: the evaluator fills specific indices during
@@ -370,11 +397,10 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         // unused wire slots.
         result: vec![F::ZERO; R::num_coeffs()],
         scope: SxScope {
-            available_b: None,
+            available_d: None,
             current_a_x: base_a_x,
             current_b_x: base_b_x,
             current_c_x: base_c_x,
-            current_d_x: base_d_x,
             multiplication_constraints: 0,
             linear_constraints: 0,
         },
@@ -384,7 +410,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         base_a_x,
         base_b_x,
         base_c_x,
-        base_d_x,
+        b_to_d: base_b_x_inv,
         floor_plan,
         current_routine: 0,
         _marker: core::marker::PhantomData,

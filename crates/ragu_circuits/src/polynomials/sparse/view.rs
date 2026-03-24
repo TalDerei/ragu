@@ -34,7 +34,9 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use super::{Polynomial, Rank};
+use ff::Field;
+
+use super::{Polynomial, Rank, extend_runs};
 
 mod private {
     pub trait Sealed {}
@@ -175,15 +177,19 @@ impl<T, R: Rank> View<T, R, Backward> {
     }
 }
 
-impl<T, R: Rank, P: Perspective> View<T, R, P> {
+impl<F: Field, R: Rank, P: Perspective> View<F, R, P> {
     /// Consumes this view, mapping wire buffers to degree positions and
     /// producing a [`Polynomial`].
+    ///
+    /// Raw blocks are compressed via `extend_runs` (stripping leading/trailing
+    /// zeros and splitting interior zero gaps exceeding `GAP_TOLERANCE`) before
+    /// final validation.
     ///
     /// # Panics
     ///
     /// Panics if any wire buffer exceeds `R::n()` entries (one entry per
     /// multiplication gate).
-    pub fn build(self) -> Polynomial<T, R> {
+    pub fn build(self) -> Polynomial<F, R> {
         let n = R::n();
         assert!(
             self.a.len() <= n,
@@ -206,8 +212,11 @@ impl<T, R: Rank, P: Perspective> View<T, R, P> {
             self.d.len()
         );
 
-        let blocks = P::map_to_blocks(self.a, self.b, self.c, self.d, n);
-
+        let raw_blocks = P::map_to_blocks(self.a, self.b, self.c, self.d, n);
+        let mut blocks = Vec::with_capacity(raw_blocks.len());
+        for (start, data) in raw_blocks {
+            extend_runs(&mut blocks, start, data);
+        }
         Polynomial::from_blocks(blocks)
     }
 }

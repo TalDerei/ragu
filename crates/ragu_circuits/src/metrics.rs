@@ -213,8 +213,8 @@ pub struct CircuitMetrics {
 /// Contains both the constraint counting record index and the identity
 /// evaluation state (geometric sequence runners and Horner accumulator).
 struct CounterScope<F> {
-    /// Stashed $b$ wire from paired allocation (see [`Driver::alloc`]).
-    available_b: Option<WireEval<F>>,
+    /// Stashed $d$ wire from paired allocation (see [`Driver::alloc`]).
+    available_d: Option<WireEval<F>>,
 
     /// Index into [`Counter::segments`] for the current routine.
     current_segment: usize,
@@ -317,7 +317,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
 
         Self {
             scope: CounterScope {
-                available_b: None,
+                available_d: None,
                 current_segment: 0,
                 current_a: x0,
                 current_b: x1,
@@ -399,14 +399,14 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type Wire = WireEval<F>;
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation.
+    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_b.take() {
+        if let Some(wire) = self.scope.available_d.take() {
             Ok(wire)
         } else {
-            let (a, b, _) = self.mul(|| unreachable!())?;
-            self.scope.available_b = Some(b);
-            Ok(a)
+            let (_, b, _, d) = self.gate(|| unreachable!())?;
+            self.scope.available_d = Some(d);
+            Ok(b)
         }
     }
 
@@ -442,7 +442,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         let saved = core::mem::replace(
             &mut self.scope,
             CounterScope {
-                available_b: None,
+                available_d: None,
                 current_segment: segment_idx,
                 current_a: self.x0,
                 current_b: self.x1,
@@ -456,7 +456,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // fingerprint captures only internal structure, not caller context.
         // Uncounted: these gates only seed the geometric sequences.
         let new_input = self.uncounted(|c| Ro::Input::map_gadget(&input, c))?;
-        self.scope.available_b = None; // match sxy/trace initial state
+        self.scope.available_d = None; // match sxy/trace initial state
 
         // Predict and execute.
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
@@ -488,8 +488,8 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         //
         // 1. Geometric sequences advance — `current_a`, `current_b`,
         //    `current_c` move past the remap gates.
-        // 2. `available_b` changes — the remap may consume a pending
-        //    b-wire or create a new one.
+        // 2. `available_d` changes — the remap may consume a pending
+        //    d-wire or create a new one.
         //
         // Effect (1) is kept; effect (2) is rolled back. The asymmetry is
         // deliberate:
@@ -500,30 +500,30 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // the remap positions achieves this — each output wire lands at a
         // unique geometric position in the parent's sequence space.
         //
-        // `available_b` must be restored because in the real drivers
+        // `available_d` must be restored because in the real drivers
         // (sxy, sx, sy), output wires are received directly from the
         // child's evaluation — no parent gates are consumed and the
         // parent's pairing state is untouched. The output remap is a
         // Counter-only operation that exists solely to assign parent-scope
         // evaluations to child output wires. If the remap were allowed to
-        // mutate `available_b`, the parent's subsequent allocation pattern
-        // would diverge from the real drivers: a pending b-wire could be
+        // mutate `available_d`, the parent's subsequent allocation pattern
+        // would diverge from the real drivers: a pending d-wire could be
         // consumed or created by the remap, changing which wire types
-        // subsequent `alloc` calls return. Restoring `available_b` keeps
+        // subsequent `alloc` calls return. Restoring `available_d` keeps
         // the parent's pairing trajectory identical to the real drivers.
         //
-        // After a routine call where the parent had a pending b-wire, the
+        // After a routine call where the parent had a pending d-wire, the
         // stashed wire retains its pre-call geometric value while the
         // sequences have jumped forward past the remap positions. This
         // creates a non-contiguous gap in the parent's sequence coverage.
         // The gap is harmless — the stashed wire already has a distinct
         // value, and Schwartz–Zippel only requires that all wire
         // evaluations be distinct, not contiguous.
-        let saved_b = self.scope.available_b.take();
+        let saved_d = self.scope.available_d.take();
 
         let parent_output = self.uncounted(|c| Ro::Output::map_gadget(&output, c))?;
 
-        self.scope.available_b = saved_b;
+        self.scope.available_d = saved_d;
 
         Ok(parent_output)
     }
@@ -656,7 +656,7 @@ pub(crate) mod tests {
         let mut counter = Counter::<F>::new();
 
         // Remap input wires into Counter, mirroring Counter::routine:
-        // uncounted (seeding only) and available_b cleared afterward.
+        // uncounted (seeding only) and available_d cleared afterward.
         let new_input = counter.uncounted(|c| {
             let mut remap = CounterRemap {
                 counter: c,
@@ -664,7 +664,7 @@ pub(crate) mod tests {
             };
             Ro::Input::map_gadget(input, &mut remap)
         })?;
-        counter.scope.available_b = None;
+        counter.scope.available_d = None;
 
         // Predict (on a wireless emulator) then execute on the counter.
         let aux = Emulator::predict(routine, &new_input)?.into_aux();
@@ -680,7 +680,7 @@ pub(crate) mod tests {
         )))
     }
 
-    // A routine that allocates exactly one wire, leaving the "b" slot dangling
+    // A routine that allocates exactly one wire, leaving the "d" slot dangling
     // in a pair-allocated driver like `Counter`.
     // This must not panic when processed.
     #[derive(Clone)]

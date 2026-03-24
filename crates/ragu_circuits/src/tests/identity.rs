@@ -534,7 +534,7 @@ impl Routine<Fp> for AllocThenEnforce {
 /// Allocates a fresh wire and returns it. No constraints.
 ///
 /// As with [`AllocThenEnforce`], the first alloc consumes the paired
-/// b-wire so that the returned wire comes from a fresh gate.
+/// d-wire so that the returned wire comes from a fresh gate.
 #[derive(Clone)]
 struct AllocOnly;
 
@@ -1288,7 +1288,7 @@ fn fingerprint_pair(
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
 /// through `Counter::routine` (the production path that correctly clears
-/// `available_b` after input remapping).
+/// `available_d` after input remapping).
 fn fingerprint_via_eval<Ro>(routine: &Ro) -> RoutineFingerprint
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>

@@ -350,24 +350,29 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         view.a.reserve_exact(len);
         view.b.reserve_exact(len);
         view.c.reserve_exact(len);
+        view.d.reserve_exact(len);
 
         // ONE is not set.
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
+        view.d.push(F::ZERO);
 
         for _ in 0..Self::skip_multiplications() {
             view.a.push(F::ZERO);
             view.b.push(F::ZERO);
             view.c.push(F::ZERO);
+            view.d.push(F::ZERO);
         }
 
+        // Layout: (0, b, 0, d) per gate.
         for _ in 0..Self::num_multiplications() {
-            let a = values.next().unwrap_or(F::ZERO);
             let b = values.next().unwrap_or(F::ZERO);
-            view.a.push(a);
+            let d = values.next().unwrap_or(F::ZERO);
+            view.a.push(F::ZERO);
             view.b.push(b);
-            view.c.push(a * b);
+            view.c.push(F::ZERO);
+            view.d.push(d);
         }
 
         Ok(view.build())
@@ -404,12 +409,12 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         )?)))
     }
 
-    /// Returns the generator index for the i-th A coefficient of this stage.
+    /// Returns the generator index for the i-th first-value coefficient of
+    /// this stage's alloc gates.
     ///
-    /// The A coefficients are placed at positions `2n + 1 + skip + i` in the
-    /// generator array, where `n` is the rank parameter and `skip` is the
-    /// number of skipped multiplications.
-    fn generator_index_for_a(coefficient_index: usize) -> usize {
+    /// With the `(0, b, 0, d)` gate layout, the first allocated value occupies
+    /// the B-wire position at degree `2n - 1 - (1 + skip + i)`.
+    fn generator_index_for_b(coefficient_index: usize) -> usize {
         assert!(
             coefficient_index < Self::num_multiplications(),
             "coefficient_index {} exceeds num_multiplications {}",
@@ -417,7 +422,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             Self::num_multiplications()
         );
 
-        2 * R::n() + 1 + Self::skip_multiplications() + coefficient_index
+        2 * R::n() - 2 - Self::skip_multiplications() - coefficient_index
     }
 }
 
