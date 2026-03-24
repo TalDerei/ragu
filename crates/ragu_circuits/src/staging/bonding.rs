@@ -492,7 +492,7 @@ mod tests {
         assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
     }
 
-    /// Build a trace with gate 0 as ONE (zeros) and gates 1..n from (a, b)
+    /// Build a trace with gate 0 as ONE (zeros) and gates 1..n from (b, d)
     /// pairs.
     fn build_trace(gate_values: &[(Fp, Fp)]) -> sparse::Polynomial<Fp, R> {
         let mut view = sparse::View::<_, R, _>::forward();
@@ -502,11 +502,11 @@ mod tests {
         view.c.push(Fp::ZERO);
         view.d.push(Fp::ZERO);
         // Layout: (0, b, 0, d) per gate.
-        for &(a, b) in gate_values {
+        for &(b, d) in gate_values {
             view.a.push(Fp::ZERO);
-            view.b.push(a);
+            view.b.push(b);
             view.c.push(Fp::ZERO);
-            view.d.push(b);
+            view.d.push(d);
         }
         view.build()
     }
