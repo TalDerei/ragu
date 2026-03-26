@@ -64,7 +64,7 @@
 //! stage's [staging mask](StageExt::mask).
 //!
 //! ```rust,ignore
-//! let a = MyStage::rx(my_stage_witness)?;
+//! let a = MyStage::rx(alpha, my_stage_witness)?;
 //!
 //! // Register the mask into a registry to obtain s(X, y).
 //! let mask_handle = builder.register_bonding(MyStage::mask()?);
@@ -78,8 +78,8 @@
 //! check, they can be combined using a random challenge $z$:
 //!
 //! ```rust,ignore
-//! let a = MyStage::rx(my_stage_witness)?;
-//! let b = MyStage::rx(my_stage_witness)?;
+//! let a = MyStage::rx(alpha_a, my_stage_witness)?;
+//! let b = MyStage::rx(alpha_b, my_stage_witness)?;
 //!
 //! // Sample random challenge z after committing to `a` and `b`
 //! let z = Fp::random(&mut rand::rng());
@@ -328,7 +328,20 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage.
-    fn rx_configured(&self, witness: Self::Witness<'_>) -> Result<sparse::Polynomial<F, R>> {
+    ///
+    /// `alpha` is placed at `d[0]` of the resulting polynomial. Stage
+    /// traces can be all-zero without it, and linear combinations of
+    /// polynomials with predictable `d[0]` values could cancel to zero in
+    /// derived polynomials — either case produces a point-at-infinity
+    /// commitment. A random alpha prevents this.
+    ///
+    /// Pass a random field element in production; `F::ZERO` is acceptable
+    /// in tests.
+    fn rx_configured(
+        &self,
+        alpha: F,
+        witness: Self::Witness<'_>,
+    ) -> Result<sparse::Polynomial<F, R>> {
         let values = {
             let mut dr = Emulator::extractor();
             let out = self.witness(&mut dr, Always::maybe_just(|| witness))?;
@@ -352,11 +365,12 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         view.c.reserve_exact(len);
         view.d.reserve_exact(len);
 
-        // ONE is not set.
+        // ONE gate: d[0] receives alpha (degree 4n-1) to prevent
+        // point-at-infinity commitments.
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
-        view.d.push(F::ZERO);
+        view.d.push(alpha);
 
         for _ in 0..Self::skip_gates() {
             view.a.push(F::ZERO);
@@ -379,20 +393,22 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage, using a
-    /// default implementation.
-    fn rx(witness: Self::Witness<'_>) -> Result<sparse::Polynomial<F, R>>
+    /// default implementation. See [`rx_configured`](Self::rx_configured)
+    /// for details on the `alpha` parameter.
+    fn rx(alpha: F, witness: Self::Witness<'_>) -> Result<sparse::Polynomial<F, R>>
     where
         Self: Default,
     {
-        Self::default().rx_configured(witness)
+        Self::default().rx_configured(alpha, witness)
     }
 
     /// Creates a bonding polynomial that enforces well-formedness checks on
     /// this stage's partial trace.
     ///
-    /// Staging circuits do not behave like normal circuits because they do not
-    /// have a `ONE` wire and are used solely for partial trace commitments.
-    /// As a result, they must be computed differently.
+    /// Staging circuits do not behave like normal circuits because their
+    /// `ONE` gate carries only an alpha value in `d[0]` (no `b[0] = 1` ONE
+    /// wire) and they are used solely for partial trace commitments. As a
+    /// result, their mask must be computed differently.
     fn mask<'a>() -> Result<BondingObject<'a, F, R>> {
         Ok(BondingObject::new(Box::new(mask::StageMask::new(
             Self::skip_gates(),

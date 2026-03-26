@@ -402,9 +402,9 @@ mod tests {
         let p1 = (EpAffine::generator() * Fq::random(&mut rand::rng())).into();
         let p2 = (EpAffine::generator() * Fq::random(&mut rand::rng())).into();
 
-        let rx1_a = MyStage1::rx(endoscalar_a)?;
-        let rx1_b = MyStage1::rx(endoscalar_b)?;
-        let rx2 = MyStage2::rx((p1, p2))?;
+        let rx1_a = MyStage1::rx(Fp::ZERO, endoscalar_a)?;
+        let rx1_b = MyStage1::rx(Fp::ZERO, endoscalar_b)?;
+        let rx2 = MyStage2::rx(Fp::ZERO, (p1, p2))?;
 
         let circ1 = MyStage1::mask()?.into_inner();
         let circ2 = MyStage2::mask()?.into_inner();
@@ -655,7 +655,7 @@ mod tests {
     fn test_stage_well_formedness_with_valid_witness() {
         let valid_witness = (Fp::from(7u64), Fp::from(7u64));
 
-        let rx = ConstrainedStage::rx(valid_witness).unwrap();
+        let rx = ConstrainedStage::rx(Fp::ZERO, valid_witness).unwrap();
 
         let stage_mask = ConstrainedStage::mask::<'_>().unwrap().into_inner();
 
@@ -945,10 +945,10 @@ mod tests {
         let generators = Pasta::host_generators(pasta);
 
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
-        let blind = Fp::ZERO;
 
-        let rx: sparse::Polynomial<Fp, R> = ChildOfParentAOnlyStage::rx(challenges).unwrap();
-        let poly_commitment: EqAffine = rx.commit_to_affine(generators, blind);
+        let rx: sparse::Polynomial<Fp, R> =
+            ChildOfParentAOnlyStage::rx(Fp::ZERO, challenges).unwrap();
+        let poly_commitment: EqAffine = rx.commit_to_affine(generators);
 
         let mut manual_commitment = EqAffine::identity();
         for (i, &challenge) in challenges.iter().enumerate() {
@@ -971,10 +971,9 @@ mod tests {
         let generators = Pasta::host_generators(pasta);
 
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
-        let blind = Fp::ZERO;
 
-        let rx: sparse::Polynomial<Fp, R> = ParentAOnlyStage::rx(challenges).unwrap();
-        let poly_commitment: EqAffine = rx.commit_to_affine(generators, blind);
+        let rx: sparse::Polynomial<Fp, R> = ParentAOnlyStage::rx(Fp::ZERO, challenges).unwrap();
+        let poly_commitment: EqAffine = rx.commit_to_affine(generators);
 
         // Manually compute expected commitment using StageExt::generator_index_for_b.
         let mut manual_commitment = EqAffine::identity();

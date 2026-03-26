@@ -87,6 +87,7 @@ impl<F: Field> Trace<F> {
     pub(crate) fn assemble<R: Rank>(
         &self,
         floor_plan: &[ConstraintSegment],
+        alpha: F,
     ) -> Result<sparse::Polynomial<F, R>> {
         assert_eq!(
             floor_plan.len(),
@@ -136,10 +137,11 @@ impl<F: Field> Trace<F> {
             view.d[offset..offset + seg.d.len()].copy_from_slice(&seg.d);
         }
 
-        // Overwrite segment 0's zeroed ONE gate placeholder.
-        // The prover sets a[0] = c[0] = 0 (already zero from initialization)
-        // and b[0] = 1 (the ONE wire).
+        // Overwrite segment 0's zeroed ONE gate placeholder:
+        // a[0] = c[0] = 0 (already zero), b[0] = 1 (ONE wire),
+        // d[0] = alpha (prevents point-at-infinity commitments).
         view.b[0] = F::ONE;
+        view.d[0] = alpha;
 
         Ok(view.build())
     }
