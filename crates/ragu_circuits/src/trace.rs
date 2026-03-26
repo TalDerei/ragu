@@ -94,7 +94,7 @@ impl<F: Field> Trace<F> {
             "floor plan and trace must have the same number of segment entries"
         );
         assert_eq!(
-            floor_plan[0].multiplication_start, 0,
+            floor_plan[0].gate_start, 0,
             "root segment must be placed at the polynomial origin"
         );
 
@@ -102,11 +102,11 @@ impl<F: Field> Trace<F> {
             .segments
             .iter()
             .enumerate()
-            .map(|(i, seg)| floor_plan[i].multiplication_start + seg.a.len())
+            .map(|(i, seg)| floor_plan[i].gate_start + seg.a.len())
             .max()
             .expect("floor plan is never empty (root segment always exists)");
         if total_gates > R::n() {
-            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
+            return Err(Error::GateBoundExceeded { limit: R::n() });
         }
 
         let mut view = sparse::View::forward();
@@ -124,12 +124,12 @@ impl<F: Field> Trace<F> {
             // Verify segment size matches floor plan expectation.
             assert_eq!(
                 seg.a.len(),
-                segment.num_multiplication_constraints,
+                segment.num_gates,
                 "segment {} size must match floor plan",
                 seg_idx
             );
 
-            let offset = segment.multiplication_start;
+            let offset = segment.gate_start;
             view.a[offset..offset + seg.a.len()].copy_from_slice(&seg.a);
             view.b[offset..offset + seg.b.len()].copy_from_slice(&seg.b);
             view.c[offset..offset + seg.c.len()].copy_from_slice(&seg.c);

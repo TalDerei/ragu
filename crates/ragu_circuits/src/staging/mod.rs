@@ -12,7 +12,7 @@
 //!
 //! where $\mathbf{r}$ is the coefficient vector for $r(X)$, and $\mathbf{s},
 //! \mathbf{t}$ are determined by $y$ and $z$ (respectively) to enforce the
-//! linear and multiplication constraints (respectively) of the particular
+//! gates and constraints (respectively) of the particular
 //! circuit. We say that $\mathbf{s}$ is the coefficient vector for $s(X, Y)$ at
 //! the restriction $Y = y$.
 //!
@@ -165,12 +165,12 @@ pub trait Stage<F: Field, R: Rank> {
     where
         Self: 'dr;
 
-    /// Returns the number of multiplication gates to skip before starting this
+    /// Returns the number of gates to skip before starting this
     /// stage, not including the ONE gate which is skipped in all stages. **This
     /// should not be overridden by implementations except by the base
     /// implementation for `()`**.
-    fn skip_multiplications() -> usize {
-        Self::Parent::skip_multiplications() + Self::Parent::num_multiplications()
+    fn skip_gates() -> usize {
+        Self::Parent::skip_gates() + Self::Parent::num_gates()
     }
 }
 
@@ -194,7 +194,7 @@ impl<F: Field, R: Rank> Stage<F, R> for () {
         Ok(())
     }
 
-    fn skip_multiplications() -> usize {
+    fn skip_gates() -> usize {
         0
     }
 }
@@ -322,8 +322,8 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F,
 
 /// Extension trait blanket-implemented for all [`Stage<F, R>`](Stage) types.
 pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
-    /// Returns the number of multiplication gates used for allocations.
-    fn num_multiplications() -> usize {
+    /// Returns the number of gates used for allocations.
+    fn num_gates() -> usize {
         Self::values().div_ceil(2)
     }
 
@@ -336,8 +336,8 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         };
 
         if values.len() > Self::values() {
-            return Err(ragu_core::Error::MultiplicationBoundExceeded {
-                limit: Self::num_multiplications(),
+            return Err(ragu_core::Error::GateBoundExceeded {
+                limit: Self::num_gates(),
             });
         }
 
@@ -346,7 +346,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         let mut values = values.into_iter();
         let mut view = sparse::View::forward();
 
-        let len = 1 + Self::skip_multiplications() + Self::num_multiplications();
+        let len = 1 + Self::skip_gates() + Self::num_gates();
         view.a.reserve_exact(len);
         view.b.reserve_exact(len);
         view.c.reserve_exact(len);
@@ -358,7 +358,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         view.c.push(F::ZERO);
         view.d.push(F::ZERO);
 
-        for _ in 0..Self::skip_multiplications() {
+        for _ in 0..Self::skip_gates() {
             view.a.push(F::ZERO);
             view.b.push(F::ZERO);
             view.c.push(F::ZERO);
@@ -366,7 +366,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         }
 
         // Layout: (0, b, 0, d) per gate.
-        for _ in 0..Self::num_multiplications() {
+        for _ in 0..Self::num_gates() {
             let b = values.next().unwrap_or(F::ZERO);
             let d = values.next().unwrap_or(F::ZERO);
             view.a.push(F::ZERO);
@@ -395,8 +395,8 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// As a result, they must be computed differently.
     fn mask<'a>() -> Result<BondingObject<'a, F, R>> {
         Ok(BondingObject::new(Box::new(mask::StageMask::new(
-            Self::skip_multiplications(),
-            Self::num_multiplications(),
+            Self::skip_gates(),
+            Self::num_gates(),
         )?)))
     }
 
@@ -405,7 +405,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// [`MultiStageCircuit::Last`] stage.
     fn final_mask<'a>() -> Result<BondingObject<'a, F, R>> {
         Ok(BondingObject::new(Box::new(mask::StageMask::new_final(
-            Self::skip_multiplications() + Self::num_multiplications(),
+            Self::skip_gates() + Self::num_gates(),
         )?)))
     }
 
@@ -416,13 +416,13 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// the B-wire position at degree `2n - 1 - (1 + skip + i)`.
     fn generator_index_for_b(coefficient_index: usize) -> usize {
         assert!(
-            coefficient_index < Self::num_multiplications(),
-            "coefficient_index {} exceeds num_multiplications {}",
+            coefficient_index < Self::num_gates(),
+            "coefficient_index {} exceeds num_gates {}",
             coefficient_index,
-            Self::num_multiplications()
+            Self::num_gates()
         );
 
-        2 * R::n() - 2 - Self::skip_multiplications() - coefficient_index
+        2 * R::n() - 2 - Self::skip_gates() - coefficient_index
     }
 }
 

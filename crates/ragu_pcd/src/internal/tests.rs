@@ -66,22 +66,23 @@ fn test_internal_circuit_constraint_counts() {
     macro_rules! check_constraints {
         ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
             let circuit_index = InternalCircuitIndex::$variant.circuit_index();
-            let (actual_mul, actual_lin) = app.native_registry.constraint_counts(circuit_index);
+            let (actual_gates, actual_constraints) =
+                app.native_registry.constraint_counts(circuit_index);
             assert_eq!(
-                actual_mul,
+                actual_gates,
                 $mul,
-                "{}: multiplication constraints: expected {}, got {}",
+                "{}: gates: expected {}, got {}",
                 stringify!($variant),
                 $mul,
-                actual_mul
+                actual_gates
             );
             assert_eq!(
-                actual_lin,
+                actual_constraints,
                 $lin,
-                "{}: linear constraints: expected {}, got {}",
+                "{}: constraints: expected {}, got {}",
                 stringify!($variant),
                 $lin,
-                actual_lin
+                actual_constraints
             );
         }};
     }
@@ -98,8 +99,8 @@ fn test_internal_circuit_constraint_counts() {
 fn test_internal_stage_parameters() {
     macro_rules! check_stage {
         ($Stage:ty, skip = $skip:expr, num = $num:expr) => {{
-            assert_eq!(<$Stage>::skip_multiplications(), $skip, "{}: skip", stringify!($Stage));
-            assert_eq!(<$Stage as StageExt<_, _>>::num_multiplications(), $num, "{}: num", stringify!($Stage));
+            assert_eq!(<$Stage>::skip_gates(), $skip, "{}: skip", stringify!($Stage));
+            assert_eq!(<$Stage as StageExt<_, _>>::num_gates(), $num, "{}: num", stringify!($Stage));
         }};
     }
 
@@ -163,8 +164,8 @@ fn print_internal_stage_parameters() {
 
     macro_rules! print_stage {
         ($Stage:ty) => {{
-            let skip = <$Stage>::skip_multiplications();
-            let num = <$Stage as StageExt<_, _>>::num_multiplications();
+            let skip = <$Stage>::skip_gates();
+            let num = <$Stage as StageExt<_, _>>::num_gates();
             println!(
                 "        check_stage!({:<8} skip = {:>3}, num = {:>3});",
                 format!("{},", stringify!($Stage)),
