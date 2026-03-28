@@ -25,7 +25,7 @@ ragu_core = "0.1"
 ragu_pasta = { version = "0.1", features = ["baked"] }
 ragu_pcd = "0.1"
 ragu_primitives = "0.1"
-arithmetic = "0.1"
+ragu_arithmetic = "0.1"
 ff = "0.13"
 rand = "0.8"
 ```
@@ -110,7 +110,7 @@ impl<F: Field> Header<F> for InternalNode {
 This step creates leaf proofs from raw values:
 
 ```rust
-use arithmetic::Cycle;
+use ragu_arithmetic::Cycle;
 use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_primitives::poseidon::Sponge;
 
@@ -122,10 +122,10 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
     const INDEX: Index = Index::new(0);  // Step ID
 
     type Witness<'source> = C::CircuitField;  // Input: field element
-    type Aux<'source> = C::CircuitField;      // Output: hash result
-    type Left = ();                            // No left input
-    type Right = ();                           // No right input
-    type Output = LeafNode;                    // Produces LeafNode
+    type Aux<'source> = ();                   // Output: hash result
+    type Left = ();                           // No left input
+    type Right = ();                          // No right input
+    type Output = LeafNode;                   // Produces LeafNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
@@ -164,9 +164,10 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
             (
                 Encoded::from_gadget(()),  // No left
                 Encoded::from_gadget(()),  // No right
-                leaf_encoded,               // Our output
+                leaf_encoded,              // Our output
             ),
             leaf_value,  // Hash result
+            D::unit(),
         ))
     }
 }
@@ -191,11 +192,11 @@ struct CombineNodes<'params, C: Cycle> {
 impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
     const INDEX: Index = Index::new(1);  // Different step ID
 
-    type Witness<'source> = ();           // No extra witness
-    type Aux<'source> = C::CircuitField;  // Return combined hash
-    type Left = LeafNode;                 // Takes LeafNode
-    type Right = LeafNode;                // Takes LeafNode
-    type Output = InternalNode;           // Produces InternalNode
+    type Witness<'source> = ();  // No extra witness
+    type Aux<'source> = ();      // Return combined hash
+    type Left = LeafNode;        // Takes LeafNode
+    type Right = LeafNode;       // Takes LeafNode
+    type Output = InternalNode;  // Produces InternalNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
@@ -230,7 +231,7 @@ impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
         let output = Encoded::from_gadget(output);
 
         // 4. Return verified proofs + output data + aux
-        Ok(((left, right, output), output_value, output_value))
+        Ok(((left, right, output), output_value, D::unit()))
     }
 }
 ```
