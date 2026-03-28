@@ -204,7 +204,6 @@ mod tests {
 
     use crate::raw::GateWires;
 
-    #[allow(clippy::needless_range_loop)]
     impl<F: Field, R: Rank> crate::raw::RawCircuit<F> for StageMask<R> {
         type Witness<'source> = ();
         type Output = ();
@@ -229,53 +228,51 @@ mod tests {
                 gates.push(GateWires::from(dr.gate(|| unimplemented!())?));
             }
 
-            let is_active = |j: usize| j >= self.skip_gates && j < self.skip_gates + self.num_gates;
+            let is_active =
+                |j: usize| j == 0 || (j >= self.skip_gates && j < self.skip_gates + self.num_gates);
 
             // Issue 4n-2 enforce_zero in decreasing degree order so that the
             // driver assigns y^k to the constraint at degree k. Dummy (empty
             // LC) constraints fill gaps for active gates. Gate 0 wires are
             // now directly accessible via gates[0].
+            //
+            // c[j] at degree 4n-1-j (j=1..n-1), b[j] at degree 2n+j (j=n-1..0),
+            // a[j] at degree 2n-1-j (j=0..n-1), d[j] at degree j (j=n-1..1).
+            // d[0] at degree 0 is not issued (unconstrained blinding factor).
+            // c[0] is the registry key slot at degree 4n-1 — not emitted here.
+            let wires = gates
+                .iter()
+                .enumerate()
+                .skip(1)
+                .map(|(j, g)| (!is_active(j)).then_some(&g.c))
+                .chain(
+                    gates
+                        .iter()
+                        .enumerate()
+                        .rev()
+                        .map(|(j, g)| (!is_active(j)).then_some(&g.b)),
+                )
+                .chain(
+                    gates
+                        .iter()
+                        .enumerate()
+                        .map(|(j, g)| (!is_active(j)).then_some(&g.a)),
+                )
+                .chain(
+                    gates
+                        .iter()
+                        .enumerate()
+                        .skip(1)
+                        .rev()
+                        .map(|(j, g)| (!is_active(j)).then_some(&g.d)),
+                );
 
-            // c-wires: c[j] at degree 4n-1-j, for j=1..n-1
-            // (j=0 is the registry key slot at degree 4n-1 — not emitted here)
-            for j in 1..R::n() {
-                if is_active(j) {
-                    dr.enforce_zero(|lc| lc)?;
-                } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j].c))?;
+            for wire in wires {
+                match wire {
+                    Some(w) => dr.enforce_zero(|lc| lc.add(w))?,
+                    None => dr.enforce_zero(|lc| lc)?,
                 }
             }
-            // b-wires: b[j] at degree 2n+j, for j=n-1..0
-            for j in (0..R::n()).rev() {
-                if j == 0 {
-                    // b[0] dummy: the ONE constraint at degree 0 handles b[0].
-                    dr.enforce_zero(|lc| lc)?;
-                } else if is_active(j) {
-                    dr.enforce_zero(|lc| lc)?;
-                } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j].b))?;
-                }
-            }
-            // a-wires: a[j] at degree 2n-1-j, for j=0..n-1
-            for j in 0..R::n() {
-                if j == 0 {
-                    dr.enforce_zero(|lc| lc)?;
-                } else if is_active(j) {
-                    dr.enforce_zero(|lc| lc)?;
-                } else {
-                    // a[0] is now directly accessible via gates[0].a.
-                    dr.enforce_zero(|lc| lc.add(&gates[j].a))?;
-                }
-            }
-            // d-wires: d[j] at degree j, for j=n-1..1
-            for j in (1..R::n()).rev() {
-                if is_active(j) {
-                    dr.enforce_zero(|lc| lc)?;
-                } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j].d))?;
-                }
-            }
-            // d[0] at degree 0: not issued (unconstrained blinding factor)
 
             Ok(WithAux::new((), D::unit()))
         }
