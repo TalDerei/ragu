@@ -84,10 +84,11 @@ impl<R: Rank> StageMask<R> {
             cur *= p;
         }
 
-        // The `ONE` wire (b[0]) and blinding wire (d[0]) are not
-        // constrained. This ensures s(X, 0) = 0.
-        view.d[0] = F::ZERO;
+        // The wires in the 0th gate are unconstrained.
+        view.a[0] = F::ZERO;
         view.b[0] = F::ZERO;
+        view.c[0] = F::ZERO;
+        view.d[0] = F::ZERO;
 
         // The wires active in the stage are not constrained.
         for i in 0..self.num_gates {
@@ -118,8 +119,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
         let xy_inv = xy.invert().expect("xy is not zero");
 
-        fn global<F: Field>(xy: F, xy_2n: F, n: usize) -> F {
-            geosum(xy, n << 2) - xy_2n - F::ONE
+        fn global<F: Field>(xy: F, xy_2n: F, xy_inv: F, n: usize) -> F {
+            geosum(xy, n << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
         }
 
         fn notch<F: Field>(xy: F, xy_2n: F, xy_inv: F, g: usize, m: usize) -> F {
@@ -130,7 +131,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             (F::ONE + xy_2n) * (xy_g + xy_h) * gsum
         }
 
-        global(xy, xy_2n, R::n()) - notch(xy, xy_2n, xy_inv, self.skip_gates, self.num_gates)
+        global(xy, xy_2n, xy_inv, R::n())
+            - notch(xy, xy_2n, xy_inv, self.skip_gates, self.num_gates)
     }
 
     fn sx(
@@ -188,7 +190,8 @@ mod tests {
     use rand::RngExt;
 
     use crate::{
-        CircuitObject, WithAux, floor_planner, into_circuit_object, metrics,
+        CircuitObject, WithAux, floor_planner, into_circuit_object, into_raw_circuit_object,
+        metrics,
         polynomials::{Rank, sparse},
         staging::StageBuilder,
         tests::SquareCircuit,
@@ -199,68 +202,69 @@ mod tests {
         StageMask,
     };
 
-    impl<F: Field, R: Rank> crate::Circuit<F> for StageMask<R> {
-        type Instance<'source> = ();
+    use crate::raw::GateWires;
+
+    #[allow(clippy::needless_range_loop)]
+    impl<F: Field, R: Rank> crate::raw::RawCircuit<F> for StageMask<R> {
         type Witness<'source> = ();
         type Output = ();
         type Aux<'source> = ();
 
-        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
-            &self,
-            _: &mut D,
-            _: DriverValue<D, Self::Instance<'source>>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            Ok(())
-        }
-
         fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
             &self,
             dr: &mut D,
+            gate0: GateWires<D::Wire>,
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+        where
+            Self: 'dr,
         {
             assert!(self.skip_gates + self.num_gates <= R::n());
 
-            // Allocate all n-1 gates upfront. Gate 0 is allocated by the
-            // framework before witness() is called.
-            let mut gates = alloc::vec::Vec::with_capacity(R::n() - 1);
-            for _ in 0..(R::n() - 1) {
-                gates.push(dr.gate(|| unimplemented!())?);
+            // Collect all n gates. Gate 0 comes from the orchestration
+            // function; gates 1..n are allocated here.
+            let mut gates = alloc::vec::Vec::with_capacity(R::n());
+            gates.push(gate0);
+            for _ in 1..R::n() {
+                gates.push(GateWires::from(dr.gate(|| unimplemented!())?));
             }
 
             let is_active = |j: usize| j >= self.skip_gates && j < self.skip_gates + self.num_gates;
 
             // Issue 4n-2 enforce_zero in decreasing degree order so that the
             // driver assigns y^k to the constraint at degree k. Dummy (empty
-            // LC) constraints fill gaps for active gates and gate 0's
-            // inaccessible wires.
+            // LC) constraints fill gaps for active gates. Gate 0 wires are
+            // now directly accessible via gates[0].
 
             // c-wires: c[j] at degree 4n-1-j, for j=1..n-1
+            // (j=0 is the registry key slot at degree 4n-1 — not emitted here)
             for j in 1..R::n() {
                 if is_active(j) {
                     dr.enforce_zero(|lc| lc)?;
                 } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].2))?;
+                    dr.enforce_zero(|lc| lc.add(&gates[j].c))?;
                 }
             }
             // b-wires: b[j] at degree 2n+j, for j=n-1..0
             for j in (0..R::n()).rev() {
                 if j == 0 {
-                    dr.enforce_zero(|lc| lc)?; // b[0]: enforce_one handles it
+                    // b[0] dummy: the ONE constraint at degree 0 handles b[0].
+                    dr.enforce_zero(|lc| lc)?;
                 } else if is_active(j) {
                     dr.enforce_zero(|lc| lc)?;
                 } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].1))?;
+                    dr.enforce_zero(|lc| lc.add(&gates[j].b))?;
                 }
             }
             // a-wires: a[j] at degree 2n-1-j, for j=0..n-1
             for j in 0..R::n() {
                 if j == 0 {
-                    dr.enforce_zero(|lc| lc)?; // a[0]: no wire access
+                    dr.enforce_zero(|lc| lc)?;
                 } else if is_active(j) {
                     dr.enforce_zero(|lc| lc)?;
                 } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].0))?;
+                    // a[0] is now directly accessible via gates[0].a.
+                    dr.enforce_zero(|lc| lc.add(&gates[j].a))?;
                 }
             }
             // d-wires: d[j] at degree j, for j=n-1..1
@@ -268,13 +272,22 @@ mod tests {
                 if is_active(j) {
                     dr.enforce_zero(|lc| lc)?;
                 } else {
-                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].3))?;
+                    dr.enforce_zero(|lc| lc.add(&gates[j].d))?;
                 }
             }
             // d[0] at degree 0: not issued (unconstrained blinding factor)
 
             Ok(WithAux::new((), D::unit()))
         }
+    }
+
+    /// Creates a [`CircuitObject`] from a [`StageMask`] via its [`RawCircuit`]
+    /// impl.
+    fn mask_circuit_object(
+        mask: StageMask<R>,
+    ) -> alloc::boxed::Box<dyn CircuitObject<Fp, R> + 'static> {
+        let metrics = metrics::eval_raw::<Fp, _>(&mask).unwrap();
+        into_raw_circuit_object::<Fp, _, R>(mask, metrics).unwrap()
     }
 
     impl<R: Rank> StageMask<R> {
@@ -414,16 +427,6 @@ mod tests {
         assert_eq!(sxy, sy.eval(x));
     }
 
-    /// Gate 0 is allocated by the framework before the Circuit impl
-    /// runs, so a[0] (degree 2n-1) and c[0] (degree 4n-1) are
-    /// inaccessible. This helper computes the correction term
-    /// `(xy)^{2n-1} + (xy)^{4n-1}` to add back to the Circuit
-    /// impl's Stripped output.
-    fn gate0_correction(x: Fp, y: Fp) -> Fp {
-        let xy = x * y;
-        xy.pow_vartime([(2 * R::n() - 1) as u64]) + xy.pow_vartime([(4 * R::n() - 1) as u64])
-    }
-
     #[test]
     fn test_stage_mask_all_gates() {
         // Edge case: skip = 1, num = R::n() - 1, reserved = 0.
@@ -431,20 +434,14 @@ mod tests {
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
+        let generic = mask_circuit_object(stage.clone());
         let plan = floor_planner::floor_plan(generic.segment_records());
         let stripped = crate::staging::bonding::Stripped::new(generic);
-        let corrected_sxy = stripped.sxy(x, y, &plan) + gate0_correction(x, y);
+        let corrected_sxy = stripped.sxy(x, y, &plan);
 
         assert_eq!(stage.sxy(x, y, &[]), corrected_sxy);
-        assert_eq!(
-            corrected_sxy,
-            stripped.sx(x, &plan).eval(y) + gate0_correction(x, y)
-        );
-        assert_eq!(
-            corrected_sxy,
-            stripped.sy(y, &plan).eval(x) + gate0_correction(x, y)
-        );
+        assert_eq!(corrected_sxy, stripped.sx(x, &plan).eval(y));
+        assert_eq!(corrected_sxy, stripped.sy(y, &plan).eval(x));
     }
 
     #[test]
@@ -512,20 +509,19 @@ mod tests {
 
             let stage_mask = StageMask::<R>::new(skip, num).unwrap();
 
-            let generic = into_circuit_object::<_, _, R>(
+            let generic = mask_circuit_object(
                 StageMask::<R>::new(skip, num).unwrap()
-            ).unwrap();
+            );
             let plan = floor_planner::floor_plan(generic.segment_records());
 
             let stripped = crate::staging::bonding::Stripped::new(generic);
 
             let check = |x: Fp, y: Fp| {
-                let correction = gate0_correction(x, y);
-                let sxy = stripped.sxy(x, y, &plan) + correction;
-                let sx_eval = stripped.sx(x, &plan).eval(y) + correction;
-                let sy_eval = stripped.sy(y, &plan).eval(x) + correction;
+                let sxy = stripped.sxy(x, y, &plan);
+                let sx_eval = stripped.sx(x, &plan).eval(y);
+                let sy_eval = stripped.sy(y, &plan).eval(x);
 
-                // Internal consistency of the Circuit impl (with correction)
+                // Internal consistency of the RawCircuit impl (with correction)
                 prop_assert_eq!(sy_eval, sxy);
                 prop_assert_eq!(sx_eval, sxy);
                 // Match against the hand-written CircuitObject
@@ -628,7 +624,7 @@ mod tests {
                 let (mul_from_method, linear_from_method) =
                     <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
 
-                let metrics = metrics::eval::<Fp, _>(&stage_mask).unwrap();
+                let metrics = metrics::eval_raw::<Fp, _>(&stage_mask).unwrap();
 
                 assert_eq!(
                     mul_from_method, metrics.num_gates,

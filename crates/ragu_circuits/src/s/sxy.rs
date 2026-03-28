@@ -57,16 +57,10 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-use ragu_primitives::GadgetExt;
 
-use alloc::vec;
+use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
 
-use crate::{Circuit, DriverScope, floor_planner::ConstraintSegment, polynomials::Rank};
-
-use super::{
-    DriverExt,
-    common::{WireEval, WireEvalSum},
-};
+use super::common::{WireEval, WireEvalSum};
 
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.
 ///
@@ -356,8 +350,8 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 /// - `y`: The evaluation point for the $Y$ variable.
 /// - `floor_plan`: Per-segment absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
-pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
-    circuit: &C,
+pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
+    circuit: &RC,
     x: F,
     y: F,
     floor_plan: &[ConstraintSegment],
@@ -408,18 +402,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         _marker: core::marker::PhantomData,
     };
 
-    // Allocate the ONE gate (gate 0). The registry key constraint is
-    // injected at the registry level, not here.
-    evaluator.mul(|| unreachable!())?;
-
-    let mut outputs = vec![];
-
-    let io = circuit.witness(&mut evaluator, Empty)?.into_output();
-    io.write(&mut evaluator, &mut outputs)?;
-
-    // Enforcing public inputs
-    evaluator.enforce_public_outputs(outputs.iter().map(|output| output.wire()))?;
-    evaluator.enforce_one()?;
+    crate::raw::orchestrate(&mut evaluator, circuit, Empty)?;
 
     // Verify all floor plan segments were consumed and counts match.
     assert_eq!(

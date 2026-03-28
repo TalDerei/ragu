@@ -25,6 +25,7 @@ pub mod horner;
 mod ky;
 mod metrics;
 pub mod polynomials;
+mod raw;
 pub mod registry;
 mod s;
 pub mod staging;
@@ -233,12 +234,26 @@ where
         return Err(Error::GateBoundExceeded { limit: R::n() });
     }
 
-    struct ProcessedCircuit<C> {
-        circuit: C,
+    into_raw_circuit_object(raw::CircuitAdapter(circuit), metrics)
+}
+
+/// Like [`into_circuit_object`] but accepts a [`RawCircuit`](raw::RawCircuit)
+/// directly. Metrics must have been pre-computed and validated by the caller.
+pub(crate) fn into_raw_circuit_object<'a, F, RC, R>(
+    circuit: RC,
+    metrics: metrics::CircuitMetrics,
+) -> Result<Box<dyn CircuitObject<F, R> + 'a>>
+where
+    F: Field,
+    RC: raw::RawCircuit<F> + 'a,
+    R: Rank,
+{
+    struct Processed<RC> {
+        circuit: RC,
         metrics: metrics::CircuitMetrics,
     }
 
-    impl<F: Field, C: Circuit<F>, R: Rank> CircuitObject<F, R> for ProcessedCircuit<C> {
+    impl<F: Field, RC: raw::RawCircuit<F>, R: Rank> CircuitObject<F, R> for Processed<RC> {
         fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F {
             s::sxy::eval::<_, _, R>(&self.circuit, x, y, floor_plan)
                 .expect("should succeed if metrics succeeded")
@@ -265,8 +280,7 @@ where
         }
     }
 
-    let circuit = ProcessedCircuit { circuit, metrics };
-    Ok(Box::new(circuit))
+    Ok(Box::new(Processed { circuit, metrics }))
 }
 
 /// An evaluable bonding object $s(X, Y)$ used to enforce well-formedness

@@ -69,16 +69,15 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-use ragu_primitives::GadgetExt;
 
 use alloc::{vec, vec::Vec};
 use core::cell::{RefCell, RefMut};
 
-use super::DriverExt;
 use crate::{
-    Circuit, DriverScope,
+    DriverScope,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, sparse},
+    raw::RawCircuit,
 };
 
 /// An index identifying a wire in the evaluator.
@@ -662,8 +661,8 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
 ///   [`floor_plan()`](crate::floor_planner::floor_plan). The root segment's
 ///   `num_constraints` determines the initial `current_y = y^{q-1}`
 ///   for reverse Horner iteration.
-pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
-    circuit: &C,
+pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
+    circuit: &RC,
     y: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<sparse::Polynomial<F, R>> {
@@ -723,17 +722,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
                 _marker: core::marker::PhantomData,
             };
 
-            // Allocate the ONE gate (gate 0). The registry key constraint is
-            // injected at the registry level, not here.
-            evaluator.mul(|| unreachable!())?;
-
-            let mut outputs = vec![];
-            let io = circuit.witness(&mut evaluator, Empty)?.into_output();
-            io.write(&mut evaluator, &mut outputs)?;
-
-            // Enforcing public inputs
-            evaluator.enforce_public_outputs(outputs.iter().map(|output| output.wire()))?;
-            evaluator.enforce_one()?;
+            crate::raw::orchestrate(&mut evaluator, circuit, Empty)?;
 
             // Verify all floor plan segments were consumed and counts match.
             assert_eq!(

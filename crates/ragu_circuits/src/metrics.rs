@@ -43,12 +43,12 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-use ragu_primitives::GadgetExt;
 
 use alloc::vec::Vec;
 use core::any::TypeId;
 
 use super::Circuit;
+use super::raw::RawCircuit;
 use super::s::common::{WireEval, WireEvalSum};
 
 /// The structural identity of a routine record.
@@ -542,23 +542,16 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
 
 /// Evaluates the constraint topology of a circuit.
 pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
+    eval_raw(&super::raw::CircuitAdapterRef(circuit))
+}
+
+/// Evaluates the constraint topology of a [`RawCircuit`].
+pub(crate) fn eval_raw<F: FromUniformBytes<64>, RC: RawCircuit<F>>(
+    circuit: &RC,
+) -> Result<CircuitMetrics> {
     let mut collector = Counter::<F>::new();
-    let mut degree_ky = 0usize;
 
-    // ONE gate
-    collector.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
-
-    // Circuit synthesis
-    let io = circuit.witness(&mut collector, Empty)?.into_output();
-    io.write(&mut collector, &mut degree_ky)?;
-
-    // Public output constraints
-    for _ in 0..degree_ky {
-        collector.enforce_zero(|lc| lc)?;
-    }
-
-    // ONE constraint
-    collector.enforce_zero(|lc| lc)?;
+    let result = super::raw::orchestrate(&mut collector, circuit, Empty)?;
 
     let recorded_gates: usize = collector.segments.iter().map(|r| r.num_gates).sum();
     let recorded_constraints: usize = collector.segments.iter().map(|r| r.num_constraints).sum();
@@ -582,7 +575,7 @@ pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<Circu
     Ok(CircuitMetrics {
         num_constraints: collector.num_constraints,
         num_gates: collector.num_gates,
-        degree_ky,
+        degree_ky: result.degree_ky,
         segments: collector.segments,
     })
 }

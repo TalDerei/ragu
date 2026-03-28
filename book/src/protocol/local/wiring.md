@@ -76,16 +76,13 @@ for bonding polynomials.
 
 Thus, we could define the global mask
 
+
 $$
-s_\text{global}(X, Y) = \sum_{i=0}^{4n - 1} (XY)^i - (XY)^{2n} - 1
+s_\text{global}(X, Y) = \sum_{i=0}^{4n - 1} (XY)^i - \left((XY)^{2n} + 1\right)\left((XY)^{2n-1} + 1\right)
 $$
 
-which enforces that every wire _except_ $b_0$ and $d_0$ are
-zero. We must subtract $(XY)^{2n}$ to ensure $b_0$ is not enforced zero,
-as it may be nonzero in a partial trace polynomial, and is constrained to
-equal $1$ anyway by the circuit wiring polynomial. We must also subtract $1$
-to ensure $s(X, 0) = 0$, which leaves $d_0$ free for use as an arbitrary
-blinding factor.
+which enforces that every wire _except_ the special-purpose wires in the 0th
+gate are zero. This leaves $d_0$ free for use as an arbitrary blinding factor.
 
 Given $g = \text{skip\_gates}$ (the starting active gate index) and
 $m = \text{num\_gates}$ (the number of active gates in the stage), we can define
