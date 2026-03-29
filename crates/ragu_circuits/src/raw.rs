@@ -177,6 +177,8 @@ pub(crate) struct Orchestrated {
     pub degree_ky: usize,
 }
 
+/// Runs the circuit witness, writes public outputs, and enforces the ONE
+/// constraint. See [`Orchestrated`] for details on each step.
 pub(crate) fn orchestrate<'dr, 'source: 'dr, F, D, RC>(
     dr: &mut D,
     raw_circuit: &RC,

@@ -55,6 +55,10 @@ impl<R: Rank> StageMask<R> {
         })
     }
 
+    /// Projects the bivariate mask polynomial onto a univariate sparse
+    /// polynomial by evaluating one variable at `p`. Used by both
+    /// `sx` ($S(x, Y)$) and `sy` ($S(X, y)$). Unconstrained wires
+    /// (gate 0 and active-stage gates) are zeroed out.
     fn project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
         let n = R::n();
         let mut view = sparse::View::<F, R, _>::wiring();
@@ -113,10 +117,14 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
         let xy_inv = xy.invert().expect("xy is not zero");
 
+        /// Full wiring polynomial $S(xy)$ over all $4n$ wire slots,
+        /// minus gate 0's four unconstrained wires.
         fn global<F: Field>(xy: F, xy_2n: F, xy_inv: F, n: usize) -> F {
             geosum(xy, n << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
         }
 
+        /// Contribution of the `m` active-stage gates starting at gate `g`.
+        /// Subtracted from [`global`] to zero out unconstrained wires.
         fn notch<F: Field>(xy: F, xy_2n: F, xy_inv: F, g: usize, m: usize) -> F {
             let gsum = geosum(xy, m);
             let xy_g = xy.pow_vartime([g as u64]);
