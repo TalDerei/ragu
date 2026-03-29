@@ -7,7 +7,8 @@
 //! - Circuit checks ([`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)): $k(y) = 1$
 //! - Bonding checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 //!   [`PointsStage`](InternalCircuitIndex::PointsStage),
-//!   `PointsFinalStaged`, and all `Bridge*` variants): $k(y) = 0$
+//!   `PointsFinalStaged`, all `Bridge*` variants, and
+//!   [`Loading`](InternalCircuitIndex::Loading)): $k(y) = 0$
 
 use alloc::borrow::Cow;
 
@@ -27,6 +28,18 @@ pub trait Processor<Rx> {
 
     /// Process a bonding claim - aggregates rxs from all proofs.
     fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
+
+    /// Process a bonding claim where each per-proof term is a sum of
+    /// multiple component rxs.
+    ///
+    /// Each inner iterator yields the component rxs for one proof (summed
+    /// together). The per-proof sums are then Horner-folded across proofs
+    /// into a single bonding claim, preserving batching.
+    fn bonding_summed<I: Iterator<Item = Rx>>(
+        &mut self,
+        id: InternalCircuitIndex,
+        per_proof_rxs: impl Iterator<Item = I>,
+    ) -> Result<()>;
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
@@ -52,6 +65,20 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
         self.bonding_impl(circuit_id, folded);
         Ok(())
     }
+
+    fn bonding_summed<I: Iterator<Item = &'rx sparse::Polynomial<F, R>>>(
+        &mut self,
+        id: InternalCircuitIndex,
+        per_proof_rxs: impl Iterator<Item = I>,
+    ) -> Result<()> {
+        let circuit_id = id.circuit_index();
+        let sums: alloc::vec::Vec<_> = per_proof_rxs
+            .map(|rxs| sum_polynomials(rxs).into_owned())
+            .collect();
+        let folded = Cow::Owned(sparse::Polynomial::fold(&sums, self.z));
+        self.bonding_impl(circuit_id, folded);
+        Ok(())
+    }
 }
 
 /// Build nested claims in unified interleaved order from a source.
@@ -61,7 +88,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
 ///    for each step, interleaved across proofs
 /// 2. Bonding checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 ///    [`PointsStage`](InternalCircuitIndex::PointsStage), `PointsFinalStaged`,
-///    and all `Bridge*` variants
+///    all `Bridge*` variants, and [`Loading`](InternalCircuitIndex::Loading)
 ///
 /// This ordering must match the ky_elements ordering from [`ky_values`].
 pub fn build<S, P>(source: &S, processor: &mut P) -> Result<()>
@@ -116,6 +143,18 @@ where
             }
             BridgeEval => {
                 processor.bonding(id, source.rx(RxIndex::BridgeEval))?;
+            }
+            Loading => {
+                let per_proof = source
+                    .rx(RxIndex::PointsStage)
+                    .zip(source.rx(RxIndex::BridgePreamble))
+                    .zip(source.rx(RxIndex::BridgeSPrime))
+                    .zip(source.rx(RxIndex::BridgeInnerError))
+                    .zip(source.rx(RxIndex::BridgeAB))
+                    .zip(source.rx(RxIndex::BridgeQuery))
+                    .zip(source.rx(RxIndex::BridgeF))
+                    .map(|((((((a, b), c), d), e), f), g)| [a, b, c, d, e, f, g].into_iter());
+                processor.bonding_summed(id, per_proof)?;
             }
         }
     }

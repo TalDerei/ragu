@@ -85,6 +85,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 beta: effective_beta,
             };
 
+            // This accumulation order must match the loading circuit in
+            // `nested::circuits::loading::Loading`.
             for proof in [left, right] {
                 for &id in &RxIndex::ALL {
                     let t = &proof[id];

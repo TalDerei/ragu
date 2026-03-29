@@ -58,11 +58,13 @@ pub enum InternalCircuitIndex {
     BridgeF,
     /// Bridge `eval` stage mask.
     BridgeEval,
+    /// Loading circuit bonding polynomial.
+    Loading,
 }
 
 /// The number of internal circuits registered by [`register_all`],
 /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 11;
+pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 12;
 
 impl InternalCircuitIndex {
     /// All variants in canonical iteration order.
@@ -94,6 +96,7 @@ impl InternalCircuitIndex {
         super::push(&mut slots, &mut c, Self::BridgeQuery);
         super::push(&mut slots, &mut c, Self::BridgeF);
         super::push(&mut slots, &mut c, Self::BridgeEval);
+        super::push(&mut slots, &mut c, Self::Loading);
         assert!(c == NUM_INTERNAL_CIRCUITS);
         slots
     }
@@ -178,6 +181,7 @@ impl RxIndex {
     }
 }
 
+pub mod circuits;
 pub mod claims;
 
 pub mod stages;
@@ -233,6 +237,10 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
             BridgeEval => {
                 registry.register_bonding(stages::eval::Stage::<C::HostCurve, R>::mask()?)
             }
+            Loading => registry.register_bonding(
+                MultiStage::new(circuits::loading::Loading::<C::HostCurve, R>::new())
+                    .into_bonding_object()?,
+            ),
         };
     }
 

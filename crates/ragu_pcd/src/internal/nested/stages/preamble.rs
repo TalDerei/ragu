@@ -136,6 +136,26 @@ pub struct ChildOutput<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 }
 
 impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildOutput<'dr, D, C> {
+    /// Returns the point commitment for the given [`RxIndex`](crate::internal::native::RxIndex).
+    ///
+    /// The field order matches [`RxIndex::ALL`](crate::internal::native::RxIndex::ALL).
+    pub(crate) fn rx(&self, idx: crate::internal::native::RxIndex) -> &Point<'dr, D, C> {
+        use crate::internal::native::RxIndex;
+        match idx {
+            RxIndex::Application => &self.application,
+            RxIndex::Hashes1 => &self.hashes_1,
+            RxIndex::Hashes2 => &self.hashes_2,
+            RxIndex::InnerCollapse => &self.inner_collapse,
+            RxIndex::OuterCollapse => &self.outer_collapse,
+            RxIndex::ComputeV => &self.compute_v,
+            RxIndex::Preamble => &self.preamble,
+            RxIndex::InnerError => &self.inner_error,
+            RxIndex::OuterError => &self.outer_error,
+            RxIndex::Query => &self.query_rx,
+            RxIndex::Eval => &self.eval,
+        }
+    }
+
     fn alloc(dr: &mut D, witness: DriverValue<D, &ChildWitness<C>>) -> Result<Self> {
         Ok(ChildOutput {
             application: Point::alloc(dr, witness.as_ref().map(|w| w.application))?,
