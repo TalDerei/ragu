@@ -113,6 +113,9 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Copying<C, R> {
         child
             .registry_xy
             .enforce_equal(dr, &query_out.registry_xy)?;
+        child
+            .preamble
+            .enforce_equal(dr, &inner_error_out.stashed_native_preamble)?;
 
         Ok(WithAux::new((), D::unit()))
     }

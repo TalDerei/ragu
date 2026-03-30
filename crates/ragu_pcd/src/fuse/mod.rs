@@ -81,7 +81,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
 
         let (inner_error, inner_error_witness, claims) =
-            self.inner_error_terms(rng, &native_registry, &y, &z, &source)?;
+            self.inner_error_terms(rng, &native_registry, &y, &z, &source, &preamble)?;
         let inner_error_commitment = Point::constant(&mut dr, inner_error.bridge.commitment)?;
         inner_error_commitment.write(&mut dr, &mut transcript)?;
 

@@ -141,6 +141,14 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Loading<C, R> {
         walker.enforce_equal(dr, &s_prime_out.registry_wx0)?;
         walker.enforce_equal(dr, &s_prime_out.registry_wx1)?;
         walker.enforce_equal(dr, &inner_error_out.registry_wy)?;
+
+        // Bind the stashed native_preamble duplicate in inner_error to the
+        // preamble's native_preamble. This allows the Copying circuit to check
+        // child.preamble against inner_error positions (avoiding the preamble
+        // wire position collision).
+        preamble_out
+            .native_preamble
+            .enforce_equal(dr, &inner_error_out.stashed_native_preamble)?;
         walker.enforce_equal(dr, &ab_out.a)?;
         walker.enforce_equal(dr, &ab_out.b)?;
         walker.enforce_equal(dr, &query_out.registry_xy)?;

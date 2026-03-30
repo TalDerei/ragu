@@ -118,7 +118,7 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
             | ChildBridgeOuterError(side)
             | ChildBridgeAB(side)
             | ChildBridgeQuery(side)
-            | ChildBridgeEval(side) => &self.child_bridges(side).rx(idx),
+            | ChildBridgeEval(side) => self.child_bridges(side).rx(idx),
         }
     }
 }
@@ -218,6 +218,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 &stages::inner_error::Witness {
                     native_inner_error: host_commitment,
                     registry_wy: host_commitment,
+                    stashed_native_preamble: host_commitment,
                 },
             )
             .expect("trivial inner_error bridge rx"),
