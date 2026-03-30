@@ -27,7 +27,12 @@ pub trait Processor<Rx> {
     fn internal_circuit(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
 
     /// Process a bonding claim - aggregates rxs from all proofs.
-    fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
+    ///
+    /// Delegates to [`bonding_summed`](Self::bonding_summed) by wrapping each
+    /// rx in a single-element iterator.
+    fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()> {
+        self.bonding_summed(id, rxs.map(core::iter::once))
+    }
 
     /// Process a bonding claim where each per-proof term is a sum of
     /// multiple component rxs.
@@ -53,17 +58,6 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
         let circuit_id = id.circuit_index();
         let rx = sum_polynomials(rxs);
         self.circuit_impl(circuit_id, rx);
-    }
-
-    fn bonding(
-        &mut self,
-        id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
-    ) -> Result<()> {
-        let circuit_id = id.circuit_index();
-        let folded = self.fold_bonding_polys(rxs);
-        self.bonding_impl(circuit_id, folded);
-        Ok(())
     }
 
     fn bonding_summed<I: Iterator<Item = &'rx sparse::Polynomial<F, R>>>(
