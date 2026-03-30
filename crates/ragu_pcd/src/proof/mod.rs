@@ -126,8 +126,8 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
 impl<C: Cycle, R: Rank> Proof<C, R> {
     fn child_bridges(&self, side: Side) -> &ChildBridges<C, R> {
         match side {
-            Side::Left => &self.circuits.left_child_bridges,
-            Side::Right => &self.circuits.right_child_bridges,
+            Side::Left => &self.preamble.left_child_bridges,
+            Side::Right => &self.preamble.right_child_bridges,
         }
     }
 
@@ -277,6 +277,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             preamble: Preamble {
                 native: trivial_rx_triple(),
                 bridge: trivial_bridge.clone(),
+                left_child_bridges: ChildBridges {
+                    inner_error: inner_error_bridge.rx.clone(),
+                    outer_error: outer_error_bridge.rx.clone(),
+                    ab: ab_bridge.rx.clone(),
+                    query: query_bridge.rx.clone(),
+                    eval: eval_bridge.rx.clone(),
+                },
+                right_child_bridges: ChildBridges {
+                    inner_error: inner_error_bridge.rx.clone(),
+                    outer_error: outer_error_bridge.rx.clone(),
+                    ab: ab_bridge.rx.clone(),
+                    query: query_bridge.rx.clone(),
+                    eval: eval_bridge.rx.clone(),
+                },
             },
             s_prime: SPrime {
                 native: NativeSPrime {
@@ -347,20 +361,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 step_rxs: vec![ones_nested.clone(); NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()],
                 endoscalar_rx: ones_nested.clone(),
                 points_rx: ones_nested,
-                left_child_bridges: ChildBridges {
-                    inner_error: inner_error_bridge.clone(),
-                    outer_error: outer_error_bridge.clone(),
-                    ab: ab_bridge.clone(),
-                    query: query_bridge.clone(),
-                    eval: eval_bridge.clone(),
-                },
-                right_child_bridges: ChildBridges {
-                    inner_error: inner_error_bridge,
-                    outer_error: outer_error_bridge,
-                    ab: ab_bridge,
-                    query: query_bridge,
-                    eval: eval_bridge,
-                },
             },
         }
     }

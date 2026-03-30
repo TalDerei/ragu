@@ -167,8 +167,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let circuits = self.compute_internal_circuits(
             rng,
-            &left,
-            &right,
             &preamble,
             &s_prime,
             &outer_error,

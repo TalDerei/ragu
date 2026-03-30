@@ -51,6 +51,8 @@ impl<C: Cycle, R: Rank> Bridge<C, R> {
 pub(crate) struct Preamble<C: Cycle, R: Rank> {
     pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
+    pub(crate) left_child_bridges: ChildBridges<C, R>,
+    pub(crate) right_child_bridges: ChildBridges<C, R>,
 }
 
 #[derive(Clone)]
@@ -211,16 +213,16 @@ impl<C: Cycle> Challenges<C> {
 
 /// Bridge rx polynomials preserved from a child proof for the copying circuit.
 ///
-/// Each field pairs a scalar-field rx polynomial with its nested-curve
-/// commitment. These are products of the existing bridge stage types,
-/// computed from the child proof's native commitments.
+/// Each field is a scalar-field rx polynomial from the corresponding bridge
+/// stage of the child proof. Only the rx polynomial is stored; the nested-curve
+/// commitment is derivable from it and never needed after construction.
 #[derive(Clone)]
 pub(crate) struct ChildBridges<C: Cycle, R: Rank> {
-    pub(crate) inner_error: Bridge<C, R>,
-    pub(crate) outer_error: Bridge<C, R>,
-    pub(crate) ab: Bridge<C, R>,
-    pub(crate) query: Bridge<C, R>,
-    pub(crate) eval: Bridge<C, R>,
+    pub(crate) inner_error: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) outer_error: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) ab: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) query: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) eval: sparse::Polynomial<C::ScalarField, R>,
 }
 
 impl<C: Cycle, R: Rank> ChildBridges<C, R> {
@@ -231,11 +233,11 @@ impl<C: Cycle, R: Rank> ChildBridges<C, R> {
     ) -> &sparse::Polynomial<C::ScalarField, R> {
         use crate::internal::nested::RxIndex::*;
         match idx {
-            ChildBridgeInnerError(_) => &self.inner_error.rx,
-            ChildBridgeOuterError(_) => &self.outer_error.rx,
-            ChildBridgeAB(_) => &self.ab.rx,
-            ChildBridgeQuery(_) => &self.query.rx,
-            ChildBridgeEval(_) => &self.eval.rx,
+            ChildBridgeInnerError(_) => &self.inner_error,
+            ChildBridgeOuterError(_) => &self.outer_error,
+            ChildBridgeAB(_) => &self.ab,
+            ChildBridgeQuery(_) => &self.query,
+            ChildBridgeEval(_) => &self.eval,
             _ => unreachable!(),
         }
     }
@@ -260,6 +262,4 @@ pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
     pub(crate) step_rxs: Vec<sparse::Polynomial<C::ScalarField, R>>,
     pub(crate) endoscalar_rx: sparse::Polynomial<C::ScalarField, R>,
     pub(crate) points_rx: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) left_child_bridges: ChildBridges<C, R>,
-    pub(crate) right_child_bridges: ChildBridges<C, R>,
 }
