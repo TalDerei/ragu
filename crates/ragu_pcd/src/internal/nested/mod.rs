@@ -11,6 +11,7 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
+use crate::internal::Side;
 use crate::internal::endoscalar;
 
 /// Number of curve points accumulated during `compute_p` for nested field
@@ -60,11 +61,13 @@ pub enum InternalCircuitIndex {
     BridgeEval,
     /// Loading circuit bonding polynomial.
     Loading,
+    /// Copying circuit bonding polynomial for a given child proof side.
+    Copying(Side),
 }
 
 /// The number of internal circuits registered by [`register_all`],
 /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 12;
+pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 14;
 
 impl InternalCircuitIndex {
     /// All variants in canonical iteration order.
@@ -97,6 +100,8 @@ impl InternalCircuitIndex {
         super::push(&mut slots, &mut c, Self::BridgeF);
         super::push(&mut slots, &mut c, Self::BridgeEval);
         super::push(&mut slots, &mut c, Self::Loading);
+        super::push(&mut slots, &mut c, Self::Copying(Side::Left));
+        super::push(&mut slots, &mut c, Self::Copying(Side::Right));
         assert!(c == NUM_INTERNAL_CIRCUITS);
         slots
     }
@@ -143,11 +148,21 @@ pub enum RxIndex {
     BridgeF,
     /// Bridge `eval` rx polynomial.
     BridgeEval,
+    /// Child proof's `inner_error` bridge rx polynomial for a given side.
+    ChildBridgeInnerError(Side),
+    /// Child proof's `outer_error` bridge rx polynomial for a given side.
+    ChildBridgeOuterError(Side),
+    /// Child proof's `ab` bridge rx polynomial for a given side.
+    ChildBridgeAB(Side),
+    /// Child proof's `query` bridge rx polynomial for a given side.
+    ChildBridgeQuery(Side),
+    /// Child proof's `eval` bridge rx polynomial for a given side.
+    ChildBridgeEval(Side),
 }
 
 /// The number of rx components in the nested field,
 /// equal to the number of entries in [`RxIndex::ALL`].
-pub const NUM_RX_COMPONENTS: usize = NUM_ENDOSCALING_STEPS + 10;
+pub const NUM_RX_COMPONENTS: usize = NUM_ENDOSCALING_STEPS + 20;
 
 impl RxIndex {
     /// All variants in canonical order (circuits, then stages).
@@ -176,6 +191,16 @@ impl RxIndex {
         super::push(&mut slots, &mut c, Self::BridgeQuery);
         super::push(&mut slots, &mut c, Self::BridgeF);
         super::push(&mut slots, &mut c, Self::BridgeEval);
+        super::push(&mut slots, &mut c, Self::ChildBridgeInnerError(Side::Left));
+        super::push(&mut slots, &mut c, Self::ChildBridgeInnerError(Side::Right));
+        super::push(&mut slots, &mut c, Self::ChildBridgeOuterError(Side::Left));
+        super::push(&mut slots, &mut c, Self::ChildBridgeOuterError(Side::Right));
+        super::push(&mut slots, &mut c, Self::ChildBridgeAB(Side::Left));
+        super::push(&mut slots, &mut c, Self::ChildBridgeAB(Side::Right));
+        super::push(&mut slots, &mut c, Self::ChildBridgeQuery(Side::Left));
+        super::push(&mut slots, &mut c, Self::ChildBridgeQuery(Side::Right));
+        super::push(&mut slots, &mut c, Self::ChildBridgeEval(Side::Left));
+        super::push(&mut slots, &mut c, Self::ChildBridgeEval(Side::Right));
         assert!(c == NUM_RX_COMPONENTS);
         slots
     }
@@ -239,6 +264,10 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
             }
             Loading => registry.register_bonding(
                 MultiStage::new(circuits::loading::Loading::<C::HostCurve, R>::new())
+                    .into_bonding_object()?,
+            ),
+            Copying(side) => registry.register_bonding(
+                MultiStage::new(circuits::copying::Copying::<C::HostCurve, R>::new(side))
                     .into_bonding_object()?,
             ),
         };

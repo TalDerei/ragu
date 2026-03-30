@@ -156,6 +156,17 @@ where
                     .map(|((((((a, b), c), d), e), f), g)| [a, b, c, d, e, f, g].into_iter());
                 processor.bonding_summed(id, per_proof)?;
             }
+            Copying(side) => {
+                let per_proof = source
+                    .rx(RxIndex::BridgePreamble)
+                    .zip(source.rx(RxIndex::ChildBridgeInnerError(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeOuterError(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeAB(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeQuery(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeEval(side)))
+                    .map(|(((((a, b), c), d), e), f)| [a, b, c, d, e, f].into_iter());
+                processor.bonding_summed(id, per_proof)?;
+            }
         }
     }
 

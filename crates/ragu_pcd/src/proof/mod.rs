@@ -14,12 +14,14 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
+    staging::StageExt,
 };
 use ragu_primitives::vec::Len;
 
 use alloc::vec;
 
 use crate::header::Header;
+use crate::internal::Side;
 use crate::internal::endoscalar::NumStepsLen;
 use crate::internal::native::{RxComponent, RxIndex};
 use crate::internal::nested;
@@ -112,11 +114,23 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
             BridgeQuery => &self.query.bridge.rx,
             BridgeF => &self.f.bridge.rx,
             BridgeEval => &self.eval.bridge.rx,
+            ChildBridgeInnerError(side)
+            | ChildBridgeOuterError(side)
+            | ChildBridgeAB(side)
+            | ChildBridgeQuery(side)
+            | ChildBridgeEval(side) => &self.child_bridges(side).rx(idx),
         }
     }
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
+    fn child_bridges(&self, side: Side) -> &ChildBridges<C, R> {
+        match side {
+            Side::Left => &self.circuits.left_child_bridges,
+            Side::Right => &self.circuits.right_child_bridges,
+        }
+    }
+
     /// Augment a recursive proof with some data, described by a [`Header`].
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data) -> Pcd<C, R, H> {
         Pcd { proof: self, data }
@@ -191,6 +205,62 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             commitment: bridge_commitment,
         };
 
+        // Properly formed bridge rx polynomials for stages referenced by the
+        // Copying circuit. Unlike the `trivial_bridge` placeholder (which has
+        // values at gate 0), these place values at the correct gate positions
+        // so that when this proof is a child in a fuse step, the Copying
+        // circuit's cross-stage enforce_equal constraints are satisfied.
+        use crate::internal::nested::stages;
+        let make_bridge = |rx| Bridge::commit(self.params, rx);
+        let inner_error_bridge = make_bridge(
+            <stages::inner_error::Stage<C::HostCurve, R> as StageExt<C::ScalarField, R>>::rx(
+                C::ScalarField::ONE,
+                &stages::inner_error::Witness {
+                    native_inner_error: host_commitment,
+                    registry_wy: host_commitment,
+                },
+            )
+            .expect("trivial inner_error bridge rx"),
+        );
+        let outer_error_bridge = make_bridge(
+            <stages::outer_error::Stage<C::HostCurve, R> as StageExt<C::ScalarField, R>>::rx(
+                C::ScalarField::ONE,
+                &stages::outer_error::Witness {
+                    native_outer_error: host_commitment,
+                },
+            )
+            .expect("trivial outer_error bridge rx"),
+        );
+        let ab_bridge = make_bridge(
+            <stages::ab::Stage<C::HostCurve, R> as StageExt<C::ScalarField, R>>::rx(
+                C::ScalarField::ONE,
+                &stages::ab::Witness {
+                    a: host_commitment,
+                    b: host_commitment,
+                },
+            )
+            .expect("trivial ab bridge rx"),
+        );
+        let query_bridge = make_bridge(
+            <stages::query::Stage<C::HostCurve, R> as StageExt<C::ScalarField, R>>::rx(
+                C::ScalarField::ONE,
+                &stages::query::Witness {
+                    native_query: host_commitment,
+                    registry_xy: registry_xy_commitment,
+                },
+            )
+            .expect("trivial query bridge rx"),
+        );
+        let eval_bridge = make_bridge(
+            <stages::eval::Stage<C::HostCurve, R> as StageExt<C::ScalarField, R>>::rx(
+                C::ScalarField::ONE,
+                &stages::eval::Witness {
+                    native_eval: host_commitment,
+                },
+            )
+            .expect("trivial eval bridge rx"),
+        );
+
         let trivial_rx_triple = || RxTriple {
             rx: ones_host.clone(),
             commitment: host_commitment,
@@ -224,11 +294,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     registry_wy_commitment: host_commitment,
                     rx_triple: trivial_rx_triple(),
                 },
-                bridge: trivial_bridge.clone(),
+                bridge: inner_error_bridge.clone(),
             },
             outer_error: OuterError {
                 native: trivial_rx_triple(),
-                bridge: trivial_bridge.clone(),
+                bridge: outer_error_bridge.clone(),
             },
             ab: AB {
                 native: NativeAB {
@@ -238,7 +308,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     b_commitment: host_commitment,
                     c,
                 },
-                bridge: trivial_bridge.clone(),
+                bridge: ab_bridge.clone(),
             },
             query: Query {
                 native: NativeQuery {
@@ -246,7 +316,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     registry_xy_commitment,
                     rx_triple: trivial_rx_triple(),
                 },
-                bridge: trivial_bridge.clone(),
+                bridge: query_bridge.clone(),
             },
             f: F {
                 native: NativeF {
@@ -257,7 +327,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             eval: Eval {
                 native: trivial_rx_triple(),
-                bridge: trivial_bridge,
+                bridge: eval_bridge.clone(),
             },
             p: P {
                 native: NativeP {
@@ -276,6 +346,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 step_rxs: vec![ones_nested.clone(); NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()],
                 endoscalar_rx: ones_nested.clone(),
                 points_rx: ones_nested,
+                left_child_bridges: ChildBridges {
+                    inner_error: inner_error_bridge.clone(),
+                    outer_error: outer_error_bridge.clone(),
+                    ab: ab_bridge.clone(),
+                    query: query_bridge.clone(),
+                    eval: eval_bridge.clone(),
+                },
+                right_child_bridges: ChildBridges {
+                    inner_error: inner_error_bridge,
+                    outer_error: outer_error_bridge,
+                    ab: ab_bridge,
+                    query: query_bridge,
+                    eval: eval_bridge,
+                },
             },
         }
     }

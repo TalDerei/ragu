@@ -35,6 +35,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     pub(super) fn compute_internal_circuits<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
+        left: &crate::Proof<C, R>,
+        right: &crate::Proof<C, R>,
         preamble: &proof::Preamble<C, R>,
         s_prime: &proof::SPrime<C, R>,
         outer_error: &proof::OuterError<C, R>,
@@ -220,6 +222,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             step_rxs.push(step_rx);
         }
 
+        // Preserve child bridge rx polynomials for the copying circuit.
+        let child_bridges = |child: &crate::Proof<C, R>| proof::ChildBridges {
+            inner_error: child.inner_error.bridge.clone(),
+            outer_error: child.outer_error.bridge.clone(),
+            ab: child.ab.bridge.clone(),
+            query: child.query.bridge.clone(),
+            eval: child.eval.bridge.clone(),
+        };
+
         Ok(proof::InternalCircuits {
             hashes_1: proof::RxTriple {
                 rx: hashes_1_rx,
@@ -244,6 +255,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             step_rxs,
             endoscalar_rx,
             points_rx,
+            left_child_bridges: child_bridges(left),
+            right_child_bridges: child_bridges(right),
         })
     }
 }
