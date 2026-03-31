@@ -42,12 +42,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         );
 
         let child_bridges = |child: &Proof<C, R>| proof::ChildBridges {
-            inner_error: child.inner_error.bridge.rx.clone(),
-            outer_error: child.outer_error.bridge.rx.clone(),
-            ab: child.ab.bridge.rx.clone(),
-            query: child.query.bridge.rx.clone(),
-            eval: child.eval.bridge.rx.clone(),
-            points: child.circuits.points_rx.clone(),
+            inner_error: child.inner_error.bridge.clone(),
+            outer_error: child.outer_error.bridge.clone(),
+            ab: child.ab.bridge.clone(),
+            query: child.query.bridge.clone(),
+            eval: child.eval.bridge.clone(),
+            points: proof::Bridge::commit(self.params, child.circuits.points_rx.clone()),
         };
 
         Ok((

@@ -218,12 +218,12 @@ impl<C: Cycle> Challenges<C> {
 /// commitment is derivable from it and never needed after construction.
 #[derive(Clone)]
 pub(crate) struct ChildBridges<C: Cycle, R: Rank> {
-    pub(crate) inner_error: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) outer_error: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) ab: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) query: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) eval: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) points: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) inner_error: Bridge<C, R>,
+    pub(crate) outer_error: Bridge<C, R>,
+    pub(crate) ab: Bridge<C, R>,
+    pub(crate) query: Bridge<C, R>,
+    pub(crate) eval: Bridge<C, R>,
+    pub(crate) points: Bridge<C, R>,
 }
 
 impl<C: Cycle, R: Rank> ChildBridges<C, R> {
@@ -234,12 +234,12 @@ impl<C: Cycle, R: Rank> ChildBridges<C, R> {
     ) -> &sparse::Polynomial<C::ScalarField, R> {
         use crate::internal::nested::RxIndex::*;
         match idx {
-            ChildBridgeInnerError(_) => &self.inner_error,
-            ChildBridgeOuterError(_) => &self.outer_error,
-            ChildBridgeAB(_) => &self.ab,
-            ChildBridgeQuery(_) => &self.query,
-            ChildBridgeEval(_) => &self.eval,
-            ChildPointsStage(_) => &self.points,
+            ChildBridgeInnerError(_) => &self.inner_error.rx,
+            ChildBridgeOuterError(_) => &self.outer_error.rx,
+            ChildBridgeAB(_) => &self.ab.rx,
+            ChildBridgeQuery(_) => &self.query.rx,
+            ChildBridgeEval(_) => &self.eval.rx,
+            ChildPointsStage(_) => &self.points.rx,
             _ => unreachable!(),
         }
     }
