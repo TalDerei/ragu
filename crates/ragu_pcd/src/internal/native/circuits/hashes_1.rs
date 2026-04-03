@@ -85,7 +85,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Element, GadgetExt,
+    Element, GadgetExt, Point,
     io::Write,
     vec::{ConstLen, FixedVec},
 };
@@ -114,6 +114,10 @@ pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEAD
     /// The unified instance shared across internal circuits.
     #[ragu(gadget)]
     pub unified: unified::Output<'dr, D, C>,
+    /// NestedCurve commitment to the current proof's `points_rx` polynomial.
+    /// Position must match the Horner order in `unified_ky_values`.
+    #[ragu(gadget)]
+    pub points_commitment: Point<'dr, D, C::NestedCurve>,
     /// The left child proof's output header.
     #[ragu(gadget)]
     pub left_header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>,
@@ -164,6 +168,9 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_rev
     /// The unified instance containing expected challenge values and
     /// accumulated coverage from prior circuits.
     pub unified: unified::Instance<C>,
+
+    /// NestedCurve commitment to the current proof's `points_rx` polynomial.
+    pub points_commitment: C::NestedCurve,
 
     /// Witness for the [`preamble`](super::super::stages::preamble) stage
     /// (unenforced).
@@ -228,6 +235,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             .circuit_id
             .enforce_root_of_unity(dr, self.log2_circuits)?;
 
+        let points_commitment = Point::alloc(
+            dr,
+            witness.as_ref().map(|w| w.points_commitment),
+        )?;
+
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Create a transcript for all challenge derivations
@@ -277,9 +289,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         // headers.
         let (unified, updated) = unified_output.finish_no_suffix(dr)?;
         let output = Output {
+            unified,
+            points_commitment,
             left_header: preamble.left.output_header,
             right_header: preamble.right.output_header,
-            unified,
         };
 
         let zero = Element::zero(dr);
