@@ -61,15 +61,8 @@ pub(crate) struct SPrime<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeInnerError<C: Cycle, R: Rank> {
-    pub(crate) registry_wy_poly: sparse::Polynomial<C::CircuitField, R>,
-    pub(crate) registry_wy_commitment: C::HostCurve,
-    pub(crate) rx_triple: RxTriple<C, R>,
-}
-
-#[derive(Clone)]
 pub(crate) struct InnerError<C: Cycle, R: Rank> {
-    pub(crate) native: NativeInnerError<C, R>,
+    pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 

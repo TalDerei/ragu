@@ -21,7 +21,7 @@ use ragu_circuits::{
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar, vec::Len};
 
-use super::{NativeF, NativeSPrime};
+use super::{NativeF, NativeSPrime, RegistryWy};
 use crate::internal::endoscalar::{
     EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
     PointsWitness,
@@ -57,7 +57,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
-        inner_error: &proof::InnerError<C, R>,
+        registry_wy: &RegistryWy<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
         f: &NativeF<C, R>,
@@ -102,18 +102,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 acc.acc(&proof.p.native.poly, proof.p.native.commitment);
             }
 
-            acc.acc(
-                &s_prime.registry_wx0_poly,
-                s_prime.registry_wx0_commitment,
-            );
-            acc.acc(
-                &s_prime.registry_wx1_poly,
-                s_prime.registry_wx1_commitment,
-            );
-            acc.acc(
-                &inner_error.native.registry_wy_poly,
-                inner_error.native.registry_wy_commitment,
-            );
+            acc.acc(&s_prime.registry_wx0_poly, s_prime.registry_wx0_commitment);
+            acc.acc(&s_prime.registry_wx1_poly, s_prime.registry_wx1_commitment);
+            acc.acc(&registry_wy.poly, registry_wy.commitment);
             acc.acc(&ab.native.a_poly, ab.native.a_commitment);
             acc.acc(&ab.native.b_poly, ab.native.b_commitment);
             acc.acc(

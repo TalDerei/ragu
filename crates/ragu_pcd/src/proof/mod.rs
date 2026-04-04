@@ -82,7 +82,7 @@ impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
         use RxIndex::*;
         match idx {
             Preamble => &self.preamble.native,
-            InnerError => &self.inner_error.native.rx_triple,
+            InnerError => &self.inner_error.native,
             OuterError => &self.outer_error.native,
             Query => &self.query.native.rx_triple,
             Eval => &self.eval.native,
@@ -211,11 +211,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 bridge: trivial_bridge.clone(),
             },
             inner_error: InnerError {
-                native: NativeInnerError {
-                    registry_wy_poly: ones_host.clone(),
-                    registry_wy_commitment: host_commitment,
-                    rx_triple: trivial_rx_triple(),
-                },
+                native: trivial_rx_triple(),
                 bridge: trivial_bridge.clone(),
             },
             outer_error: OuterError {

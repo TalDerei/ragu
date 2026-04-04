@@ -20,6 +20,7 @@ use crate::{
     proof,
 };
 
+use super::RegistryWy;
 use super::claims::{FuseBuilder, FuseProofSource};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -34,11 +35,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         proof::InnerError<C, R>,
         native::stages::inner_error::Witness<C, native::RevdotParameters>,
         FuseBuilder<'_, 'rx, C::CircuitField, R>,
+        RegistryWy<C, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let (native_inner_error, inner_error_witness, builder) =
+        let (rx_triple, registry_wy, inner_error_witness, builder) =
             self.compute_native_inner_error(rng, native_registry, y, z, source)?;
 
         let bridge = proof::Bridge::commit(
@@ -46,19 +48,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested::stages::inner_error::Stage::<C::HostCurve, R>::rx(
                 C::ScalarField::random(&mut *rng),
                 &nested::stages::inner_error::Witness {
-                    native_inner_error: native_inner_error.rx_triple.commitment,
-                    registry_wy: native_inner_error.registry_wy_commitment,
+                    native_inner_error: rx_triple.commitment,
+                    registry_wy: registry_wy.commitment,
                 },
             )?,
         );
 
         Ok((
             proof::InnerError {
-                native: native_inner_error,
+                native: rx_triple,
                 bridge,
             },
             inner_error_witness,
             builder,
+            registry_wy,
         ))
     }
 
@@ -70,7 +73,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         z: &Element<'dr, D>,
         source: &FuseProofSource<'rx, C, R>,
     ) -> Result<(
-        proof::NativeInnerError<C, R>,
+        proof::RxTriple<C, R>,
+        RegistryWy<C, R>,
         native::stages::inner_error::Witness<C, native::RevdotParameters>,
         FuseBuilder<'_, 'rx, C::CircuitField, R>,
     )>
@@ -104,13 +108,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ]);
 
         Ok((
-            proof::NativeInnerError {
-                registry_wy_poly,
-                registry_wy_commitment,
-                rx_triple: proof::RxTriple {
-                    rx: native_rx,
-                    commitment: native_commitment,
-                },
+            proof::RxTriple {
+                rx: native_rx,
+                commitment: native_commitment,
+            },
+            RegistryWy {
+                poly: registry_wy_poly,
+                commitment: registry_wy_commitment,
             },
             inner_error_witness,
             builder,

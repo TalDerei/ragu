@@ -34,6 +34,12 @@ struct NativeF<C: Cycle, R: Rank> {
     commitment: C::HostCurve,
 }
 
+/// Ephemeral $m(w, X, y)$ registry restriction, used only during the fuse step.
+struct RegistryWy<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
+
 /// Ephemeral native-field data for $s'(X)$, used only during the fuse step.
 struct NativeSPrime<C: Cycle, R: Rank> {
     registry_wx0_poly: sparse::Polynomial<C::CircuitField, R>,
@@ -95,7 +101,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             right: &right,
         };
 
-        let (inner_error, inner_error_witness, claims) =
+        let (inner_error, inner_error_witness, claims, registry_wy) =
             self.inner_error_terms(rng, &native_registry, &y, &z, &source)?;
         let inner_error_commitment = Point::constant(&mut dr, inner_error.bridge.commitment)?;
         inner_error_commitment.write(&mut dr, &mut transcript)?;
@@ -135,7 +141,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let x = transcript.challenge(&mut dr)?;
 
         let (query, query_witness) =
-            self.compute_query(rng, &w, &x, &y, &z, &inner_error, &left, &right)?;
+            self.compute_query(rng, &w, &x, &y, &z, &registry_wy, &left, &right)?;
         let query_commitment = Point::constant(&mut dr, query.bridge.commitment)?;
         query_commitment.write(&mut dr, &mut transcript)?;
         let alpha = transcript.challenge(&mut dr)?;
@@ -148,7 +154,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &x,
             &alpha,
             &native_s_prime,
-            &inner_error,
+            &registry_wy,
             &ab,
             &query,
             &left,
@@ -158,8 +164,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         f_commitment.write(&mut dr, &mut transcript)?;
         let u = transcript.challenge(&mut dr)?;
 
-        let (eval, eval_witness) =
-            self.compute_eval(rng, &u, &left, &right, &native_s_prime, &inner_error, &ab, &query)?;
+        let (eval, eval_witness) = self.compute_eval(
+            rng,
+            &u,
+            &left,
+            &right,
+            &native_s_prime,
+            &registry_wy,
+            &ab,
+            &query,
+        )?;
         let eval_commitment = Point::constant(&mut dr, eval.bridge.commitment)?;
         eval_commitment.write(&mut dr, &mut transcript)?;
         let pre_beta = transcript.challenge(&mut dr)?;
@@ -171,7 +185,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &left,
             &right,
             &native_s_prime,
-            &inner_error,
+            &registry_wy,
             &ab,
             &query,
             &native_f,
