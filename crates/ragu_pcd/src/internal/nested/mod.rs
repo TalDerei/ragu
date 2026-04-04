@@ -60,23 +60,23 @@ pub enum InternalCircuitIndex {
     BridgeEval,
 }
 
-/// The number of internal circuits registered by [`register_all`],
-/// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-pub const NUM_INTERNAL_CIRCUITS: usize = NUM_ENDOSCALING_STEPS + 11;
-
 impl InternalCircuitIndex {
+    /// The number of internal circuits registered by [`register_all`],
+    /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 11;
+
     /// All variants in canonical iteration order.
     ///
     /// This order must match the registry finalization concatenation order
     /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
     /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
     /// derives indices from position in this array.
-    pub const ALL: [Self; NUM_INTERNAL_CIRCUITS] = super::const_fns::unwrap_all(Self::all_slots());
+    pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
-    const fn all_slots() -> [Option<Self>; NUM_INTERNAL_CIRCUITS] {
+    const fn all_slots() -> [Option<Self>; Self::NUM] {
         use super::const_fns::push;
 
-        let mut slots = [None; NUM_INTERNAL_CIRCUITS];
+        let mut slots = [None; Self::NUM];
         let mut c = 0;
         {
             let mut step = 0;
@@ -96,7 +96,7 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
-        assert!(c == NUM_INTERNAL_CIRCUITS);
+        assert!(c == Self::NUM);
         slots
     }
 
@@ -144,21 +144,21 @@ pub enum RxIndex {
     BridgeEval,
 }
 
-/// The number of rx components in the nested field,
-/// equal to the number of entries in [`RxIndex::ALL`].
-pub const NUM_RX_COMPONENTS: usize = NUM_ENDOSCALING_STEPS + 10;
-
 impl RxIndex {
+    /// The number of rx components in the nested field,
+    /// equal to the number of entries in [`RxIndex::ALL`].
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 10;
+
     /// All variants in canonical order (circuits, then stages).
     ///
     /// Must maintain the same ordering convention as
     /// [`native::RxIndex::ALL`](super::native::RxIndex::ALL).
-    pub const ALL: [Self; NUM_RX_COMPONENTS] = super::const_fns::unwrap_all(Self::all_slots());
+    pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
-    const fn all_slots() -> [Option<Self>; NUM_RX_COMPONENTS] {
+    const fn all_slots() -> [Option<Self>; Self::NUM] {
         use super::const_fns::push;
 
-        let mut slots = [None; NUM_RX_COMPONENTS];
+        let mut slots = [None; Self::NUM];
         let mut c = 0;
         {
             let mut step = 0;
@@ -177,7 +177,7 @@ impl RxIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
-        assert!(c == NUM_RX_COMPONENTS);
+        assert!(c == Self::NUM);
         slots
     }
 }
@@ -242,7 +242,7 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
 
     assert_eq!(
         registry.num_internal_circuits(),
-        initial_internal_circuits + NUM_INTERNAL_CIRCUITS,
+        initial_internal_circuits + InternalCircuitIndex::NUM,
         "internal circuit count mismatch"
     );
 

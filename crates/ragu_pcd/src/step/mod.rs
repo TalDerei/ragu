@@ -11,7 +11,7 @@ use ragu_core::{
 };
 
 use super::header::Header;
-use crate::internal::native::NUM_INTERNAL_CIRCUITS;
+use crate::internal::native::InternalCircuitIndex;
 
 pub use encoder::Encoded;
 
@@ -65,7 +65,7 @@ impl Index {
             StepIndex::Internal(i) => {
                 // Internal steps come after internal circuits
                 Ok(CircuitIndex::from_u32(
-                    NUM_INTERNAL_CIRCUITS as u32 + i as u32,
+                    InternalCircuitIndex::NUM as u32 + i as u32,
                 ))
             }
             StepIndex::Application(i) => {
@@ -76,7 +76,7 @@ impl Index {
                 }
 
                 Ok(CircuitIndex::new(
-                    NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS + i,
+                    NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM + i,
                 ))
             }
         }
@@ -114,22 +114,20 @@ impl Index {
 
 #[test]
 fn test_index_map() -> Result<()> {
-    use crate::internal::native::NUM_INTERNAL_CIRCUITS;
-
     let num_application_steps = 10;
-    let app_offset = NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+    let app_offset = NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM;
 
     // Internal steps come after internal circuits
     assert_eq!(
         Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
-        CircuitIndex::new(NUM_INTERNAL_CIRCUITS)
+        CircuitIndex::new(InternalCircuitIndex::NUM)
     );
     assert_eq!(
         Index::internal(InternalStepIndex::Trivial).circuit_index(num_application_steps)?,
-        CircuitIndex::new(NUM_INTERNAL_CIRCUITS + 1)
+        CircuitIndex::new(InternalCircuitIndex::NUM + 1)
     );
 
-    // Application steps occupy indices (NUM_INTERNAL_CIRCUITS + NUM_INTERNAL_STEPS)..
+    // Application steps occupy indices (InternalCircuitIndex::NUM + NUM_INTERNAL_STEPS)..
     assert_eq!(
         Index::new(0).circuit_index(num_application_steps)?,
         CircuitIndex::new(app_offset)

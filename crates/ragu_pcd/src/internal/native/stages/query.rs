@@ -32,9 +32,7 @@ use core::marker::PhantomData;
 
 use crate::Proof;
 
-use crate::internal::native::{
-    InternalCircuitIndex, InternalCircuitValues, NUM_INTERNAL_CIRCUITS, RxIndex, RxValues,
-};
+use crate::internal::native::{InternalCircuitIndex, InternalCircuitValues, RxIndex, RxValues};
 
 /// Witness for a child proof's polynomial evaluations.
 pub struct ChildEvaluationsWitness<F> {
@@ -283,8 +281,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        // InternalCircuitValues (13) + registry_wxy (1) + 2 * ChildEvaluations (16 each)
-        NUM_INTERNAL_CIRCUITS + 1 + 2 * 16
+        // InternalCircuitIndex::NUM + registry_wxy (1) + 2 * ChildEvaluations (16 each)
+        InternalCircuitIndex::NUM + 1 + 2 * 16
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
