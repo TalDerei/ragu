@@ -114,7 +114,6 @@ pub(crate) struct Eval<C: Cycle, R: Rank> {
 pub(crate) struct NativeP<C: Cycle, R: Rank> {
     pub(crate) poly: sparse::Polynomial<C::CircuitField, R>,
     pub(crate) commitment: C::HostCurve,
-    pub(crate) v: C::CircuitField,
 }
 
 #[derive(Clone)]

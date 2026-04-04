@@ -140,6 +140,11 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         self.ab.native.a_poly.revdot(&self.ab.native.b_poly)
     }
 
+    /// Returns the evaluation $v = p(u)$.
+    pub(crate) fn v(&self) -> C::CircuitField {
+        self.p.native.poly.eval(self.challenges.u)
+    }
+
     /// Returns the native-field rx polynomial for the given [`RxComponent`].
     pub(crate) fn native_rx(
         &self,
@@ -186,9 +191,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         let registry_xy_poly = self.native_registry.xy(challenges.x, challenges.y);
         let registry_xy_commitment =
             registry_xy_poly.commit_to_affine(C::host_generators(self.params));
-
-        // Derived values must be consistent with the polynomials.
-        let v = ones_host.eval(challenges.u);
 
         let trivial_bridge = Bridge {
             rx: ones_nested.clone(),
@@ -250,7 +252,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 native: NativeP {
                     poly: ones_host.clone(),
                     commitment: host_commitment,
-                    v,
                 },
                 nested: NestedP {
                     step_rxs: vec![

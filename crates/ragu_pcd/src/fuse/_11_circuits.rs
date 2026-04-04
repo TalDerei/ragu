@@ -50,7 +50,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             u: challenges.u,
             bridge_eval_commitment: eval.bridge.commitment,
             pre_beta: challenges.pre_beta,
-            v: p.native.v,
+            v: p.native.poly.eval(challenges.u),
             coverage: Default::default(),
         };
 

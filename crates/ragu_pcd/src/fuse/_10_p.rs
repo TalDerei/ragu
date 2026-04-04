@@ -53,7 +53,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         pre_beta: &Element<'dr, D>,
-        u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
@@ -165,14 +164,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )
         };
 
-        let v = poly.eval(*u.value().take());
-
         Ok(proof::P {
-            native: proof::NativeP {
-                poly,
-                commitment,
-                v,
-            },
+            native: proof::NativeP { poly, commitment },
             nested: proof::NestedP {
                 step_rxs,
                 endoscalar_rx,

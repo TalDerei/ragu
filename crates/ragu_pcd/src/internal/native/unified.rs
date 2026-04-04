@@ -445,7 +445,7 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
         let bridge_eval_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.eval.bridge.commitment))?;
         let pre_beta = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.pre_beta))?;
-        let v = Element::alloc(dr, proof.as_ref().map(|p| p.p.native.v))?;
+        let v = Element::alloc(dr, proof.as_ref().map(|p| p.v()))?;
 
         Ok(Output {
             bridge_preamble_commitment,

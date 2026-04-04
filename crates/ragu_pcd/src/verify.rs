@@ -109,9 +109,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 .all(|(ky, (a, b))| a.revdot(b) == ky)
         };
 
-        // Check polynomial evaluation claim.
+        // NOTE: `v` is now computed as `p.eval(u)` rather than stored in
+        // the proof, so this check is tautological in the verifier. It
+        // remains meaningful inside the circuit where `v` is an
+        // independently allocated witness element.
         let p_eval_claim =
-            pcd.proof().p.native.poly.eval(pcd.proof().challenges.u) == pcd.proof().p.native.v;
+            pcd.proof().p.native.poly.eval(pcd.proof().challenges.u) == pcd.proof().v();
 
         // Check P commitment corresponds to polynomial.
         let p_commitment_claim = pcd
@@ -337,21 +340,5 @@ mod tests {
         let pcd = proof.carry::<()>(());
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
         assert!(!result, "verify should reject corrupted P commitment");
-    }
-
-    #[test]
-    fn verify_rejects_corrupted_p_evaluation() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
-
-        // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
-
-        // Corrupt the P evaluation value
-        proof.p.native.v = <Pasta as Cycle>::CircuitField::from(12345u64);
-
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verify should reject corrupted P evaluation");
     }
 }

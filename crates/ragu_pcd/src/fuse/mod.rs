@@ -181,7 +181,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let p = self.compute_p(
             rng,
             &pre_beta,
-            &u,
             &left,
             &right,
             &native_s_prime,
