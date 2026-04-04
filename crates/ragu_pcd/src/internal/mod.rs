@@ -1,13 +1,26 @@
-//! Internal implementation of the recursive verifier — circuits, proof
-//! components, and claim-building machinery.
+//! Internal proving and verification engine for the recursive PCD protocol.
+//!
+//! This module defines the circuits, claim-building abstractions, and
+//! supporting gadgets that implement recursion across both curves of the
+//! cycle.
 //!
 //! # Submodules
 //!
-//! - [`native`] — circuits and types for the native (host) curve
-//! - [`nested`] — circuits and types for the nested curve
-//! - [`claims`] — shared claim-building abstraction used by both curves
-//! - [`fold_revdot`], [`endoscalar`], [`suffix`], [`transcript`] —
-//!   supporting gadgets and helpers
+//! - [`native`] — circuits, indexed value containers, and claim
+//!   orchestration for the native (host) field
+//! - [`nested`] — circuits and claim orchestration for the nested
+//!   (scalar) field, including endoscaling verification
+//! - [`claims`] — generic [`claims::Builder`] for assembling revdot
+//!   claims, shared by both fields
+//! - [`fold_revdot`] — two-layer Horner-style folding that batch-reduces
+//!   revdot claims
+//! - [`endoscalar`] — endoscaling circuit and witness types for iterative
+//!   curve scalar multiplication
+//! - [`transcript`] — Fiat–Shamir transcript wrapper over a Poseidon
+//!   sponge, with domain separation
+//! - [`suffix`] — compositional gadget that appends an extra element
+//!   during serialization
+//! - [`const_fns`] — compile-time helper functions for array construction
 
 pub mod claims;
 pub mod const_fns;
