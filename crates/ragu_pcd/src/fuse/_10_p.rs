@@ -21,6 +21,7 @@ use ragu_circuits::{
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar, vec::Len};
 
+use super::NativeF;
 use crate::internal::endoscalar::{
     EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
     PointsWitness,
@@ -59,12 +60,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
-        f: &proof::F<C, R>,
+        f: &NativeF<C, R>,
     ) -> Result<proof::P<C, R>>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let mut poly = f.native.poly.clone();
+        let mut poly = f.poly.clone();
 
         // Collect commitments for PointsWitness construction.
         let mut commitments: Vec<C::HostCurve> = Vec::new();
@@ -125,7 +126,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Points order: [f.commitment, commitments...] computes β^n·f + β^{n-1}·C₀ + ...
         let (commitment, endoscalar_rx, points_rx, step_rxs) = {
             let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
-            points.push(f.native.commitment);
+            points.push(f.commitment);
             points.extend_from_slice(&commitments);
 
             let witness =

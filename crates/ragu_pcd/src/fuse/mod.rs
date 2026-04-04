@@ -17,7 +17,7 @@ mod _11_circuits;
 pub(crate) mod claims;
 
 use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::Rank;
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 use rand::CryptoRng;
@@ -27,6 +27,12 @@ use crate::{
 };
 
 use claims::FuseProofSource;
+
+/// Ephemeral native-field data for $f(X)$, used only during the fuse step.
+struct NativeF<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
@@ -125,7 +131,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         query_commitment.write(&mut dr, &mut transcript)?;
         let alpha = transcript.challenge(&mut dr)?;
 
-        let f = self.compute_f(
+        let (f, native_f) = self.compute_f(
             rng,
             &w,
             &y,
@@ -159,7 +165,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &inner_error,
             &ab,
             &query,
-            &f,
+            &native_f,
         )?;
 
         let challenges = proof::Challenges::new(

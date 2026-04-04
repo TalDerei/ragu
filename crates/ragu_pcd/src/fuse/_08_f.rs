@@ -21,6 +21,7 @@ use rand::CryptoRng;
 
 use alloc::{vec, vec::Vec};
 
+use super::NativeF;
 use crate::{
     Application, Proof,
     internal::{native, native::RxIndex, nested},
@@ -42,7 +43,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         query: &proof::Query<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-    ) -> Result<proof::F<C, R>>
+    ) -> Result<(proof::F<C, R>, NativeF<C, R>)>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
@@ -70,7 +71,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )?,
         );
 
-        Ok(proof::F { native, bridge })
+        Ok((proof::F { bridge }, native))
     }
 
     fn compute_native_f<'dr, D>(
@@ -86,7 +87,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         query: &proof::Query<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-    ) -> Result<proof::NativeF<C, R>>
+    ) -> Result<NativeF<C, R>>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
@@ -179,6 +180,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let poly = sparse::Polynomial::from_coeffs(coeffs);
         let commitment = poly.commit_to_affine(C::host_generators(self.params));
 
-        Ok(proof::NativeF { poly, commitment })
+        Ok(NativeF { poly, commitment })
     }
 }

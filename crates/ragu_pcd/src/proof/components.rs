@@ -115,14 +115,7 @@ pub(crate) struct Query<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeF<C: Cycle, R: Rank> {
-    pub(crate) poly: sparse::Polynomial<C::CircuitField, R>,
-    pub(crate) commitment: C::HostCurve,
-}
-
-#[derive(Clone)]
 pub(crate) struct F<C: Cycle, R: Rank> {
-    pub(crate) native: NativeF<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 

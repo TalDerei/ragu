@@ -249,10 +249,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 bridge: trivial_bridge.clone(),
             },
             f: F {
-                native: NativeF {
-                    poly: ones_host.clone(),
-                    commitment: host_commitment,
-                },
                 bridge: trivial_bridge.clone(),
             },
             eval: Eval {
