@@ -46,13 +46,12 @@ pub use view::View;
 #[cfg(test)]
 mod tests;
 
+use alloc::vec::Vec;
+use core::{borrow::Borrow, marker::PhantomData};
+
 use ff::Field;
 use ragu_arithmetic::CurveAffine;
 use rand::CryptoRng;
-
-use alloc::vec::Vec;
-use core::borrow::Borrow;
-use core::marker::PhantomData;
 
 use super::Rank;
 

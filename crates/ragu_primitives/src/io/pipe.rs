@@ -1,6 +1,6 @@
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-
 use core::marker::PhantomData;
+
+use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 
 use crate::{Element, io::Buffer};
 
@@ -38,8 +38,11 @@ impl<'dr, S: Driver<'dr, F = D::F>, D: Driver<'dr>, B: Buffer<'dr, D>> Buffer<'d
 #[test]
 fn test_pipe_between_wireless_emulators() -> Result<()> {
     use alloc::vec::Vec;
-    use ragu_core::drivers::emulator::{Emulator, Wireless};
-    use ragu_core::maybe::{Always, MaybeKind};
+
+    use ragu_core::{
+        drivers::emulator::{Emulator, Wireless},
+        maybe::{Always, MaybeKind},
+    };
     use ragu_pasta::Fp;
 
     // Create first wireless emulator and allocate some elements

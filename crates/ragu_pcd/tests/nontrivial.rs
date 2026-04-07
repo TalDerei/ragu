@@ -4,8 +4,7 @@ use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::ApplicationBuilder;
 use ragu_testing::pcd::nontrivial::{Hash2, WitnessLeaf};
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 #[test]
 fn various_merging_operations() -> Result<()> {

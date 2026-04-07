@@ -8,6 +8,9 @@
 
 pub(crate) mod builder;
 
+use alloc::{vec, vec::Vec};
+
+pub(crate) use builder::ProofBuilder;
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -16,16 +19,15 @@ use ragu_circuits::{
 };
 use ragu_primitives::vec::Len;
 
-use alloc::vec;
-use alloc::vec::Vec;
-
-use crate::header::Header;
-use crate::internal::endoscalar::NumStepsLen;
-use crate::internal::native::{RxComponent, RxIndex};
-use crate::internal::nested;
-use crate::internal::nested::NUM_ENDOSCALING_POINTS;
-
-pub(crate) use builder::ProofBuilder;
+use crate::{
+    header::Header,
+    internal::{
+        endoscalar::NumStepsLen,
+        native::{RxComponent, RxIndex},
+        nested,
+        nested::NUM_ENDOSCALING_POINTS,
+    },
+};
 
 /// A newtype marking a field as derived/cacheable.
 ///

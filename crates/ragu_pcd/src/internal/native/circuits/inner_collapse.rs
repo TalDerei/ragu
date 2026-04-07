@@ -53,6 +53,8 @@
 //! [`ClaimFolder::fold_inner`]: fold_revdot::ClaimFolder::fold_inner
 //! [`TwoProofKySource`]: crate::internal::native::claims::TwoProofKySource
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
@@ -67,10 +69,8 @@ use ragu_core::{
 };
 use ragu_primitives::vec::FixedVec;
 
-use core::marker::PhantomData;
-
-use super::super::claims::{TwoProofKySource, ky_values};
 use super::super::{
+    claims::{TwoProofKySource, ky_values},
     stages::{
         inner_error as native_inner_error, outer_error as native_outer_error,
         preamble as native_preamble,

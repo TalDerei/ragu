@@ -14,8 +14,7 @@ use ragu_pcd::{
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::Element;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 // Header A (suffix 0) - unit data
 struct HeaderA;

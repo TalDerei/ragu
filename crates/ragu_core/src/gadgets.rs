@@ -292,7 +292,6 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// }
 /// ```
 pub use ragu_macros::Gadget;
-
 /// Obtains the concrete [`GadgetKind<F>`] of a [`Gadget`] type given only the
 /// gadget's type and a field type `F`. This is particularly useful in contexts
 /// where a specific concrete driver does not exist or the type is annoying to

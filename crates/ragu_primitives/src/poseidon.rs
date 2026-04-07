@@ -4,6 +4,9 @@
 //! [Poseidon](https://eprint.iacr.org/2019/458) sponge construction for
 //! in-circuit hashing.
 
+use alloc::{vec, vec::Vec};
+use core::{marker::PhantomData, panic};
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -13,13 +16,9 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 
-use crate::consistent::Consistent;
-
-use alloc::{vec, vec::Vec};
-use core::{marker::PhantomData, panic};
-
 use crate::{
     Element,
+    consistent::Consistent,
     io::{Buffer, Write},
     multiadd,
     vec::{FixedVec, Len},
@@ -429,11 +428,13 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use core::cell::Cell;
+
     use ragu_arithmetic::Cycle;
     use ragu_core::maybe::Maybe;
     use ragu_pasta::{Fp, Pasta};
+
+    use super::*;
 
     type Simulator = crate::Simulator<Fp>;
 

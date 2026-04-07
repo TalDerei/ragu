@@ -1,11 +1,12 @@
-use super::*;
-use crate::*;
 use native::{
     InternalCircuitIndex, InternalCircuitValues, RevdotParameters, RxIndex, RxValues,
     stages::{eval, inner_error, outer_error, preamble, query},
 };
 use ragu_circuits::staging::{Stage, StageExt};
 use ragu_pasta::{Pasta, fp, fq};
+
+use super::*;
+use crate::*;
 pub type R = ragu_circuits::polynomials::ProductionRank;
 
 use ff::PrimeField;
@@ -237,8 +238,9 @@ fn test_nested_registry_digest() {
 #[test]
 fn print_registry_digests() {
     use alloc::{format, string::String, vec::Vec};
-    use ff::PrimeField;
     use std::println;
+
+    use ff::PrimeField;
 
     let pasta = Pasta::baked();
 

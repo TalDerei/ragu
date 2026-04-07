@@ -70,6 +70,8 @@
 //! [`DriverTypes::gate`]: ragu_core::drivers::DriverTypes::gate
 //! [`sxy`]: super::sxy
 
+use alloc::{vec, vec::Vec};
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -80,16 +82,13 @@ use ragu_core::{
     routines::Routine,
 };
 
-use alloc::{vec, vec::Vec};
-
+use super::common::{WireEval, WireEvalSum};
 use crate::{
     DriverScope,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, sparse},
     raw::RawCircuit,
 };
-
-use super::common::{WireEval, WireEvalSum};
 
 /// A [`Driver`] that computes the partial evaluation $s(x, Y)$.
 ///

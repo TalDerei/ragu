@@ -3,6 +3,7 @@
 //! that both evaluators traverse the routine call tree in identical DFS order.
 
 use alloc::{format, vec, vec::Vec};
+
 use proptest::prelude::*;
 use ragu_arithmetic::Coeff;
 use ragu_core::{

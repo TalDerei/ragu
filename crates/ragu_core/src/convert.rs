@@ -24,6 +24,7 @@
 //! [book]: https://tachyon.z.cash/ragu/guide/gadgets/conversion.html
 
 use core::marker::PhantomData;
+
 use ff::Field;
 
 use crate::{

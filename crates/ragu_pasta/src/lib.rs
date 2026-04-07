@@ -42,12 +42,11 @@ mod common {
 mod poseidon_fp;
 mod poseidon_fq;
 
-use ragu_arithmetic::{Cycle, FixedGenerators};
-
 pub use common::{PallasGenerators, PastaParams, VestaGenerators};
 pub use pasta_curves::{Ep, EpAffine, Eq, EqAffine, Fp, Fq};
 pub use poseidon_fp::PoseidonFp;
 pub use poseidon_fq::PoseidonFq;
+use ragu_arithmetic::{Cycle, FixedGenerators};
 
 /// Zero-sized marker type for the [Pasta
 /// curve](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/)
@@ -117,6 +116,7 @@ impl FixedGenerators<pasta_curves::EqAffine> for VestaGenerators {
 #[cfg(feature = "baked")]
 mod baked {
     use alloc::vec::Vec;
+
     use ff::PrimeField;
     use lazy_static::lazy_static;
     use pasta_curves::arithmetic::CurveAffine;

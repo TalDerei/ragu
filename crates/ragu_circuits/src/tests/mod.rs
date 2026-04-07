@@ -8,19 +8,16 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    maybe::{Always, Maybe},
+    routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
-use ragu_primitives::Element;
+use ragu_primitives::{Element, Simulator};
 
 use crate::{
     Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
     polynomials::{Rank, TestRank},
 };
-use ragu_core::maybe::Always;
-use ragu_core::routines::Prediction;
-use ragu_core::routines::Routine;
-use ragu_primitives::Simulator;
 
 /// Dummy circuit.
 pub struct SquareCircuit {

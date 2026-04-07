@@ -11,6 +11,7 @@
 
 use alloc::vec::Vec;
 use core::ops::AddAssign;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -22,13 +23,18 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar, vec::Len};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
-use crate::internal::endoscalar::{
-    EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
-    PointsWitness,
+use crate::{
+    Application, Proof,
+    internal::{
+        endoscalar::{
+            EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
+            PointsWitness,
+        },
+        native::{RxComponent, RxIndex},
+        nested::NUM_ENDOSCALING_POINTS,
+    },
+    proof::ProofBuilder,
 };
-use crate::internal::native::{RxComponent, RxIndex};
-use crate::internal::nested::NUM_ENDOSCALING_POINTS;
-use crate::{Application, Proof, proof::ProofBuilder};
 
 /// Accumulates polynomials with their commitments.
 struct Accumulator<'a, C: Cycle, R: Rank> {

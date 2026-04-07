@@ -31,6 +31,8 @@
 //!    term of $k(Y)$. This is the final constraint emitted by synthesis and
 //!    occupies the $Y^0$ position.
 
+use alloc::vec::Vec;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -39,8 +41,6 @@ use ragu_core::{
     gadgets::Bound,
 };
 use ragu_primitives::{GadgetExt as _, io::Write};
-
-use alloc::vec::Vec;
 
 use crate::WithAux;
 

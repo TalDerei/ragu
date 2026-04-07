@@ -3,6 +3,8 @@
 //! Provides the [`Boolean`] type representing a wire constrained to be zero or
 //! one, with logical operations implemented as circuit constraints.
 
+use alloc::vec::Vec;
+
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -12,12 +14,9 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::consistent::Consistent;
-
-use alloc::vec::Vec;
-
 use crate::{
     Element, GadgetExt,
+    consistent::Consistent,
     io::{Buffer, Write},
     promotion::{Demoted, Promotion},
     util::InternalMaybe,
@@ -378,8 +377,9 @@ fn test_multipack() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ragu_core::maybe::Maybe;
+
+    use super::*;
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
@@ -426,9 +426,10 @@ mod tests {
 mod proptests {
     use alloc::format;
 
-    use super::*;
     use proptest::prelude::*;
     use ragu_core::maybe::Maybe;
+
+    use super::*;
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;

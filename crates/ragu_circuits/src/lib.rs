@@ -38,17 +38,16 @@ pub use trace::Trace;
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
+
 use ff::{Field, FromUniformBytes};
+use polynomials::{Rank, sparse};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
 use ragu_primitives::io::Write;
-
-use alloc::boxed::Box;
-
-use polynomials::{Rank, sparse};
 
 /// Bundles a primary value with auxiliary data.
 ///

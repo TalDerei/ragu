@@ -1,13 +1,14 @@
 extern crate alloc;
 
-use ff::PrimeField;
-use pasta_curves::arithmetic::CurveAffine;
 use std::{
     env,
     fs::File,
     io::{Result, Write},
     path::Path,
 };
+
+use ff::PrimeField;
+use pasta_curves::arithmetic::CurveAffine;
 
 mod common {
     include!("pasta_common.rs");

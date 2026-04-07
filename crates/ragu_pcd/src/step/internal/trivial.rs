@@ -11,7 +11,6 @@ use ragu_core::{
 
 use super::super::{Encoded, Index, Step};
 use crate::Header;
-
 pub(crate) use crate::step::InternalStepIndex::Trivial as INTERNAL_ID;
 
 pub(crate) struct Trivial;

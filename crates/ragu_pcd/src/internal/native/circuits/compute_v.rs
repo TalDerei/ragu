@@ -43,10 +43,14 @@
 //! [$\mu'$]: unified::Output::mu_prime
 //! [$\nu'$]: unified::Output::nu_prime
 
+use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
+    horner::Horner,
     polynomials::{Rank, txz::Evaluate},
     staging::{MultiStage, MultiStageCircuit, StageBuilder},
 };
@@ -58,25 +62,20 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, Endoscalar, GadgetExt};
 
-use alloc::{vec, vec::Vec};
-use core::marker::PhantomData;
-
-use super::super::claims::{self, Processor};
-use super::super::{RxComponent, RxIndex};
-use crate::internal::claims::Source;
-use crate::internal::fold_revdot::{Parameters, fold_two_layer};
-use crate::internal::native::RevdotParameters;
-
-use super::super::InternalCircuitIndex;
-use super::super::InternalCircuitValues;
 use super::super::{
+    InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
+    claims::{self, Processor},
     stages::{
         eval as native_eval, preamble as native_preamble,
         query::{self as native_query, ChildEvaluations},
     },
     unified::{self, OutputBuilder},
 };
-use ragu_circuits::horner::Horner;
+use crate::internal::{
+    claims::Source,
+    fold_revdot::{Parameters, fold_two_layer},
+    native::RevdotParameters,
+};
 
 /// Circuit that computes and verifies the claimed evaluation value [$v$].
 ///

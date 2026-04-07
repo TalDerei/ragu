@@ -1,6 +1,8 @@
 //! Strips away the witness data from a gadget while preserving its wire
 //! structure.
 
+use core::ops::Deref;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -10,8 +12,6 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind},
     maybe::Empty,
 };
-
-use core::ops::Deref;
 
 /// Trait for gadgets that support promotion from a [`Demoted`] state.
 ///

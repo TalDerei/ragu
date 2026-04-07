@@ -18,6 +18,8 @@
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 //! [`StageMask`]: super::mask::StageMask
 
+use alloc::boxed::Box;
+
 use ff::{Field, FromUniformBytes};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -26,16 +28,13 @@ use ragu_core::{
     maybe::Empty,
 };
 
-use alloc::boxed::Box;
-
+use super::{MultiStage, MultiStageCircuit};
 use crate::{
     BondingObject, Circuit, CircuitObject, SegmentRecord,
     floor_planner::ConstraintSegment,
     into_circuit_object,
     polynomials::{Rank, sparse},
 };
-
-use super::{MultiStage, MultiStageCircuit};
 
 impl<F, R, S> MultiStage<F, R, S>
 where
@@ -231,16 +230,16 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
 
 #[cfg(test)]
 mod tests {
+    use ff::Field;
+    use ragu_core::{drivers::DriverValue, gadgets::Bound};
+    use ragu_pasta::Fp;
+
     use super::*;
     use crate::{
         WithAux, floor_planner,
         polynomials::TestRank,
         staging::{MultiStageCircuit, StageBuilder},
     };
-    use ff::Field;
-    use ragu_core::drivers::DriverValue;
-    use ragu_core::gadgets::Bound;
-    use ragu_pasta::Fp;
 
     type R = TestRank;
 

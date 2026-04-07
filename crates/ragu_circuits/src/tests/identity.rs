@@ -1,10 +1,9 @@
 use ff::Field;
-use ragu_core::maybe::Always;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Bound, Kind},
-    maybe::Maybe,
+    maybe::{Always, Maybe},
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;

@@ -13,6 +13,8 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
+use alloc::vec::Vec;
+
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use ragu_arithmetic::{Coeff, CurveAffine, Uendo};
 use ragu_core::{
@@ -21,8 +23,6 @@ use ragu_core::{
     gadgets::Gadget,
     maybe::Maybe,
 };
-
-use alloc::vec::Vec;
 
 use crate::{
     Boolean, Element, Point,
@@ -246,7 +246,6 @@ pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -
 
 #[cfg(test)]
 mod tests {
-    use super::{Element, Endoscalar, Maybe, Point};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::{CurveAffine, CurveExt, Uendo};
@@ -254,6 +253,7 @@ mod tests {
     use ragu_pasta::{EpAffine, Fp};
     use rand::RngExt;
 
+    use super::{Element, Endoscalar, Maybe, Point};
     use crate::Simulator;
 
     pub struct EndoscalarTest {

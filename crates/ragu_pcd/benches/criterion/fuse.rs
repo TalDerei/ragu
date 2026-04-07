@@ -4,8 +4,7 @@ use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::ApplicationBuilder;
 use ragu_testing::pcd::nontrivial;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 fn fuse_bench(c: &mut Criterion) {
     let pasta = Pasta::baked();

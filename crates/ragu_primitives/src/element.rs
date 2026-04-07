@@ -3,6 +3,9 @@
 //! Provides the [`Element`] type representing a wire and its field element
 //! assignment, the fundamental building block for circuit construction.
 
+use alloc::vec::Vec;
+use core::borrow::Borrow;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -12,13 +15,9 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::consistent::Consistent;
-
-use alloc::vec::Vec;
-use core::borrow::Borrow;
-
 use crate::{
     Boolean,
+    consistent::Consistent,
     io::{Buffer, Write},
 };
 
@@ -430,11 +429,13 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 
 #[cfg(test)]
 mod root_of_unity_tests {
-    use super::*;
-    use crate::Simulator;
     use alloc::{vec, vec::Vec};
+
     use ff::Field;
     use ragu_pasta::{Fp, fp};
+
+    use super::*;
+    use crate::Simulator;
 
     // (omega, k, should_pass)
     fn test_cases() -> Vec<(Fp, u32, bool)> {
@@ -511,10 +512,11 @@ mod root_of_unity_tests {
 mod proptests {
     use alloc::format;
 
-    use super::*;
     use ff::PrimeField;
     use proptest::prelude::*;
     use ragu_core::maybe::Maybe;
+
+    use super::*;
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;

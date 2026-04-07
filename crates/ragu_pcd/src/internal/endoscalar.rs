@@ -16,6 +16,8 @@
 //! will vary in the number of steps and points, the code is generic over the
 //! curve type and number of points.
 
+use alloc::vec;
+
 use ff::{Field, WithSmallOrderMulGroup};
 use pasta_curves::group::{Curve, WnafBase, WnafScalar, prime::PrimeCurveAffine};
 use ragu_arithmetic::{CurveAffine, Uendo};
@@ -34,8 +36,6 @@ use ragu_primitives::{
     Element, Endoscalar, Point,
     vec::{FixedVec, Len},
 };
-
-use alloc::vec;
 
 /// Number of endoscaling operations per step. This is how many we can fit into
 /// a single circuit in our target circuit size.
@@ -325,11 +325,8 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ENDOSCALINGS_PER_STEP, EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, InputsLen,
-        NumStepsLen, PointsStage, PointsWitness,
-    };
     use alloc::vec::Vec;
+
     use ff::Field;
     use pasta_curves::group::{Curve, Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::Uendo;
@@ -347,6 +344,11 @@ mod tests {
     use ragu_primitives::{Endoscalar, vec::Len};
     use ragu_testing::registry::TestRegistryBuilder;
     use rand::RngExt;
+
+    use super::{
+        ENDOSCALINGS_PER_STEP, EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, InputsLen,
+        NumStepsLen, PointsStage, PointsWitness,
+    };
 
     type R = polynomials::ProductionRank;
 

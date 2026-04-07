@@ -3,13 +3,14 @@
 //! Provides an implementation of [`Circuit`] for the unit type `()`,
 //! which creates zero constraints. Useful for testing and placeholders.
 
-use crate::{Circuit, WithAux};
 use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
+
+use crate::{Circuit, WithAux};
 
 impl<F: Field> Circuit<F> for () {
     type Instance<'source> = ();
@@ -42,10 +43,13 @@ impl<F: Field> Circuit<F> for () {
 
 #[cfg(test)]
 mod tests {
-    use crate::Circuit;
-    use ragu_core::drivers::emulator::{Emulator, Wired};
-    use ragu_core::maybe::{Always, MaybeKind};
+    use ragu_core::{
+        drivers::emulator::{Emulator, Wired},
+        maybe::{Always, MaybeKind},
+    };
     use ragu_pasta::Fp;
+
+    use crate::Circuit;
 
     #[test]
     fn test_trivial() {

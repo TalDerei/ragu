@@ -33,6 +33,9 @@
 //!
 //! [`TypeId`]: core::any::TypeId
 
+use alloc::vec::Vec;
+use core::any::TypeId;
+
 use ff::{FromUniformBytes, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -44,12 +47,11 @@ use ragu_core::{
     routines::Routine,
 };
 
-use alloc::vec::Vec;
-use core::any::TypeId;
-
-use super::Circuit;
-use super::raw::RawCircuit;
-use super::s::common::{WireEval, WireEvalSum};
+use super::{
+    Circuit,
+    raw::RawCircuit,
+    s::common::{WireEval, WireEvalSum},
+};
 
 /// The structural identity of a routine record.
 ///
@@ -582,15 +584,17 @@ pub(crate) fn eval_raw<F: FromUniformBytes<64>, RC: RawCircuit<F>>(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
-    use crate::WithAux;
     use core::marker::PhantomData;
+
     use ragu_core::{
         drivers::{Driver, DriverValue},
         gadgets::Bound,
         routines::{Prediction, Routine},
     };
     use ragu_pasta::Fp;
+
+    use super::*;
+    use crate::WithAux;
 
     /// [`WireMap`] adapter that maps wires from an arbitrary source driver into
     /// [`Counter`] via fresh allocations. Used by [`fingerprint_routine`] where

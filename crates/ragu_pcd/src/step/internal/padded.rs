@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use ff::{Field, PrimeField};
 use ragu_core::{
     Result,
@@ -9,10 +11,7 @@ use ragu_primitives::{
     io::{Buffer, Write},
 };
 
-use core::marker::PhantomData;
-
-use crate::Header;
-use crate::internal::suffix::WithSuffix;
+use crate::{Header, internal::suffix::WithSuffix};
 
 /// A header gadget padded to a fixed size with a suffix element appended.
 ///
@@ -120,6 +119,7 @@ where
 #[cfg(test)]
 mod tests {
     use alloc::vec;
+
     use ragu_core::{
         Result,
         drivers::{Driver, emulator::Emulator},

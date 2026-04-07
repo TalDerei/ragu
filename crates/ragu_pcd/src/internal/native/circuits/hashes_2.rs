@@ -58,6 +58,8 @@
 //! [`WithSuffix`]: crate::internal::suffix::WithSuffix
 //! [`Transcript::resume_from_state`]: crate::internal::transcript::Transcript::resume_from_state
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
@@ -72,14 +74,11 @@ use ragu_core::{
 };
 use ragu_primitives::GadgetExt;
 
-use core::marker::PhantomData;
-
 use super::super::{
     stages::{outer_error as native_outer_error, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
-use crate::internal::fold_revdot;
-use crate::internal::transcript::Transcript;
+use crate::internal::{fold_revdot, transcript::Transcript};
 
 /// Second hash circuit for Fiat-Shamir challenge derivation.
 ///

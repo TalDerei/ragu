@@ -6,10 +6,11 @@ use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::{ProductionRank, TestRank, sparse};
-use ragu_circuits::registry::CircuitIndex;
-use ragu_circuits::registry::{Registry, RegistryBuilder};
-use ragu_circuits::{Circuit, CircuitExt};
+use ragu_circuits::{
+    Circuit, CircuitExt,
+    polynomials::{ProductionRank, TestRank, sparse},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
+};
 use ragu_pasta::{Fp, Pasta};
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
 use setup::{

@@ -2,10 +2,10 @@
 //!
 //! Collects child proof commitments for cross-curve accumulation.
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::{CurveAffine, Cycle};
 use ragu_circuits::polynomials::Rank;
-
-use crate::Proof;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -14,7 +14,7 @@ use ragu_core::{
 };
 use ragu_primitives::{Point, io::Write};
 
-use core::marker::PhantomData;
+use crate::Proof;
 
 /// Number of curve points in this stage.
 pub const NUM_POINTS: usize = 13;
@@ -146,9 +146,10 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::EqAffine;
+
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};
-    use ragu_pasta::EqAffine;
 
     #[test]
     fn stage_values_matches_wire_count() {

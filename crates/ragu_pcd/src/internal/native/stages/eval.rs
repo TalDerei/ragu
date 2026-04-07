@@ -16,6 +16,8 @@
 //! This stage contains the committed claims of all evaluations (other than
 //! $f(X)$) at $u$ for all the queried polynomials.
 
+use core::marker::PhantomData;
+
 use ff::PrimeField;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
@@ -27,10 +29,10 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, io::Write};
 
-use core::marker::PhantomData;
-
-use crate::Proof;
-use crate::internal::native::{RxComponent, RxValues};
+use crate::{
+    Proof,
+    internal::native::{RxComponent, RxValues},
+};
 
 /// Polynomial evaluations at $u$ (from the parent fuse operation) for a child
 /// proof. Supplied by the prover to construct the `eval` stage witness.
@@ -229,9 +231,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::Pasta;
+
     use super::*;
     use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};
-    use ragu_pasta::Pasta;
 
     #[test]
     fn stage_values_matches_wire_count() {

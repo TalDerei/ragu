@@ -3,8 +3,7 @@ use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 pub fn setup_register() -> (
     nontrivial::WitnessLeaf<'static, Pasta>,

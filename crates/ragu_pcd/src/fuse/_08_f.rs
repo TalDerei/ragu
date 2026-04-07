@@ -8,6 +8,8 @@
 //! / (X - x\_i)$ for a single query. The terms must match `poly_queries` in the
 //! `compute_v` circuit exactly.
 
+use alloc::{vec, vec::Vec};
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -17,8 +19,6 @@ use ragu_circuits::{
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
-
-use alloc::{vec, vec::Vec};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
 use crate::{

@@ -20,6 +20,7 @@ use ragu_core::{
 use ragu_primitives::{Element, vec::FixedVec};
 use rand::CryptoRng;
 
+use super::claims::{FoldKey, FuseBuilder, TrackedPoly};
 use crate::{
     Application,
     internal::{
@@ -28,8 +29,6 @@ use crate::{
     },
     proof::ProofBuilder,
 };
-
-use super::claims::{FoldKey, FuseBuilder, TrackedPoly};
 
 type NativeNumGroups = <native::RevdotParameters as fold_revdot::Parameters>::NumGroups;
 

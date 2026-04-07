@@ -1,13 +1,12 @@
+use alloc::{boxed::Box, vec, vec::Vec};
+
 use ff::{Field, PrimeField};
 use pasta_curves::{
     arithmetic::CurveAffine,
     group::{Curve, Group},
 };
 
-use alloc::{boxed::Box, vec, vec::Vec};
-
-use crate::domain::Domain;
-use crate::multicore::*;
+use crate::{domain::Domain, multicore::*};
 
 /// Returns the low 64 bits of a [`PrimeField`] element's canonical
 /// little-endian representation.
@@ -386,10 +385,11 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
 
 #[cfg(test)]
 mod poly_with_roots_tests {
-    use super::*;
     use ff::Field;
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn check(roots: &[F]) -> Result<(), TestCaseError> {
         let poly = poly_with_roots(roots);
@@ -494,9 +494,10 @@ fn test_poly_with_roots() {
 
 #[cfg(test)]
 mod proptests {
-    use super::*;
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())

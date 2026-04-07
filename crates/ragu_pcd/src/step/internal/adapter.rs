@@ -1,3 +1,6 @@
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{Circuit, WithAux, polynomials::Rank};
 use ragu_core::{
@@ -10,9 +13,6 @@ use ragu_primitives::{
     Element,
     vec::{CollectFixed, ConstLen, FixedVec, Len},
 };
-
-use alloc::vec::Vec;
-use core::marker::PhantomData;
 
 use super::super::Step;
 use crate::Header;
@@ -114,9 +114,6 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::header::{Header, Suffix};
-    use crate::step::{Encoded, Index, Step};
     use ragu_circuits::polynomials::TestRank;
     use ragu_core::{
         drivers::emulator::Emulator,
@@ -124,6 +121,12 @@ mod tests {
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::{Fp, Pasta};
+
+    use super::*;
+    use crate::{
+        header::{Header, Suffix},
+        step::{Encoded, Index, Step},
+    };
 
     type TestR = TestRank;
     const HEADER_SIZE: usize = 4;

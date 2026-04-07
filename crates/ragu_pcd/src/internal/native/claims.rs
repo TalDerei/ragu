@@ -18,8 +18,7 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::Result;
-use ragu_core::drivers::Driver;
+use ragu_core::{Result, drivers::Driver};
 use ragu_primitives::Element;
 
 use super::{InternalCircuitIndex, RxComponent, RxIndex};

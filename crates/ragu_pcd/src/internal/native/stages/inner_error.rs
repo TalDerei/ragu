@@ -2,6 +2,8 @@
 //!
 //! This stage handles N separate M-sized revdot claim reductions.
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
@@ -15,8 +17,6 @@ use ragu_primitives::{
     consistent::Consistent,
     vec::{FixedVec, Len},
 };
-
-use core::marker::PhantomData;
 
 use crate::internal::fold_revdot::{self, NumErrorTerms};
 
@@ -82,10 +82,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::internal::native::RevdotParameters;
-    use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
+
+    use super::*;
+    use crate::internal::{
+        native::RevdotParameters,
+        tests::{HEADER_SIZE, R, assert_stage_values},
+    };
 
     #[test]
     fn stage_values_matches_wire_count() {

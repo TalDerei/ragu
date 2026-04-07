@@ -1,5 +1,7 @@
 //! This module provides the [`Application::verify`] method implementation.
 
+use core::iter::once;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -10,14 +12,14 @@ use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
-use core::iter::once;
-
 use crate::{
     Application, Pcd, Proof,
     header::Header,
-    internal::claims,
-    internal::native::stages::preamble::ProofInputs,
-    internal::{native::claims as native_claims, nested::claims as nested_claims},
+    internal::{
+        claims,
+        native::{claims as native_claims, stages::preamble::ProofInputs},
+        nested::claims as nested_claims,
+    },
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -129,10 +131,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
 mod native {
     use super::*;
-    use crate::internal::claims::Source;
-    use crate::internal::native::{RxComponent, claims::KySource};
-
     pub use crate::internal::native::claims::ky_values;
+    use crate::internal::{
+        claims::Source,
+        native::{RxComponent, claims::KySource},
+    };
 
     pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
         pub proof: &'rx Proof<C, R>,
@@ -187,10 +190,11 @@ mod native {
 
 mod nested {
     use super::*;
-    use crate::internal::claims::Source;
-    use crate::internal::nested::{RxIndex, claims::KySource};
-
     pub use crate::internal::nested::claims::ky_values;
+    use crate::internal::{
+        claims::Source,
+        nested::{RxIndex, claims::KySource},
+    };
 
     /// Source for nested field rx polynomials for single-proof verification.
     pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
@@ -235,12 +239,13 @@ mod nested {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ApplicationBuilder;
     use ff::Field;
     use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
     use ragu_pasta::Pasta;
     use rand::{SeedableRng, rngs::StdRng};
+
+    use super::*;
+    use crate::ApplicationBuilder;
 
     type TestR = ProductionRank;
     const HEADER_SIZE: usize = 4;

@@ -1,6 +1,8 @@
 //! Headers are succinct representations of data used to represent the current
 //! state of a computation.
 
+use core::any::Any;
+
 use ff::Field;
 use ragu_core::{
     Result,
@@ -8,8 +10,6 @@ use ragu_core::{
     gadgets::Bound,
 };
 use ragu_primitives::io::Write;
-
-use core::any::Any;
 
 /// The number of suffixes used internally by Ragu.
 ///

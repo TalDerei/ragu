@@ -39,7 +39,6 @@
 use ff::PrimeField;
 use ragu_arithmetic::PoseidonPermutation;
 use ragu_core::{Result, drivers::Driver};
-
 use ragu_primitives::{
     Element,
     io::Buffer,
@@ -183,14 +182,16 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Buffer<'dr, D> for Trans
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloc::vec::Vec;
+
     use ff::Field;
     use proptest::prelude::*;
     use ragu_arithmetic::Cycle;
     use ragu_core::maybe::Maybe;
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::{GadgetExt, Simulator};
+
+    use super::*;
 
     type Sim = Simulator<Fp>;
 

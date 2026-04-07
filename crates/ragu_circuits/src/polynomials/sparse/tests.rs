@@ -1,12 +1,11 @@
 use alloc::{vec, vec::Vec};
+
 use ff::Field;
 use proptest::prelude::*;
 use ragu_pasta::Fp;
 
+use super::{Polynomial, View};
 use crate::polynomials::{Rank, TestRank};
-
-use super::Polynomial;
-use super::View;
 
 type R = TestRank;
 

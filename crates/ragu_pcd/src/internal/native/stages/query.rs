@@ -14,6 +14,8 @@
 //! Additionally witnesses the $a$/$b$ polynomial evaluations and registry
 //! transition evaluations needed for mesh consistency checks.
 
+use core::marker::PhantomData;
+
 use ff::PrimeField;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -28,12 +30,11 @@ use ragu_core::{
 };
 use ragu_primitives::Element;
 
-use core::marker::PhantomData;
-
-use crate::Proof;
-
-use crate::internal::native::{
-    InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex, RxValues,
+use crate::{
+    Proof,
+    internal::native::{
+        InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex, RxValues,
+    },
 };
 
 /// Witness for a child proof's polynomial evaluations.
@@ -309,9 +310,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::Pasta;
+
     use super::*;
     use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};
-    use ragu_pasta::Pasta;
 
     #[test]
     fn stage_values_matches_wire_count() {

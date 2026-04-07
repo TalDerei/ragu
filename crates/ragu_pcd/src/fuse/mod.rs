@@ -16,6 +16,7 @@ mod _10_p;
 mod _11_circuits;
 pub(crate) mod claims;
 
+use claims::FuseProofSource;
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::{Rank, sparse};
@@ -26,8 +27,6 @@ use rand::CryptoRng;
 use crate::{
     Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
 };
-
-use claims::FuseProofSource;
 
 /// Ephemeral native-field data for $f(X)$, used only during the fuse step.
 struct NativeF<C: Cycle, R: Rank> {

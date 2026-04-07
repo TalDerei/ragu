@@ -1,15 +1,16 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ff::Field;
 use ragu_circuits::{Circuit, CircuitExt, WithAux};
-use ragu_core::Result;
-use ragu_core::drivers::{Driver, DriverValue};
-use ragu_core::gadgets::{Bound, Kind};
-use ragu_core::maybe::Maybe;
-use ragu_core::routines::{Prediction, Routine};
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue},
+    gadgets::{Bound, Kind},
+    maybe::Maybe,
+    routines::{Prediction, Routine},
+};
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 /// A synthetic routine that does `depth` squarings in `execute()` but
 /// predicts the output cheaply, exercising the `Known` parallel path.

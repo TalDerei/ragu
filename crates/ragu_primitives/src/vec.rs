@@ -13,6 +13,12 @@
 //! [`Gadget`] if `T` implements `Gadget`, and can also be serialized via
 //! [`Write`] if `T::Kind` implements `Write`.
 
+use alloc::vec::Vec;
+use core::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
+
 use ff::Field;
 use ragu_core::{
     Error, Result,
@@ -21,15 +27,10 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind},
 };
 
-use crate::consistent::Consistent;
-
-use alloc::vec::Vec;
-use core::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
+use crate::{
+    consistent::Consistent,
+    io::{Buffer, Write},
 };
-
-use crate::io::{Buffer, Write};
 
 /// A type that statically determines the length of a [`FixedVec`].
 pub trait Len: Send + Sync + 'static {
@@ -209,6 +210,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>, L: Len> Gadget<'dr, D> for FixedVec
 #[test]
 fn test_vector_length_mismatch() {
     use alloc::vec;
+
     use ragu_core::Error;
     let result = FixedVec::<i32, ConstLen<3>>::new(vec![1, 2]);
     match result {

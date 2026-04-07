@@ -1,11 +1,8 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ff::Field;
-use pasta_curves::EpAffine;
-use pasta_curves::Fq;
-use pasta_curves::group::prime::PrimeCurveAffine;
+use pasta_curves::{EpAffine, Fq, group::prime::PrimeCurveAffine};
 use ragu_arithmetic::mul;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 fn msm_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("msm");

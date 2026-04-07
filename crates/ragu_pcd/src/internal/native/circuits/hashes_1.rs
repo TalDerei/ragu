@@ -72,6 +72,8 @@
 //! [`WithSuffix`]: crate::internal::suffix::WithSuffix
 //! [`Transcript::save_state`]: crate::internal::transcript::Transcript::save_state
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
@@ -90,15 +92,14 @@ use ragu_primitives::{
     vec::{ConstLen, FixedVec},
 };
 
-use core::marker::PhantomData;
-
 use super::super::{
     stages::{outer_error as native_outer_error, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
-use crate::RAGU_TAG;
-use crate::internal::fold_revdot;
-use crate::internal::{suffix::WithSuffix, transcript::Transcript};
+use crate::{
+    RAGU_TAG,
+    internal::{fold_revdot, suffix::WithSuffix, transcript::Transcript},
+};
 
 /// Public output of the first hash circuit.
 ///

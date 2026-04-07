@@ -29,9 +29,10 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C, instance: C::Instance<'_>, y: 
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::Fp;
+
     use super::*;
     use crate::tests::SquareCircuit;
-    use ragu_pasta::Fp;
 
     #[test]
     fn test_ky() {

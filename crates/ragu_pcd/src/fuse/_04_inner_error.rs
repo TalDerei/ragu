@@ -18,14 +18,15 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
+use super::{
+    RegistryWy,
+    claims::{FuseBuilder, FuseProofSource},
+};
 use crate::{
     Application,
     internal::{claims, fold_revdot, native, nested},
     proof::ProofBuilder,
 };
-
-use super::RegistryWy;
-use super::claims::{FuseBuilder, FuseProofSource};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn inner_error_terms<'dr, 'rx, D, RNG: CryptoRng>(

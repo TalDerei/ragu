@@ -1,13 +1,13 @@
 //! Common abstraction for orchestrating revdot claims.
 
+use alloc::{borrow::Cow, vec::Vec};
+use core::borrow::Borrow;
+
 use ff::{Field, PrimeField};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::{CircuitIndex, Registry},
 };
-
-use alloc::{borrow::Cow, vec::Vec};
-use core::borrow::Borrow;
 
 /// Sum an iterator of polynomials, borrowing if only one element.
 ///

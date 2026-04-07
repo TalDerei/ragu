@@ -6,6 +6,7 @@
 //! lazily computed from [`bridge_alpha`](ProofBuilder::bridge_alpha) and the
 //! native commitments already on the builder.
 
+use alloc::vec::Vec;
 use core::cell::Cell;
 
 use ff::Field;
@@ -17,11 +18,8 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
-use alloc::vec::Vec;
-
-use crate::internal::nested;
-
 use super::{Cached, Proof};
+use crate::internal::nested;
 
 /// Produces `pub(crate) fn $name(&mut self, v: $ty)` that sets an `Option`
 /// field, panicking on double-set.

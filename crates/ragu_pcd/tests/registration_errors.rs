@@ -6,10 +6,10 @@ use ragu_core::{
     gadgets::Bound,
 };
 use ragu_pasta::Pasta;
-use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_pcd::{
     ApplicationBuilder,
     header::{Header, Suffix},
+    step::{Encoded, Index, Step},
 };
 
 // Header A with suffix 0

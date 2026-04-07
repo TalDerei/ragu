@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use ff::PrimeField;
 use ragu_core::{
     Result,
@@ -12,8 +14,6 @@ use ragu_primitives::{
     io::Pipe,
     vec::{ConstLen, FixedVec},
 };
-
-use alloc::vec::Vec;
 
 use super::{Header, internal::padded};
 
@@ -135,15 +135,17 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::header::{Header, Suffix};
     use alloc::vec;
+
     use ragu_core::{
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::Fp;
+
+    use super::*;
+    use crate::header::{Header, Suffix};
 
     const HEADER_SIZE: usize = 4;
 

@@ -2,15 +2,15 @@
 
 mod setup;
 
+use std::hint::black_box;
+
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_pasta::{EpAffine, Fp, PoseidonFp};
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Boolean, Element, Endoscalar, Point, multiadd, multipack};
+use ragu_primitives::{Boolean, Element, Endoscalar, Point, multiadd, multipack, poseidon::Sponge};
 use setup::{
     BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo, alloc_point,
     alloc_sponge, setup_emu,
 };
-use std::hint::black_box;
 
 #[library_benchmark(setup = setup_emu)]
 #[bench::element_mul((alloc_elem, alloc_elem))]

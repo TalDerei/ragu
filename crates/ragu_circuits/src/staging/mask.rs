@@ -185,20 +185,18 @@ mod tests {
     use ragu_primitives::{Element, Endoscalar, Point, consistent::Consistent, io::Write};
     use rand::RngExt;
 
-    use crate::{
-        CircuitObject, WithAux, floor_planner, into_circuit_object, into_raw_circuit_object,
-        metrics,
-        polynomials::{Rank, sparse},
-        staging::StageBuilder,
-        tests::SquareCircuit,
-    };
-
     use super::{
         super::{Stage, StageExt},
         StageMask,
     };
-
-    use crate::raw::GateWires;
+    use crate::{
+        CircuitObject, WithAux, floor_planner, into_circuit_object, into_raw_circuit_object,
+        metrics,
+        polynomials::{Rank, sparse},
+        raw::GateWires,
+        staging::StageBuilder,
+        tests::SquareCircuit,
+    };
 
     impl<F: Field, R: Rank> crate::raw::RawCircuit<F> for StageMask<R> {
         type Witness<'source> = ();

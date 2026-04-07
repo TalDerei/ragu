@@ -46,6 +46,8 @@
 //! [`ClaimFolder::fold_outer`]: fold_revdot::ClaimFolder::fold_outer
 //! [`is_base_case`]: super::super::stages::preamble::Output::is_base_case
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
@@ -58,8 +60,6 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-
-use core::marker::PhantomData;
 
 use super::super::{
     stages::{outer_error, preamble},

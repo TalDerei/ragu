@@ -62,10 +62,10 @@
 //!
 //! [book]: https://tachyon.z.cash/ragu/guide/drivers/concrete.html#emulator
 
-use ff::Field;
-
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+
+use ff::Field;
 
 use crate::{
     Result,
@@ -350,13 +350,16 @@ fn short_circuit_routine<'dr, D: Driver<'dr, Wire = ()>, R: Routine<D::F> + 'dr>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Result;
-    use crate::drivers::{Coeff, Driver, DriverValue};
-    use crate::maybe::{Always, Maybe};
-    use crate::routines::{Prediction, Routine};
     use ff::Field;
     use ragu_pasta::Fp;
+
+    use super::*;
+    use crate::{
+        Result,
+        drivers::{Coeff, Driver, DriverValue},
+        maybe::{Always, Maybe},
+        routines::{Prediction, Routine},
+    };
 
     type F = Fp;
 

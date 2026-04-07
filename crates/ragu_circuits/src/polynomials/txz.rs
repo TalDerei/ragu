@@ -1,5 +1,7 @@
 //! Evaluation of the $t(X, Z)$ polynomial.
 
+use core::marker::PhantomData;
+
 use ff::Field;
 use ragu_core::{
     Error, Result,
@@ -9,8 +11,6 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_primitives::Element;
-
-use core::marker::PhantomData;
 
 use super::Rank;
 
@@ -143,10 +143,11 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::polynomials::ProductionRank;
     use ragu_pasta::Fp;
     use ragu_primitives::Simulator;
+
+    use super::*;
+    use crate::polynomials::ProductionRank;
 
     #[test]
     fn simulate_txz() -> Result<()> {

@@ -60,6 +60,9 @@
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
 //! [`sparse::View`]: crate::polynomials::sparse::View
 
+use alloc::{vec, vec::Vec};
+use core::cell::{RefCell, RefMut};
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -69,9 +72,6 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use alloc::{vec, vec::Vec};
-use core::cell::{RefCell, RefMut};
 
 use crate::{
     DriverScope,

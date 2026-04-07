@@ -58,9 +58,8 @@ use ragu_core::{
     routines::Routine,
 };
 
-use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
-
 use super::common::{WireEval, WireEvalSum};
+use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
 
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.
 ///

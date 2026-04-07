@@ -2,6 +2,8 @@
 
 mod setup;
 
+use std::hint::black_box;
+
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
@@ -12,7 +14,6 @@ use rand::rngs::StdRng;
 use setup::{
     setup_finalize, setup_fuse, setup_register, setup_seed, setup_verify_leaf, setup_verify_node,
 };
-use std::hint::black_box;
 
 #[library_benchmark(setup = setup_register)]
 #[bench::register()]

@@ -1,5 +1,7 @@
 //! Operations and utilities for reasoning about folded revdot claims.
 
+use core::{borrow::Borrow, iter, marker::PhantomData};
+
 use ff::Field;
 use ragu_circuits::{
     horner::Horner,
@@ -11,8 +13,6 @@ use ragu_primitives::{
     io::Buffer,
     vec::{CollectFixed, ConstLen, FixedVec, Len},
 };
-
-use core::{borrow::Borrow, iter, marker::PhantomData};
 
 /// The two operations a Horner-style fold needs: scale all components, then
 /// add another element in.
@@ -285,8 +285,8 @@ pub fn fold_two_layer<'dr, D: Driver<'dr>, P: Parameters>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloc::{vec, vec::Vec};
+
     use ff::Field;
     use ragu_circuits::polynomials::{TestRank, sparse};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
@@ -294,6 +294,7 @@ mod tests {
     use ragu_primitives::{Simulator, vec::CollectFixed};
     use rand::SeedableRng;
 
+    use super::*;
     use crate::internal::native::RevdotParameters;
 
     /// Test parameters with configurable N and M.

@@ -1,10 +1,11 @@
 use ff::Field;
-use ragu_circuits::polynomials::{ProductionRank, TestRank, sparse};
-use ragu_circuits::registry::{Registry, RegistryBuilder};
+use ragu_circuits::{
+    polynomials::{ProductionRank, TestRank, sparse},
+    registry::{Registry, RegistryBuilder},
+};
 use ragu_pasta::Fp;
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 pub trait SetupRng<Out> {
     fn setup(self, rng: &mut StdRng) -> Out;

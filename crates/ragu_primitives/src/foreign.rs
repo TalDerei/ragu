@@ -3,10 +3,10 @@
 //! Enables types like `()`, arrays, tuples, and `Box<T>` to participate in
 //! the circuit IO system by implementing the [`Write`] trait.
 
+use alloc::boxed::Box;
+
 use ff::Field;
 use ragu_core::{Result, drivers::Driver, gadgets::Bound};
-
-use alloc::boxed::Box;
 
 use crate::io::{Buffer, Write};
 

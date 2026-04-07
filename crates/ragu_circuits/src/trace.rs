@@ -5,6 +5,10 @@
 //! The [`Trace`] is later assembled into a [`sparse::Polynomial`]
 //! by the registry.
 
+use alloc::{vec, vec::Vec};
+#[cfg(feature = "multicore")]
+use std::sync::mpsc;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -16,10 +20,6 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_primitives::GadgetExt;
-
-use alloc::{vec, vec::Vec};
-#[cfg(feature = "multicore")]
-use std::sync::mpsc;
 
 use super::{Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, sparse};
 use crate::WithAux;
@@ -428,11 +428,12 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tests::SquareCircuit;
     use ragu_core::gadgets::Kind;
     use ragu_pasta::Fp;
     use ragu_primitives::Element;
+
+    use super::*;
+    use crate::tests::SquareCircuit;
 
     #[test]
     fn test_trace() {

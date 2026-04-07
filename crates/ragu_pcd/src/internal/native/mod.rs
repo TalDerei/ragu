@@ -9,8 +9,7 @@ use ragu_circuits::{
 use ragu_core::Result;
 use ragu_primitives::vec::ConstLen;
 
-use crate::internal::fold_revdot::Parameters;
-use crate::step;
+use crate::{internal::fold_revdot::Parameters, step};
 
 /// Default parameters for native revdot folding
 #[derive(Clone, Copy, Default)]

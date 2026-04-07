@@ -1,14 +1,16 @@
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use ragu_arithmetic::{Cycle, Uendo};
-use ragu_core::drivers::Driver;
-use ragu_core::drivers::emulator::{Emulator, Wireless};
-use ragu_core::maybe::Always;
+use ragu_core::{
+    drivers::{
+        Driver,
+        emulator::{Emulator, Wireless},
+    },
+    maybe::Always,
+};
 use ragu_pasta::{EpAffine, Fp, Fq, Pasta, PoseidonFp};
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Boolean, Element, Endoscalar, Point};
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
+use ragu_primitives::{Boolean, Element, Endoscalar, Point, poseidon::Sponge};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 pub type BenchEmu = Emulator<Wireless<Always<()>, Fp>>;
 

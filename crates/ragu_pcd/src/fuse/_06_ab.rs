@@ -27,13 +27,13 @@
 //! evaluations that $B(x)$ already needs, eliminating separate
 //! $r\_i(x)$ queries.
 
+use alloc::vec::Vec;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, vec::FixedVec};
-
-use alloc::vec::Vec;
 
 use super::claims::{FoldKey, FuseProofSource, TrackedPoly};
 use crate::{

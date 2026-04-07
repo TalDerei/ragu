@@ -6,6 +6,8 @@
 //! This module only supports curves with `a = 0` in the short Weierstrass form,
 //! specifically curves of the form `y^2 = x^3 + b`.
 
+use core::marker::PhantomData;
+
 use ff::WithSmallOrderMulGroup;
 use ragu_arithmetic::{Coeff, CurveAffine};
 use ragu_core::{
@@ -15,11 +17,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::consistent::Consistent;
-
-use core::marker::PhantomData;
-
-use crate::{Boolean, Element, io::Write};
+use crate::{Boolean, Element, consistent::Consistent, io::Write};
 
 /// Represents an affine point on a curve defined over the circuit's field.
 #[derive(Gadget, Write)]
@@ -277,6 +275,7 @@ fn test_point_double() -> Result<()> {
 #[test]
 fn test_add_incomplete() -> Result<()> {
     use alloc::vec;
+
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::CurveExt;
 
@@ -327,8 +326,8 @@ fn test_add_incomplete() -> Result<()> {
 
 #[test]
 fn test_double_and_add_incomplete() -> Result<()> {
-    use alloc::vec;
-    use alloc::vec::Vec;
+    use alloc::{vec, vec::Vec};
+
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::CurveExt;
 

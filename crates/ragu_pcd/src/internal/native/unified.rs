@@ -502,10 +502,11 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'dr, D, C
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ragu_circuits::polynomials::ProductionRank;
     use ragu_core::{drivers::emulator::Emulator, maybe::Empty};
     use ragu_pasta::Pasta;
+
+    use super::*;
 
     #[test]
     fn num_wires_constant_is_correct() {

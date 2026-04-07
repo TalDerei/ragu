@@ -38,6 +38,9 @@
 //!
 //! [staging chapter]: https://tachyon.z.cash/ragu/protocol/extensions/staging
 
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
@@ -50,9 +53,6 @@ use ragu_core::{
     maybe::Empty,
 };
 use ragu_primitives::consistent::Consistent;
-
-use alloc::vec::Vec;
-use core::marker::PhantomData;
 
 use super::{Stage, StageExt};
 use crate::polynomials::Rank;

@@ -5,6 +5,8 @@
 //! this rerandomization step synthesizes the same circuit no matter what the
 //! left header is, we use a _uniform_ encoding of the left header.
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
 use ragu_core::{
     Result,
@@ -12,11 +14,8 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use core::marker::PhantomData;
-
 use super::super::{Encoded, Index, Step};
 use crate::Header;
-
 pub(crate) use crate::step::InternalStepIndex::Rerandomize as INTERNAL_ID;
 
 pub(crate) struct Rerandomize<H> {
@@ -77,7 +76,6 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
 
 #[test]
 fn test_rerandomize_consistency() {
-    use crate::header::{Header, Suffix};
     use ragu_circuits::polynomials;
     use ragu_core::{
         Result,
@@ -88,6 +86,8 @@ fn test_rerandomize_consistency() {
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::Element;
     use ragu_testing::registry::TestRegistryBuilder;
+
+    use crate::header::{Header, Suffix};
 
     const HEADER_SIZE: usize = 4;
     type R = polynomials::TestRank;

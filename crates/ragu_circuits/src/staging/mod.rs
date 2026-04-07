@@ -119,6 +119,9 @@ pub(crate) mod bonding;
 mod builder;
 pub(crate) mod mask;
 
+use alloc::boxed::Box;
+
+pub use builder::{StageBuilder, StageGuard};
 use ff::Field;
 use ragu_core::{
     Result,
@@ -128,14 +131,10 @@ use ragu_core::{
 };
 use ragu_primitives::io::Write;
 
-use alloc::boxed::Box;
-
 use crate::{
     BondingObject, Circuit, WithAux,
     polynomials::{Rank, sparse},
 };
-
-pub use builder::{StageBuilder, StageGuard};
 
 /// Represents a partial trace component for a multi-stage circuit.
 pub trait Stage<F: Field, R: Rank> {
