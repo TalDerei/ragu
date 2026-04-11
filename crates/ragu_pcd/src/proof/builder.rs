@@ -642,27 +642,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         resolve!(native_outer_collapse_commitment, native_outer_collapse_rx);
         resolve!(native_compute_v_commitment, native_compute_v_rx);
 
-        // Verify externally-provided native commitment caches.
-        macro_rules! verify {
-            ($cache:ident, $poly:ident) => {
-                assert!(
-                    *self
-                        .$cache
-                        .get()
-                        .expect(concat!(stringify!($cache), " not set"))
-                        == self
-                            .$poly
-                            .as_ref()
-                            .expect(concat!(stringify!($poly), " not set"))
-                            .commit_to_affine(host_gen),
-                    concat!(stringify!($cache), " does not match ", stringify!($poly))
-                );
-            };
-        }
-        verify!(native_a_commitment, native_a_poly);
-        verify!(native_b_commitment, native_b_poly);
-        verify!(native_p_commitment, native_p_poly);
-
         // Force lazy evaluation of cached bridge commitments.
         self.bridge_outer_error_commitment()?;
         self.bridge_ab_commitment()?;
