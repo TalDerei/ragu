@@ -1,13 +1,13 @@
 //! [`ProofBuilder`] for incremental proof construction.
 //!
 //! Polynomial setters store values immediately. Native commitment caches are
-//! computed lazily on first access via [`Cell`]-based interior mutability.
+//! computed lazily on first access via [`OnceCell`]-based interior mutability.
 //! The four "simple" bridge commitments (outer_error, ab, query, eval) are also
 //! lazily computed from [`bridge_alpha`](ProofBuilder::bridge_alpha) and the
 //! native commitments already on the builder.
 
 use alloc::vec::Vec;
-use core::cell::Cell;
+use core::cell::OnceCell;
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
@@ -41,16 +41,12 @@ macro_rules! setter {
 macro_rules! native_commitment_getter {
     ($getter:ident, $cache:ident, $poly:ident) => {
         pub(crate) fn $getter(&self) -> C::HostCurve {
-            if let Some(c) = self.$cache.get() {
-                return c;
-            }
-            let c = self
-                .$poly
-                .as_ref()
-                .expect(concat!(stringify!($poly), " not set"))
-                .commit_to_affine(C::host_generators(self.params));
-            self.$cache.set(Some(c));
-            c
+            *self.$cache.get_or_init(|| {
+                self.$poly
+                    .as_ref()
+                    .expect(concat!(stringify!($poly), " not set"))
+                    .commit_to_affine(C::host_generators(self.params))
+            })
         }
     };
 }
@@ -61,16 +57,12 @@ macro_rules! native_commitment_getter {
 macro_rules! nested_commitment_getter {
     ($getter:ident, $cache:ident, $poly:ident) => {
         pub(crate) fn $getter(&self) -> C::NestedCurve {
-            if let Some(c) = self.$cache.get() {
-                return c;
-            }
-            let c = self
-                .$poly
-                .as_ref()
-                .expect(concat!(stringify!($poly), " not set"))
-                .commit_to_affine(C::nested_generators(self.params));
-            self.$cache.set(Some(c));
-            c
+            *self.$cache.get_or_init(|| {
+                self.$poly
+                    .as_ref()
+                    .expect(concat!(stringify!($poly), " not set"))
+                    .commit_to_affine(C::nested_generators(self.params))
+            })
         }
     };
 }
@@ -157,7 +149,10 @@ macro_rules! native_poly_with_commitment_setter {
                 concat!("double-set: ", stringify!($poly))
             );
             self.$poly = Some(poly);
-            self.$cache.set(Some(commitment));
+            assert!(
+                self.$cache.set(commitment).is_ok(),
+                concat!("double-set: ", stringify!($cache))
+            );
         }
     };
 }
@@ -168,7 +163,7 @@ macro_rules! native_poly_with_commitment_setter {
 macro_rules! explicit_commitment_getter {
     ($getter:ident, $cache:ident, $setter:ident) => {
         pub(crate) fn $getter(&self) -> C::HostCurve {
-            self.$cache.get().expect(concat!(
+            *self.$cache.get().expect(concat!(
                 stringify!($cache),
                 " not set (call ",
                 stringify!($setter),
@@ -267,9 +262,9 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     nested_points_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
 
     // Nested endoscaling commitment caches (lazily computed from polynomials)
-    nested_endoscaling_step_commitments: Cell<Option<Vec<C::NestedCurve>>>,
-    nested_endoscalar_commitment: Cell<Option<C::NestedCurve>>,
-    nested_points_commitment: Cell<Option<C::NestedCurve>>,
+    nested_endoscaling_step_commitments: OnceCell<Vec<C::NestedCurve>>,
+    nested_endoscalar_commitment: OnceCell<C::NestedCurve>,
+    nested_points_commitment: OnceCell<C::NestedCurve>,
 
     // Challenges
     w: Option<C::CircuitField>,
@@ -285,21 +280,21 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     pre_beta: Option<C::CircuitField>,
 
     // Native commitment caches (lazily computed from polynomials)
-    native_application_commitment: Cell<Option<C::HostCurve>>,
-    native_preamble_commitment: Cell<Option<C::HostCurve>>,
-    native_inner_error_commitment: Cell<Option<C::HostCurve>>,
-    native_outer_error_commitment: Cell<Option<C::HostCurve>>,
-    native_a_commitment: Cell<Option<C::HostCurve>>,
-    native_b_commitment: Cell<Option<C::HostCurve>>,
-    native_query_commitment: Cell<Option<C::HostCurve>>,
-    native_registry_xy_commitment: Cell<Option<C::HostCurve>>,
-    native_eval_commitment: Cell<Option<C::HostCurve>>,
-    native_p_commitment: Cell<Option<C::HostCurve>>,
-    native_hashes_1_commitment: Cell<Option<C::HostCurve>>,
-    native_hashes_2_commitment: Cell<Option<C::HostCurve>>,
-    native_inner_collapse_commitment: Cell<Option<C::HostCurve>>,
-    native_outer_collapse_commitment: Cell<Option<C::HostCurve>>,
-    native_compute_v_commitment: Cell<Option<C::HostCurve>>,
+    native_application_commitment: OnceCell<C::HostCurve>,
+    native_preamble_commitment: OnceCell<C::HostCurve>,
+    native_inner_error_commitment: OnceCell<C::HostCurve>,
+    native_outer_error_commitment: OnceCell<C::HostCurve>,
+    native_a_commitment: OnceCell<C::HostCurve>,
+    native_b_commitment: OnceCell<C::HostCurve>,
+    native_query_commitment: OnceCell<C::HostCurve>,
+    native_registry_xy_commitment: OnceCell<C::HostCurve>,
+    native_eval_commitment: OnceCell<C::HostCurve>,
+    native_p_commitment: OnceCell<C::HostCurve>,
+    native_hashes_1_commitment: OnceCell<C::HostCurve>,
+    native_hashes_2_commitment: OnceCell<C::HostCurve>,
+    native_inner_collapse_commitment: OnceCell<C::HostCurve>,
+    native_outer_collapse_commitment: OnceCell<C::HostCurve>,
+    native_compute_v_commitment: OnceCell<C::HostCurve>,
 }
 
 impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
@@ -346,9 +341,9 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             nested_endoscaling_step_rxs: None,
             nested_endoscalar_rx: None,
             nested_points_rx: None,
-            nested_endoscaling_step_commitments: Cell::new(None),
-            nested_endoscalar_commitment: Cell::new(None),
-            nested_points_commitment: Cell::new(None),
+            nested_endoscaling_step_commitments: OnceCell::new(),
+            nested_endoscalar_commitment: OnceCell::new(),
+            nested_points_commitment: OnceCell::new(),
             w: None,
             y: None,
             z: None,
@@ -360,21 +355,21 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             alpha: None,
             u: None,
             pre_beta: None,
-            native_application_commitment: Cell::new(None),
-            native_preamble_commitment: Cell::new(None),
-            native_inner_error_commitment: Cell::new(None),
-            native_outer_error_commitment: Cell::new(None),
-            native_a_commitment: Cell::new(None),
-            native_b_commitment: Cell::new(None),
-            native_query_commitment: Cell::new(None),
-            native_registry_xy_commitment: Cell::new(None),
-            native_eval_commitment: Cell::new(None),
-            native_p_commitment: Cell::new(None),
-            native_hashes_1_commitment: Cell::new(None),
-            native_hashes_2_commitment: Cell::new(None),
-            native_inner_collapse_commitment: Cell::new(None),
-            native_outer_collapse_commitment: Cell::new(None),
-            native_compute_v_commitment: Cell::new(None),
+            native_application_commitment: OnceCell::new(),
+            native_preamble_commitment: OnceCell::new(),
+            native_inner_error_commitment: OnceCell::new(),
+            native_outer_error_commitment: OnceCell::new(),
+            native_a_commitment: OnceCell::new(),
+            native_b_commitment: OnceCell::new(),
+            native_query_commitment: OnceCell::new(),
+            native_registry_xy_commitment: OnceCell::new(),
+            native_eval_commitment: OnceCell::new(),
+            native_p_commitment: OnceCell::new(),
+            native_hashes_1_commitment: OnceCell::new(),
+            native_hashes_2_commitment: OnceCell::new(),
+            native_inner_collapse_commitment: OnceCell::new(),
+            native_outer_collapse_commitment: OnceCell::new(),
+            native_compute_v_commitment: OnceCell::new(),
         }
     }
 
@@ -561,23 +556,16 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
 
     /// Lazily computes and caches commitments for all endoscaling step rx
     /// polynomials. Returns the cached slice.
-    pub(crate) fn nested_endoscaling_step_commitments(&self) -> Vec<C::NestedCurve> {
-        if let Some(c) = self.nested_endoscaling_step_commitments.take() {
-            self.nested_endoscaling_step_commitments
-                .set(Some(c.clone()));
-            return c;
-        }
-        let nested_gen = C::nested_generators(self.params);
-        let c: Vec<C::NestedCurve> = self
-            .nested_endoscaling_step_rxs
-            .as_ref()
-            .expect("nested_endoscaling_step_rxs not set")
-            .iter()
-            .map(|rx| rx.commit_to_affine(nested_gen))
-            .collect();
-        self.nested_endoscaling_step_commitments
-            .set(Some(c.clone()));
-        c
+    pub(crate) fn nested_endoscaling_step_commitments(&self) -> &[C::NestedCurve] {
+        self.nested_endoscaling_step_commitments.get_or_init(|| {
+            let nested_gen = C::nested_generators(self.params);
+            self.nested_endoscaling_step_rxs
+                .as_ref()
+                .expect("nested_endoscaling_step_rxs not set")
+                .iter()
+                .map(|rx| rx.commit_to_affine(nested_gen))
+                .collect()
+        })
     }
 
     nested_commitment_getter!(
@@ -633,14 +621,12 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         // Ensure all native commitment caches are populated.
         macro_rules! resolve {
             ($cache:ident, $poly:ident) => {
-                if self.$cache.get().is_none() {
-                    self.$cache.set(Some(
-                        self.$poly
-                            .as_ref()
-                            .expect(concat!(stringify!($poly), " not set"))
-                            .commit_to_affine(host_gen),
-                    ));
-                }
+                self.$cache.get_or_init(|| {
+                    self.$poly
+                        .as_ref()
+                        .expect(concat!(stringify!($poly), " not set"))
+                        .commit_to_affine(host_gen)
+                });
             };
         }
         resolve!(native_application_commitment, native_application_rx);
@@ -660,7 +646,8 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         macro_rules! verify {
             ($cache:ident, $poly:ident) => {
                 assert!(
-                    self.$cache
+                    *self
+                        .$cache
                         .get()
                         .expect(concat!(stringify!($cache), " not set"))
                         == self
@@ -696,7 +683,8 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         macro_rules! cached {
             ($field:ident) => {
                 Cached(
-                    self.$field
+                    *self
+                        .$field
                         .get()
                         .expect(concat!(stringify!($field), " not set")),
                 )
@@ -762,12 +750,14 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
                 .map(Cached)
                 .collect(),
             nested_endoscalar_commitment: Cached(
-                self.nested_endoscalar_commitment
+                *self
+                    .nested_endoscalar_commitment
                     .get()
                     .expect("nested_endoscalar_commitment not set"),
             ),
             nested_points_commitment: Cached(
-                self.nested_points_commitment
+                *self
+                    .nested_points_commitment
                     .get()
                     .expect("nested_points_commitment not set"),
             ),
