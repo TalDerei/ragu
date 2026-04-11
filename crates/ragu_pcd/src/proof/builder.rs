@@ -666,17 +666,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         macro_rules! cached {
             ($field:ident) => {
                 Cached(
-                    *self
-                        .$field
-                        .get()
-                        .expect(concat!(stringify!($field), " not set")),
-                )
-            };
-        }
-
-        macro_rules! cached_take {
-            ($field:ident) => {
-                Cached(
                     self.$field
                         .take()
                         .expect(concat!(stringify!($field), " not set")),
@@ -716,14 +705,14 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             bridge_f_rx: take!(bridge_f_rx),
             bridge_f_commitment: take!(bridge_f_commitment),
 
-            bridge_outer_error_rx: cached_take!(bridge_outer_error_rx),
-            bridge_outer_error_commitment: cached_take!(bridge_outer_error_commitment),
-            bridge_ab_rx: cached_take!(bridge_ab_rx),
-            bridge_ab_commitment: cached_take!(bridge_ab_commitment),
-            bridge_query_rx: cached_take!(bridge_query_rx),
-            bridge_query_commitment: cached_take!(bridge_query_commitment),
-            bridge_eval_rx: cached_take!(bridge_eval_rx),
-            bridge_eval_commitment: cached_take!(bridge_eval_commitment),
+            bridge_outer_error_rx: cached!(bridge_outer_error_rx),
+            bridge_outer_error_commitment: cached!(bridge_outer_error_commitment),
+            bridge_ab_rx: cached!(bridge_ab_rx),
+            bridge_ab_commitment: cached!(bridge_ab_commitment),
+            bridge_query_rx: cached!(bridge_query_rx),
+            bridge_query_commitment: cached!(bridge_query_commitment),
+            bridge_eval_rx: cached!(bridge_eval_rx),
+            bridge_eval_commitment: cached!(bridge_eval_commitment),
 
             nested_endoscaling_step_rxs: take!(nested_endoscaling_step_rxs),
             nested_endoscalar_rx: take!(nested_endoscalar_rx),
