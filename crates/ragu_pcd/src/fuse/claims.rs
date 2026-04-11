@@ -235,14 +235,14 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FoldKey, F, R>, Circui
         self.b.push(Cow::Borrowed(b.poly));
     }
 
-    fn circuit(&mut self, circuit_id: CircuitIndex, rx: Atom<'rx, FoldKey, F, R>) {
+    fn circuit_claim(&mut self, circuit_id: CircuitIndex, rx: Atom<'rx, FoldKey, F, R>) {
         self.circuit_impl(
             circuit_id,
             TrackedPoly::single(Cow::Borrowed(rx.poly), rx.key),
         );
     }
 
-    fn internal_circuit(
+    fn internal_circuit_claim(
         &mut self,
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = Atom<'rx, FoldKey, F, R>>,
@@ -250,7 +250,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FoldKey, F, R>, Circui
         self.circuit_impl(id.circuit_index(), TrackedPoly::sum(rxs));
     }
 
-    fn bonding(
+    fn grouped_bonding_claim(
         &mut self,
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = Atom<'rx, FoldKey, F, R>>>,

@@ -57,37 +57,50 @@ const NUM_UNIFIED_CIRCUITS: usize = 4;
 ///   `ax` uses $r\_i(xz)$ directly (since $A$ has no dilation), while `bx` adds
 ///   $s\_y + t(xz)$.
 pub trait Processor<Rx, AppCircuitId> {
-    /// Process a raw claim (a/b directly, $k(y) = c$).
+    /// Process a raw claim with `a` and `b` traces supplied directly
+    /// ($k(y) = c$).
     fn raw_claim(&mut self, a: Rx, b: Rx);
 
-    /// Process an application circuit claim ($k(y) = \text{application\_ky}$).
-    fn circuit(&mut self, app_id: AppCircuitId, rx: Rx);
+    /// Process a single-trace application circuit claim
+    /// ($k(y) = \text{application\_ky}$).
+    fn circuit_claim(&mut self, app_id: AppCircuitId, rx: Rx);
 
-    /// Process an internal circuit claim (sum of rxs, $k(y) = \text{internal\_ky}$).
+    /// Process an internal circuit claim whose trace is the sum of the given
+    /// rxs ($k(y) = \text{internal\_ky}$).
     ///
-    /// The processor looks up registry via [`InternalCircuitIndex`] from its stored context.
-    fn internal_circuit(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
+    /// The processor looks up registry via [`InternalCircuitIndex`] from its
+    /// stored context.
+    fn internal_circuit_claim(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: impl Iterator<Item = Rx>,
+    );
 
-    /// Process a bonding claim where each fold element is a sum of rx groups,
-    /// $k(y) = 0$.
+    /// Process a claim whose trace is the Horner fold (with $z$) of the given
+    /// rxs, with one rx per fold slot ($k(y) = 0$, equivalently
+    /// $\text{revdot}(a, s\_y) = 0$).
     ///
-    /// Each inner iterator is summed into a single trace, then the sums are
-    /// Horner-folded with $z$. Returns `Result<()>` because evaluation context
-    /// requires fallible fold operations.
+    /// The default implementation wraps each rx as a single-element group and
+    /// delegates to [`grouped_bonding_claim`](Self::grouped_bonding_claim).
+    fn bonding_claim(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: impl Iterator<Item = Rx>,
+    ) -> Result<()> {
+        self.grouped_bonding_claim(id, rxs.map(core::iter::once))
+    }
+
+    /// Process a claim whose trace is the Horner fold (with $z$) of per-group
+    /// sums, where each fold slot holds the sum of one inner iterator
+    /// ($k(y) = 0$).
     ///
-    /// When each rx is its own group (no summing), use [`masking`](Self::masking).
-    fn bonding(
+    /// Returns `Result<()>` because the evaluation context requires fallible
+    /// fold operations.
+    fn grouped_bonding_claim(
         &mut self,
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = Rx>>,
     ) -> Result<()>;
-
-    /// Process a masking claim (fold of rxs, $k(y) = 0$).
-    ///
-    /// Default wraps each rx as a single-element group.
-    fn masking(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()> {
-        self.bonding(id, rxs.map(core::iter::once))
-    }
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, CircuitIndex>
@@ -98,11 +111,11 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, C
         self.b.push(Cow::Borrowed(b));
     }
 
-    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx sparse::Polynomial<F, R>) {
+    fn circuit_claim(&mut self, circuit_id: CircuitIndex, rx: &'rx sparse::Polynomial<F, R>) {
         self.circuit_impl(circuit_id, Cow::Borrowed(rx));
     }
 
-    fn internal_circuit(
+    fn internal_circuit_claim(
         &mut self,
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
@@ -112,7 +125,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, C
         self.circuit_impl(circuit_id, rx);
     }
 
-    fn bonding(
+    fn grouped_bonding_claim(
         &mut self,
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
@@ -148,7 +161,7 @@ where
 
     // App circuits (interleaved per proof)
     for (app_id, rx) in source.app_circuits().zip(source.rx(Rx(Application))) {
-        processor.circuit(app_id, rx);
+        processor.circuit_claim(app_id, rx);
     }
 
     // Internal circuits and stages in canonical order.
@@ -162,14 +175,14 @@ where
                     .zip(source.rx(Rx(Preamble)))
                     .zip(source.rx(Rx(OuterError)))
                 {
-                    processor.internal_circuit(id, [h1, pre, en].into_iter());
+                    processor.internal_circuit_claim(id, [h1, pre, en].into_iter());
                 }
             }
 
             // hashes_2: Hashes2 + OuterError
             Hashes2Circuit => {
                 for (h2, en) in source.rx(Rx(Hashes2)).zip(source.rx(Rx(OuterError))) {
-                    processor.internal_circuit(id, [h2, en].into_iter());
+                    processor.internal_circuit_claim(id, [h2, en].into_iter());
                 }
             }
 
@@ -181,7 +194,7 @@ where
                     .zip(source.rx(Rx(InnerError)))
                     .zip(source.rx(Rx(OuterError)))
                 {
-                    processor.internal_circuit(id, [pc, pre, em, en].into_iter());
+                    processor.internal_circuit_claim(id, [pc, pre, em, en].into_iter());
                 }
             }
 
@@ -192,7 +205,7 @@ where
                     .zip(source.rx(Rx(Preamble)))
                     .zip(source.rx(Rx(OuterError)))
                 {
-                    processor.internal_circuit(id, [fc, pre, en].into_iter());
+                    processor.internal_circuit_claim(id, [fc, pre, en].into_iter());
                 }
             }
 
@@ -204,33 +217,33 @@ where
                     .zip(source.rx(Rx(Query)))
                     .zip(source.rx(Rx(Eval)))
                 {
-                    processor.internal_circuit(id, [cv, pre, q, e].into_iter());
+                    processor.internal_circuit_claim(id, [cv, pre, q, e].into_iter());
                 }
             }
 
             // Native stages (aggregated across all proofs)
             PreambleStage => {
-                processor.masking(id, source.rx(Rx(Preamble)))?;
+                processor.bonding_claim(id, source.rx(Rx(Preamble)))?;
             }
             InnerErrorStage => {
-                processor.masking(id, source.rx(Rx(InnerError)))?;
+                processor.bonding_claim(id, source.rx(Rx(InnerError)))?;
             }
             OuterErrorStage => {
-                processor.masking(id, source.rx(Rx(OuterError)))?;
+                processor.bonding_claim(id, source.rx(Rx(OuterError)))?;
             }
             QueryStage => {
-                processor.masking(id, source.rx(Rx(Query)))?;
+                processor.bonding_claim(id, source.rx(Rx(Query)))?;
             }
             EvalStage => {
-                processor.masking(id, source.rx(Rx(Eval)))?;
+                processor.bonding_claim(id, source.rx(Rx(Eval)))?;
             }
 
-            // Final stage masks
+            // Final stage bonding claims
             InnerErrorFinalStaged => {
-                processor.masking(id, source.rx(Rx(InnerCollapse)))?;
+                processor.bonding_claim(id, source.rx(Rx(InnerCollapse)))?;
             }
             OuterErrorFinalStaged => {
-                processor.masking(
+                processor.bonding_claim(
                     id,
                     source
                         .rx(Rx(Hashes1))
@@ -239,7 +252,7 @@ where
                 )?;
             }
             EvalFinalStaged => {
-                processor.masking(id, source.rx(Rx(ComputeV)))?;
+                processor.bonding_claim(id, source.rx(Rx(ComputeV)))?;
             }
         }
     }

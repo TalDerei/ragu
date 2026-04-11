@@ -22,34 +22,43 @@ use crate::internal::claims::{Builder, Source, sum_polynomials};
 ///
 /// This trait defines how to process rx values from a [`Source`].
 pub trait Processor<Rx> {
-    /// Process an internal circuit claim (EndoscalingStep) - sums rxs then processes.
-    fn internal_circuit(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
+    /// Process an internal circuit claim whose trace is the sum of the given
+    /// rxs ($k(y) = 1$ for [`EndoscalingStep`]).
+    ///
+    /// [`EndoscalingStep`]: InternalCircuitIndex::EndoscalingStep
+    fn internal_circuit_claim(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: impl Iterator<Item = Rx>,
+    );
 
-    /// Process a bonding claim where each fold element is a sum of rx groups,
-    /// $k(y) = 0$.
+    /// Process a claim whose trace is the Horner fold (with $z$) of the given
+    /// rxs, with one rx per fold slot ($k(y) = 0$).
     ///
-    /// Each inner iterator is summed into a single trace, then the sums are
-    /// Horner-folded with $z$.
-    ///
-    /// When each rx is its own group (no summing), use [`masking`](Self::masking).
-    fn bonding(
+    /// The default implementation wraps each rx as a single-element group and
+    /// delegates to [`grouped_bonding_claim`](Self::grouped_bonding_claim).
+    fn bonding_claim(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: impl Iterator<Item = Rx>,
+    ) -> Result<()> {
+        self.grouped_bonding_claim(id, rxs.map(core::iter::once))
+    }
+
+    /// Process a claim whose trace is the Horner fold (with $z$) of per-group
+    /// sums, where each fold slot holds the sum of one inner iterator
+    /// ($k(y) = 0$).
+    fn grouped_bonding_claim(
         &mut self,
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = Rx>>,
     ) -> Result<()>;
-
-    /// Process a masking claim (fold of rxs, $k(y) = 0$).
-    ///
-    /// Default wraps each rx as a single-element group.
-    fn masking(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()> {
-        self.bonding(id, rxs.map(core::iter::once))
-    }
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
     for Builder<'m, 'rx, Cow<'rx, sparse::Polynomial<F, R>>, F, R>
 {
-    fn internal_circuit(
+    fn internal_circuit_claim(
         &mut self,
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
@@ -59,7 +68,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
         self.circuit_impl(circuit_id, rx);
     }
 
-    fn bonding(
+    fn grouped_bonding_claim(
         &mut self,
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
@@ -95,44 +104,45 @@ where
                     .zip(source.rx(RxIndex::EndoscalarStage))
                     .zip(source.rx(RxIndex::PointsStage))
                 {
-                    processor.internal_circuit(id, [step_rx, endo_rx, pts_rx].into_iter());
+                    processor
+                        .internal_circuit_claim(id, [step_rx, endo_rx, pts_rx].into_iter());
                 }
             }
             EndoscalarStage => {
-                processor.masking(id, source.rx(RxIndex::EndoscalarStage))?;
+                processor.bonding_claim(id, source.rx(RxIndex::EndoscalarStage))?;
             }
             PointsStage => {
-                processor.masking(id, source.rx(RxIndex::PointsStage))?;
+                processor.bonding_claim(id, source.rx(RxIndex::PointsStage))?;
             }
             PointsFinalStaged => {
                 let num_steps = super::NUM_ENDOSCALING_STEPS;
                 let final_rxs = (0..num_steps)
                     .flat_map(|step| source.rx(RxIndex::EndoscalingStep(step as u32)));
-                processor.masking(id, final_rxs)?;
+                processor.bonding_claim(id, final_rxs)?;
             }
             BridgePreamble => {
-                processor.masking(id, source.rx(RxIndex::BridgePreamble))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgePreamble))?;
             }
             BridgeSPrime => {
-                processor.masking(id, source.rx(RxIndex::BridgeSPrime))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeSPrime))?;
             }
             BridgeInnerError => {
-                processor.masking(id, source.rx(RxIndex::BridgeInnerError))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeInnerError))?;
             }
             BridgeOuterError => {
-                processor.masking(id, source.rx(RxIndex::BridgeOuterError))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeOuterError))?;
             }
             BridgeAB => {
-                processor.masking(id, source.rx(RxIndex::BridgeAB))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeAB))?;
             }
             BridgeQuery => {
-                processor.masking(id, source.rx(RxIndex::BridgeQuery))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeQuery))?;
             }
             BridgeF => {
-                processor.masking(id, source.rx(RxIndex::BridgeF))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeF))?;
             }
             BridgeEval => {
-                processor.masking(id, source.rx(RxIndex::BridgeEval))?;
+                processor.bonding_claim(id, source.rx(RxIndex::BridgeEval))?;
             }
         }
     }
