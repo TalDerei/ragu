@@ -147,9 +147,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 ky,
                 sponge_state_elements,
             };
-        let rx = self.compute_native_outer_error(rng, &outer_error_witness)?;
-
-        builder.set_native_outer_error_rx(rx);
+        self.compute_native_outer_error(rng, &outer_error_witness, builder)?;
 
         Ok((outer_error_witness, a, b))
     }
@@ -158,13 +156,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         outer_error_witness: &native::stages::outer_error::Witness<C, native::RevdotParameters>,
-    ) -> Result<sparse::Polynomial<C::CircuitField, R>> {
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
         let rx =
             native::stages::outer_error::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
                 C::CircuitField::random(&mut *rng),
                 outer_error_witness,
             )?;
 
-        Ok(rx)
+        builder.set_native_outer_error_rx(rx);
+
+        Ok(())
     }
 }

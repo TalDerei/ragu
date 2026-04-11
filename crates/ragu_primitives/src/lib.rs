@@ -32,13 +32,15 @@ pub mod suffix;
 mod util;
 pub mod vec;
 
+use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
+
+use io::{Buffer, Write};
+use promotion::Demoted;
+
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{Endoscalar, extract_endoscalar, lift_endoscalar};
-use io::{Buffer, Write};
 pub use point::Point;
-use promotion::Demoted;
-use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 pub use sendable::Sendable;
 pub use simulator::Simulator;
 pub use suffix::WithSuffix;

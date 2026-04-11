@@ -9,11 +9,7 @@
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{
-    polynomials::{Rank, sparse},
-    registry::RegistryAt,
-    staging::StageExt,
-};
+use ragu_circuits::{polynomials::Rank, registry::RegistryAt, staging::StageExt};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
@@ -45,11 +41,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let (native_rx, registry_wy, inner_error_witness, claims_builder) =
-            self.compute_native_inner_error(rng, native_registry, y, z, source)?;
+        let (registry_wy, inner_error_witness, claims_builder) =
+            self.compute_native_inner_error(rng, native_registry, y, z, source, builder)?;
+        self.compute_bridge_inner_error(rng, &registry_wy, builder)?;
+        Ok((inner_error_witness, claims_builder, registry_wy))
+    }
 
-        builder.set_native_inner_error_rx(native_rx);
-
+    fn compute_bridge_inner_error<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        registry_wy: &RegistryWy<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
         let bridge_rx = nested::stages::inner_error::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::random(&mut *rng),
             &nested::stages::inner_error::Witness {
@@ -59,8 +62,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
         let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
         builder.set_bridge_inner_error_rx(bridge_rx, bridge_commitment);
-
-        Ok((inner_error_witness, claims_builder, registry_wy))
+        Ok(())
     }
 
     fn compute_native_inner_error<'dr, 'rx, D, RNG: CryptoRng>(
@@ -70,8 +72,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
         source: &FuseProofSource<'rx, C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
     ) -> Result<(
-        sparse::Polynomial<C::CircuitField, R>,
         RegistryWy<C, R>,
         native::stages::inner_error::Witness<C, native::RevdotParameters>,
         FuseBuilder<'_, 'rx, C::CircuitField, R>,
@@ -82,13 +84,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let z = *z.value().take();
 
-        let mut builder = claims::Builder::new(&self.native_registry, y, z);
-        native::claims::build(source, &mut builder)?;
+        let mut claims_builder = claims::Builder::new(&self.native_registry, y, z);
+        native::claims::build(source, &mut claims_builder)?;
 
         let inner_error_witness =
             native::stages::inner_error::Witness::<C, native::RevdotParameters> {
                 error_terms: fold_revdot::inner_error_terms::<_, R, native::RevdotParameters>(
-                    &builder.a, &builder.b,
+                    &claims_builder.a,
+                    &claims_builder.b,
                 ),
             };
         let native_rx =
@@ -97,19 +100,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 &inner_error_witness,
             )?;
 
+        builder.set_native_inner_error_rx(native_rx);
+
         let registry_wy_poly = native_registry.y(y);
 
         let host_gen = C::host_generators(self.params);
         let registry_wy_commitment = registry_wy_poly.commit_to_affine(host_gen);
 
         Ok((
-            native_rx,
             RegistryWy {
                 poly: registry_wy_poly,
                 commitment: registry_wy_commitment,
             },
             inner_error_witness,
-            builder,
+            claims_builder,
         ))
     }
 }

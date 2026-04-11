@@ -61,11 +61,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             left,
             right,
         )?;
+        self.compute_bridge_f(rng, &native, builder)?;
+        Ok(native)
+    }
 
-        // The bridge is manually computed here, rather than having the
-        // [`ProofBuilder`] retain the native copy that derives it, since the
-        // `f` polynomial is not retained after the fuse step, and so does not
-        // need to appear in the proof.
+    /// Manually commits the bridge for $f$, rather than having the
+    /// [`ProofBuilder`] retain the native copy that derives it, since the `f`
+    /// polynomial is not retained after the fuse step and so does not appear in
+    /// the proof.
+    fn compute_bridge_f<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        native: &NativeF<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
         let bridge_rx = nested::stages::f::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::random(&mut *rng),
             &nested::stages::f::Witness {
@@ -74,8 +83,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
         let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
         builder.set_bridge_f_rx(bridge_rx, bridge_commitment);
-
-        Ok(native)
+        Ok(())
     }
 
     fn compute_native_f<'dr, D>(

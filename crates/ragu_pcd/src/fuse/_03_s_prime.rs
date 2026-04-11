@@ -22,7 +22,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         builder: &mut ProofBuilder<'_, C, R>,
     ) -> Result<NativeSPrime<C, R>> {
         let native = self.compute_native_s_prime(native_registry, left, right)?;
+        self.compute_bridge_s_prime(rng, &native, builder)?;
+        Ok(native)
+    }
 
+    fn compute_bridge_s_prime<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        native: &NativeSPrime<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
         let bridge_rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::random(&mut *rng),
             &nested::stages::s_prime::Witness {
@@ -32,8 +41,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
         let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
         builder.set_bridge_s_prime_rx(bridge_rx, bridge_commitment);
-
-        Ok(native)
+        Ok(())
     }
 
     fn compute_native_s_prime(
