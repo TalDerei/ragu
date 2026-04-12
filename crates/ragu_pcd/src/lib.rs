@@ -34,6 +34,8 @@ mod verify;
 use alloc::collections::BTreeMap;
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
+use header::Header;
+pub use proof::{Pcd, Proof};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
@@ -41,11 +43,7 @@ use ragu_circuits::{
 };
 use ragu_core::{Error, Result};
 use rand::CryptoRng;
-
-use header::Header;
 use step::{Step, internal::adapter::Adapter};
-
-pub use proof::{Pcd, Proof};
 
 /// Domain separation tag for Ragu PCD protocol.
 // FIXME: choose a permanent domain separation tag before release.

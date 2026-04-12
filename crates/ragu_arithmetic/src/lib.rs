@@ -79,10 +79,9 @@ mod multicore;
 mod uendo;
 mod util;
 
-use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
-
 pub use coeff::Coeff;
 pub use domain::Domain;
+use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 pub use fft::{Ring, bitreverse};
 pub use pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`

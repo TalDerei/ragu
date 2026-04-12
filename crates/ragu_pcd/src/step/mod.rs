@@ -3,6 +3,7 @@
 mod encoder;
 pub(crate) mod internal;
 
+pub use encoder::Encoded;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::registry::CircuitIndex;
 use ragu_core::{
@@ -12,8 +13,6 @@ use ragu_core::{
 
 use super::header::Header;
 use crate::internal::native::InternalCircuitIndex;
-
-pub use encoder::Encoded;
 
 #[derive(Copy, Clone)]
 #[repr(usize)]

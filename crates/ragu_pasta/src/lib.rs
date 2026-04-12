@@ -42,12 +42,11 @@ mod common {
 mod poseidon_fp;
 mod poseidon_fq;
 
-use ragu_arithmetic::{Cycle, FixedGenerators};
-
 pub use common::{PallasGenerators, PastaParams, VestaGenerators};
 pub use pasta_curves::{Ep, EpAffine, Eq, EqAffine, Fp, Fq};
 pub use poseidon_fp::PoseidonFp;
 pub use poseidon_fq::PoseidonFq;
+use ragu_arithmetic::{Cycle, FixedGenerators};
 
 /// Zero-sized marker type for the [Pasta
 /// curve](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/)
