@@ -10,14 +10,16 @@ build *ARGS:
 build_release *ARGS:
   cargo build --release --workspace --all-targets {{ARGS}}
 
+_nightly := "nightly-2026-04-11"
+
 lint: _typos_setup _book_setup
   cargo clippy --workspace --lib --tests --benches --all-features -- -D warnings
-  cargo +nightly fmt --all -- --check
+  cargo +{{_nightly}} fmt --all -- --check
   typos
   mdbook build ./book
 
-fix: _typos_setup 
-  cargo +nightly fmt --all
+fix: _typos_setup
+  cargo +{{_nightly}} fmt --all
   cargo fix --allow-dirty --allow-staged --all-features
   cargo clippy --fix --allow-dirty --allow-staged --all-features
   typos -w
@@ -119,7 +121,7 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
 # run CI checks locally (formatting, clippy, tests)
 ci_local: _book_setup
   @echo "Running formatting check..."
-  cargo +nightly fmt --all -- --check
+  cargo +{{_nightly}} fmt --all -- --check
   @echo "Running clippy..."
   cargo clippy --workspace --lib --tests --benches --locked --all-features -- -D warnings
   @echo "Running tests..."
