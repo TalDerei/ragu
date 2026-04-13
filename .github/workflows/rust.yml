@@ -57,7 +57,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo +${{ steps.toolchain.outputs.name }} fmt --all -- --check
+        run: cargo +${{ steps.toolchain.outputs.name }} fmt --all -- --config-path rustfmt.nightly.toml --check
 
   clippy:
     name: clippy
