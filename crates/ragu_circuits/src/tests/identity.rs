@@ -2061,12 +2061,13 @@ fn test_typeid_does_not_affect_polynomial() {
 }
 
 mod proptest_fingerprint {
+    use alloc::{vec, vec::Vec};
+    use core::any::TypeId;
+
+    use proptest::prelude::*;
+
     use super::*;
     use crate::metrics::tests::deep_hash_wrapper;
-    use alloc::vec;
-    use alloc::vec::Vec;
-    use core::any::TypeId;
-    use proptest::prelude::*;
 
     fn dhw(
         input_kind: TypeId,

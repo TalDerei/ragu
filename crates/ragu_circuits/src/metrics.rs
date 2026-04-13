@@ -46,7 +46,10 @@
 //! [`TypeId`]: core::any::TypeId
 
 use alloc::vec::Vec;
-use core::any::TypeId;
+use core::{
+    any::TypeId,
+    hash::{Hash, Hasher},
+};
 
 use ff::{FromUniformBytes, PrimeField};
 use ragu_arithmetic::Coeff;
@@ -58,8 +61,6 @@ use ragu_core::{
     maybe::Empty,
     routines::Routine,
 };
-
-use core::hash::{Hash, Hasher};
 
 use super::{
     Circuit,
