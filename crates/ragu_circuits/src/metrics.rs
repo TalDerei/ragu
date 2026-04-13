@@ -309,6 +309,13 @@ struct Counter<F> {
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
+    /// Mints the next fresh wire value from the `x_remap` geometric sequence.
+    fn next_remap(&mut self) -> WireEval<F> {
+        let v = self.scope.remap_current;
+        self.scope.remap_current *= self.x_remap;
+        WireEval::Value(v)
+    }
+
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -495,9 +502,7 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
     type Dst = Self;
 
     fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
-        let v = self.scope.remap_current;
-        self.scope.remap_current *= self.x_remap;
-        Ok(WireEval::Value(v))
+        Ok(self.next_remap())
     }
 }
 
@@ -570,9 +575,7 @@ pub(crate) mod tests {
         type Dst = Counter<F>;
 
         fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
-            let v = self.counter.scope.remap_current;
-            self.counter.scope.remap_current *= self.counter.x_remap;
-            Ok(WireEval::Value(v))
+            Ok(self.counter.next_remap())
         }
     }
 
