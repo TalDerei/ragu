@@ -277,6 +277,24 @@ cached subtree cannot be reused). Consolidating both levels into a single
 identity type loses this distinction and forces the floor planner to
 treat segments as different when only their subtrees differ.
 
+The two-level design avoids four conflation risks that arise when a single
+fingerprint type serves both roles. First, [`TypeId`] pairs do not affect
+what a segment contributes to $s(X, Y)$, so including them in the
+polynomial-equivalence key would prevent the floor planner from grouping
+type-distinct routines that contribute identically. Second, tests that
+assert "different TypeIds ⇒ different fingerprints" are testing memoization
+safety, not polynomial correctness; naming them as if TypeIds were
+necessary for fingerprint correctness obscures which invariant is actually
+being verified. Third, the `Counter` and the wiring polynomial evaluators
+compute fundamentally different things — a context-independent structural
+hash versus an actual polynomial contribution — so bundling both concerns
+into one type hides the boundary between them. Fourth, without an
+independent reference evaluation to compare against, a memoization cache
+that silently returns wrong results could go undetected; the separation
+makes it possible to test polynomial equivalence (via
+[`RoutineFingerprint`]) and memoization substitutability (via
+[`MemoFingerprint`]) with distinct, targeted assertions.
+
 ### Repositioning {#repositioning}
 
 Each segment occupies a **non-overlapping** range of gates and constraints in
