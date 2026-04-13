@@ -190,7 +190,10 @@ proptest! {
     }
 
     /// Checks that [`crate::metrics::eval`] and [`crate::trace::eval`] agree on
-    /// segment count and per-segment gate counts.
+    /// segment count and per-segment gate counts, and that
+    /// [`crate::metrics::eval`] constraint counts agree with the floor
+    /// plan derived from its own segment records (which the sxy evaluator
+    /// asserts against during [`polynomial_consistency`]).
     ///
     /// The two evaluators are implemented independently. Agreement confirms
     /// that both traverse the routine call tree in the same DFS order and
@@ -210,14 +213,28 @@ proptest! {
             "segment count mismatch"
         );
 
-        for (i, (m, t)) in metrics.segments.iter().zip(trace.segments.iter()).enumerate() {
+        let plan = crate::floor_planner::floor_plan(&metrics.segments);
+
+        for (i, ((m, t), fp)) in metrics.segments.iter()
+            .zip(trace.segments.iter())
+            .zip(plan.iter())
+            .enumerate()
+        {
             prop_assert_eq!(
                 m.num_gates(),
                 t.a.len(),
-                "segment {}: mul count mismatch (metrics={}, trace={})",
+                "segment {}: gate count mismatch (metrics={}, trace={})",
                 i,
                 m.num_gates(),
                 t.a.len(),
+            );
+            prop_assert_eq!(
+                m.num_constraints(),
+                fp.num_constraints,
+                "segment {}: constraint count mismatch (metrics={}, floor_plan={})",
+                i,
+                m.num_constraints(),
+                fp.num_constraints,
             );
         }
     }

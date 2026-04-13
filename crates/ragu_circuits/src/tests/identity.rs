@@ -2438,6 +2438,23 @@ mod proptest_fingerprint {
                 "swapped enforce ops should produce different eval scalars");
         }
 
+        /// Prepending a `TrivialEnforce` (which contributes a zero-valued
+        /// linear combination) to any op sequence must change the fingerprint.
+        /// This catches a broken Horner seed: if `h` were accidentally zero,
+        /// a leading trivial constraint would be invisible to the accumulator
+        /// (`0 * y + 0 = 0`), and both sequences would produce the same
+        /// fingerprint. The nonzero seed ensures `h * y + 0 ≠ h`.
+        #[test]
+        fn interpreted_leading_trivial_sensitivity(ops in arb_ops()) {
+            let mut with_leading = vec![Op::TrivialEnforce];
+            with_leading.extend(ops.iter().cloned());
+            let without = fingerprint_elem(&InterpretedRoutine(ops));
+            let with = fingerprint_elem(&InterpretedRoutine(with_leading));
+            prop_assert_ne!(without, with,
+                "prepending TrivialEnforce should change fingerprint \
+                 (tests Horner seed is nonzero)");
+        }
+
         /// Appending NestSquare vs NestDeep to any prefix yields the same
         /// shallow fingerprint (both add zero local constraints) but
         /// different deep fingerprints (different child subtree hashes).
