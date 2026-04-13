@@ -38,15 +38,18 @@ pub struct Boolean<'dr, D: Driver<'dr>> {
 impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Allocates a boolean with the provided witness value.
     ///
-    /// This costs one gate and one constraint. The gate layout is
-    /// $(a, b, 0, d)$ where $a \cdot b = 0$ and the linear constraint
-    /// $1 - a - b = 0$ forces $a$ to be zero or one.
+    /// This costs one gate and two constraints. The gate layout is
+    /// $(a, b, 0, d)$ where $a \cdot b = c$, and the linear constraints
+    /// $c = 0$ and $1 - a - b = 0$ force $a$ to be zero or one.
     pub fn alloc(dr: &mut D, value: DriverValue<D, bool>) -> Result<Self> {
         let complement = value.not();
-        let (a, b, _c) =
+        let (a, b, c) =
             dr.mul(|| Ok((value.coeff().take(), complement.coeff().take(), Coeff::Zero)))?;
 
-        // Enforce a + b = 1. Together with the gate constraint a * b = 0,
+        // Enforce c = 0, so the gate constraint becomes a * b = 0.
+        dr.enforce_zero(|lc| lc.add(&c))?;
+
+        // Enforce a + b = 1. Together with a * b = 0,
         // this gives a(1 - a) = 0, so a is zero or one.
         dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&a).sub(&b))?;
 
@@ -267,7 +270,7 @@ fn test_boolean_alloc() -> Result<()> {
 
         assert_eq!(sim.num_allocations(), 0);
         assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 1);
+        assert_eq!(sim.num_constraints(), 2);
         Ok(())
     };
 
