@@ -10,10 +10,9 @@ use ragu_pasta::Fp;
 use ragu_primitives::{Element, Simulator};
 
 use crate::{
-    Circuit, CircuitExt as _, WithAux,
+    Circuit, WithAux,
     metrics::{self, MemoFingerprint, RoutineIdentity},
     polynomials::TestRank,
-    registry,
 };
 
 /// Canonical single-square routine.
@@ -1942,17 +1941,14 @@ where
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr,
     {
         let a = Element::alloc(dr, witness.clone())?;
         let b = Element::alloc(dr, witness)?;
         let output = dr.routine(self.0.clone(), (a, b))?;
-        Ok((output, D::just(|| ())))
+        Ok(WithAux::new(output, D::just(|| ())))
     }
 }
 
@@ -1973,7 +1969,6 @@ where
 fn test_typeid_does_not_affect_polynomial() {
     let x = Fp::random(&mut rand::rng());
     let y = Fp::random(&mut rand::rng());
-    let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
     /// Compares s(x,y) for a single-input circuit vs a pair-input circuit
     /// whose routines share the same `RoutineFingerprint`.
@@ -1982,7 +1977,6 @@ fn test_typeid_does_not_affect_polynomial() {
         pair_routine: RoPair,
         x: Fp,
         y: Fp,
-        k: &registry::Key<Fp>,
         label: &str,
     ) where
         RoElem: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
@@ -2008,18 +2002,18 @@ fn test_typeid_does_not_affect_polynomial() {
             "{label}: RoutineFingerprint mismatch — test premise violated"
         );
 
-        let obj_elem = SingleRoutineCircuit(elem_routine)
-            .into_object::<TestRank>()
-            .unwrap();
-        let obj_pair = PairRoutineCircuit(pair_routine)
-            .into_object::<TestRank>()
-            .unwrap();
+        let obj_elem =
+            crate::into_circuit_object::<Fp, _, TestRank>(SingleRoutineCircuit(elem_routine))
+                .unwrap();
+        let obj_pair =
+            crate::into_circuit_object::<Fp, _, TestRank>(PairRoutineCircuit(pair_routine))
+                .unwrap();
 
         let fp_elem = crate::floor_planner::floor_plan(obj_elem.segment_records());
         let fp_pair = crate::floor_planner::floor_plan(obj_pair.segment_records());
 
-        let sxy_elem = obj_elem.sxy(x, y, k, &fp_elem);
-        let sxy_pair = obj_pair.sxy(x, y, k, &fp_pair);
+        let sxy_elem = obj_elem.sxy(x, y, &fp_elem);
+        let sxy_pair = obj_pair.sxy(x, y, &fp_pair);
 
         assert_eq!(
             sxy_elem, sxy_pair,
@@ -2028,13 +2022,12 @@ fn test_typeid_does_not_affect_polynomial() {
         );
     }
 
-    assert_same_polynomial(Passthrough, DropFirst, x, y, &k, "Passthrough vs DropFirst");
+    assert_same_polynomial(Passthrough, DropFirst, x, y, "Passthrough vs DropFirst");
     assert_same_polynomial(
         TrivialEnforce,
         TrivialEnforcePair,
         x,
         y,
-        &k,
         "TrivialEnforce vs TrivialEnforcePair",
     );
     assert_same_polynomial(
@@ -2042,7 +2035,6 @@ fn test_typeid_does_not_affect_polynomial() {
         EnforceInputPair,
         x,
         y,
-        &k,
         "EnforceInput vs EnforceInputPair",
     );
     assert_same_polynomial(
@@ -2050,7 +2042,6 @@ fn test_typeid_does_not_affect_polynomial() {
         InternalEnforcePair,
         x,
         y,
-        &k,
         "InternalEnforce vs InternalEnforcePair",
     );
     assert_same_polynomial(
@@ -2058,7 +2049,6 @@ fn test_typeid_does_not_affect_polynomial() {
         OneWireEnforcePair,
         x,
         y,
-        &k,
         "OneWireEnforce vs OneWireEnforcePair",
     );
     assert_same_polynomial(
@@ -2066,7 +2056,6 @@ fn test_typeid_does_not_affect_polynomial() {
         TripleEnforceInputPair,
         x,
         y,
-        &k,
         "TripleEnforceInput vs TripleEnforceInputPair",
     );
 }

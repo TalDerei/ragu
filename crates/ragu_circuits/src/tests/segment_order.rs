@@ -14,7 +14,7 @@ use ragu_core::{
 };
 use ragu_pasta::Fp;
 
-use crate::{Circuit, CircuitExt as _, WithAux, polynomials::TestRank};
+use crate::{Circuit, WithAux, polynomials::TestRank};
 
 /// Maximum number of wire allocations generated at any one point in a scope.
 const MAX_ALLOCS: usize = 6;
@@ -182,7 +182,7 @@ proptest! {
     fn polynomial_consistency(tree in arb_tree()) {
         let circuit = TreeCircuit(tree);
         // Skip trees that exceed TestRank's multiplication bound.
-        let circuit_obj = match circuit.into_object::<TestRank>() {
+        let circuit_obj = match crate::into_circuit_object::<_, _, TestRank>(circuit) {
             Ok(obj) => obj,
             Err(_) => return Ok(()),
         };

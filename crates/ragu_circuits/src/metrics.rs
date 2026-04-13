@@ -48,7 +48,7 @@
 use alloc::vec::Vec;
 use core::any::TypeId;
 
-use ff::{Field, FromUniformBytes, PrimeField};
+use ff::{FromUniformBytes, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
@@ -685,7 +685,7 @@ struct OutputEvaluator<F> {
 
 /// [`WireMap`] extracts output wire evaluations without
 /// producing real wires in the destination.
-impl<F: Field> WireMap<F> for OutputEvaluator<F> {
+impl<F: FromUniformBytes<64>> WireMap<F> for OutputEvaluator<F> {
     type Src = Counter<F>;
     type Dst = core::marker::PhantomData<F>;
 
@@ -911,8 +911,8 @@ pub(crate) mod tests {
     ) -> u64 {
         let routine = RoutineFingerprint {
             eval,
-            local_num_multiplication_constraints: num_mul,
-            local_num_linear_constraints: num_lc,
+            local_num_gates: num_mul,
+            local_num_constraints: num_lc,
         };
         super::deep_hash(input_kind, output_kind, &routine, output_eval, children)
     }
