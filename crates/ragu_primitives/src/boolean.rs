@@ -38,22 +38,19 @@ pub struct Boolean<'dr, D: Driver<'dr>> {
 impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Allocates a boolean with the provided witness value.
     ///
-    /// This costs one gate and two constraints.
+    /// This costs one gate and one constraint. The gate layout is
+    /// $(a, b, 0, d)$ where $a \cdot b = 0$ and the linear constraint
+    /// $1 - a - b = 0$ forces $a$ to be zero or one.
     pub fn alloc(dr: &mut D, value: DriverValue<D, bool>) -> Result<Self> {
-        let (a, b, c) = dr.mul(|| {
-            let value = value.coeff().take();
-            Ok((value, value, value))
-        })?;
+        let complement = value.not();
+        let (a, b, _c) =
+            dr.mul(|| Ok((value.coeff().take(), complement.coeff().take(), Coeff::Zero)))?;
 
-        // Enforce a = b => c = a²
-        dr.enforce_equal(&a, &b)?;
+        // Enforce a + b = 1. Together with the gate constraint a * b = 0,
+        // this gives a(1 - a) = 0, so a is zero or one.
+        dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&a).sub(&b))?;
 
-        // Enforce a = c => a = a²
-        //                => (a - 0)(a - 1) = 0
-        //                => (a = 0) OR (a = 1)
-        dr.enforce_equal(&a, &c)?;
-
-        Ok(Boolean { value, wire: c })
+        Ok(Boolean { value, wire: a })
     }
 
     /// Computes the NOT of this boolean. This is "free" in the circuit model.
@@ -270,7 +267,7 @@ fn test_boolean_alloc() -> Result<()> {
 
         assert_eq!(sim.num_allocations(), 0);
         assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 2);
+        assert_eq!(sim.num_constraints(), 1);
         Ok(())
     };
 
