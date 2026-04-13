@@ -35,7 +35,7 @@ algebraically convenient structure in the resulting wiring polynomial $s(X, Y)$:
 * [`gate`] advances an $i$ counter and returns $(X^{2n - 1 - i}, X^{2n + i}, X^{4n - 1 - i}, X^i)$ wires.
 * `enforce_zero` advances a counter $j$ and adds a fresh linear combination of previous wires multiplied by $Y^j$.
 
-Most of the linear constraints created within a routine consist purely of wires
+Most of the linear constraints created within a routine consist purely of wires also
 created within that routine, meaning that the **internal** contribution of a
 routine can be written as polynomials $g_x, g_{x^{-1}}$ and memoized if the
 routine is invoked multiple times. Given a cache hit, we need only scale $g_x$
@@ -70,11 +70,11 @@ graph LR
         FP[floor plan]
     end
     subgraph tp[trace path]
-        rx --> trace
+        TE[trace eval] --> trace
     end
     C --> MP
-    C --> rx
-    W --> rx
+    C --> TE
+    W --> TE
     metrics --> FP
     FP --> ED
     trace --> TP["r(X)"]
@@ -121,7 +121,7 @@ describes where the $i$-th segment is placed, regardless of whether a
 future floor planner reorders their positions.
 
 The [`Counter`] uses each invocation to build a [`SegmentRecord`] and a
-[`RoutineFingerprint`]. It resets its geometric sequences and Horner
+[`MemoFingerprint`]. It resets its geometric sequences and Horner
 accumulator to a fixed initial state — independent of the caller — so that
 the fingerprint captures only the routine's internal constraint structure.
 Input wires are remapped into the fresh scope without incrementing
@@ -170,7 +170,7 @@ Execution traces are divided into **segments**. All wires allocated outside of
 routine invocations belong to a single **root segment**.[^root-segment] Each
 routine invocation creates a new segment containing only the wires allocated
 directly within it; nested calls produce their own segments in turn. The
-`CircuitExt::rx` method produces a `Trace` that contains these segments in DFS
+`CircuitExt::trace` method produces a `Trace` that contains these segments in DFS
 order, but their actual arrangement in the trace polynomial depends on the floor
 plan's repositioning values.
 
@@ -228,14 +228,14 @@ per-invocation.
 ### Fingerprinting
 
 Two invocations are structurally equivalent when they share a
-[**fingerprint**][`RoutineFingerprint`]: the pair `(TypeId(Input),
-TypeId(Output))`, the Schwartz–Zippel evaluation scalar, and the local gate and
-constraint counts. The [metrics pass](#pipeline) computes a fingerprint for each
-invocation by executing its constraint logic on a lightweight [`Counter`] driver
-that substitutes independent geometric sequences for wire values and
-accumulates constraint contributions via Horner's rule. If the resulting scalar,
-type pairs, and counts all match, the two invocations are structurally
-equivalent with overwhelming probability.
+[**routine fingerprint**][`RoutineFingerprint`]: the Schwartz–Zippel evaluation
+scalar and the local gate and constraint counts. The
+[metrics pass](#pipeline) computes a fingerprint for each invocation by
+executing its constraint logic on a lightweight [`Counter`] driver that
+substitutes independent geometric sequences for wire values and accumulates
+constraint contributions via Horner's rule. If the resulting scalar and counts
+match, the two invocations are structurally equivalent with overwhelming
+probability.
 
 Fingerprints capture only the **local** constraint structure. When entering a
 routine, the `Counter` resets its geometric sequences and Horner accumulator to
@@ -243,7 +243,7 @@ a fixed initial state, and output wires from nested routine calls are remapped
 to fresh positions in the caller's sequence space. This ensures the fingerprint
 is independent of calling context and of any sub-routines the routine invokes.
 
-### Shallow vs. Deep Fingerprints
+### Routine vs. Memo Fingerprints
 
 The [`TypeId`] pairs `(Input, Output)` do not affect what a segment
 contributes to $s(X, Y)$. Two routines with different Rust types but the
@@ -252,28 +252,29 @@ gate and constraint counts — produce identical polynomial contributions.
 This can be verified directly: wrap each routine in a circuit and assert
 that their $s(x, y)$ evaluations agree at random points.
 
-For floor planning, only the polynomial contribution matters. A **shallow
-fingerprint** `(eval, num_gates, num_constraints)` suffices to group
-segments with the same polynomial shape; including [`TypeId`] pairs would
-prevent the floor planner from grouping type-distinct routines that
-contribute identically. For memoization, the constraints are stricter: a
-cached routine must be safely substitutable for a fresh execution, which
-requires matching output wire mappings and recursive subtree structure. A
-**deep fingerprint** extends the shallow fingerprint with `output_eval`
-(a scalar encoding the output wire mapping) and a recursive hash that
-folds in [`TypeId`] pairs, all shallow fields, the child count, and each
-child's deep hash. The floor planner keys on the shallow fingerprint; the
-memo cache keys on the deep fingerprint.
+For floor planning, only the polynomial contribution matters. A
+[`RoutineFingerprint`] `(eval, local_num_gates, local_num_constraints)`
+suffices to group segments with the same polynomial shape; [`TypeId`]
+pairs are deliberately excluded so that the floor planner can group
+type-distinct routines that contribute identically. For memoization, the
+constraints are stricter: a cached routine must be safely substitutable
+for a fresh execution, which requires matching output wire mappings and
+recursive subtree structure. A [`MemoFingerprint`] extends the routine
+fingerprint with `output_eval` (a scalar encoding the output wire
+mapping) and a recursive `deep` hash that folds in [`TypeId`] pairs, all
+routine fingerprint fields, the child count, and each child's deep hash.
+The floor planner keys on the routine fingerprint; the memo cache keys on
+the memo fingerprint.
 
-The distinction is semantic, not just organizational. A shallow
+The distinction is semantic, not just organizational. A routine
 fingerprint captures **segment-level equivalence**: whether two individual
 segments impose the same local constraints and could be aligned in the
 polynomial layout regardless of their subtrees — for instance, padding
-one circuit's segment against another circuit's offset. A deep
+one circuit's segment against another circuit's offset. A memo
 fingerprint captures **subtree-level equivalence**: whether entire routine
 invocations are interchangeable and can be substituted via memoization.
-A segment can be shallow-equivalent to another (same local constraints,
-worth aligning) but deep-inequivalent (different children, so the
+A segment can be routine-equivalent to another (same local constraints,
+worth aligning) but memo-inequivalent (different children, so the
 cached subtree cannot be reused). Consolidating both levels into a single
 identity type loses this distinction and forces the floor planner to
 treat segments as different when only their subtrees differ.
@@ -318,10 +319,11 @@ in a single check. The non-overlapping invariant
 ensures that any disagreement is a real bug rather than a masking
 coincidence. Because the native path does not depend on the
 fingerprinting model at all, this comparison catches errors in the model
-itself — a shallow fingerprint that over-groups, or a deep fingerprint
+itself — a routine fingerprint that over-groups, or a memo fingerprint
 that omits a necessary field — not only bugs in the memoization code.
 
 [`RoutineFingerprint`]: ragu_circuits::metrics::RoutineFingerprint
+[`MemoFingerprint`]: ragu_circuits::metrics::MemoFingerprint
 [`Counter`]: ragu_circuits::metrics::Counter
 [`Trace::assemble`]: ragu_circuits::trace::Trace::assemble
 [`TypeId`]: core::any::TypeId
