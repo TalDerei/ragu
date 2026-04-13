@@ -109,7 +109,7 @@ scoped state — running wire monomials, constraint counters, Horner
 accumulators, allocation pairing state — and initializes a fresh scope
 for the child routine. On return, the parent scope is restored and the
 child's contribution is folded into the parent's accumulated result. The
-[`DriverScope`] trait provides a `with_scope` helper that automates this
+`DriverScope` trait provides a `with_scope` helper that automates this
 save/restore; some drivers use manual `mem::replace` instead when they
 need to inspect the child scope's result before restoring the parent.
 
@@ -120,7 +120,7 @@ same sequence. The floor plan is indexed by this order: `floor_plan[i]`
 describes where the $i$-th segment is placed, regardless of whether a
 future floor planner reorders their positions.
 
-The [`Counter`] uses each invocation to build a [`SegmentRecord`] and a
+The `Counter` uses each invocation to build a [`SegmentRecord`] and a
 [`MemoFingerprint`]. It resets its geometric sequences and Horner
 accumulator to a fixed initial state — independent of the caller — so that
 the fingerprint captures only the routine's internal constraint structure.
@@ -154,11 +154,9 @@ annotated with their **DFS path** — the sequence of routine-call indices
 from root to the segment — so that the final `finish` step can sort all
 segments back into canonical DFS order.
 
-[`DriverScope`]: ragu_circuits::DriverScope
 [`sxy`]: ragu_circuits::s::sxy
 [`sx`]: ragu_circuits::s::sx
 [`sy`]: ragu_circuits::s::sy
-[`Counter`]: ragu_circuits::metrics::Counter
 [`SegmentRecord`]: ragu_circuits::metrics::SegmentRecord
 [`Prediction`]: ragu_core::routines::Prediction
 [`Known`]: ragu_core::routines::Prediction::Known
@@ -231,7 +229,7 @@ Two invocations are structurally equivalent when they share a
 [**routine fingerprint**][`RoutineFingerprint`]: the Schwartz–Zippel evaluation
 scalar and the local gate and constraint counts. The
 [metrics pass](#pipeline) computes a fingerprint for each invocation by
-executing its constraint logic on a lightweight [`Counter`] driver that
+executing its constraint logic on a lightweight `Counter` driver that
 substitutes independent geometric sequences for wire values and accumulates
 constraint contributions via Horner's rule. If the resulting scalar and counts
 match, the two invocations are structurally equivalent with overwhelming
@@ -294,7 +292,7 @@ no two segments may overlap.
 Because segments are non-overlapping, bugs in the floor planner or
 memoization logic produce observable failures rather than silent
 corruption. If segments were assigned overlapping gate ranges, the
-[`Trace::assemble`] scatter step would overwrite values from one segment
+`Trace::assemble` scatter step would overwrite values from one segment
 with another's, and the post-execution assertions in the wiring polynomial
 evaluators — which verify that each segment consumed exactly the gate and
 constraint counts declared by the floor plan — would fire. A memoization
@@ -324,8 +322,6 @@ that omits a necessary field — not only bugs in the memoization code.
 
 [`RoutineFingerprint`]: ragu_circuits::metrics::RoutineFingerprint
 [`MemoFingerprint`]: ragu_circuits::metrics::MemoFingerprint
-[`Counter`]: ragu_circuits::metrics::Counter
-[`Trace::assemble`]: ragu_circuits::trace::Trace::assemble
 [`TypeId`]: core::any::TypeId
 [`Routine`]: ragu_core::routines::Routine
 [`Driver`]: ragu_core::drivers::Driver
