@@ -17,7 +17,7 @@
 compile_error!("`ragu_circuits` requires the `alloc` feature to be enabled.");
 extern crate alloc;
 
-#[cfg(feature = "multicore")]
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
 pub mod floor_planner;

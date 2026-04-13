@@ -113,8 +113,7 @@ fn test_internal_stage_parameters() {
 }
 
 /// Helper test to print current constraint counts in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release --features multicore print_internal_circuit -- --nocapture`
-#[cfg(feature = "multicore")]
+/// Run with: `cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture`
 #[test]
 fn print_internal_circuit_constraint_counts() {
     use alloc::format;
@@ -156,8 +155,7 @@ fn print_internal_circuit_constraint_counts() {
 }
 
 /// Helper test to print current stage parameters in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release --features multicore print_internal_stage -- --nocapture`
-#[cfg(feature = "multicore")]
+/// Run with: `cargo test -p ragu_pcd --release print_internal_stage -- --nocapture`
 #[test]
 fn print_internal_stage_parameters() {
     use alloc::format;
@@ -233,8 +231,7 @@ fn test_nested_registry_digest() {
 }
 
 /// Helper test to print current registry digests in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release --features multicore print_registry_digests -- --nocapture`
-#[cfg(feature = "multicore")]
+/// Run with: `cargo test -p ragu_pcd --release print_registry_digests -- --nocapture`
 #[test]
 fn print_registry_digests() {
     use alloc::{format, string::String, vec::Vec};

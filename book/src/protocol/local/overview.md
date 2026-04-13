@@ -1,14 +1,14 @@
 # Overview
 
 Ragu's arithmetic circuits over $\F$ consist of $n$ **gates** each on four wires
-$\v{a}_i, \v{b}_i, \v{c}_i, \v{d}_i \in \F$ enforcing both $\v{a}_i \cdot \v{b}_i =
-\v{c}_i$ and $\v{c}_i \cdot \v{d}_i = 0$, and $4n$ **constraints** each
-enforcing that a fixed linear combination of all wires equals an **instance**
-value—either zero, or a **public input** value. A valid **witness** determines
-an assignment of field values to every wire satisfying all constraints, also
-called the **trace** of execution for the circuit. The protocol convinces a
-verifier that a valid trace exists (and thus also a valid witness for the
-statement) given some instance.
+$\v{a}_i, \v{b}_i, \v{c}_i, \v{d}_i \in \F$ enforcing both $\v{a}_i \cdot
+\v{b}_i = \v{c}_i$ and $\v{c}_i \cdot \v{d}_i = 0$, and $4n$ **constraints**
+each enforcing that a fixed linear combination of all wires equals an
+**instance** value—either zero, or a **public input** value. A valid **witness**
+determines an assignment of field values to every wire satisfying all
+constraints, called the **trace** of execution for the circuit. The protocol
+convinces a verifier that a valid trace exists (and thus also a valid witness
+for the statement) given some instance.
 
 The trace $\v{a}, \v{b}, \v{c}, \v{d} \in \F^n$ is encoded as a **trace
 polynomial** $r(X)$, represented in the $4n$-dimensional space of **structured
@@ -49,7 +49,7 @@ pairs.
 
 The trace polynomial $r(X)$ is a structured polynomial whose coefficient vector
 is of this precise form, i.e. $\v{r} = \v{c} \| \rv{b} \| \v{a} \| \rv{d}$. When
-we revdot between the trace $r(X)$ and its dilation $r(Xz)$ for some $z \in \F$,
+we revdot between the trace $r(X)$ and its dilation $r(zX)$ for some $z \in \F$,
 it expands into two weighted sums:
 
 $$
@@ -83,15 +83,15 @@ suffices with overwhelming probability.
 The circuit's constraints, each requiring a fixed linear combination of wires to
 equal an instance value, can be similarly collapsed into a single revdot check.
 Given a (sparse) instance vector $\v{k} \in \F^{4n}$, the $j$-th constraint can
-be written $\revdot{\v{r}}{\v{s_j}} = \v{k}_j$ where the structured vector
-$\v{s_j}$ encodes the constraint's wire weights at the revdot complements of the
+be written $\revdot{\v{r}}{\v{u_j}} = \v{k}_j$ where the structured vector
+$\v{u_j}$ encodes the constraint's wire weights at the revdot complements of the
 trace monomials.
 
 Given some value $y \in \F$, we can stack all $4n$ constraints into a structured vector $\v{s}$:
 
 $$
 \begin{array}{rrl}
-\sum\limits_{j=0}^{4n - 1} y^j \revdot{\v{r}}{\v{s_j}}& &=  \\
+\revdot{\v{r}}{\sum\limits_{j=0}^{4n - 1} y^j \v{u_j}}& &=  \\
 \revdot{\v{r}}{\v{s}}& &= \langle \v{k}, \v{y^{4n}} \rangle
 \end{array}
 $$
@@ -107,12 +107,12 @@ $$
 \revdot{\v{r}}{\v{r} \circ \v{z^{4n}} + \v{t} + \v{s}} = \dot{\v{k}}{\v{y^{4n}}}
 $$
 
-This combined equation is sound because all the terms of
+This combined equation is sound because the expansion of
 $\revdot{\v{r}}{\v{r} \circ \v{z^{4n}} + \v{t}}$
-are linearly independent (in $z$) from $\revdot{\v{r}}{\v{s}}$ except at the
-coefficient for $z^0$, where the combined check yields
+is polynomial in $z$, while $\revdot{\v{r}}{\v{s}}$ is $z$-independent, so
+the two interact only at $z^0$, where the combined check yields
 $$
-c_0 d_0 + \revdot{\v{r}}{\v{s}} = \dot{\v{k}}{\v{y^{4n}}}.
+\v{c}_0 \v{d}_0 + \revdot{\v{r}}{\v{s}} = \dot{\v{k}}{\v{y^{4n}}}.
 $$
 Meanwhile, the $z^{4n - 1}$ coefficient gives
 $$

@@ -184,10 +184,10 @@ impl Routine<Fp> for Duplicate {
 /// Passthrough — returns input unchanged. No constraints.
 ///
 /// With [`DropFirst`], forms a pair whose `(scalar, mul_count,
-/// linear_count)` triples are identical: paired allocation packs 1 and
-/// 2 input wires into the same gate count during the uncounted input
-/// remap, so the geometric sequences reach the same state. Only the
-/// `TypeId` of `Input` distinguishes them.
+/// linear_count)` triples are identical: neither routine calls
+/// `enforce_zero`, so both leave the Horner accumulator at the initial
+/// seed `h`, and neither emits any gate. Only the `TypeId` of `Input`
+/// distinguishes them.
 #[derive(Clone)]
 struct Passthrough;
 
@@ -288,6 +288,37 @@ impl Routine<Fp> for PureNesting {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
+        dr.routine(SquareOnce, input)
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::just(|| ())))
+    }
+}
+
+/// Calls [`SquareOnce`] twice on the same input. Used to check that two
+/// structurally identical sub-routine invocations within one parent
+/// receive identical fingerprints — the floor planner relies on this for
+/// memoization.
+#[derive(Clone)]
+struct DoubleSquare;
+
+impl Routine<Fp> for DoubleSquare {
+    type Input = Kind![Fp; Element<'_, _>];
+    type Output = Kind![Fp; Element<'_, _>];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let _ = dr.routine(SquareOnce, input.clone())?;
         dr.routine(SquareOnce, input)
     }
 
@@ -791,7 +822,9 @@ impl Routine<Fp> for DelegateAllocEnforceFirst {
 }
 
 /// Three input wires, returns first. Paired with [`PassthroughQuad`]:
-/// 3 and 4 wires produce identical post-remap state due to paired allocation.
+/// neither routine calls `enforce_zero`, so both leave the Horner
+/// accumulator at the initial seed `h`. Only the `TypeId` of `Input`
+/// distinguishes them.
 #[derive(Clone)]
 struct PassthroughTriple;
 
@@ -1361,6 +1394,32 @@ fn test_determinism() {
     );
 }
 
+/// Repeated invocations of the same routine within one circuit must
+/// produce identical fingerprints, so the floor planner can memoize
+/// structurally equivalent sub-routines. Pins the per-scope reset of
+/// the `Counter`'s remap counter — without it, the second
+/// `SquareOnce` call's input wires would receive different remap
+/// tokens than the first, producing a divergent Horner accumulator.
+#[test]
+fn test_repeated_invocation_fingerprint_stability() {
+    let metrics = metrics::eval(&SingleRoutineCircuit(DoubleSquare)).unwrap();
+    // segments[0] = root, [1] = DoubleSquare, [2] = first SquareOnce,
+    // [3] = second SquareOnce.
+    assert_eq!(metrics.segments.len(), 4);
+    let fp2 = match metrics.segments[2].identity() {
+        RoutineIdentity::Routine(fp) => *fp,
+        RoutineIdentity::Root => panic!("segment 2 should be Routine"),
+    };
+    let fp3 = match metrics.segments[3].identity() {
+        RoutineIdentity::Routine(fp) => *fp,
+        RoutineIdentity::Root => panic!("segment 3 should be Routine"),
+    };
+    assert_eq!(
+        fp2, fp3,
+        "two calls to SquareOnce within one parent must share a fingerprint",
+    );
+}
+
 /// Distinct Rust types with identical constraint structure share a fingerprint.
 #[test]
 fn test_structural_equivalence() {
@@ -1656,8 +1715,10 @@ fn test_vanishing_leading_trivial_via_eval() {
 
 /// DelegatePadEnforceOutput enforces the remapped child output wire;
 /// DelegateAllocEnforceFirst enforces a subsequent local alloc.  The
-/// output remap advances the parent's geometric sequences, giving
-/// these wires distinct values and thus distinct Horner scalars.
+/// output wire carries a value from the parent's `x_remap` sequence,
+/// while the local alloc carries a value from the `x1` (b-wire)
+/// sequence — these are independent BLAKE2b bases, so the Horner
+/// scalars differ.
 #[test]
 fn test_wire_collision_via_eval() {
     assert_ne!(
@@ -1682,10 +1743,8 @@ fn test_wire_collision_via_eval_metrics_identical() {
 }
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
-/// Element)) have zero body constraints and identical Horner scalars —
-/// paired allocation packs 1 and 2 input wires into the same gate
-/// count during the uncounted input remap, leaving the geometric
-/// sequences in the same state.  Without `input_kind` in the
+/// Element)) have zero body constraints, so both leave the Horner
+/// accumulator at the initial seed `h`. Without `input_kind` in the
 /// fingerprint, these would collide.
 #[test]
 fn test_typeid_necessary_for_input_discrimination() {
@@ -1714,7 +1773,8 @@ fn test_typeid_necessary_for_output_discrimination() {
     assert_ne!(a, b);
 }
 
-/// 3 vs 4 input wires produce identical post-remap Counter state.
+/// 3 vs 4 input wires both leave the Horner accumulator at the initial
+/// seed `h` (no `enforce_zero` calls); only `input_kind` distinguishes them.
 #[test]
 fn test_typeid_triple_vs_quad_input_wires() {
     let a = fingerprint_triple(&PassthroughTriple);

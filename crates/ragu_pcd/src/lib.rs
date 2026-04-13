@@ -21,7 +21,7 @@
 compile_error!("`ragu_pcd` requires the `alloc` feature to be enabled.");
 extern crate alloc;
 
-#[cfg(feature = "multicore")]
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
 mod fuse;

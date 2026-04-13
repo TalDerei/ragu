@@ -25,9 +25,9 @@
 //!
 //! The scalar is the routine's $s(X,Y)$ contribution (see
 //! [`sxy::eval`](super::s::sxy::eval)) evaluated at deterministic
-//! pseudorandom points derived from a domain-separated BLAKE2b hash: three
-//! independent geometric sequences are assigned to the $a$, $b$, $c$ wires and
-//! constraint values are accumulated via Horner's rule. If two routines produce
+//! pseudorandom points derived from a domain-separated BLAKE2b hash: four
+//! independent geometric sequences are assigned to the $a$, $b$, $c$, $d$
+//! wires and constraint values are accumulated via Horner's rule. If two routines produce
 //! the same fingerprint, they are structurally equivalent with overwhelming
 //! probability.
 //!
@@ -233,6 +233,14 @@ struct CounterScope<F> {
     /// Running monomial for $d$ wires: $x_3^{i+1}$ at gate $i$.
     current_d: F,
 
+    /// Running value for [`WireMap::convert_wire`] in this scope: each call
+    /// returns the current value and multiplies by `Counter::x_remap`.
+    /// Initialized to `x_remap` on every scope push, so each routine's input
+    /// remap mints the same prefix `x_remap, x_remap^2, …` regardless of
+    /// caller context. This is what makes structurally identical routine
+    /// invocations produce identical fingerprints.
+    remap_current: F,
+
     /// Horner accumulator for the fingerprint evaluation result.
     result: F,
 }
@@ -256,12 +264,6 @@ struct Counter<F> {
     num_gates: usize,
     segments: Vec<SegmentRecord>,
 
-    /// When false, `gate` advances geometric sequences but does not increment
-    /// constraint counts.  Used during input and output wire remapping in
-    /// [`routine`](Driver::routine), where only `alloc` (and transitively
-    /// `mul`, which calls `gate`) is reachable via [`WireMap::convert_wire`].
-    counting: bool,
-
     /// Base for the $a$-wire geometric sequence.
     x0: F,
 
@@ -273,6 +275,12 @@ struct Counter<F> {
 
     /// Base for the $d$-wire geometric sequence.
     x3: F,
+
+    /// Base for the remap geometric sequence used by [`WireMap::convert_wire`].
+    /// Independent from `x0..x3` so remap-minted wire values cannot collide
+    /// with allocated wire values. The running counter (`remap_current`) lives
+    /// on [`CounterScope`] and is reset on every scope push.
+    x_remap: F,
 
     /// Multiplier for Horner accumulation, applied per [`enforce_zero`] call.
     ///
@@ -301,6 +309,13 @@ struct Counter<F> {
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
+    /// Mints the next fresh wire value from the `x_remap` geometric sequence.
+    fn next_remap(&mut self) -> WireEval<F> {
+        let v = self.scope.remap_current;
+        self.scope.remap_current *= self.x_remap;
+        WireEval::Value(v)
+    }
+
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -316,6 +331,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let y = point(4);
         let h = point(5);
         let one = point(6);
+        let x_remap = point(7);
 
         Self {
             scope: CounterScope {
@@ -325,6 +341,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_b: x1,
                 current_c: x2,
                 current_d: x3,
+                remap_current: x_remap,
                 result: h,
             },
             num_constraints: 0,
@@ -334,7 +351,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 num_constraints: 0,
                 identity: RoutineIdentity::Root,
             }],
-            counting: true,
             x0,
             x1,
             x2,
@@ -342,19 +358,8 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             y,
             one,
             h,
+            x_remap,
         }
-    }
-
-    /// Runs `f` with `counting` set to `false`, restoring it afterward.
-    ///
-    /// Used during wire remapping so that `gate` advances geometric
-    /// sequences without incrementing constraint counts, and
-    /// `enforce_zero` is a no-op.
-    fn uncounted<R>(&mut self, f: impl FnOnce(&mut Self) -> Result<R>) -> Result<R> {
-        self.counting = false;
-        let result = f(self);
-        self.counting = true;
-        result
     }
 }
 
@@ -372,10 +377,8 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
-        if self.counting {
-            self.num_gates += 1;
-            self.segments[self.scope.current_segment].num_gates += 1;
-        }
+        self.num_gates += 1;
+        self.segments[self.scope.current_segment].num_gates += 1;
 
         let a = self.scope.current_a;
         let b = self.scope.current_b;
@@ -450,15 +453,17 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_b: self.x1,
                 current_c: self.x2,
                 current_d: self.x3,
+                remap_current: self.x_remap,
                 result: self.h,
             },
         );
 
-        // Remap input wires to fixed positions in the fresh scope so the
-        // fingerprint captures only internal structure, not caller context.
-        // Uncounted: these gates only seed the geometric sequences.
-        let new_input = self.uncounted(|c| Ro::Input::map_gadget(&input, c))?;
-        self.scope.available_d = None; // match sxy/trace initial state
+        // Remap input wires to fresh tokens disjoint from the routine's
+        // geometric sequences, so the fingerprint captures only internal
+        // structure, not caller context. The remap mints values from
+        // `x_remap` and does not advance the geometric sequences or
+        // increment any counts.
+        let new_input = Ro::Input::map_gadget(&input, self)?;
 
         // Predict and execute.
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
@@ -476,69 +481,28 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Restore parent scope.
         self.scope = saved;
 
-        // Remap child output wires as fresh parent allocations.
-        //
-        // The child's a/b/c sequences were reset to (x0, x1, x2) on entry,
-        // so its output wires carry child-local evaluations. After restoring
-        // the parent scope those values are no longer globally distinct —
-        // they could collide with the parent's own wires. Re-allocating via
-        // `map_gadget` assigns each output wire a fresh position in the
-        // parent's geometric sequences.
-        //
-        // The remap calls `alloc` for each output wire, which may call
-        // `gate` internally. This has two side effects on the parent scope:
-        //
-        // 1. Geometric sequences advance — `current_a`, `current_b`,
-        //    `current_c` move past the remap gates.
-        // 2. `available_d` changes — the remap may consume a pending
-        //    d-wire or create a new one.
-        //
-        // Effect (1) is kept; effect (2) is rolled back. The asymmetry is
-        // deliberate:
-        //
-        // Sequences must advance because the remapped output wires need
-        // evaluations that are distinct from each other and from any
-        // subsequent parent allocation. Letting the sequences advance past
-        // the remap positions achieves this — each output wire lands at a
-        // unique geometric position in the parent's sequence space.
-        //
-        // `available_d` must be restored because in the real drivers
-        // (sxy, sx, sy), output wires are received directly from the
-        // child's evaluation — no parent gates are consumed and the
-        // parent's pairing state is untouched. The output remap is a
-        // Counter-only operation that exists solely to assign parent-scope
-        // evaluations to child output wires. If the remap were allowed to
-        // mutate `available_d`, the parent's subsequent allocation pattern
-        // would diverge from the real drivers: a pending d-wire could be
-        // consumed or created by the remap, changing which wire types
-        // subsequent `alloc` calls return. Restoring `available_d` keeps
-        // the parent's pairing trajectory identical to the real drivers.
-        //
-        // After a routine call where the parent had a pending d-wire, the
-        // stashed wire retains its pre-call geometric value while the
-        // sequences have jumped forward past the remap positions. This
-        // creates a non-contiguous gap in the parent's sequence coverage.
-        // The gap is harmless — the stashed wire already has a distinct
-        // value, and Schwartz–Zippel only requires that all wire
-        // evaluations be distinct, not contiguous.
-        let saved_d = self.scope.available_d.take();
-
-        let parent_output = self.uncounted(|c| Ro::Output::map_gadget(&output, c))?;
-
-        self.scope.available_d = saved_d;
+        // Remap child output wires as fresh tokens in the parent context.
+        // The child's geometric sequences share bases with the parent (both
+        // start at x0..x3), so child-allocated values overlap systematically
+        // with parent-allocated values; the remap re-tokenizes them onto
+        // the parent's `x_remap` sequence to keep them distinct.
+        let parent_output = Ro::Output::map_gadget(&output, self)?;
 
         Ok(parent_output)
     }
 }
 
 /// [`WireMap`] for `Counter`→`Counter`: each source wire is replaced by a
-/// fresh allocation, producing linearly independent wire values.
+/// fresh value from the dedicated `x_remap` geometric sequence. No gates are
+/// allocated and no constraint counts change — remap-minted wires are purely
+/// distinct field-element tokens used to keep routine fingerprints
+/// independent of caller context.
 impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
     type Src = Self;
     type Dst = Self;
 
     fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
-        self.alloc(|| unreachable!())
+        Ok(self.next_remap())
     }
 }
 
@@ -611,7 +575,7 @@ pub(crate) mod tests {
         type Dst = Counter<F>;
 
         fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
-            self.counter.alloc(|| unreachable!())
+            Ok(self.counter.next_remap())
         }
     }
 
@@ -638,16 +602,16 @@ pub(crate) mod tests {
     {
         let mut counter = Counter::<F>::new();
 
-        // Remap input wires into Counter, mirroring Counter::routine:
-        // uncounted (seeding only) and available_d cleared afterward.
-        let new_input = counter.uncounted(|c| {
+        // Remap input wires into Counter via the dedicated `x_remap`
+        // sequence, mirroring Counter::routine. No gates allocated, no
+        // counts incremented.
+        let new_input = {
             let mut remap = CounterRemap {
-                counter: c,
+                counter: &mut counter,
                 _marker: PhantomData::<D>,
             };
-            Ro::Input::map_gadget(input, &mut remap)
-        })?;
-        counter.scope.available_d = None;
+            Ro::Input::map_gadget(input, &mut remap)?
+        };
 
         // Predict (on a wireless emulator) then execute on the counter.
         let aux = Emulator::predict(routine, &new_input)?.into_aux();

@@ -28,18 +28,18 @@ in terms of every real wire.
 
 | trace $\uparrow$ | monomials | wiring $\downarrow$ | $Y^0$ | $\cdots$ | $Y^{4n-1}$ |
 |:--:|:--:|:--:|:--:|:--:|:--:|
-| $\left.\begin{array}{ll} \v{d}_0 & = \color{#dc2626}{\alpha} \\ \v{d}_1 \\ \vdots \\ \v{d}_{n-1} \end{array}\right\}\v{d}$ | $\begin{array}{c} X^{4n-1} \\ X^{4n-2} \\ \vdots \\ X^{3n} \end{array}$ | $\v{c}\left\{\begin{array}{c} \color{#7e22ce}{\v{c}_0} \\ \v{c}_1 \\ \vdots \\ \v{c}_{n-1} \end{array}\right.$ | $\begin{array}{c} \phantom{1} \\ \phantom{1} \\ \phantom{\vdots} \\ \phantom{1} \end{array}$ | $\vdots$ | $\begin{array}{c} \color{#7e22ce}{\kappa} \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ |
-| $\left.\begin{array}{ll} \v{a}_{n-1} \\ \vdots \\ \v{a}_1 \\ \v{a}_0 & = 0 \end{array}\right\}\v{a}$ | $\begin{array}{c} X^{3n-1} \\ \vdots \\ X^{2n+1} \\ X^{2n} \end{array}$ | $\v{b}\left\{\begin{array}{c} \v{b}_{n-1} \\ \vdots \\ \v{b}_1 \\ \color{blue}{\v{b}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{1} \\ \phantom{\vdots} \\ \phantom{1} \\ \color{blue}{1} \end{array}$ | $\vdots$ | |
+| $\left.\begin{array}{ll} \v{d}_0 & = \color{#dc2626}{\alpha} \\ \v{d}_1 \\ \vdots \\ \v{d}_{n-1} \end{array}\right\}\v{d}$ | $\begin{array}{c} X^{4n-1} \\ X^{4n-2} \\ \vdots \\ X^{3n} \end{array}$ | $\v{c}\left\{\begin{array}{c} \color{#7e22ce}{\v{c}_0} \\ \v{c}_1 \\ \vdots \\ \v{c}_{n-1} \end{array}\right.$ | $\begin{array}{c} \phantom{0} \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ | $\vdots$ | $\begin{array}{c} \color{#7e22ce}{\kappa} \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ |
+| $\left.\begin{array}{ll} \v{a}_{n-1} \\ \vdots \\ \v{a}_1 \\ \v{a}_0 & = 0 \end{array}\right\}\v{a}$ | $\begin{array}{c} X^{3n-1} \\ \vdots \\ X^{2n+1} \\ X^{2n} \end{array}$ | $\v{b}\left\{\begin{array}{c} \v{b}_{n-1} \\ \vdots \\ \v{b}_1 \\ \color{blue}{\v{b}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{blue}{1} \end{array}$ | $\vdots$ | |
 | $\left.\begin{array}{ll} \color{blue}{\v{b}_0} & = \color{blue}{1} \\ \v{b}_1 \\ \vdots \\ \v{b}_{n-1} \end{array}\right\}\v{b}$ | $\begin{array}{c} X^{2n-1} \\ X^{2n-2} \\ \vdots \\ X^n \end{array}$ | $\v{a}\left\{\begin{array}{c} \v{a}_0 \\ \v{a}_1 \\ \vdots \\ \v{a}_{n-1} \end{array}\right.$ | | $\vdots$ | |
-| $\left.\begin{array}{ll} \v{c}_{n-1} \\ \vdots \\ \v{c}_1 \\ \color{#7e22ce}{\v{c}_0} & \color{#7e22ce}{= 0} \end{array}\right\}\v{c}$ | $\begin{array}{c} X^{n-1} \\ \vdots \\ X^1 \\ X^0 \end{array}$ | $\v{d}\left\{\begin{array}{c} \v{d}_{n-1} \\ \vdots \\ \v{d}_1 \\ \v{d}_0 \end{array}\right.$ | $\begin{array}{c} \phantom{1} \\ \phantom{\vdots} \\ \phantom{1} \\ \phantom{1} \end{array}$ | $\begin{array}{c} \phantom{\v{c}_0} \\ \phantom{\vdots} \\ \phantom{\v{c}_1} \\ \color{#dc2626}{s(0,Y)\!=\!0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{\color{#dc2626}{0}} \end{array}$ |
+| $\left.\begin{array}{ll} \v{c}_{n-1} \\ \vdots \\ \v{c}_1 \\ \color{#7e22ce}{\v{c}_0} & \color{#7e22ce}{= 0} \end{array}\right\}\v{c}$ | $\begin{array}{c} X^{n-1} \\ \vdots \\ X^1 \\ X^0 \end{array}$ | $\v{d}\left\{\begin{array}{c} \v{d}_{n-1} \\ \vdots \\ \v{d}_1 \\ \v{d}_0 \end{array}\right.$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{s(0,Y)\!=\!0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{\color{#dc2626}{0}} \end{array}$ |
 
 Ragu reserves some of the layout of all wiring polynomials for special purposes.
-The $0$th gate of all traces is used to reserve the constant wire $b_0 = 1$
-(also called [`ONE`]) and an optional blinding wire $d_0 = \alpha$. The former
-is enforced by the verifier in the $0$th constraint via $\v{k}_0 = 1$ when the
-wiring polynomial is used for a circuit; other kinds of wiring polynomials
-deliberately omit the $0$th constraint so that they are not satisfiable for
-verifiers that set $k(Y) = 0$.
+The $0$th gate of all traces (called the SYSTEM gate) is used to reserve the
+constant wire $b_0 = 1$ (also called [`ONE`]) and an optional blinding wire $d_0
+= \alpha$. The former is enforced by the verifier in the $0$th constraint via
+$\v{k}_0 = 1$ when the wiring polynomial is used for a circuit; other kinds of
+wiring polynomials deliberately omit the $0$th constraint so that they are only
+satisfiable for verifiers that set $k(Y) = 0$.
 
 The last constraint (for $j = 4n - 1$) is reserved for the registry, which injects a
 fixed value $\kappa$ into a meaningless constraint over the $\v{c}_0$ wire, ensuring
