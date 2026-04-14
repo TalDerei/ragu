@@ -40,20 +40,18 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     ///
     /// This costs one gate and two constraints.
     pub fn alloc(dr: &mut D, value: DriverValue<D, bool>) -> Result<Self> {
-        let (a, b, c) = dr.mul(|| {
-            let value = value.coeff().take();
-            Ok((value, value, value))
-        })?;
+        let complement = value.not();
+        let (a, b, c) =
+            dr.mul(|| Ok((value.coeff().take(), complement.coeff().take(), Coeff::Zero)))?;
 
-        // Enforce a = b => c = a²
-        dr.enforce_equal(&a, &b)?;
+        // Enforce c = 0, so the gate constraint becomes a * b = 0.
+        dr.enforce_zero(|lc| lc.add(&c))?;
 
-        // Enforce a = c => a = a²
-        //                => (a - 0)(a - 1) = 0
-        //                => (a = 0) OR (a = 1)
-        dr.enforce_equal(&a, &c)?;
+        // Enforce a + b = 1. Together with a * b = 0,
+        // this gives a(1 - a) = 0, so a is zero or one.
+        dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&a).sub(&b))?;
 
-        Ok(Boolean { value, wire: c })
+        Ok(Boolean { value, wire: a })
     }
 
     /// Computes the NOT of this boolean. This is "free" in the circuit model.
