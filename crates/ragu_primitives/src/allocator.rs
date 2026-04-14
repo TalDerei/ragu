@@ -9,18 +9,13 @@
 //! allocator decides whether to pack this allocation into a shared gate,
 //! forward to [`Driver::alloc`], or do something else entirely.
 //!
-//! This module ships three implementations:
+//! This module ships two implementations:
 //!
 //! - [`Allocator`] for `()` — a stateless allocator that mirrors the
 //!   wasteful default [`Driver::alloc`] body by calling [`Driver::mul`]
 //!   with zeroed $a$ and $c$ wires. Suited to callers that want the
 //!   cost model to reflect the default [`Driver::alloc`] regardless of
 //!   whether the running driver overrides it.
-//!
-//! - [`StubAllocator`] — forwards each allocation to [`Driver::alloc`]
-//!   without modification, preserving any driver-level override. Use this
-//!   when the call site should behave identically to a direct
-//!   [`Driver::alloc`] call.
 //!
 //! - [`SimpleAllocator`] — pairs consecutive allocations into one gate,
 //!   stashing the `Extra` token from the first allocation for use by the
@@ -32,9 +27,9 @@ use ragu_core::{Result, drivers::Driver};
 /// Allocates wires on behalf of a gadget.
 ///
 /// Implementations decide how to turn a witness-producing closure into a
-/// driver wire. The simplest implementations forward to [`Driver::alloc`]
-/// (see [`StubAllocator`]) or imitate its default body (see the impl for
-/// `()`). [`SimpleAllocator`] pairs two consecutive allocations into a
+/// driver wire. The simplest implementation imitates the default
+/// [`Driver::alloc`] body (see the impl for `()`).
+/// [`SimpleAllocator`] pairs two consecutive allocations into a
 /// single gate by stashing the [`Extra`](ragu_core::drivers::DriverTypes::Extra)
 /// token that [`Driver::alloc`]'s default discards.
 pub trait Allocator<'dr, D: Driver<'dr>> {
@@ -58,21 +53,6 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
     fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
         let (_, b, _) = dr.mul(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
         Ok(b)
-    }
-}
-
-/// Allocator that forwards to [`Driver::alloc`] unchanged, preserving any
-/// driver-specific override.
-///
-/// Use this at call sites that need to respect the running driver's own
-/// allocation behavior — for instance, the allocation counter tracked by
-/// [`Simulator`](crate::Simulator), or the paired-allocation optimization
-/// used by the production prover drivers.
-pub struct StubAllocator;
-
-impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for StubAllocator {
-    fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
-        dr.alloc(value)
     }
 }
 

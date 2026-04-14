@@ -60,7 +60,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::StubAllocator};
+use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::SimpleAllocator};
 
 use super::super::{
     InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
@@ -159,7 +159,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
         let query = query.unenforced(dr, witness.as_ref().map(|w| w.query_witness))?;
         let eval = eval.unenforced(dr, witness.as_ref().map(|w| w.eval_witness))?;
 
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Retrieve Fiat-Shamir challenges from the unified instance.

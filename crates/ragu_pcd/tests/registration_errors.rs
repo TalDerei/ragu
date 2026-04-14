@@ -11,7 +11,7 @@ use ragu_pcd::{
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
-use ragu_primitives::allocator::{Allocator, StubAllocator};
+use ragu_primitives::allocator::{Allocator, SimpleAllocator};
 
 // Header A with suffix 0
 struct HSuffixA;
@@ -83,7 +83,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());
@@ -116,7 +116,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());
@@ -149,7 +149,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());

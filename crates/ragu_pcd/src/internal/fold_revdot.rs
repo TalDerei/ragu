@@ -291,7 +291,7 @@ mod tests {
     use ragu_circuits::polynomials::{TestRank, sparse};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
-    use ragu_primitives::{Simulator, allocator::StubAllocator, vec::CollectFixed};
+    use ragu_primitives::{Simulator, allocator::SimpleAllocator, vec::CollectFixed};
     use rand::SeedableRng;
 
     use super::*;
@@ -714,21 +714,30 @@ mod tests {
 
     /// Computes the number of allocations for given M, N.
     ///
-    /// Formula: M^2 + N^2 - N + 2
+    /// Formula: NM^2 + N^2 - N + 4
+    /// - 4 top-level: mu, nu, mu', nu'
+    /// - Layer 1: N * (M^2 - M) error terms + N * M ky values = NM^2
+    /// - Layer 2: N^2 - N error terms
     fn allocs(m: usize, n: usize) -> usize {
-        m * m + n * n - n + 2
+        n * m * m + n * n - n + 4
     }
 
     /// This measures the effective constraint cost that accounts
     /// for both multiplication gates and allocations for various M
     /// and N combinations. The optimal accounting here is to maximize
     /// M * N, while staying under the circuit budget.
+    ///
+    /// [`SimpleAllocator`] pairs consecutive allocations into gates, so
+    /// the total gate count is `muls + allocs / 2` (exact when `allocs`
+    /// is even, which holds for the tested parameters). Each gate
+    /// consumes two trace slots, giving an effective cost of
+    /// `2 * total_gates`.
     #[test]
     fn test_cost_formulas() -> Result<()> {
         fn verify<const M: usize, const N: usize>() -> Result<()> {
             let rng = rand::rngs::StdRng::from_rng(&mut rand::rng());
             let sim = Simulator::simulate(rng, |dr, mut rng| {
-                let mut allocator = StubAllocator;
+                let mut allocator = SimpleAllocator::new();
                 let mu = Element::alloc(dr, &mut allocator, rng.as_mut().map(Fp::random))?;
                 let nu = Element::alloc(dr, &mut allocator, rng.as_mut().map(Fp::random))?;
                 let mu_prime = Element::alloc(dr, &mut allocator, rng.as_mut().map(Fp::random))?;
@@ -774,19 +783,19 @@ mod tests {
                 Ok(())
             })?;
 
-            assert_eq!(sim.num_gates(), muls(M, N));
+            assert_eq!(sim.num_gates(), muls(M, N) + allocs(M, N) / 2);
             Ok(())
         }
 
         verify::<6, 17>()?;
         verify::<7, 14>()?;
 
-        // Verify optimal parameters fit circuit budget (separate from verify loop)
-        let effective_cost = 2 * muls(6, 17) + allocs(6, 17);
+        // Verify optimal parameters fit circuit budget.
+        // Each gate uses 2 trace slots, so effective cost = 2 * total_gates.
+        let total_gates = muls(6, 17) + allocs(6, 17) / 2;
         assert!(
-            effective_cost < (2 * (1 << 11)),
-            "M = 6, N = 17 exceeds budget: {}",
-            effective_cost / 2
+            total_gates < (1 << 11),
+            "M = 6, N = 17 exceeds budget: {total_gates}",
         );
 
         Ok(())

@@ -67,7 +67,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Maybe,
 };
-use ragu_primitives::{allocator::StubAllocator, vec::FixedVec};
+use ragu_primitives::{allocator::SimpleAllocator, vec::FixedVec};
 
 use super::super::{
     claims::{TwoProofKySource, ky_values},
@@ -154,7 +154,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let inner_error =
             inner_error.enforced(dr, witness.as_ref().map(|w| w.inner_error_witness))?;
 
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Get layer 1 folding challenges from the unified instance.

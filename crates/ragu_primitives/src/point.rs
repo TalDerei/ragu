@@ -260,8 +260,6 @@ fn test_point_double() -> Result<()> {
 
             Ok(())
         })?;
-
-        assert_eq!(sim.num_allocations(), 0);
         assert_eq!(sim.num_gates(), 4);
         assert_eq!(sim.num_constraints(), 8);
         Ok(())
@@ -314,7 +312,6 @@ fn test_add_incomplete() -> Result<()> {
                 assert!(sim.is_err());
             } else {
                 let sim = sim?;
-                assert_eq!(sim.num_allocations(), 0);
                 assert_eq!(sim.num_gates(), 3);
                 assert_eq!(sim.num_constraints(), 6);
             }
@@ -369,7 +366,6 @@ fn test_double_and_add_incomplete() -> Result<()> {
                 assert!(sim.is_err());
             } else {
                 let sim = sim?;
-                assert_eq!(sim.num_allocations(), 0);
                 assert_eq!(sim.num_gates(), 5);
                 assert_eq!(sim.num_constraints(), 10);
             }

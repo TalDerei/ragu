@@ -13,7 +13,7 @@ use ragu_core::{
     drivers::{Driver, DriverValue},
     maybe::Maybe,
 };
-use ragu_primitives::allocator::StubAllocator;
+use ragu_primitives::allocator::SimpleAllocator;
 
 use super::super::{Encoded, Index, Step};
 use crate::Header;
@@ -56,7 +56,7 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         // Use uniform encoding for left to ensure circuit uniformity across header types
         let left_encoded = Encoded::new_uniform(dr, &mut allocator, left.clone())?;
         // Use standard encoding for right (trivial header)

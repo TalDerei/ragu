@@ -12,7 +12,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
-use ragu_primitives::{Element, Simulator, allocator::StubAllocator};
+use ragu_primitives::{Element, Simulator, allocator::SimpleAllocator};
 
 use crate::{
     Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
@@ -35,7 +35,8 @@ impl Circuit<Fp> for SquareCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, &mut StubAllocator, instance)
+        let mut allocator = SimpleAllocator::new();
+        Element::alloc(dr, &mut allocator, instance)
     }
 
     fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
@@ -43,7 +44,8 @@ impl Circuit<Fp> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let mut a = Element::alloc(dr, &mut StubAllocator, witness)?;
+        let mut allocator = SimpleAllocator::new();
+        let mut a = Element::alloc(dr, &mut allocator, witness)?;
 
         for _ in 0..self.times {
             a = a.square(dr)?;
@@ -95,7 +97,7 @@ fn test_simple_circuit() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let mut allocator = StubAllocator;
+            let mut allocator = SimpleAllocator::new();
             let c = Element::alloc(dr, &mut allocator, instance.as_ref().map(|v| v.0))?;
             let d = Element::alloc(dr, &mut allocator, instance.as_ref().map(|v| v.1))?;
 
@@ -108,7 +110,7 @@ fn test_simple_circuit() {
             witness: DriverValue<D, Self::Witness<'witness>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
         {
-            let mut allocator = StubAllocator;
+            let mut allocator = SimpleAllocator::new();
             let a = Element::alloc(dr, &mut allocator, witness.as_ref().map(|w| w.0))?;
             let b = Element::alloc(dr, &mut allocator, witness.as_ref().map(|w| w.1))?;
 
@@ -200,7 +202,7 @@ impl Routine<Fp> for TestRoutine {
         aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let precomputed_value = aux.take();
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let element_from_aux = Element::alloc(dr, &mut allocator, D::just(|| precomputed_value))?;
         let other = Element::alloc(dr, &mut allocator, D::just(|| Fp::from(5u64)))?;
         let result = element_from_aux.add(dr, &other);
@@ -219,13 +221,13 @@ impl Routine<Fp> for TestRoutine {
 #[test]
 fn test_element() {
     let mut simulator = Simulator::<Fp>::new();
+    let mut allocator = SimpleAllocator::new();
     let input = Element::alloc(
         &mut simulator,
-        &mut StubAllocator,
+        &mut allocator,
         Always::<Fp>::just(|| Fp::from(5u64)),
     )
     .unwrap();
     let result = simulator.routine(TestRoutine, input).unwrap();
     assert_eq!(*result.value().take(), Fp::from(15u64));
-    assert_eq!(simulator.num_allocations(), 3);
 }

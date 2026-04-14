@@ -14,7 +14,7 @@ use ragu_pcd::{
 };
 use ragu_primitives::{
     Element,
-    allocator::{Allocator, StubAllocator},
+    allocator::{Allocator, SimpleAllocator},
     poseidon::Sponge,
 };
 
@@ -80,7 +80,7 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     where
         Self: 'dr,
     {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
 
@@ -125,7 +125,7 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     where
         Self: 'dr,
     {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let leaf = Element::alloc(dr, &mut allocator, witness)?;
         let mut sponge = Sponge::new(dr, self.poseidon_params);
         sponge.absorb(dr, &leaf)?;

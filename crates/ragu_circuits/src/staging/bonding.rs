@@ -1,11 +1,12 @@
 //! Bonding polynomials for multi-stage circuits.
 //!
 //! This module produces a [`BondingObject`] from any [`MultiStageCircuit`]
-//! whose witness is gate-free: [`Driver::mul`], [`Driver::constant`], and
-//! `ONE`-wire references are always rejected. [`Driver::alloc`] is permitted
-//! only during stage reservation (before [`StageBuilder::finish`]); after
-//! finalization, only [`Driver::add`] and [`Driver::enforce_zero`] with
-//! normal wires are permitted. Because the circuit has no gates, it needs no
+//! whose witness is gate-free after finalization: before
+//! [`StageBuilder::finish`], [`gate`](ragu_core::drivers::DriverTypes::gate)
+//! is used to reserve stage wires; after finalization, [`Driver::mul`],
+//! [`Driver::constant`], and `ONE`-wire references are rejected, and only
+//! [`Driver::add`] and [`Driver::enforce_zero`] with normal wires are
+//! permitted. Because the circuit has no gates of its own, it needs no
 //! final trace and exists purely to enforce wiring between stages.
 //!
 //! The `ONE`-wire contribution is stripped so that the constant term in $Y$ is
@@ -14,7 +15,6 @@
 //!
 //! [`Driver::mul`]: ragu_core::drivers::Driver::mul
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
-//! [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
 //! [`Driver::constant`]: ragu_core::drivers::Driver::constant
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 //! [`StageMask`]: super::mask::StageMask
@@ -47,16 +47,14 @@ where
     ///
     /// After the [`StageBuilder`] is finalized, only [`Driver::add`] and
     /// [`Driver::enforce_zero`] are permitted (without referencing the
-    /// [`Driver::ONE`] wire). [`Driver::alloc`] is allowed during stage
-    /// reservation but rejected after finalization. [`Driver::mul`] and
-    /// [`Driver::constant`] are always rejected.
+    /// [`Driver::ONE`] wire). [`Driver::mul`] and [`Driver::constant`]
+    /// are rejected after finalization.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
     ///
     /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
     /// [`Driver::add`]: ragu_core::drivers::Driver::add
-    /// [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
     /// [`Driver::constant`]: ragu_core::drivers::Driver::constant
     /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
     /// [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
@@ -64,8 +62,8 @@ where
     where
         Self: 'a,
     {
-        // Validate: run synthesis with a driver that rejects mul/gate, ONE
-        // usage, and — after the stage builder finalizes — allocations.
+        // Validate: run synthesis with a driver that rejects ONE usage
+        // and — after the stage builder finalizes — mul/gate.
         let mut validator = BondingValidator::<F>::new();
         self.circuit.witness(
             StageBuilder::new_with_on_finish(&mut validator, BondingValidator::freeze),
@@ -108,13 +106,15 @@ impl<F: Field> LinearExpression<BondingWire, F> for RejectOne {
 
 /// A [`Driver`] that validates bonding-circuit constraints.
 ///
-/// Before the [`StageBuilder`] is finalized, [`alloc`](Driver::alloc),
+/// Before the [`StageBuilder`] is finalized, [`gate`](DriverTypes::gate),
 /// [`add`](Driver::add), and [`enforce_zero`](Driver::enforce_zero) with
 /// normal wires are permitted. After [`freeze`](Self::freeze) is called
-/// (via the builder's `on_finish` hook), [`alloc`](Driver::alloc) is
-/// rejected. [`mul`](Driver::mul)/[`gate`](DriverTypes::gate),
-/// [`constant`](Driver::constant), and [`ONE`](Driver::ONE)-wire
-/// references are always rejected.
+/// (via the builder's `on_finish` hook), [`gate`](DriverTypes::gate) is
+/// rejected (catching both allocations via [`SimpleAllocator`] and
+/// direct [`mul`](Driver::mul) calls). [`constant`](Driver::constant)
+/// and [`ONE`](Driver::ONE)-wire references are always rejected.
+///
+/// [`SimpleAllocator`]: ragu_primitives::allocator::SimpleAllocator
 ///
 /// All methods succeed; violations are accumulated in the `error` field and
 /// checked by the caller after the witness completes.
@@ -156,7 +156,9 @@ impl<F: Field> DriverTypes for BondingValidator<F> {
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(BondingWire, BondingWire, BondingWire, BondingWire)> {
-        self.record("bonding circuits must not call mul/gate");
+        if self.frozen {
+            self.record("bonding circuits must not allocate after stage finalization");
+        }
         Ok((
             BondingWire::Normal,
             BondingWire::Normal,
@@ -180,9 +182,6 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
     const ONE: Self::Wire = BondingWire::One;
 
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<BondingWire> {
-        if self.frozen {
-            self.record("bonding circuits must not allocate after stage finalization");
-        }
         Ok(BondingWire::Normal)
     }
 
@@ -266,7 +265,11 @@ mod tests {
         gadgets::{Bound, Gadget},
     };
     use ragu_pasta::Fp;
-    use ragu_primitives::{Element, io::Write};
+    use ragu_primitives::{
+        Element,
+        allocator::{Allocator, SimpleAllocator},
+        io::Write,
+    };
 
     use super::*;
     use crate::{
@@ -556,7 +559,8 @@ mod tests {
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
             let dr = builder.finish();
-            dr.alloc(|| Ok(Coeff::Zero))?;
+            let mut allocator = SimpleAllocator::new();
+            allocator.alloc(dr, || Ok(Coeff::Zero))?;
             Ok(WithAux::new((), D::unit()))
         }
     }

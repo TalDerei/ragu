@@ -145,7 +145,7 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 #[cfg(test)]
 mod tests {
     use ragu_pasta::Fp;
-    use ragu_primitives::{Simulator, allocator::StubAllocator};
+    use ragu_primitives::{Simulator, allocator::SimpleAllocator};
 
     use super::*;
     use crate::polynomials::ProductionRank;
@@ -161,13 +161,12 @@ mod tests {
 
         Simulator::simulate((x, z), |dr, witness| {
             let (x, z) = witness.cast();
-            let x = Element::alloc(dr, &mut StubAllocator, x)?;
-            let z = Element::alloc(dr, &mut StubAllocator, z)?;
+            let mut allocator = SimpleAllocator::new();
+            let x = Element::alloc(dr, &mut allocator, x)?;
+            let z = Element::alloc(dr, &mut allocator, z)?;
 
             dr.reset();
             dr.routine(evaluator.clone(), (x, z))?;
-
-            assert_eq!(dr.num_allocations(), 0);
             assert_eq!(dr.num_gates(), 76);
             assert_eq!(dr.num_constraints(), 152);
 

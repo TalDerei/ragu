@@ -441,7 +441,7 @@ mod root_of_unity_tests {
     use ragu_pasta::{Fp, fp};
 
     use super::*;
-    use crate::{Simulator, allocator::StubAllocator};
+    use crate::{Simulator, allocator::SimpleAllocator};
 
     // (omega, k, should_pass)
     fn test_cases() -> Vec<(Fp, u32, bool)> {
@@ -498,7 +498,8 @@ mod root_of_unity_tests {
     fn test_enforce_root_of_unity() -> Result<()> {
         for (i, (omega, k, should_pass)) in test_cases().into_iter().enumerate() {
             let result = Simulator::simulate(omega, |dr, witness| {
-                let omega = Element::alloc(dr, &mut StubAllocator, witness)?;
+                let mut allocator = SimpleAllocator::new();
+                let omega = Element::alloc(dr, &mut allocator, witness)?;
                 omega.enforce_root_of_unity(dr, k)?;
                 Ok(())
             });
@@ -526,7 +527,7 @@ mod proptests {
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
-    use crate::allocator::StubAllocator;
+    use crate::allocator::SimpleAllocator;
 
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())
@@ -539,7 +540,7 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let mut allocator = StubAllocator;
+                let mut allocator = SimpleAllocator::new();
                 let a = Element::alloc(dr, &mut allocator, a)?;
                 let b = Element::alloc(dr, &mut allocator, b)?;
                 let sum = a.add(dr, &b);
@@ -555,7 +556,7 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let mut allocator = StubAllocator;
+                let mut allocator = SimpleAllocator::new();
                 let a = Element::alloc(dr, &mut allocator, a)?;
                 let b = Element::alloc(dr, &mut allocator, b)?;
                 let ab = a.mul(dr, &b)?;
@@ -575,7 +576,7 @@ mod proptests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::allocator::StubAllocator;
+    use crate::allocator::SimpleAllocator;
 
     #[test]
     fn test_div_nonzero() -> Result<()> {
@@ -585,7 +586,7 @@ mod tests {
         let alloc = |a: F, b: F| {
             let sim = Simulator::simulate((a, b), |dr, witness| {
                 let (a, b) = witness.cast();
-                let mut allocator = StubAllocator;
+                let mut allocator = SimpleAllocator::new();
                 let a = Element::alloc(dr, &mut allocator, a.clone())?;
                 let b = Element::alloc(dr, &mut allocator, b.clone())?;
 
@@ -598,9 +599,7 @@ mod tests {
 
                 Ok(())
             })?;
-
-            assert_eq!(sim.num_allocations(), 2);
-            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_gates(), 2);
             assert_eq!(sim.num_constraints(), 2);
             Ok(())
         };
@@ -619,7 +618,8 @@ mod tests {
 
         let inv = |a: F| {
             let sim = Simulator::simulate(a, |dr, witness| {
-                let a = Element::alloc(dr, &mut StubAllocator, witness.clone())?;
+                let mut allocator = SimpleAllocator::new();
+                let a = Element::alloc(dr, &mut allocator, witness.clone())?;
                 dr.reset();
                 let ainv = a.invert(dr)?;
 
@@ -627,8 +627,6 @@ mod tests {
 
                 Ok(())
             })?;
-
-            assert_eq!(sim.num_allocations(), 0);
             assert_eq!(sim.num_gates(), 1);
             assert_eq!(sim.num_constraints(), 2);
             Ok(())

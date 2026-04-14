@@ -88,7 +88,7 @@ use ragu_core::{
 };
 use ragu_primitives::{
     Element, GadgetExt, WithSuffix,
-    allocator::StubAllocator,
+    allocator::SimpleAllocator,
     io::Write,
     vec::{ConstLen, FixedVec},
 };
@@ -230,7 +230,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             .circuit_id
             .enforce_root_of_unity(dr, self.log2_circuits)?;
 
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Create a transcript for all challenge derivations

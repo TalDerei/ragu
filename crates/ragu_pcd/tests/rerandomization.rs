@@ -15,7 +15,7 @@ use ragu_pcd::{
 };
 use ragu_primitives::{
     Element,
-    allocator::{Allocator, StubAllocator},
+    allocator::{Allocator, SimpleAllocator},
 };
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -75,7 +75,7 @@ impl Step<Pasta> for StepWithData {
         DriverValue<D, <Self::Output as Header<Fp>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::new(dr, &mut allocator, witness.clone())?;
@@ -107,7 +107,7 @@ impl<C: Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());
@@ -138,7 +138,7 @@ impl<C: Cycle> Step<C> for Step1 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let mut allocator = StubAllocator;
+        let mut allocator = SimpleAllocator::new();
         let left = Encoded::new(dr, &mut allocator, left)?;
         let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());

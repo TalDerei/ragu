@@ -14,11 +14,10 @@ use ragu_core::{
 };
 
 /// A driver that fully simulates circuit synthesis, enforcing constraint
-/// satisfaction and tracking allocation, gate, and constraint
-/// counts. Primarily used for testing.
+/// satisfaction and tracking gate and constraint counts. Primarily used
+/// for testing.
 #[derive(Clone)]
 pub struct Simulator<F: Field> {
-    num_allocations: usize,
     num_gates: usize,
     num_constraints: usize,
     _marker: core::marker::PhantomData<F>,
@@ -34,7 +33,6 @@ impl<F: Field> Simulator<F> {
     /// Creates a new `Simulator` driver.
     pub fn new() -> Self {
         Simulator {
-            num_allocations: 0,
             num_gates: 0,
             num_constraints: 0,
             _marker: core::marker::PhantomData,
@@ -43,14 +41,8 @@ impl<F: Field> Simulator<F> {
 
     /// Reset the metrics of the simulator.
     pub fn reset(&mut self) {
-        self.num_allocations = 0;
         self.num_gates = 0;
         self.num_constraints = 0;
-    }
-
-    /// Returns the number of `alloc` calls made.
-    pub fn num_allocations(&self) -> usize {
-        self.num_allocations
     }
 
     /// Returns the number of gates (i.e., [`DriverTypes::gate`] calls made).
@@ -132,7 +124,6 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
 
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<F> {
         let value = value()?;
-        self.num_allocations += 1;
         Ok(value.value())
     }
 

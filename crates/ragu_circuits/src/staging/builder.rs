@@ -52,7 +52,10 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Empty,
 };
-use ragu_primitives::consistent::Consistent;
+use ragu_primitives::{
+    allocator::{Allocator, SimpleAllocator},
+    consistent::Consistent,
+};
 
 use super::{Stage, StageExt};
 use crate::polynomials::Rank;
@@ -213,14 +216,15 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         }
 
         // Collect stage wires
+        let mut allocator = SimpleAllocator::new();
         let mut wires = Vec::with_capacity(num_wires);
         for _ in 0..num_wires {
-            wires.push(self.driver.alloc(|| Ok(Coeff::Zero))?);
+            wires.push(allocator.alloc(self.driver, || Ok(Coeff::Zero))?);
         }
 
         // Padding
         while (num_wires / 2) < Next::num_gates() {
-            self.driver.alloc(|| Ok(Coeff::Zero))?;
+            allocator.alloc(self.driver, || Ok(Coeff::Zero))?;
             num_wires += 1;
         }
 
