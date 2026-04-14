@@ -237,7 +237,7 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: Uendo) -> F {
 /// is a quadratic residue for each bit position `i`.
 pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> Uendo {
     Emulator::emulate_wireless(value, |dr, witness| {
-        let elem = Element::alloc(dr, witness)?;
+        let elem = Element::alloc(dr, &mut (), witness)?;
         let endo = Endoscalar::extract(dr, elem)?;
         Ok(*endo.value.snag())
     })
@@ -254,7 +254,7 @@ mod tests {
     use rand::RngExt;
 
     use super::{Element, Endoscalar, Maybe, Point};
-    use crate::Simulator;
+    use crate::{Simulator, allocator::StubAllocator};
 
     pub struct EndoscalarTest {
         pub value: Uendo,
@@ -316,7 +316,7 @@ mod tests {
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
             let (r, extracted, p) = witness.cast();
             let p = Point::alloc(dr, p)?;
-            let r = Element::alloc(dr, r)?;
+            let r = Element::alloc(dr, &mut StubAllocator, r)?;
             let my_extracted = Endoscalar::extract(dr, r)?;
             let allocated = Endoscalar::alloc(dr, extracted)?;
 

@@ -132,27 +132,45 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     where
         Self: 'dr,
     {
+        let allocator = &mut ();
         let error_terms = NumErrorTerms::<FP::NumGroups>::range()
-            .map(|i| Element::alloc(dr, witness.as_ref().map(|w| w.error_terms[i])))
+            .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|w| w.error_terms[i])))
             .try_collect_fixed()?;
         let collapsed = FP::NumGroups::range()
-            .map(|i| Element::alloc(dr, witness.as_ref().map(|w| w.collapsed[i])))
+            .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|w| w.collapsed[i])))
             .try_collect_fixed()?;
         let left = ChildKyOutputs {
-            application: Element::alloc(dr, witness.as_ref().map(|w| w.ky.left.application))?,
-            unified: Element::alloc(dr, witness.as_ref().map(|w| w.ky.left.unified))?,
-            unified_bridge: Element::alloc(dr, witness.as_ref().map(|w| w.ky.left.unified_bridge))?,
-        };
-        let right = ChildKyOutputs {
-            application: Element::alloc(dr, witness.as_ref().map(|w| w.ky.right.application))?,
-            unified: Element::alloc(dr, witness.as_ref().map(|w| w.ky.right.unified))?,
+            application: Element::alloc(
+                dr,
+                allocator,
+                witness.as_ref().map(|w| w.ky.left.application),
+            )?,
+            unified: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.ky.left.unified))?,
             unified_bridge: Element::alloc(
                 dr,
+                allocator,
+                witness.as_ref().map(|w| w.ky.left.unified_bridge),
+            )?,
+        };
+        let right = ChildKyOutputs {
+            application: Element::alloc(
+                dr,
+                allocator,
+                witness.as_ref().map(|w| w.ky.right.application),
+            )?,
+            unified: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.ky.right.unified))?,
+            unified_bridge: Element::alloc(
+                dr,
+                allocator,
                 witness.as_ref().map(|w| w.ky.right.unified_bridge),
             )?,
         };
         let sponge_state = SpongeState::from_elements(FixedVec::try_from_fn(|i| {
-            Element::alloc(dr, witness.as_ref().map(|w| w.sponge_state_elements[i]))
+            Element::alloc(
+                dr,
+                allocator,
+                witness.as_ref().map(|w| w.sponge_state_elements[i]),
+            )
         })?);
 
         Ok(Output {

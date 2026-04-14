@@ -57,7 +57,7 @@ pub fn setup_emu<Fns: SetupEmu<T>, T>(fns: Fns) -> (BenchEmu, T) {
 // Allocator functions - each takes (emu, rng) and returns an allocated primitive
 pub fn alloc_elem(emu: &mut BenchEmu, rng: &mut StdRng) -> Element<'static, BenchEmu> {
     let v = Fp::random(rng);
-    Element::alloc(emu, BenchEmu::just(|| v)).unwrap()
+    Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
 }
 
 pub fn alloc_point(emu: &mut BenchEmu, rng: &mut StdRng) -> Point<'static, BenchEmu, EpAffine> {
@@ -85,7 +85,7 @@ pub fn alloc_elems<const N: usize>(
     (0..N)
         .map(|_| {
             let v = Fp::random(&mut *rng);
-            Element::alloc(emu, BenchEmu::just(|| v)).unwrap()
+            Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
         })
         .collect()
 }

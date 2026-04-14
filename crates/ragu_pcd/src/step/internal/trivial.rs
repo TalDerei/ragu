@@ -8,6 +8,7 @@ use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
 };
+use ragu_primitives::allocator::StubAllocator;
 
 use super::super::{Encoded, Index, Step};
 use crate::Header;
@@ -46,8 +47,9 @@ impl<C: Cycle> Step<C> for Trivial {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let mut allocator = StubAllocator;
+        let left = Encoded::new(dr, &mut allocator, left)?;
+        let right = Encoded::new(dr, &mut allocator, right)?;
         let output = Encoded::from_gadget(());
 
         Ok(((left, right, output), D::unit(), D::unit()))

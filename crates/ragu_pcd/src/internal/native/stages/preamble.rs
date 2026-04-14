@@ -155,6 +155,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
     ) -> Result<Self> {
         fn alloc_header<'dr, D: Driver<'dr>, const N: usize>(
             dr: &mut D,
+            allocator: &mut (),
             data: DriverValue<D, &[D::F]>,
         ) -> Result<FixedVec<Element<'dr, D>, ConstLen<N>>> {
             D::try_just(|| {
@@ -168,18 +169,23 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             })?;
 
             (0..N)
-                .map(|i| Element::alloc(dr, data.as_ref().map(|d| d[i])))
+                .map(|i| Element::alloc(dr, allocator, data.as_ref().map(|d| d[i])))
                 .try_collect_fixed()
         }
 
+        let allocator = &mut ();
         Ok(ProofInputs {
             children: ChildHeaders {
-                left: alloc_header(dr, proof.as_ref().map(|p| p.left_header()))?,
-                right: alloc_header(dr, proof.as_ref().map(|p| p.right_header()))?,
+                left: alloc_header(dr, allocator, proof.as_ref().map(|p| p.left_header()))?,
+                right: alloc_header(dr, allocator, proof.as_ref().map(|p| p.right_header()))?,
             },
-            output_header: alloc_header(dr, output_header.as_ref().map(|h| &h[..]))?,
-            circuit_id: Element::alloc(dr, proof.as_ref().map(|p| p.circuit_id().omega_j()))?,
-            unified: unified::Output::alloc_from_proof(dr, proof)?,
+            output_header: alloc_header(dr, allocator, output_header.as_ref().map(|h| &h[..]))?,
+            circuit_id: Element::alloc(
+                dr,
+                allocator,
+                proof.as_ref().map(|p| p.circuit_id().omega_j()),
+            )?,
+            unified: unified::Output::alloc_from_proof(dr, allocator, proof)?,
         })
     }
 
@@ -194,7 +200,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             use ragu_core::drivers::emulator::{Emulator, Wireless};
             let emulator = &mut Emulator::<Wireless<D::MaybeKind, D::F>>::wireless();
 
-            let output = H::encode(emulator, header_data)?;
+            let output = H::encode(emulator, &mut (), header_data)?;
             let output = padded::for_header::<H, HEADER_SIZE, _>(emulator, output)?;
 
             let mut header_data = Vec::with_capacity(HEADER_SIZE);

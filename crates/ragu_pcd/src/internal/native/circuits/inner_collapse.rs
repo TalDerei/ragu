@@ -67,7 +67,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Maybe,
 };
-use ragu_primitives::vec::FixedVec;
+use ragu_primitives::{allocator::StubAllocator, vec::FixedVec};
 
 use super::super::{
     claims::{TwoProofKySource, ky_values},
@@ -154,11 +154,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let inner_error =
             inner_error.enforced(dr, witness.as_ref().map(|w| w.inner_error_witness))?;
 
+        let mut allocator = StubAllocator;
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Get layer 1 folding challenges from the unified instance.
-        let mu = unified_output.mu.read(dr)?;
-        let nu = unified_output.nu.read(dr)?;
+        let mu = unified_output.mu.read(dr, &mut allocator)?;
+        let nu = unified_output.nu.read(dr, &mut allocator)?;
         let fold_products = fold_revdot::ClaimFolder::new(dr, &mu, &nu)?;
 
         // Assemble k(y) values from multiple sources. The ordering must match
@@ -186,7 +187,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 .enforce_equal(dr, &outer_error.collapsed[i])?;
         }
 
-        let (output, aux) = unified_output.finish(dr)?;
+        let (output, aux) = unified_output.finish(dr, &mut allocator)?;
         Ok(WithAux::new(output, aux))
     }
 }

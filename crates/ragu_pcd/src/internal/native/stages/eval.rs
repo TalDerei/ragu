@@ -27,7 +27,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, io::Write};
+use ragu_primitives::{Element, allocator::Allocator, io::Write};
 
 use crate::{
     Proof,
@@ -142,19 +142,24 @@ pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
 
 impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
     /// Allocate child evaluations from pre-computed witness values.
-    pub fn alloc(
+    pub fn alloc<A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, &ChildEvaluationsWitness<D::F>>,
     ) -> Result<Self> {
         let rx = RxValues::try_from_fn(|id| {
-            Element::alloc(dr, witness.as_ref().map(|w| *w.rx.get(id)))
+            Element::alloc(dr, allocator, witness.as_ref().map(|w| *w.rx.get(id)))
         })?;
         Ok(ChildEvaluations {
             rx,
-            a_poly: Element::alloc(dr, witness.as_ref().map(|w| w.a_poly))?,
-            b_poly: Element::alloc(dr, witness.as_ref().map(|w| w.b_poly))?,
-            registry_xy_poly: Element::alloc(dr, witness.as_ref().map(|w| w.registry_xy_poly))?,
-            p_poly: Element::alloc(dr, witness.as_ref().map(|w| w.p_poly))?,
+            a_poly: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.a_poly))?,
+            b_poly: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.b_poly))?,
+            registry_xy_poly: Element::alloc(
+                dr,
+                allocator,
+                witness.as_ref().map(|w| w.registry_xy_poly),
+            )?,
+            p_poly: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.p_poly))?,
         })
     }
 }
@@ -208,14 +213,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
-        let left = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.left))?;
-        let right = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.right))?;
-        let registry_wx0 = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wx0))?;
-        let registry_wx1 = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wx1))?;
-        let registry_wy = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_wy))?;
-        let a_poly = Element::alloc(dr, witness.as_ref().map(|w| w.current.a_poly))?;
-        let b_poly = Element::alloc(dr, witness.as_ref().map(|w| w.current.b_poly))?;
-        let registry_xy = Element::alloc(dr, witness.as_ref().map(|w| w.current.registry_xy))?;
+        let allocator = &mut ();
+        let left = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.left))?;
+        let right = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.right))?;
+        let registry_wx0 = Element::alloc(
+            dr,
+            allocator,
+            witness.as_ref().map(|w| w.current.registry_wx0),
+        )?;
+        let registry_wx1 = Element::alloc(
+            dr,
+            allocator,
+            witness.as_ref().map(|w| w.current.registry_wx1),
+        )?;
+        let registry_wy = Element::alloc(
+            dr,
+            allocator,
+            witness.as_ref().map(|w| w.current.registry_wy),
+        )?;
+        let a_poly = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.current.a_poly))?;
+        let b_poly = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.current.b_poly))?;
+        let registry_xy = Element::alloc(
+            dr,
+            allocator,
+            witness.as_ref().map(|w| w.current.registry_xy),
+        )?;
         Ok(Output {
             left,
             right,

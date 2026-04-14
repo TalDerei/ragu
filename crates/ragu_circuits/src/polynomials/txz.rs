@@ -115,6 +115,7 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
         // Compute output using the precomputed inversions
         let output = Element::alloc(
             dr,
+            &mut (),
             D::try_just(|| {
                 let x = *input.0.value().take();
                 let z = *input.1.value().take();
@@ -144,7 +145,7 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 #[cfg(test)]
 mod tests {
     use ragu_pasta::Fp;
-    use ragu_primitives::Simulator;
+    use ragu_primitives::{Simulator, allocator::StubAllocator};
 
     use super::*;
     use crate::polynomials::ProductionRank;
@@ -160,8 +161,8 @@ mod tests {
 
         Simulator::simulate((x, z), |dr, witness| {
             let (x, z) = witness.cast();
-            let x = Element::alloc(dr, x)?;
-            let z = Element::alloc(dr, z)?;
+            let x = Element::alloc(dr, &mut StubAllocator, x)?;
+            let z = Element::alloc(dr, &mut StubAllocator, z)?;
 
             dr.reset();
             dr.routine(evaluator.clone(), (x, z))?;

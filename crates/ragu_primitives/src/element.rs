@@ -17,6 +17,7 @@ use ragu_core::{
 
 use crate::{
     Boolean,
+    allocator::Allocator,
     consistent::Consistent,
     io::{Buffer, Write},
 };
@@ -60,11 +61,16 @@ pub struct Element<'dr, D: Driver<'dr>> {
 }
 
 impl<'dr, D: Driver<'dr>> Element<'dr, D> {
-    /// Allocates an element with the provided witness assignment.
+    /// Allocates an element with the provided witness assignment, using the
+    /// supplied [`Allocator`] to create the underlying wire.
     ///
     /// This costs one allocation.
-    pub fn alloc(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<Self> {
-        let wire = dr.alloc(|| Ok(Coeff::Arbitrary(*assignment.snag())))?;
+    pub fn alloc<A: Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        assignment: DriverValue<D, D::F>,
+    ) -> Result<Self> {
+        let wire = allocator.alloc(dr, || Ok(Coeff::Arbitrary(*assignment.snag())))?;
 
         Ok(Element {
             value: assignment,
@@ -435,7 +441,7 @@ mod root_of_unity_tests {
     use ragu_pasta::{Fp, fp};
 
     use super::*;
-    use crate::Simulator;
+    use crate::{Simulator, allocator::StubAllocator};
 
     // (omega, k, should_pass)
     fn test_cases() -> Vec<(Fp, u32, bool)> {
@@ -492,7 +498,7 @@ mod root_of_unity_tests {
     fn test_enforce_root_of_unity() -> Result<()> {
         for (i, (omega, k, should_pass)) in test_cases().into_iter().enumerate() {
             let result = Simulator::simulate(omega, |dr, witness| {
-                let omega = Element::alloc(dr, witness)?;
+                let omega = Element::alloc(dr, &mut StubAllocator, witness)?;
                 omega.enforce_root_of_unity(dr, k)?;
                 Ok(())
             });
@@ -520,6 +526,7 @@ mod proptests {
 
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
+    use crate::allocator::StubAllocator;
 
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())
@@ -532,8 +539,9 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let a = Element::alloc(dr, a)?;
-                let b = Element::alloc(dr, b)?;
+                let mut allocator = StubAllocator;
+                let a = Element::alloc(dr, &mut allocator, a)?;
+                let b = Element::alloc(dr, &mut allocator, b)?;
                 let sum = a.add(dr, &b);
                 let result = sum.sub(dr, &b);
                 actual = Some(*result.value().take());
@@ -547,8 +555,9 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let a = Element::alloc(dr, a)?;
-                let b = Element::alloc(dr, b)?;
+                let mut allocator = StubAllocator;
+                let a = Element::alloc(dr, &mut allocator, a)?;
+                let b = Element::alloc(dr, &mut allocator, b)?;
                 let ab = a.mul(dr, &b)?;
                 let ba = b.mul(dr, &a)?;
                 actual = Some((*ab.value().take(), *ba.value().take()));
@@ -563,64 +572,71 @@ mod proptests {
     }
 }
 
-#[test]
-fn test_div_nonzero() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::allocator::StubAllocator;
 
-    let alloc = |a: F, b: F| {
-        let sim = Simulator::simulate((a, b), |dr, witness| {
-            let (a, b) = witness.cast();
-            let a = Element::alloc(dr, a.clone())?;
-            let b = Element::alloc(dr, b.clone())?;
+    #[test]
+    fn test_div_nonzero() -> Result<()> {
+        type F = ragu_pasta::Fp;
+        type Simulator = crate::Simulator<F>;
 
-            let quotient = a.div_nonzero(dr, &b)?;
+        let alloc = |a: F, b: F| {
+            let sim = Simulator::simulate((a, b), |dr, witness| {
+                let (a, b) = witness.cast();
+                let mut allocator = StubAllocator;
+                let a = Element::alloc(dr, &mut allocator, a.clone())?;
+                let b = Element::alloc(dr, &mut allocator, b.clone())?;
 
-            assert_eq!(
-                *quotient.value().take(),
-                *a.value().take() * b.value().take().invert().unwrap()
-            );
+                let quotient = a.div_nonzero(dr, &b)?;
 
+                assert_eq!(
+                    *quotient.value().take(),
+                    *a.value().take() * b.value().take().invert().unwrap()
+                );
+
+                Ok(())
+            })?;
+
+            assert_eq!(sim.num_allocations(), 2);
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
             Ok(())
-        })?;
+        };
 
-        assert_eq!(sim.num_allocations(), 2);
-        assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 2);
+        alloc(F::from(4578u64), F::from(372u64))?;
+        alloc(F::ZERO, F::from(372u64))?;
+        assert!(alloc(F::from(4578u64), F::ZERO).is_err());
+
         Ok(())
-    };
+    }
 
-    alloc(F::from(4578u64), F::from(372u64))?;
-    alloc(F::ZERO, F::from(372u64))?;
-    assert!(alloc(F::from(4578u64), F::ZERO).is_err());
+    #[test]
+    fn test_invert() -> Result<()> {
+        type F = ragu_pasta::Fp;
+        type Simulator = crate::Simulator<F>;
 
-    Ok(())
-}
+        let inv = |a: F| {
+            let sim = Simulator::simulate(a, |dr, witness| {
+                let a = Element::alloc(dr, &mut StubAllocator, witness.clone())?;
+                dr.reset();
+                let ainv = a.invert(dr)?;
 
-#[test]
-fn test_invert() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+                assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
 
-    let inv = |a: F| {
-        let sim = Simulator::simulate(a, |dr, witness| {
-            let a = Element::alloc(dr, witness.clone())?;
-            dr.reset();
-            let ainv = a.invert(dr)?;
+                Ok(())
+            })?;
 
-            assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
-
+            assert_eq!(sim.num_allocations(), 0);
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
             Ok(())
-        })?;
+        };
 
-        assert_eq!(sim.num_allocations(), 0);
-        assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 2);
+        inv(F::from(4578u64))?;
+        assert!(inv(F::ZERO).is_err());
+
         Ok(())
-    };
-
-    inv(F::from(4578u64))?;
-    assert!(inv(F::ZERO).is_err());
-
-    Ok(())
+    }
 }

@@ -61,7 +61,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let (unified_ky, unified_bridge_ky, application_ky) =
             Emulator::emulate_wireless((pcd.proof(), pcd.data().clone(), y), |dr, witness| {
                 let (proof, data, y) = witness.cast();
-                let y = Element::alloc(dr, y)?;
+                let y = Element::alloc(dr, &mut (), y)?;
                 let proof_inputs =
                     ProofInputs::<_, C, HEADER_SIZE>::alloc_for_verify::<R, H>(dr, proof, data)?;
 

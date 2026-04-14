@@ -90,8 +90,9 @@ pub trait Rank:
 
         *Emulator::emulate_wireless((x, z), |dr, xz| {
             let (x, z) = xz.cast();
-            let x = Element::alloc(dr, x)?;
-            let z = Element::alloc(dr, z)?;
+            let allocator = &mut ();
+            let x = Element::alloc(dr, allocator, x)?;
+            let z = Element::alloc(dr, allocator, z)?;
 
             dr.routine(txz::Evaluate::<Self>::new(), (x, z))
         })
