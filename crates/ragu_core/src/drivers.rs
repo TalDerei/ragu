@@ -127,13 +127,10 @@ pub trait DriverTypes {
 
     /// Allocates the wires $(A, B, C)$ with the constraint $A \cdot B = C$
     /// and returns an [`Extra`](Self::Extra) token for the auxiliary $D$ wire.
-    /// The $D$ wire is assigned to zero by default. The gate also imposes the
-    /// constraint $C \cdot D = 0$, which makes $D$ useless in the typical
-    /// case: whenever $C$ is nonzero, $D$ is forced to zero. But when $C$ is
-    /// guaranteed to be zero, $D$ becomes unconstrained and available for use.
-    ///
-    /// To override the default $D = 0$ assignment, pass the returned `Extra`
-    /// to [`assign_extra`](Self::assign_extra).
+    /// The gate also imposes the constraint $C \cdot D = 0$. The $D$ wire is
+    /// assigned to zero by default, which trivially satisfies this. When $C$
+    /// is guaranteed to be zero, $D$ becomes unconstrained and available for
+    /// use via [`assign_extra`](Self::assign_extra).
     ///
     /// Circuit code should prefer [`Driver::mul`], which delegates to this
     /// method by default and discards the `Extra`. Only code that needs an

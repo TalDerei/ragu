@@ -1,20 +1,25 @@
-//! Allocator abstraction for gadgets.
+//! Wire allocation.
 //!
-//! [`Allocator`] decouples the decision of *how* to allocate a wire from the
-//! driver currently running synthesis. Gadget code asks an allocator to
-//! allocate, and the allocator decides whether to pack this allocation into
-//! a shared gate or allocate a fresh one.
+//! The core [`Driver`] trait has no notion of allocating a single wire — its
+//! primitive is [`gate`](ragu_core::drivers::DriverTypes::gate), which
+//! produces four wires at a time. Circuit code frequently needs standalone
+//! wires, so this module introduces allocation as a separate concern.
 //!
-//! This module ships two implementations:
+//! A gate's four wires $(A, B, C, D)$ are constrained by $A \cdot B = C$ and
+//! $C \cdot D = 0$. When $A$ and $C$ are both zero the remaining wires $B$
+//! and $D$ are unconstrained, so up to two independent values can be packed
+//! into one gate. An [`Allocator`] manages this: it decides whether to
+//! allocate a fresh gate or repurpose a leftover wire from a previous one.
 //!
-//! - [`Allocator`] for `()` — a stateless allocator that allocates a
-//!   multiplication gate with zeroed $a$ and $c$ wires via
-//!   [`Driver::mul`], returning the $b$ wire. Simple but wasteful: each
-//!   allocation consumes a full gate.
+//! Allocation is a trait because different contexts call for different
+//! strategies:
+//!
+//! - [`Allocator`] for `()` — stateless; allocates a full gate per wire.
+//!   Simple but wasteful.
 //!
 //! - [`SimpleAllocator`] — pairs consecutive allocations into one gate,
-//!   stashing the `Extra` token from the first allocation for use by the
-//!   second. This halves the number of gates consumed by pure allocations.
+//!   stashing the spare wire from the first call for the second. Halves
+//!   gate cost for sequences of allocations.
 
 use ragu_arithmetic::Coeff;
 use ragu_core::{Result, drivers::Driver};
