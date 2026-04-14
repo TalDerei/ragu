@@ -83,6 +83,34 @@ impl<F: Field> DriverTypes for ExtractionDriver<F> {
     type MaybeKind = Empty;
     type LCadd = ExprLc<F>;
     type LCenforce = ExprLc<F>;
+
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Expr<F>, Expr<F>, Expr<F>, Expr<F>)> {
+        let a = self.alloc_wire();
+        let b = self.alloc_wire();
+        let c = self.alloc_wire();
+        let d = self.alloc_wire();
+
+        self.ops.push(Op::Witness { count: 4 });
+
+        // A * B - C = 0
+        let constraint_mul = Expr::Add(
+            Box::new(Expr::Mul(Box::new(Expr::Var(a)), Box::new(Expr::Var(b)))),
+            Box::new(Expr::Mul(
+                Box::new(Expr::Const(Coeff::NegativeOne)),
+                Box::new(Expr::Var(c)),
+            )),
+        );
+        self.ops.push(Op::Assert(constraint_mul));
+
+        // C * D = 0
+        let constraint_cd = Expr::Mul(Box::new(Expr::Var(c)), Box::new(Expr::Var(d)));
+        self.ops.push(Op::Assert(constraint_cd));
+
+        Ok((Expr::Var(a), Expr::Var(b), Expr::Var(c), Expr::Var(d)))
+    }
 }
 
 impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {

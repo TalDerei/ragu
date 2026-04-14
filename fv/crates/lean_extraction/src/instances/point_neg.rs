@@ -2,9 +2,11 @@ use group::prime::PrimeCurveAffine;
 use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
 
-use crate::driver::ExtractionDriver;
-use crate::expr::Expr;
-use crate::instance::{CircuitInstance, WireCollector, WireDeserializer};
+use crate::{
+    driver::ExtractionDriver,
+    expr::Expr,
+    instance::{CircuitInstance, WireCollector, WireDeserializer},
+};
 
 pub struct PointNegInstance;
 

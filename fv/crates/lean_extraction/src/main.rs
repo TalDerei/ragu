@@ -7,8 +7,9 @@ mod linexp;
 use instance::CircuitInstance;
 
 use crate::instances::{
-    point_add::PointAddInstance, point_alloc::PointAllocInstanceFp,
-    point_alloc::PointAllocInstanceFq, point_double::PointDoubleInstance,
+    point_add::PointAddInstance,
+    point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
+    point_double::PointDoubleInstance,
     point_neg::PointNegInstance,
 };
 
