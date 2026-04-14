@@ -7,7 +7,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
-use ragu_primitives::{Element, Simulator};
+use ragu_primitives::{Element, Simulator, allocator::SimpleAllocator};
 
 use crate::{
     Circuit, WithAux,
@@ -114,7 +114,8 @@ impl Routine<Fp> for Produce {
         _input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, D::just(|| Fp::ZERO))
+        let allocator = &mut SimpleAllocator::new();
+        Element::alloc(dr, allocator, D::just(|| Fp::ZERO))
     }
 
     fn predict<'dr, D: Driver<'dr, F = Fp>>(
@@ -404,7 +405,8 @@ impl Routine<Fp> for MixedConstraints {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let aux = Element::alloc(dr, D::just(|| Fp::ONE))?;
+        let allocator = &mut SimpleAllocator::new();
+        let aux = Element::alloc(dr, allocator, D::just(|| Fp::ONE))?;
         let sq = input.square(dr)?;
         sq.enforce_zero(dr)?;
         Ok(aux)
@@ -546,8 +548,9 @@ impl Routine<Fp> for AllocThenEnforce {
         _input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let _consume_paired_b = Element::alloc(dr, D::just(|| Fp::ZERO))?;
-        let fresh = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let _consume_paired_b = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let fresh = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         fresh.enforce_zero(dr)?;
         Ok(fresh)
     }
@@ -579,8 +582,9 @@ impl Routine<Fp> for AllocOnly {
         _input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let _consume_paired_b = Element::alloc(dr, D::just(|| Fp::ZERO))?;
-        Element::alloc(dr, D::just(|| Fp::ZERO))
+        let allocator = &mut SimpleAllocator::new();
+        let _consume_paired_b = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        Element::alloc(dr, allocator, D::just(|| Fp::ZERO))
     }
 
     fn predict<'dr, D: Driver<'dr, F = Fp>>(
@@ -637,8 +641,9 @@ impl Routine<Fp> for AllocThenAddEnforce {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let _consume_paired_b = Element::alloc(dr, D::just(|| Fp::ZERO))?;
-        let fresh = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let _consume_paired_b = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let fresh = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         let sum = fresh.add(dr, &input);
         sum.enforce_zero(dr)?;
         Ok(fresh)
@@ -703,8 +708,9 @@ impl Routine<Fp> for DelegateEnforceChild {
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let output = dr.routine(SquareOnce, input)?;
-        let _consume_b = Element::alloc(dr, D::just(|| Fp::ZERO))?;
-        let _pad = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let _consume_b = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let _pad = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         output.enforce_zero(dr)?;
         Ok(output)
     }
@@ -735,8 +741,9 @@ impl Routine<Fp> for DelegateEnforceLocal {
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let output = dr.routine(SquareOnce, input)?;
-        let _consume_b = Element::alloc(dr, D::just(|| Fp::ZERO))?;
-        let fresh = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let _consume_b = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let fresh = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         fresh.enforce_zero(dr)?;
         Ok(output)
     }
@@ -771,7 +778,8 @@ impl Routine<Fp> for DelegatePadEnforceOutput {
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let output = dr.routine(SquareOnce, input)?;
-        let _pad = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let _pad = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         output.enforce_zero(dr)?;
         Ok(output)
     }
@@ -807,7 +815,8 @@ impl Routine<Fp> for DelegateAllocEnforceFirst {
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let output = dr.routine(SquareOnce, input)?;
-        let local = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let local = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         local.enforce_zero(dr)?;
         Ok(output)
     }
@@ -1064,7 +1073,8 @@ impl Routine<Fp> for InternalEnforce {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let aux = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let aux = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         aux.enforce_zero(dr)?;
         Ok(input)
     }
@@ -1093,7 +1103,8 @@ impl Routine<Fp> for InternalEnforcePair {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let aux = Element::alloc(dr, D::just(|| Fp::ZERO))?;
+        let allocator = &mut SimpleAllocator::new();
+        let aux = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
         aux.enforce_zero(dr)?;
         let (a, _) = input;
         Ok(a)
@@ -1258,9 +1269,10 @@ fn fingerprint_triple(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, (Element<'_, _>, Element<'_, _>))]>,
 ) -> RoutineFingerprint {
     let sim = &mut Simulator::<Fp>::new();
-    let a = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let b = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let c = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let allocator = &mut SimpleAllocator::new();
+    let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let b = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let c = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &(a, (b, c)))
         .unwrap()
     {
@@ -1276,10 +1288,11 @@ fn fingerprint_quad(
     >,
 ) -> RoutineFingerprint {
     let sim = &mut Simulator::<Fp>::new();
-    let a = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let b = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let c = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let d = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let allocator = &mut SimpleAllocator::new();
+    let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let b = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let c = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let d = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &((a, b), (c, d)))
         .unwrap()
     {
@@ -1292,7 +1305,8 @@ fn fingerprint_elem(
     routine: &impl Routine<Fp, Input = Kind![Fp; Element<'_, _>]>,
 ) -> RoutineFingerprint {
     let mut sim = Simulator::<Fp>::new();
-    let input = Element::alloc(&mut sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let allocator = &mut SimpleAllocator::new();
+    let input = Element::alloc(&mut sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &input).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
@@ -1310,8 +1324,9 @@ fn fingerprint_pair(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)]>,
 ) -> RoutineFingerprint {
     let sim = &mut Simulator::<Fp>::new();
-    let a = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let b = Element::alloc(sim, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let allocator = &mut SimpleAllocator::new();
+    let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
+    let b = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &(a, b)).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
@@ -1319,8 +1334,7 @@ fn fingerprint_pair(
 }
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
-/// through `Counter::routine` (the production path that correctly clears
-/// `available_d` after input remapping).
+/// through `Counter::routine` (the production path for input remapping).
 fn fingerprint_via_eval<Ro>(routine: &Ro) -> RoutineFingerprint
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
@@ -1367,7 +1381,8 @@ where
     where
         Self: 'dr,
     {
-        Element::alloc(dr, instance)
+        let allocator = &mut SimpleAllocator::new();
+        Element::alloc(dr, allocator, instance)
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
@@ -1378,7 +1393,8 @@ where
     where
         Self: 'dr,
     {
-        let input = Element::alloc(dr, witness)?;
+        let allocator = &mut SimpleAllocator::new();
+        let input = Element::alloc(dr, allocator, witness)?;
         let output = dr.routine(self.0.clone(), input)?;
         Ok(WithAux::new(output, D::just(|| ())))
     }

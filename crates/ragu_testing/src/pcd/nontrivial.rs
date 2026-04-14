@@ -12,7 +12,11 @@ use ragu_pcd::{
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
-use ragu_primitives::{Element, poseidon::Sponge};
+use ragu_primitives::{
+    Element,
+    allocator::{Allocator, SimpleAllocator},
+    poseidon::Sponge,
+};
 
 pub struct LeafNode;
 
@@ -21,11 +25,12 @@ impl<F: Field> Header<F> for LeafNode {
     type Data = F;
     type Output = Kind![F; Element<'_, _>];
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -36,11 +41,12 @@ impl<F: Field> Header<F> for InternalNode {
     type Data = F;
     type Output = Kind![F; Element<'_, _>];
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -74,8 +80,9 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     where
         Self: 'dr,
     {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut SimpleAllocator::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
 
         let mut sponge = Sponge::new(dr, self.poseidon_params);
         sponge.absorb(dr, left.as_gadget())?;
@@ -118,7 +125,8 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     where
         Self: 'dr,
     {
-        let leaf = Element::alloc(dr, witness)?;
+        let allocator = &mut SimpleAllocator::new();
+        let leaf = Element::alloc(dr, allocator, witness)?;
         let mut sponge = Sponge::new(dr, self.poseidon_params);
         sponge.absorb(dr, &leaf)?;
         let leaf = sponge.squeeze(dr)?;

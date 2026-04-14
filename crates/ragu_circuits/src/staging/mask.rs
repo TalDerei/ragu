@@ -286,7 +286,9 @@ mod tests {
             let mut gates = alloc::vec::Vec::with_capacity(R::n());
             gates.push(system_gate);
             for _ in 1..R::n() {
-                gates.push(GateWires::from(dr.gate(|| unimplemented!())?));
+                let (a, b, c, extra) = dr.gate(|| unimplemented!())?;
+                let d = dr.assign_extra(extra, || unimplemented!())?;
+                gates.push(GateWires { a, b, c, d });
             }
 
             let is_active =
@@ -683,8 +685,8 @@ mod tests {
             let witness_a = witness.as_ref().map(|w| w.0);
             let witness_b = witness.as_ref().map(|w| w.1);
 
-            let a = Element::alloc(dr, witness_a)?;
-            let b = Element::alloc(dr, witness_b)?;
+            let a = Element::alloc(dr, &mut (), witness_a)?;
+            let b = Element::alloc(dr, &mut (), witness_b)?;
 
             dr.enforce_zero(|lc| lc.add(a.wire()).sub(b.wire()))?;
 
@@ -696,7 +698,7 @@ mod tests {
     fn test_enforce_stage_works() {
         let result =
             Emulator::emulate_wireless((Fp::from(42u64), Fp::from(42u64)), |dr, witness| {
-                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr);
+                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr, |_| {});
                 let (guard, builder) = builder.add_stage::<ConstrainedStage>()?;
                 let _gagdet = guard.enforced(builder.finish(), witness)?;
                 Ok(())
@@ -876,11 +878,11 @@ mod tests {
         {
             // Allocate each challenge value followed by zero, which
             // ensures challenges land in b-positions, zeros in d-positions.
-            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {
@@ -917,11 +919,11 @@ mod tests {
         where
             Self: 'dr,
         {
-            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {

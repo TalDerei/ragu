@@ -46,10 +46,11 @@ use crate::WithAux;
 
 /// The four wires of a single gate allocation.
 ///
-/// Wraps the `(a, b, c, d)` tuple returned by
-/// [`DriverTypes::gate`](ragu_core::drivers::DriverTypes::gate) with named
-/// fields for readability.
-#[allow(dead_code)] // TODO: this is only used by tests...
+/// Wraps the $(A, B, C)$ wires returned by
+/// [`DriverTypes::gate`](ragu_core::drivers::DriverTypes::gate) together with
+/// the $D$ wire obtained via
+/// [`DriverTypes::assign_extra`](ragu_core::drivers::DriverTypes::assign_extra).
+#[allow(dead_code)] // Fields read only in tests (via RawCircuit plumbing).
 pub(crate) struct GateWires<W> {
     /// The $a$ wire (left input).
     pub a: W,
@@ -59,12 +60,6 @@ pub(crate) struct GateWires<W> {
     pub c: W,
     /// The $d$ wire (auxiliary, constrained by $c \cdot d = 0$).
     pub d: W,
-}
-
-impl<W> From<(W, W, W, W)> for GateWires<W> {
-    fn from((a, b, c, d): (W, W, W, W)) -> Self {
-        Self { a, b, c, d }
-    }
 }
 
 /// Internal circuit trait that receives the SYSTEM gate wires.
@@ -192,8 +187,9 @@ where
     RC: RawCircuit<F> + 'dr,
 {
     // 1. Allocate the SYSTEM gate (gate 0).
-    let system_gate =
-        GateWires::from(dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?);
+    let (a, b, c, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+    let d = dr.assign_extra(extra, || Ok(Coeff::Zero))?;
+    let system_gate = GateWires { a, b, c, d };
 
     // 2. Run the circuit body with the SYSTEM gate wires.
     let output = raw_circuit.witness(dr, system_gate, witness)?.into_output();

@@ -121,6 +121,7 @@ mod tests {
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::{Fp, Pasta};
+    use ragu_primitives::allocator::{Allocator, SimpleAllocator};
 
     use super::*;
     use crate::{
@@ -138,11 +139,12 @@ mod tests {
         type Data = Fp;
         type Output = Kind![Fp; Element<'_, _>];
 
-        fn encode<'dr, D: Driver<'dr, F = Fp>>(
+        fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
             dr: &mut D,
+            allocator: &mut A,
             witness: DriverValue<D, Self::Data>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            Element::alloc(dr, witness)
+            Element::alloc(dr, allocator, witness)
         }
     }
 
@@ -171,9 +173,10 @@ mod tests {
             DriverValue<D, Fp>,
             DriverValue<D, ()>,
         )> {
+            let allocator = &mut SimpleAllocator::new();
             // Allocate elements for left and right
-            let left_elem = Element::alloc(dr, left)?;
-            let right_elem = Element::alloc(dr, right)?;
+            let left_elem = Element::alloc(dr, allocator, left)?;
+            let right_elem = Element::alloc(dr, allocator, right)?;
 
             // Output is sum of left and right
             let output_elem = left_elem.add(dr, &right_elem);

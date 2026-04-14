@@ -9,7 +9,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
-use ragu_primitives::Element;
+use ragu_primitives::{Element, allocator::SimpleAllocator};
 use rand::{SeedableRng, rngs::StdRng};
 
 /// A synthetic routine that does `depth` squarings in `execute()` but
@@ -45,6 +45,7 @@ impl Routine<Fp> for HeavyKnownRoutine {
         // Predict the output by computing the repeated squaring on the value.
         let output = Element::alloc(
             dr,
+            &mut (),
             D::try_just(|| {
                 let mut v = *input.value().take();
                 for _ in 0..self.depth {
@@ -74,7 +75,8 @@ impl Circuit<Fp> for HeavyRoutineCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, instance)
+        let allocator = &mut SimpleAllocator::new();
+        Element::alloc(dr, allocator, instance)
     }
 
     fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
@@ -82,7 +84,8 @@ impl Circuit<Fp> for HeavyRoutineCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let input = Element::alloc(dr, witness)?;
+        let allocator = &mut SimpleAllocator::new();
+        let input = Element::alloc(dr, allocator, witness)?;
         let routine = HeavyKnownRoutine { depth: self.depth };
 
         let mut result = dr.routine(routine.clone(), input.clone())?;

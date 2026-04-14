@@ -291,7 +291,7 @@ mod tests {
     use ragu_circuits::polynomials::{TestRank, sparse};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
-    use ragu_primitives::{Simulator, vec::CollectFixed};
+    use ragu_primitives::{Simulator, allocator::SimpleAllocator, vec::CollectFixed};
     use rand::SeedableRng;
 
     use super::*;
@@ -511,19 +511,20 @@ mod tests {
             let collapsed: FixedVec<Fp, P::NumGroups> =
                 Emulator::emulate_wireless((&inner_error, &ky_values, mu, nu), |dr, witness| {
                     let (inner_error, ky_values, mu, nu) = witness.cast();
-                    let mu = Element::alloc(dr, mu)?;
-                    let nu = Element::alloc(dr, nu)?;
+                    let allocator = &mut ();
+                    let mu = Element::alloc(dr, allocator, mu)?;
+                    let nu = Element::alloc(dr, allocator, nu)?;
                     let fold_products = ClaimFolder::new(dr, &mu, &nu)?;
 
                     let mut ky_idx = 0;
                     let collapsed = FixedVec::try_from_fn(|group| {
                         let errors = FixedVec::try_from_fn(|j| {
-                            Element::alloc(dr, inner_error.as_ref().map(|e| e[group][j]))
+                            Element::alloc(dr, allocator, inner_error.as_ref().map(|e| e[group][j]))
                         })?;
                         let ky = FixedVec::try_from_fn(|_| {
                             let idx = ky_idx;
                             ky_idx += 1;
-                            Element::alloc(dr, ky_values.as_ref().map(|kv| kv[idx]))
+                            Element::alloc(dr, allocator, ky_values.as_ref().map(|kv| kv[idx]))
                         })?;
                         let v = fold_products.fold_inner::<P>(dr, &errors, &ky)?;
                         Ok(*v.value().take())
@@ -559,15 +560,16 @@ mod tests {
                 (&outer_error, &collapsed, mu_prime, nu_prime),
                 |dr, witness| {
                     let (outer_error, collapsed, mu_prime, nu_prime) = witness.cast();
-                    let mu_prime = Element::alloc(dr, mu_prime)?;
-                    let nu_prime = Element::alloc(dr, nu_prime)?;
+                    let allocator = &mut ();
+                    let mu_prime = Element::alloc(dr, allocator, mu_prime)?;
+                    let nu_prime = Element::alloc(dr, allocator, nu_prime)?;
                     let fold_products = ClaimFolder::new(dr, &mu_prime, &nu_prime)?;
 
                     let error_terms = FixedVec::try_from_fn(|i| {
-                        Element::alloc(dr, outer_error.as_ref().map(|e| e[i]))
+                        Element::alloc(dr, allocator, outer_error.as_ref().map(|e| e[i]))
                     })?;
                     let collapsed = FixedVec::try_from_fn(|i| {
-                        Element::alloc(dr, collapsed.as_ref().map(|c| c[i]))
+                        Element::alloc(dr, allocator, collapsed.as_ref().map(|c| c[i]))
                     })?;
 
                     let c = fold_products.fold_outer::<P>(dr, &error_terms, &collapsed)?;
@@ -712,24 +714,34 @@ mod tests {
 
     /// Computes the number of allocations for given M, N.
     ///
-    /// Formula: M^2 + N^2 - N + 2
+    /// Formula: NM^2 + N^2 - N + 4
+    /// - 4 top-level: mu, nu, mu', nu'
+    /// - Layer 1: N * (M^2 - M) error terms + N * M ky values = NM^2
+    /// - Layer 2: N^2 - N error terms
     fn allocs(m: usize, n: usize) -> usize {
-        m * m + n * n - n + 2
+        n * m * m + n * n - n + 4
     }
 
     /// This measures the effective constraint cost that accounts
     /// for both multiplication gates and allocations for various M
     /// and N combinations. The optimal accounting here is to maximize
     /// M * N, while staying under the circuit budget.
+    ///
+    /// [`SimpleAllocator`] pairs consecutive allocations into gates, so
+    /// the total gate count is `muls + allocs / 2` (exact when `allocs`
+    /// is even, which holds for the tested parameters). Each gate
+    /// consumes two trace slots, giving an effective cost of
+    /// `2 * total_gates`.
     #[test]
     fn test_cost_formulas() -> Result<()> {
         fn verify<const M: usize, const N: usize>() -> Result<()> {
             let rng = rand::rngs::StdRng::from_rng(&mut rand::rng());
             let sim = Simulator::simulate(rng, |dr, mut rng| {
-                let mu = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
-                let nu = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
-                let mu_prime = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
-                let nu_prime = Element::alloc(dr, rng.as_mut().map(Fp::random))?;
+                let allocator = &mut SimpleAllocator::new();
+                let mu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let nu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let mu_prime = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let nu_prime = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
 
                 // Layer 1: N instances of M-sized reductions (uses mu, nu).
                 let fold_products_layer1 = ClaimFolder::new(dr, &mu, &nu)?;
@@ -737,11 +749,15 @@ mod tests {
                     FixedVec<_, NumErrorTerms<ConstLen<M>>>,
                     ConstLen<N>,
                 > = FixedVec::try_from_fn(|_| {
-                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))
+                    FixedVec::try_from_fn(|_| {
+                        Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                    })
                 })?;
                 let all_ky_values_m: FixedVec<FixedVec<_, ConstLen<M>>, ConstLen<N>> =
                     FixedVec::try_from_fn(|_| {
-                        FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))
+                        FixedVec::try_from_fn(|_| {
+                            Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                        })
                     })?;
 
                 let collapsed: FixedVec<_, ConstLen<N>> = FixedVec::try_from_fn(|i| {
@@ -755,7 +771,9 @@ mod tests {
                 // Layer 2: Single N-sized reduction (uses mu', nu' - separate ClaimFolder).
                 let fold_products_layer2 = ClaimFolder::new(dr, &mu_prime, &nu_prime)?;
                 let error_terms_n: FixedVec<_, NumErrorTerms<ConstLen<N>>> =
-                    FixedVec::try_from_fn(|_| Element::alloc(dr, rng.as_mut().map(Fp::random)))?;
+                    FixedVec::try_from_fn(|_| {
+                        Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                    })?;
 
                 fold_products_layer2.fold_outer::<TestParams<N, M>>(
                     dr,
@@ -765,19 +783,19 @@ mod tests {
                 Ok(())
             })?;
 
-            assert_eq!(sim.num_gates(), muls(M, N));
+            assert_eq!(sim.num_gates(), muls(M, N) + allocs(M, N) / 2);
             Ok(())
         }
 
         verify::<6, 17>()?;
         verify::<7, 14>()?;
 
-        // Verify optimal parameters fit circuit budget (separate from verify loop)
-        let effective_cost = 2 * muls(6, 17) + allocs(6, 17);
+        // Verify optimal parameters fit circuit budget.
+        // Each gate uses 2 trace slots, so effective cost = 2 * total_gates.
+        let total_gates = muls(6, 17) + allocs(6, 17) / 2;
         assert!(
-            effective_cost < (2 * (1 << 11)),
-            "M = 6, N = 17 exceeds budget: {}",
-            effective_cost / 2
+            total_gates < (1 << 11),
+            "M = 6, N = 17 exceeds budget: {total_gates}",
         );
 
         Ok(())

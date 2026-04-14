@@ -315,7 +315,7 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F,
     where
         Self: 'dr,
     {
-        self.circuit.witness(StageBuilder::new(dr), witness)
+        self.circuit.witness(StageBuilder::new(dr, |_| {}), witness)
     }
 }
 

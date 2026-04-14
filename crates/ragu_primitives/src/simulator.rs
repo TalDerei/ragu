@@ -14,11 +14,10 @@ use ragu_core::{
 };
 
 /// A driver that fully simulates circuit synthesis, enforcing constraint
-/// satisfaction and tracking allocation, gate, and constraint
-/// counts. Primarily used for testing.
+/// satisfaction and tracking gate and constraint counts. Primarily used
+/// for testing.
 #[derive(Clone)]
 pub struct Simulator<F: Field> {
-    num_allocations: usize,
     num_gates: usize,
     num_constraints: usize,
     _marker: core::marker::PhantomData<F>,
@@ -34,7 +33,6 @@ impl<F: Field> Simulator<F> {
     /// Creates a new `Simulator` driver.
     pub fn new() -> Self {
         Simulator {
-            num_allocations: 0,
             num_gates: 0,
             num_constraints: 0,
             _marker: core::marker::PhantomData,
@@ -43,19 +41,13 @@ impl<F: Field> Simulator<F> {
 
     /// Reset the metrics of the simulator.
     pub fn reset(&mut self) {
-        self.num_allocations = 0;
         self.num_gates = 0;
         self.num_constraints = 0;
     }
 
-    /// Returns the number of `alloc` calls made.
-    pub fn num_allocations(&self) -> usize {
-        self.num_allocations
-    }
-
-    /// Returns the number of gates (i.e., [`Driver::mul`] calls made).
+    /// Returns the number of gates (i.e., [`DriverTypes::gate`] calls made).
     ///
-    /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
+    /// [`DriverTypes::gate`]: ragu_core::drivers::DriverTypes::gate
     pub fn num_gates(&self) -> usize {
         self.num_gates
     }
@@ -86,6 +78,7 @@ impl<F: Field> DriverTypes for Simulator<F> {
     type MaybeKind = Always<()>;
     type LCadd = DirectSum<F>;
     type LCenforce = DirectSum<F>;
+    type Extra = bool;
 
     fn gate(
         &mut self,
@@ -93,31 +86,34 @@ impl<F: Field> DriverTypes for Simulator<F> {
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
-            Coeff<Self::ImplField>,
         )>,
-    ) -> Result<(
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-    )> {
-        let (a, b, c, d) = values()?;
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)> {
+        let (a, b, c) = values()?;
 
         let a = a.value();
         let b = b.value();
         let c = c.value();
-        let d = d.value();
 
         if a * b != c {
             return Err(Error::InvalidWitness("gate check failed".into()));
         }
 
-        if c * d != F::ZERO {
+        self.num_gates += 1;
+        Ok((a, b, c, c.is_zero().into()))
+    }
+
+    fn assign_extra(
+        &mut self,
+        c_is_zero: Self::Extra,
+        value: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire> {
+        let d = value()?.value();
+
+        if !c_is_zero && !bool::from(d.is_zero()) {
             return Err(Error::InvalidWitness("auxiliary constraint failed".into()));
         }
 
-        self.num_gates += 1;
-        Ok((a, b, c, d))
+        Ok(d)
     }
 }
 
@@ -125,12 +121,6 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
     type F = F;
     type Wire = F;
     const ONE: Self::Wire = F::ONE;
-
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<F> {
-        let value = value()?;
-        self.num_allocations += 1;
-        Ok(value.value())
-    }
 
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {
         value.value()

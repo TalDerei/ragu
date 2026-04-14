@@ -13,6 +13,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
+use ragu_primitives::allocator::Allocator;
 
 use crate::{Circuit, WithAux};
 
@@ -94,12 +95,12 @@ fn arb_tree() -> impl Strategy<Value = RoutineTree> {
 
 fn drive_tree<'dr, D: Driver<'dr, F = Fp>>(dr: &mut D, tree: &RoutineTree) -> Result<()> {
     for _ in 0..tree.pre_allocs {
-        dr.alloc(|| Ok(Coeff::One))?;
+        ().alloc(dr, || Ok(Coeff::One))?;
     }
     for (child, post_allocs) in &tree.children {
         dr.routine(TreeRoutine(child.clone()), ())?;
         for _ in 0..*post_allocs {
-            dr.alloc(|| Ok(Coeff::One))?;
+            ().alloc(dr, || Ok(Coeff::One))?;
         }
     }
     Ok(())

@@ -9,7 +9,7 @@ use ragu_core::{
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
-use ragu_primitives::io::Write;
+use ragu_primitives::{allocator::Allocator, io::Write};
 
 /// The number of suffixes used internally by Ragu.
 ///
@@ -93,8 +93,12 @@ pub trait Header<F: Field>: Send + Sync + Any {
     type Output: Write<F>;
 
     /// Encode some data into a gadget representing this header.
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    ///
+    /// Implementations should pass `allocator` through to all allocation
+    /// calls rather than substituting a different allocator.
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>>;
 }
@@ -106,8 +110,9 @@ impl<F: Field> Header<F> for () {
     type Data = ();
     type Output = ();
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
+        _: &mut A,
         _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())

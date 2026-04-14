@@ -34,11 +34,17 @@ impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
     type LCadd = ();
     type LCenforce = ();
 
+    type Extra = ();
+
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<((), (), (), ())> {
         Ok(((), (), (), ()))
+    }
+
+    fn assign_extra(&mut self, _: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -91,11 +97,6 @@ mod tests {
             lc
         })?;
 
-        dr.alloc(|| {
-            called.set(called.get() + 1);
-            Ok(Coeff::One)
-        })?;
-
         dr.constant(Coeff::One);
 
         assert_eq!(called.get(), 0);
@@ -119,13 +120,6 @@ mod tests {
     fn phantom_enforce_zero_succeeds() -> Result<()> {
         let mut dr = PhantomData::<F>;
         dr.enforce_zero(|_lc| panic!("must not be called"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn phantom_alloc_returns_unit() -> Result<()> {
-        let mut dr = PhantomData::<F>;
-        let _: () = dr.alloc(|| panic!("must not be called"))?;
         Ok(())
     }
 

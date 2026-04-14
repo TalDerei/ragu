@@ -52,7 +52,10 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Empty,
 };
-use ragu_primitives::consistent::Consistent;
+use ragu_primitives::{
+    allocator::{Allocator, SimpleAllocator},
+    consistent::Consistent,
+};
 
 use super::{Stage, StageExt};
 use crate::polynomials::Rank;
@@ -67,6 +70,7 @@ pub struct StageBuilder<
     Target: Stage<D::F, R>,
 > {
     driver: &'a mut D,
+    on_finish: fn(&mut D),
     _marker: PhantomData<(&'dr (), R, Current, Target)>,
 }
 
@@ -74,9 +78,10 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Target: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, (), Target>
 {
     /// Creates a new [`StageBuilder`] with the given [`Driver`].
-    pub fn new(driver: &'a mut D) -> Self {
+    pub(crate) fn new(driver: &'a mut D, on_finish: fn(&mut D)) -> Self {
         StageBuilder {
             driver,
+            on_finish,
             _marker: PhantomData,
         }
     }
@@ -197,14 +202,15 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         }
 
         // Collect stage wires
+        let allocator = &mut SimpleAllocator::new();
         let mut wires = Vec::with_capacity(num_wires);
         for _ in 0..num_wires {
-            wires.push(self.driver.alloc(|| Ok(Coeff::Zero))?);
+            wires.push(allocator.alloc(self.driver, || Ok(Coeff::Zero))?);
         }
 
         // Padding
         while (num_wires / 2) < Next::num_gates() {
-            self.driver.alloc(|| Ok(Coeff::Zero))?;
+            allocator.alloc(self.driver, || Ok(Coeff::Zero))?;
             num_wires += 1;
         }
 
@@ -216,6 +222,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
             },
             StageBuilder {
                 driver: self.driver,
+                on_finish: self.on_finish,
                 _marker: PhantomData,
             },
         ))
@@ -252,7 +259,11 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Finished: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, Finished, Finished>
 {
     /// Obtains the underlying driver after finishing the last stage.
+    ///
+    /// If the builder was constructed with an `on_finish` hook, the hook
+    /// is called on the driver before it is returned.
     pub fn finish(self) -> &'a mut D {
+        (self.on_finish)(self.driver);
         self.driver
     }
 }

@@ -60,6 +60,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
+use ragu_primitives::allocator::SimpleAllocator;
 
 use super::super::{
     stages::{outer_error, preamble},
@@ -149,12 +150,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let outer_error =
             outer_error.unenforced(dr, witness.as_ref().map(|w| w.outer_error_witness))?;
 
+        let allocator = &mut SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Get layer 2 folding challenges. These are distinct from the layer 1
         // challenges (mu, nu) used in inner_collapse.
-        let mu_prime = unified_output.mu_prime.read(dr)?;
-        let nu_prime = unified_output.nu_prime.read(dr)?;
+        let mu_prime = unified_output.mu_prime.read(dr, allocator)?;
+        let nu_prime = unified_output.nu_prime.read(dr, allocator)?;
 
         // Compute the final folded revdot claim c via layer 2 reduction.
         // The collapsed values from layer 1 (verified by inner_collapse) serve
@@ -169,7 +171,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
             // Retrieve the witnessed c from the unified instance and mark it
             // as covered by this circuit.
-            let witnessed_c = unified_output.c.receive(dr)?;
+            let witnessed_c = unified_output.c.receive(dr, allocator)?;
 
             // Enforce witnessed_c == computed_c, but only when NOT in base case.
             // In base case (both children are trivial proofs), the prover may
@@ -180,7 +182,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 .conditional_enforce_equal(dr, &witnessed_c, &computed_c)?;
         }
 
-        let (output, aux) = unified_output.finish(dr)?;
+        let (output, aux) = unified_output.finish(dr, allocator)?;
         Ok(WithAux::new(output, aux))
     }
 }

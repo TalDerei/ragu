@@ -1,11 +1,13 @@
 //! Bonding polynomials for multi-stage circuits.
 //!
 //! This module produces a [`BondingObject`] from any [`MultiStageCircuit`]
-//! whose witness uses no gates: [`Driver::alloc`],
-//! [`Driver::add`], and [`Driver::enforce_zero`] with normal wires are
-//! permitted (no [`Driver::mul`], [`Driver::constant`], or `ONE`-wire
-//! references). Because the circuit has no gates, it needs no final trace
-//! and exists purely to enforce wiring between stages.
+//! whose witness is gate-free after finalization: before
+//! [`StageBuilder::finish`], [`gate`](ragu_core::drivers::DriverTypes::gate)
+//! is used to reserve stage wires; after finalization, [`Driver::mul`],
+//! [`Driver::constant`], and `ONE`-wire references are rejected, and only
+//! [`Driver::add`] and [`Driver::enforce_zero`] with normal wires are
+//! permitted. Because the circuit has no gates of its own, it needs no
+//! final trace and exists purely to enforce wiring between stages.
 //!
 //! The `ONE`-wire contribution is stripped so that the constant term in $Y$ is
 //! zero, as required of a bonding polynomial. [`StageMask`] is a hand-optimized
@@ -13,7 +15,6 @@
 //!
 //! [`Driver::mul`]: ragu_core::drivers::Driver::mul
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
-//! [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
 //! [`Driver::constant`]: ragu_core::drivers::Driver::constant
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 //! [`StageMask`]: super::mask::StageMask
@@ -28,9 +29,9 @@ use ragu_core::{
     maybe::Empty,
 };
 
-use super::{MultiStage, MultiStageCircuit};
+use super::{MultiStage, MultiStageCircuit, StageBuilder};
 use crate::{
-    BondingObject, Circuit, CircuitObject, SegmentRecord,
+    BondingObject, CircuitObject, SegmentRecord,
     floor_planner::ConstraintSegment,
     into_circuit_object,
     polynomials::{Rank, sparse},
@@ -44,17 +45,18 @@ where
 {
     /// Builds a [`BondingObject`] from this [`MultiStage`] circuit.
     ///
-    /// The witness must use no gates: [`Driver::alloc`],
-    /// [`Driver::add`], and [`Driver::enforce_zero`] are permitted (without
-    /// referencing the [`Driver::ONE`] wire), but [`Driver::mul`] and
-    /// [`Driver::constant`] are rejected.
+    /// After the [`StageBuilder`] is finalized, only [`Driver::add`] and
+    /// [`Driver::enforce_zero`] are permitted (without referencing the
+    /// [`Driver::ONE`] wire). [`Driver::gate`] (and by extension
+    /// [`Driver::mul`]) and [`Driver::constant`] are rejected after
+    /// finalization.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
     ///
+    /// [`Driver::gate`]: ragu_core::drivers::DriverTypes::gate
     /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
     /// [`Driver::add`]: ragu_core::drivers::Driver::add
-    /// [`Driver::alloc`]: ragu_core::drivers::Driver::alloc
     /// [`Driver::constant`]: ragu_core::drivers::Driver::constant
     /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
     /// [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
@@ -62,9 +64,13 @@ where
     where
         Self: 'a,
     {
-        // Validate: run synthesis with a driver that rejects mul/gate and ONE usage.
+        // Validate: run synthesis with a driver that rejects ONE usage
+        // and — after the stage builder finalizes — mul/gate.
         let mut validator = BondingValidator::<F>::new();
-        self.witness(&mut validator, Empty)?;
+        self.circuit.witness(
+            StageBuilder::new(&mut validator, BondingValidator::freeze),
+            Empty,
+        )?;
         if let Some(msg) = validator.error {
             return Err(ragu_core::Error::InvalidWitness(msg.into()));
         }
@@ -102,16 +108,18 @@ impl<F: Field> LinearExpression<BondingWire, F> for RejectOne {
 
 /// A [`Driver`] that validates bonding-circuit constraints.
 ///
-/// Bonding circuits may only use [`alloc`](Driver::alloc),
+/// Before the [`StageBuilder`] is finalized, [`gate`](DriverTypes::gate),
 /// [`add`](Driver::add), and [`enforce_zero`](Driver::enforce_zero) with
-/// normal wires. Calling [`mul`](Driver::mul)/[`gate`](DriverTypes::gate),
-/// [`constant`](Driver::constant), or referencing the [`ONE`](Driver::ONE)
-/// wire in any constraint records a violation.
+/// normal wires are permitted. After [`freeze`](Self::freeze) is called
+/// (via the builder's `on_finish` hook), [`gate`](DriverTypes::gate) is
+/// rejected. [`constant`](Driver::constant) and
+/// [`ONE`](Driver::ONE)-wire references are always rejected.
 ///
 /// All methods succeed; violations are accumulated in the `error` field and
 /// checked by the caller after the witness completes.
 struct BondingValidator<F> {
     error: Option<&'static str>,
+    frozen: bool,
     _marker: core::marker::PhantomData<F>,
 }
 
@@ -119,12 +127,19 @@ impl<F> BondingValidator<F> {
     fn new() -> Self {
         BondingValidator {
             error: None,
+            frozen: false,
             _marker: core::marker::PhantomData,
         }
     }
 
     fn record(&mut self, msg: &'static str) {
         self.error.get_or_insert(msg);
+    }
+
+    /// Called by the [`StageBuilder`] `on_finish` hook to lock out further
+    /// allocations after all stages have been reserved.
+    fn freeze(&mut self) {
+        self.frozen = true;
     }
 }
 
@@ -134,12 +149,15 @@ impl<F: Field> DriverTypes for BondingValidator<F> {
     type MaybeKind = Empty;
     type LCadd = RejectOne;
     type LCenforce = RejectOne;
+    type Extra = BondingWire;
 
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(BondingWire, BondingWire, BondingWire, BondingWire)> {
-        self.record("bonding circuits must not call mul/gate");
+        if self.frozen {
+            self.record("bonding circuits must not allocate after stage finalization");
+        }
         Ok((
             BondingWire::Normal,
             BondingWire::Normal,
@@ -147,16 +165,20 @@ impl<F: Field> DriverTypes for BondingValidator<F> {
             BondingWire::Normal,
         ))
     }
+
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<BondingWire> {
+        Ok(extra)
+    }
 }
 
 impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
     type F = F;
     type Wire = BondingWire;
     const ONE: Self::Wire = BondingWire::One;
-
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<BondingWire> {
-        Ok(BondingWire::Normal)
-    }
 
     fn constant(&mut self, _: Coeff<F>) -> BondingWire {
         self.record("bonding circuits must not create constants");
@@ -230,24 +252,71 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
 
 #[cfg(test)]
 mod tests {
+    use core::marker::PhantomData;
+
     use ff::Field;
-    use ragu_core::{drivers::DriverValue, gadgets::Bound};
+    use ragu_core::{
+        drivers::DriverValue,
+        gadgets::{Bound, Gadget},
+    };
     use ragu_pasta::Fp;
+    use ragu_primitives::{
+        Element,
+        allocator::{Allocator, SimpleAllocator},
+        io::Write,
+    };
 
     use super::*;
     use crate::{
         WithAux, floor_planner,
         polynomials::TestRank,
-        staging::{MultiStageCircuit, StageBuilder},
+        staging::{MultiStageCircuit, Stage, StageBuilder},
     };
 
     type R = TestRank;
 
-    /// Minimal bonding circuit: allocates two wires and enforces equality.
+    /// A trivial stage that provides two allocated wires.
+    #[derive(Default)]
+    struct TwoWireStage;
+
+    #[derive(Gadget, Write)]
+    struct TwoWires<'dr, #[ragu(driver)] D: Driver<'dr>> {
+        #[ragu(gadget)]
+        w0: Element<'dr, D>,
+        #[ragu(gadget)]
+        w1: Element<'dr, D>,
+    }
+
+    impl Stage<Fp, R> for TwoWireStage {
+        type Parent = ();
+        type Witness<'source> = ();
+        type OutputKind =
+            <TwoWires<'static, PhantomData<Fp>> as Gadget<'static, PhantomData<Fp>>>::Kind;
+
+        fn values() -> usize {
+            2
+        }
+
+        fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            _: DriverValue<D, Self::Witness<'source>>,
+        ) -> Result<Bound<'dr, D, Self::OutputKind>>
+        where
+            Self: 'dr,
+        {
+            let w0 = Element::alloc(dr, &mut (), D::just(|| Fp::ZERO))?;
+            let w1 = Element::alloc(dr, &mut (), D::just(|| Fp::ZERO))?;
+            Ok(TwoWires { w0, w1 })
+        }
+    }
+
+    /// Minimal bonding circuit: provides two wires via a stage and enforces
+    /// equality between them.
     struct EqualWires;
 
     impl MultiStageCircuit<Fp, R> for EqualWires {
-        type Last = ();
+        type Last = TwoWireStage;
         type Instance<'source> = ();
         type Witness<'source> = ();
         type Output = ();
@@ -263,13 +332,13 @@ mod tests {
 
         fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
-            builder: StageBuilder<'a, 'dr, D, R, (), ()>,
+            builder: StageBuilder<'a, 'dr, D, R, (), TwoWireStage>,
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
+            let (guard, builder) = builder.add_stage::<TwoWireStage>()?;
             let dr = builder.finish();
-            let w0 = dr.alloc(|| Ok(Coeff::Zero))?;
-            let w1 = dr.alloc(|| Ok(Coeff::Zero))?;
-            dr.enforce_zero(|lc| lc.add(&w0).sub(&w1))?;
+            let TwoWires { w0, w1 } = guard.unenforced(dr, D::unit())?;
+            dr.enforce_zero(|lc| lc.add(w0.wire()).sub(w1.wire()))?;
             Ok(WithAux::new((), D::unit()))
         }
     }
@@ -356,8 +425,7 @@ mod tests {
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
             let dr = builder.finish();
-            let w = dr.alloc(|| Ok(Coeff::Zero))?;
-            dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&w))?;
+            dr.enforce_zero(|lc| lc.add(&D::ONE))?;
             Ok(WithAux::new((), D::unit()))
         }
     }
@@ -457,6 +525,45 @@ mod tests {
     fn rejects_one_in_add() {
         assert!(
             MultiStage::<Fp, R, _>::new(UsesOneInAdd)
+                .into_bonding_object()
+                .is_err()
+        );
+    }
+
+    /// Circuit that allocates after `finish()` — should be rejected.
+    struct AllocsAfterFinish;
+
+    impl MultiStageCircuit<Fp, R> for AllocsAfterFinish {
+        type Last = ();
+        type Instance<'source> = ();
+        type Witness<'source> = ();
+        type Output = ();
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _: &mut D,
+            _: DriverValue<D, ()>,
+        ) -> Result<Bound<'dr, D, ()>> {
+            Ok(())
+        }
+
+        fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            builder: StageBuilder<'a, 'dr, D, R, (), ()>,
+            _: DriverValue<D, ()>,
+        ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
+            let dr = builder.finish();
+            let allocator = &mut SimpleAllocator::new();
+            allocator.alloc(dr, || Ok(Coeff::Zero))?;
+            Ok(WithAux::new((), D::unit()))
+        }
+    }
+
+    #[test]
+    fn rejects_alloc_after_finish() {
+        assert!(
+            MultiStage::<Fp, R, _>::new(AllocsAfterFinish)
                 .into_bonding_object()
                 .is_err()
         );

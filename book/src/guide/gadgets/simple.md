@@ -24,9 +24,8 @@ serialization using the [`Write`][write-trait] trait.
 ### Allocated Elements
 
 [`Element::alloc`](ragu_primitives::Element::alloc) can be used to create an
-`Element` which has an assignment based on witness data. This is a thin
-wrapper around the underlying
-[`Driver::alloc`](ragu_core::drivers::Driver::alloc) action.
+`Element` which has an assignment based on witness data. It delegates to
+an [`Allocator`](ragu_primitives::Allocator) to obtain the underlying wire.
 
 ### Constant Elements
 

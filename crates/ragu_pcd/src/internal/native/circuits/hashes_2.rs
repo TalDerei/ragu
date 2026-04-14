@@ -72,7 +72,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::GadgetExt;
+use ragu_primitives::{GadgetExt, allocator::SimpleAllocator};
 
 use super::super::{
     stages::{outer_error as native_outer_error, preamble as native_preamble},
@@ -161,6 +161,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let outer_error =
             outer_error.unenforced(dr, witness.as_ref().map(|w| w.outer_error_witness))?;
 
+        let allocator = &mut SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Resume transcript from saved state (inner_error already absorbed in hashes_1)
@@ -180,8 +181,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Derive (mu_prime, nu_prime) by absorbing bridge_outer_error_commitment
         let (mu_prime, nu_prime) = {
-            let bridge_outer_error_commitment =
-                unified_output.bridge_outer_error_commitment.receive(dr)?;
+            let bridge_outer_error_commitment = unified_output
+                .bridge_outer_error_commitment
+                .receive(dr, allocator)?;
             bridge_outer_error_commitment.write(dr, &mut transcript)?;
             let mu_prime = transcript.challenge(dr)?;
             let nu_prime = transcript.challenge(dr)?;
@@ -192,7 +194,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Derive x by absorbing bridge_ab_commitment and squeezing
         let x = {
-            let bridge_ab_commitment = unified_output.bridge_ab_commitment.receive(dr)?;
+            let bridge_ab_commitment =
+                unified_output.bridge_ab_commitment.receive(dr, allocator)?;
             bridge_ab_commitment.write(dr, &mut transcript)?;
             transcript.challenge(dr)?
         };
@@ -200,7 +203,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Derive alpha by absorbing bridge_query_commitment and squeezing
         let alpha = {
-            let bridge_query_commitment = unified_output.bridge_query_commitment.receive(dr)?;
+            let bridge_query_commitment = unified_output
+                .bridge_query_commitment
+                .receive(dr, allocator)?;
             bridge_query_commitment.write(dr, &mut transcript)?;
             transcript.challenge(dr)?
         };
@@ -208,7 +213,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Derive u by absorbing bridge_f_commitment and squeezing
         let u = {
-            let bridge_f_commitment = unified_output.bridge_f_commitment.receive(dr)?;
+            let bridge_f_commitment = unified_output.bridge_f_commitment.receive(dr, allocator)?;
             bridge_f_commitment.write(dr, &mut transcript)?;
             transcript.challenge(dr)?
         };
@@ -216,13 +221,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Derive pre_beta by absorbing bridge_eval_commitment and squeezing
         let pre_beta = {
-            let bridge_eval_commitment = unified_output.bridge_eval_commitment.receive(dr)?;
+            let bridge_eval_commitment = unified_output
+                .bridge_eval_commitment
+                .receive(dr, allocator)?;
             bridge_eval_commitment.write(dr, &mut transcript)?;
             transcript.challenge(dr)?
         };
         unified_output.pre_beta.provide(pre_beta);
 
-        let (output, aux) = unified_output.finish(dr)?;
+        let (output, aux) = unified_output.finish(dr, allocator)?;
         Ok(WithAux::new(output, aux))
     }
 }

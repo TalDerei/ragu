@@ -60,7 +60,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Endoscalar, GadgetExt};
+use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::SimpleAllocator};
 
 use super::super::{
     InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
@@ -159,13 +159,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
         let query = query.unenforced(dr, witness.as_ref().map(|w| w.query_witness))?;
         let eval = eval.unenforced(dr, witness.as_ref().map(|w| w.eval_witness))?;
 
+        let allocator = &mut SimpleAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Retrieve Fiat-Shamir challenges from the unified instance.
-        let w = unified_output.w.read(dr)?;
-        let y = unified_output.y.read(dr)?;
-        let z = unified_output.z.read(dr)?;
-        let x = unified_output.x.read(dr)?;
+        let w = unified_output.w.read(dr, allocator)?;
+        let y = unified_output.y.read(dr, allocator)?;
+        let z = unified_output.z.read(dr, allocator)?;
+        let x = unified_output.x.read(dr, allocator)?;
 
         // Compute t(xz), the vanishing polynomial evaluated at xz.
         let txz = dr.routine(Evaluate::<R>::new(), (x.clone(), z.clone()))?;
@@ -177,10 +178,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
             // Step 1: Compute a(xz) and b(x) via two-layer revdot folding.
             // These aggregate all evaluation claims into a single pair.
             let (computed_ax, computed_bx) = {
-                let mu = unified_output.mu.read(dr)?;
-                let nu = unified_output.nu.read(dr)?;
-                let mu_prime = unified_output.mu_prime.read(dr)?;
-                let nu_prime = unified_output.nu_prime.read(dr)?;
+                let mu = unified_output.mu.read(dr, allocator)?;
+                let nu = unified_output.nu.read(dr, allocator)?;
+                let mu_prime = unified_output.mu_prime.read(dr, allocator)?;
+                let nu_prime = unified_output.nu_prime.read(dr, allocator)?;
                 let mu_inv = mu.invert(dr)?;
                 let mu_prime_inv = mu_prime.invert(dr)?;
                 let munu = mu.mul(dr, &nu)?;
@@ -202,8 +203,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
             // f(u) = sum_i alpha^{n-1-i} * (p_i(u) - v_i) / (u - x_i)
             // (Horner accumulation: first query receives highest alpha power)
             let fu = {
-                let alpha = unified_output.alpha.read(dr)?;
-                let u = unified_output.u.read(dr)?;
+                let alpha = unified_output.alpha.read(dr, allocator)?;
+                let u = unified_output.u.read(dr, allocator)?;
                 let denominators = Denominators::new(dr, &u, &w, &x, &y, &z, &preamble)?;
                 let mut horner = Horner::new(&alpha);
                 for (pu, v, denominator) in poly_queries(
@@ -223,7 +224,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
             // This combines f(u) with the evaluation component polynomials.
             // First extract endoscalar from pre_beta and compute effective beta.
             let computed_v = {
-                let pre_beta = unified_output.pre_beta.read(dr)?;
+                let pre_beta = unified_output.pre_beta.read(dr, allocator)?;
                 let beta_endo = Endoscalar::extract(dr, pre_beta)?;
                 let effective_beta = beta_endo.lift(dr)?;
                 let mut horner = Horner::new(&effective_beta);
@@ -237,7 +238,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
             unified_output.v.provide(computed_v);
         }
 
-        let (output, aux) = unified_output.finish(dr)?;
+        let (output, aux) = unified_output.finish(dr, allocator)?;
         Ok(WithAux::new(output, aux))
     }
 }

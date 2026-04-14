@@ -13,7 +13,10 @@ use ragu_pcd::{
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
-use ragu_primitives::Element;
+use ragu_primitives::{
+    Element,
+    allocator::{Allocator, SimpleAllocator},
+};
 use rand::{SeedableRng, rngs::StdRng};
 
 // Header A (suffix 0) - unit data
@@ -23,8 +26,9 @@ impl<F: Field> Header<F> for HeaderA {
     const SUFFIX: Suffix = Suffix::new(0);
     type Data = ();
     type Output = ();
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
+        _: &mut A,
         _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
@@ -38,11 +42,12 @@ impl Header<Fp> for HeaderWithData {
     const SUFFIX: Suffix = Suffix::new(2);
     type Data = Fp;
     type Output = Kind![Fp; Element<'_, _>];
-    fn encode<'dr, D: Driver<'dr, F = Fp>>(
+    fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -70,9 +75,10 @@ impl Step<Pasta> for StepWithData {
         DriverValue<D, <Self::Output as Header<Fp>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
-        let output = Encoded::new(dr, witness.clone())?;
+        let allocator = &mut SimpleAllocator::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
+        let output = Encoded::new(dr, allocator, witness.clone())?;
         Ok(((left, right, output), witness, D::unit()))
     }
 }
@@ -101,8 +107,9 @@ impl<C: Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut SimpleAllocator::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
         Ok(((left, right, output), D::unit(), D::unit()))
     }
@@ -131,8 +138,9 @@ impl<C: Cycle> Step<C> for Step1 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut SimpleAllocator::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
         Ok(((left, right, output), D::unit(), D::unit()))
     }

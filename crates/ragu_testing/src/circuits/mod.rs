@@ -13,7 +13,7 @@ use ragu_core::{
     gadgets::{Bound, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::Element;
+use ragu_primitives::{Element, allocator::SimpleAllocator};
 
 /// A simple circuit that proves knowledge of a and b such that a^5 = b^2
 /// and a + b = c and a - b = d where c and d are public inputs.
@@ -30,8 +30,9 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
-        let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
+        let allocator = &mut SimpleAllocator::new();
+        let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
+        let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
 
         Ok((c, d))
     }
@@ -41,8 +42,9 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
-        let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+        let allocator = &mut SimpleAllocator::new();
+        let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+        let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
 
         let a2 = a.square(dr)?;
         let a4 = a2.square(dr)?;
@@ -79,7 +81,8 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, instance)
+        let allocator = &mut SimpleAllocator::new();
+        Element::alloc(dr, allocator, instance)
     }
 
     fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = F>>(
@@ -87,7 +90,8 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let mut a = Element::alloc(dr, witness)?;
+        let allocator = &mut SimpleAllocator::new();
+        let mut a = Element::alloc(dr, allocator, witness)?;
 
         for _ in 0..self.times {
             a = a.square(dr)?;

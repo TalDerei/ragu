@@ -45,18 +45,6 @@ available everywhere. The [`constant()`] method is a simple helper that returns
 a virtual wire assigned to a constant, which is free because it is a virtual
 wire that scales [`ONE`].
 
-### Allocation
-
-Sometimes only a single wire is needed, but [`mul()`] always allocates three. To
-support single-wire allocation, drivers provide an additional [`alloc()`] method
-that allocates and assigns one wire.
-
-By default, `alloc` calls `mul`, returns the $a$ wire, and sets the
-corresponding $b$ and $c$ wires to zero to satisfy the gate—wasting $b$ and $c$. Drivers may override `alloc` to avoid this
-overhead. For example, synthesis drivers return the $a$ wire from a `mul`
-operation, stash the associated $b$ wire for the next `alloc` call, and fill in
-$c$ later to satisfy the gate.
-
 ### The `'dr` Lifetime {#the-dr-lifetime}
 
 Drivers are parameterized by a lifetime `'dr` that ties [routines] to the
@@ -89,7 +77,7 @@ should always bound on `Driver<'dr>`, not `DriverTypes`.
 
 ### Purity {#purity}
 
-All four closure-accepting `Driver` methods—[`mul()`], [`alloc()`], [`add()`],
+All three closure-accepting `Driver` methods—[`mul()`], [`add()`],
 and [`enforce_zero()`]—require their closures to be [`Fn`], not `FnOnce` or
 `FnMut`. This is a deliberate signal that closures should be side-effect-free:
 synthesis must produce identical constraints regardless of whether a given
@@ -97,10 +85,10 @@ driver invokes the closure. `Fn` prevents accidental `&mut` captures, although
 it does not prevent interior mutability.
 
 The two closure families differ in whether they have additional protection
-beyond `Fn`. For the witness-providing closures on [`mul()`] and [`alloc()`],
+beyond `Fn`. For the witness-providing closure on [`mul()`],
 the [`Maybe`]/[`DriverValue`] system provides a harder compile-time guarantee:
-drivers with `MaybeKind = Empty` never call those closures at all, and the
-closure bodies are dead-code-eliminated. The expression-building closures on
+drivers with `MaybeKind = Empty` never call the closure at all, and the
+closure body is dead-code-eliminated. The expression-building closures on
 [`add()`] and [`enforce_zero()`] have no such backstop; drivers with `MaybeKind
 = Empty` still call these closures when building constraint structure.
 
@@ -115,7 +103,6 @@ to have the same value by calling [`enforce_zero()`] on their difference.
 [`add()`]: ragu_core::drivers::Driver::add
 [`ONE`]: ragu_core::drivers::Driver::ONE
 [`constant()`]: ragu_core::drivers::Driver::constant
-[`alloc()`]: ragu_core::drivers::Driver::alloc
 [`Driver`]: ragu_core::drivers::Driver
 [`Routine`]: ragu_core::routines::Routine
 [`routine()`]: ragu_core::drivers::Driver::routine
