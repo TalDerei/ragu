@@ -672,25 +672,22 @@ fn test_derived_gadget_boolean_batching() -> Result<()> {
         c: Boolean<'dr, D>,
     }
 
-    let sim = Simulator::simulate(
-        (true, false, true, true, false, true),
-        |dr, witness| {
-            let (a1, b1, c1, a2, b2, c2) = witness.cast();
-            let x = ThreeBools {
-                a: Boolean::alloc(dr, &mut (), a1)?,
-                b: Boolean::alloc(dr, &mut (), b1)?,
-                c: Boolean::alloc(dr, &mut (), c1)?,
-            };
-            let y = ThreeBools {
-                a: Boolean::alloc(dr, &mut (), a2)?,
-                b: Boolean::alloc(dr, &mut (), b2)?,
-                c: Boolean::alloc(dr, &mut (), c2)?,
-            };
-            dr.reset();
-            x.enforce_equal(dr, &y)?;
-            Ok(())
-        },
-    )?;
+    let sim = Simulator::simulate((true, false, true, true, false, true), |dr, witness| {
+        let (a1, b1, c1, a2, b2, c2) = witness.cast();
+        let x = ThreeBools {
+            a: Boolean::alloc(dr, &mut (), a1)?,
+            b: Boolean::alloc(dr, &mut (), b1)?,
+            c: Boolean::alloc(dr, &mut (), c1)?,
+        };
+        let y = ThreeBools {
+            a: Boolean::alloc(dr, &mut (), a2)?,
+            b: Boolean::alloc(dr, &mut (), b2)?,
+            c: Boolean::alloc(dr, &mut (), c2)?,
+        };
+        dr.reset();
+        x.enforce_equal(dr, &y)?;
+        Ok(())
+    })?;
 
     // 3 booleans batched into 1 constraint (not 3).
     assert_eq!(sim.num_constraints(), 1);
