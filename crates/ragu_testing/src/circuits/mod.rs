@@ -13,7 +13,7 @@ use ragu_core::{
     gadgets::{Bound, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, allocator::SimpleAllocator};
+use ragu_primitives::{Element, allocator::PoolAllocator};
 
 /// A simple circuit that proves knowledge of a and b such that a^5 = b^2
 /// and a + b = c and a - b = d where c and d are public inputs.
@@ -30,7 +30,7 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
         let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
 
@@ -42,7 +42,7 @@ impl<F: Field> Circuit<F> for MySimpleCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
         let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
 
@@ -81,7 +81,7 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         Element::alloc(dr, allocator, instance)
     }
 
@@ -90,7 +90,7 @@ impl<F: Field> Circuit<F> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let mut a = Element::alloc(dr, allocator, witness)?;
 
         for _ in 0..self.times {

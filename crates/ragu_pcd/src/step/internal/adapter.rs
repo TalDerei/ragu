@@ -121,7 +121,7 @@ mod tests {
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::{Fp, Pasta};
-    use ragu_primitives::allocator::{Allocator, SimpleAllocator};
+    use ragu_primitives::allocator::{Allocator, PoolAllocator};
 
     use super::*;
     use crate::{
@@ -173,7 +173,7 @@ mod tests {
             DriverValue<D, Fp>,
             DriverValue<D, ()>,
         )> {
-            let allocator = &mut SimpleAllocator::new();
+            let allocator = &mut PoolAllocator::new();
             // Allocate elements for left and right
             let left_elem = Element::alloc(dr, allocator, left)?;
             let right_elem = Element::alloc(dr, allocator, right)?;

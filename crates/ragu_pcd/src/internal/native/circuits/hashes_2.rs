@@ -72,7 +72,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{GadgetExt, allocator::SimpleAllocator};
+use ragu_primitives::{GadgetExt, allocator::PoolAllocator};
 
 use super::super::{
     stages::{outer_error as native_outer_error, preamble as native_preamble},
@@ -161,7 +161,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let outer_error =
             outer_error.unenforced(dr, witness.as_ref().map(|w| w.outer_error_witness))?;
 
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Resume transcript from saved state (inner_error already absorbed in hashes_1)

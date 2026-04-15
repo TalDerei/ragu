@@ -53,7 +53,7 @@ use ragu_core::{
     maybe::Empty,
 };
 use ragu_primitives::{
-    allocator::{Allocator, SimpleAllocator},
+    allocator::{Allocator, PoolAllocator},
     consistent::Consistent,
 };
 
@@ -202,7 +202,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
         }
 
         // Collect stage wires
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let mut wires = Vec::with_capacity(num_wires);
         for _ in 0..num_wires {
             wires.push(allocator.alloc(self.driver, || Ok(Coeff::Zero))?);

@@ -259,7 +259,7 @@ mod tests {
     use rand::RngExt;
 
     use super::{Element, Endoscalar, Maybe, Point};
-    use crate::{Simulator, allocator::SimpleAllocator};
+    use crate::{Simulator, allocator::PoolAllocator};
 
     pub struct EndoscalarTest {
         pub value: Uendo,
@@ -321,7 +321,7 @@ mod tests {
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
             let (r, extracted, p) = witness.cast();
             let p = Point::alloc(dr, p)?;
-            let allocator = &mut SimpleAllocator::new();
+            let allocator = &mut PoolAllocator::new();
             let r = Element::alloc(dr, allocator, r)?;
             let my_extracted = Endoscalar::extract(dr, &mut (), r)?;
             let allocated = Endoscalar::alloc(dr, extracted)?;

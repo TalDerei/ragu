@@ -291,7 +291,7 @@ mod tests {
     use ragu_circuits::polynomials::{TestRank, sparse};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
-    use ragu_primitives::{Simulator, allocator::SimpleAllocator, vec::CollectFixed};
+    use ragu_primitives::{Simulator, allocator::PoolAllocator, vec::CollectFixed};
     use rand::SeedableRng;
 
     use super::*;
@@ -727,7 +727,7 @@ mod tests {
     /// and N combinations. The optimal accounting here is to maximize
     /// M * N, while staying under the circuit budget.
     ///
-    /// [`SimpleAllocator`] pairs consecutive allocations into gates, so
+    /// [`PoolAllocator`] pairs consecutive allocations into gates, so
     /// the total gate count is `muls + allocs / 2` (exact when `allocs`
     /// is even, which holds for the tested parameters). Each gate
     /// consumes two trace slots, giving an effective cost of
@@ -737,7 +737,7 @@ mod tests {
         fn verify<const M: usize, const N: usize>() -> Result<()> {
             let rng = rand::rngs::StdRng::from_rng(&mut rand::rng());
             let sim = Simulator::simulate(rng, |dr, mut rng| {
-                let allocator = &mut SimpleAllocator::new();
+                let allocator = &mut PoolAllocator::new();
                 let mu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
                 let nu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
                 let mu_prime = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;

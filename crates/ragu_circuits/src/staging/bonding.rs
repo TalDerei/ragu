@@ -262,7 +262,7 @@ mod tests {
     use ragu_pasta::Fp;
     use ragu_primitives::{
         Element,
-        allocator::{Allocator, SimpleAllocator},
+        allocator::{Allocator, PoolAllocator},
         io::Write,
     };
 
@@ -554,7 +554,7 @@ mod tests {
             _: DriverValue<D, ()>,
         ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
             let dr = builder.finish();
-            let allocator = &mut SimpleAllocator::new();
+            let allocator = &mut PoolAllocator::new();
             allocator.alloc(dr, || Ok(Coeff::Zero))?;
             Ok(WithAux::new((), D::unit()))
         }

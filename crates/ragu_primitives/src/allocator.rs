@@ -17,13 +17,10 @@
 //! - [`Allocator`] for `()` — stateless; allocates a full gate per wire.
 //!   Simple but wasteful.
 //!
-//! - [`SimpleAllocator`] — pairs consecutive allocations into one gate,
-//!   stashing the spare wire from the first call for the second. Halves
-//!   gate cost for sequences of allocations.
-//!
-//! - [`PoolAllocator`] — pools spare `Extra` tokens
-//!   [`donate`](Allocator::donate)d by external gadgets (e.g.
-//!   [`Boolean::alloc`](crate::Boolean::alloc)) whose $D$ wire is
+//! - [`PoolAllocator`] — the standard allocator. Pairs consecutive
+//!   allocations into one gate (halving gate cost) and also pools spare
+//!   `Extra` tokens [`donate`](Allocator::donate)d by external gadgets
+//!   (e.g. [`Boolean::alloc`](crate::Boolean::alloc)) whose $D$ wire is
 //!   unconstrained. Subsequent allocations redeem pooled tokens before
 //!   falling back to new gates, and self-produced spares enter the pool
 //!   too.
@@ -38,9 +35,9 @@ use ragu_core::{Result, drivers::Driver};
 /// Implementations decide how to turn a witness-producing closure into a
 /// driver wire. The simplest implementation (see the impl for `()`)
 /// allocates a full multiplication gate with zeroed $a$ and $c$ wires.
-/// [`SimpleAllocator`] pairs two consecutive allocations into a
-/// single gate by stashing the [`Extra`](ragu_core::drivers::DriverTypes::Extra)
-/// token that the `()` allocator discards.
+/// [`PoolAllocator`] pairs consecutive allocations into a single gate by
+/// stashing the [`Extra`](ragu_core::drivers::DriverTypes::Extra) token
+/// that the `()` allocator discards, and also accepts donated tokens.
 pub trait Allocator<'dr, D: Driver<'dr>> {
     /// Allocates a new wire whose value is supplied by `value`.
     ///
@@ -69,52 +66,6 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
     }
 }
 
-/// Allocator that pairs consecutive allocations into a single gate.
-///
-/// Each gate allocates four wires $(A, B, C, D)$ with the constraints
-/// $A \cdot B = C$ and $C \cdot D = 0$. When $A$ and $C$ are both zero the
-/// gate is unconstrained over $B$ and $D$, so two independent values can be
-/// packed into one gate. `SimpleAllocator` exploits this: the first call
-/// allocates a gate with $A = C = 0$, returns the $B$ wire, and stashes the
-/// [`Extra`](ragu_core::drivers::DriverTypes::Extra) token for the $D$ wire.
-/// The second call redeems that token via
-/// [`assign_extra`](ragu_core::drivers::DriverTypes::assign_extra),
-/// returning $D$ without allocating a new gate.
-///
-/// This is the standard paired-allocation strategy. Gadgets that perform
-/// many allocations should use `SimpleAllocator` to halve gate cost.
-///
-/// Dropping a `SimpleAllocator` that still holds a stashed token is safe:
-/// the driver already assigned $D = 0$ for that gate.
-pub struct SimpleAllocator<E> {
-    stash: Option<E>,
-}
-
-impl<E> Default for SimpleAllocator<E> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<E> SimpleAllocator<E> {
-    /// Creates a new `SimpleAllocator` with no stashed token.
-    pub const fn new() -> Self {
-        Self { stash: None }
-    }
-}
-
-impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for SimpleAllocator<D::Extra> {
-    fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
-        if let Some(extra) = self.stash.take() {
-            dr.assign_extra(extra, value)
-        } else {
-            let (_, b, _, extra) = dr.gate(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
-            self.stash = Some(extra);
-            Ok(b)
-        }
-    }
-}
-
 /// Allocator that pools spare
 /// [`Extra`](ragu_core::drivers::DriverTypes::Extra) tokens donated by
 /// other gadgets.
@@ -126,7 +77,7 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for SimpleAllocator<D::Extra> {
 /// [`assign_extra`](ragu_core::drivers::DriverTypes::assign_extra) before
 /// falling back to new gate allocation.
 ///
-/// Like [`SimpleAllocator`], this also pairs its own gate allocations:
+/// This also pairs its own gate allocations:
 /// when the pool is empty and a fresh gate is needed, the spare `Extra`
 /// from that gate enters the pool for the next call.
 ///

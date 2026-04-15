@@ -15,7 +15,7 @@ use ragu_pcd::{
 };
 use ragu_primitives::{
     Element,
-    allocator::{Allocator, SimpleAllocator},
+    allocator::{Allocator, PoolAllocator},
 };
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -75,7 +75,7 @@ impl Step<Pasta> for StepWithData {
         DriverValue<D, <Self::Output as Header<Fp>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let left = Encoded::new(dr, allocator, left)?;
         let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::new(dr, allocator, witness.clone())?;
@@ -107,7 +107,7 @@ impl<C: Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let left = Encoded::new(dr, allocator, left)?;
         let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
@@ -138,7 +138,7 @@ impl<C: Cycle> Step<C> for Step1 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let left = Encoded::new(dr, allocator, left)?;
         let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());

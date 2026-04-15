@@ -60,7 +60,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::allocator::SimpleAllocator;
+use ragu_primitives::allocator::PoolAllocator;
 
 use super::super::{
     stages::{outer_error, preamble},
@@ -150,7 +150,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         let outer_error =
             outer_error.unenforced(dr, witness.as_ref().map(|w| w.outer_error_witness))?;
 
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
         // Get layer 2 folding challenges. These are distinct from the layer 1

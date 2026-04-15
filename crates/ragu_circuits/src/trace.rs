@@ -417,7 +417,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
 mod tests {
     use ragu_core::gadgets::Kind;
     use ragu_pasta::Fp;
-    use ragu_primitives::{Element, allocator::SimpleAllocator};
+    use ragu_primitives::{Element, allocator::PoolAllocator};
 
     use super::*;
     use crate::tests::SquareCircuit;
@@ -470,7 +470,7 @@ mod tests {
             dr: &mut D,
             instance: ragu_core::drivers::DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let allocator = &mut SimpleAllocator::new();
+            let allocator = &mut PoolAllocator::new();
             let element = Element::alloc(dr, allocator, instance)?;
             Ok(MulOnWrite { element })
         }
@@ -485,7 +485,7 @@ mod tests {
                 ragu_core::drivers::DriverValue<D, Self::Aux<'witness>>,
             >,
         > {
-            let allocator = &mut SimpleAllocator::new();
+            let allocator = &mut PoolAllocator::new();
             let element = Element::alloc(dr, allocator, witness)?;
             Ok(WithAux::new(MulOnWrite { element }, D::unit()))
         }

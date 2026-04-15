@@ -64,7 +64,7 @@ use ff::Field;
 use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
 use ragu_pcd::header::{Header, Suffix};
 use ragu_primitives::Element;
-use ragu_primitives::allocator::{Allocator, SimpleAllocator};
+use ragu_primitives::allocator::{Allocator, PoolAllocator};
 use ragu_primitives::poseidon::Sponge;
 
 // LeafNode: carries a hash of raw data
@@ -149,7 +149,7 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
         Self: 'dr,
     {
         // 1. Allocate the witness value in the circuit
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let leaf = Element::alloc(dr, allocator, witness)?;
 
         // 2. Hash it using Poseidon

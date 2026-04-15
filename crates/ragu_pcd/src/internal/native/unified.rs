@@ -604,7 +604,7 @@ mod tests {
     type Sl = Slot<
         'static,
         Dr,
-        ragu_primitives::allocator::SimpleAllocator<()>,
+        ragu_primitives::allocator::PoolAllocator<()>,
         Element<'static, Dr>,
         pasta_curves::Fp,
     >;
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn slot_read_allocates_without_coverage() {
         let (mut dr, mut a, mut b) = two_element_slots();
-        let allocator = &mut ragu_primitives::allocator::SimpleAllocator::new();
+        let allocator = &mut ragu_primitives::allocator::PoolAllocator::new();
         a.read(&mut dr, allocator).expect("read a");
         b.read(&mut dr, allocator).expect("read b");
         let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn slot_provide_stores_value_and_marks_covered() {
         let (mut dr, mut a, b) = two_element_slots();
-        let allocator = &mut ragu_primitives::allocator::SimpleAllocator::new();
+        let allocator = &mut ragu_primitives::allocator::PoolAllocator::new();
         let val_a = Element::alloc(&mut dr, allocator, Empty).expect("alloc a");
         a.provide(val_a);
         // b left untouched — should remain uncovered.
@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn slot_receive_allocates_and_marks_covered() {
         let (mut dr, mut a, mut b) = two_element_slots();
-        let allocator = &mut ragu_primitives::allocator::SimpleAllocator::new();
+        let allocator = &mut ragu_primitives::allocator::PoolAllocator::new();
         let _ = a.receive(&mut dr, allocator).expect("receive a");
         // b only gets `read` — should remain uncovered.
         b.read(&mut dr, allocator).expect("read b");
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn slot_take_untouched_allocates_without_coverage() {
         let (mut dr, a, mut b) = two_element_slots();
-        let allocator = &mut ragu_primitives::allocator::SimpleAllocator::new();
+        let allocator = &mut ragu_primitives::allocator::PoolAllocator::new();
         // a is never touched by the circuit — finish calls take directly.
         b.receive(&mut dr, allocator).expect("receive b");
         let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
