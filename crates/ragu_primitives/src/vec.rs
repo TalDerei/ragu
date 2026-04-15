@@ -263,9 +263,6 @@ unsafe impl<F: Field, G: GadgetKind<F>, L: Len> GadgetKind<F> for FixedVec<Phant
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
     ) -> Result<()> {
-        for (a, b) in a.iter().zip(b.iter()) {
-            G::enforce_equal_gadget(dr, a, b)?;
-        }
-        Ok(())
+        G::enforce_equal_gadget_slice(dr, a, b)
     }
 }

@@ -91,10 +91,7 @@ mod array_impl {
             a: &Bound<'dr, D2, Self>,
             b: &Bound<'dr, D2, Self>,
         ) -> Result<()> {
-            for (a, b) in a.iter().zip(b.iter()) {
-                G::enforce_equal_gadget(dr, a, b)?;
-            }
-            Ok(())
+            G::enforce_equal_gadget_slice(dr, a.as_slice(), b.as_slice())
         }
     }
 }

@@ -240,6 +240,29 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
     ) -> Result<()>;
+
+    /// Batch-enforces equality across slices of gadgets.
+    ///
+    /// The default implementation calls [`enforce_equal_gadget`](Self::enforce_equal_gadget)
+    /// per element. Gadget kinds whose values are bounded (e.g. booleans) can
+    /// override this to pack multiple equalities into fewer constraints.
+    ///
+    /// Container kinds like [`FixedVec`] delegate to this method so that the
+    /// element kind's optimization is applied automatically.
+    fn enforce_equal_gadget_slice<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &[Bound<'dr, D2, Self>],
+        b: &[Bound<'dr, D2, Self>],
+    ) -> Result<()> {
+        for (a, b) in a.iter().zip(b.iter()) {
+            Self::enforce_equal_gadget(dr, a, b)?;
+        }
+        Ok(())
+    }
 }
 
 /// Automatically derives the [`Gadget`], [`GadgetKind`] and [`Clone`] traits
