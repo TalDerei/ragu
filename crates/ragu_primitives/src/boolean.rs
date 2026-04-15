@@ -653,6 +653,51 @@ fn test_multipack_vector() -> Result<()> {
     Ok(())
 }
 
+/// Derived gadgets with multiple Boolean fields get packed equality via the
+/// macro's batching through `enforce_equal_gadget_slice`.
+#[test]
+fn test_derived_gadget_boolean_batching() -> Result<()> {
+    use ragu_core::gadgets::Gadget;
+
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    #[derive(Gadget)]
+    struct ThreeBools<'dr, D: Driver<'dr>>
+    where
+        D::F: PrimeField,
+    {
+        a: Boolean<'dr, D>,
+        b: Boolean<'dr, D>,
+        c: Boolean<'dr, D>,
+    }
+
+    let sim = Simulator::simulate(
+        (true, false, true, true, false, true),
+        |dr, witness| {
+            let (a1, b1, c1, a2, b2, c2) = witness.cast();
+            let x = ThreeBools {
+                a: Boolean::alloc(dr, &mut (), a1)?,
+                b: Boolean::alloc(dr, &mut (), b1)?,
+                c: Boolean::alloc(dr, &mut (), c1)?,
+            };
+            let y = ThreeBools {
+                a: Boolean::alloc(dr, &mut (), a2)?,
+                b: Boolean::alloc(dr, &mut (), b2)?,
+                c: Boolean::alloc(dr, &mut (), c2)?,
+            };
+            dr.reset();
+            x.enforce_equal(dr, &y)?;
+            Ok(())
+        },
+    )?;
+
+    // 3 booleans batched into 1 constraint (not 3).
+    assert_eq!(sim.num_constraints(), 1);
+
+    Ok(())
+}
+
 /// `FixedVec<Boolean>` gets packed equality via `enforce_equal_gadget_slice`.
 #[test]
 fn test_boolean_fixed_vec_equality() -> Result<()> {
