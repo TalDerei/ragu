@@ -346,15 +346,16 @@ fn test_where_clause_driver_field_substitution() {
         }
     };
 
-    let output = derive(input, RaguCorePath::default())
-        .expect("Where clause with D::F should be supported");
+    let output =
+        derive(input, RaguCorePath::default()).expect("Where clause with D::F should be supported");
     let code = output.to_string();
 
-    // The GadgetKind impl should substitute MyD::F with the driver field
-    // ident, not emit the original driver-relative path.
+    // The GadgetKind impl's where clause should substitute MyD::F with the
+    // DriverField ident. (The Clone and Gadget impls legitimately keep
+    // MyD::F because they are still parameterized over MyD.)
     assert!(
-        !code.contains("MyD :: F"),
-        "GadgetKind impl should not reference MyD::F"
+        code.contains("DriverField : PrimeField"),
+        "GadgetKind where clause should reference DriverField, not MyD::F"
     );
 }
 
