@@ -8,7 +8,9 @@ use syn::{
 use crate::{
     helpers::{GenericDriver, attr_is},
     path_resolution::RaguCorePath,
-    substitution::replace_driver_field_in_generic_param,
+    substitution::{
+        replace_driver_field_in_generic_param, replace_driver_field_in_where_predicate,
+    },
 };
 
 impl GenericDriver {
@@ -70,12 +72,6 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     // impl_generics = <'a, 'b: 'a, C: Cycle, D: Driver, const N: usize>
     // ty_generics = <'a, 'b, C, D, N>
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    if let Some(wc) = where_clause {
-        return Err(Error::new(
-            wc.span(),
-            "Gadget derive does not yet support where clauses",
-        ));
-    }
     let impl_generics = {
         let mut impl_generics: Generics = parse_quote!( #impl_generics );
         impl_generics.params.iter_mut().for_each(|gp| match gp {
@@ -171,7 +167,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
     let clone_impl = quote! {
         #[automatically_derived]
-        impl #impl_generics ::core::clone::Clone for #struct_ident #ty_generics {
+        impl #impl_generics ::core::clone::Clone for #struct_ident #ty_generics #where_clause {
             fn clone(&self) -> Self {
                 #struct_ident {
                     #( #clone_impl_inits, )*
@@ -195,7 +191,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     let gadget_impl = {
         quote! {
             #[automatically_derived]
-            impl #impl_generics #ragu_core_path::gadgets::Gadget #gadget_args for #struct_ident #ty_generics  {
+            impl #impl_generics #ragu_core_path::gadgets::Gadget #gadget_args for #struct_ident #ty_generics #where_clause {
                 type Kind = #struct_ident #kind_ty_arguments;
             }
         }
@@ -247,12 +243,22 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         quote! { #id: #init }
     });
 
+    // Transform the where clause for the GadgetKind impl by replacing D::F
+    // with DriverField.
+    let kind_where_clause = where_clause.map(|wc| {
+        let mut predicates = wc.predicates.clone();
+        for predicate in predicates.iter_mut() {
+            replace_driver_field_in_where_predicate(predicate, &driver.ident, &driverfield_ident);
+        }
+        quote! { where #predicates }
+    });
+
     let gadgetkind_impl = {
         let driver_ident = &driver.ident;
         let driver_lifetime = &driver.lifetime;
         quote! {
             #[automatically_derived]
-            unsafe impl #gadget_kind_generic_params #ragu_core_path::gadgets::GadgetKind<#driverfield_ident> for #struct_ident #kind_subst_arguments  {
+            unsafe impl #gadget_kind_generic_params #ragu_core_path::gadgets::GadgetKind<#driverfield_ident> for #struct_ident #kind_subst_arguments #kind_where_clause {
                 type Rebind<#driver_lifetime, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>> = #struct_ident #rebind_arguments;
 
                 fn map_gadget<#driver_lifetime, 'dst, WM: #ragu_core_path::convert::WireMap<#driverfield_ident, Src: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, Dst: #ragu_core_path::drivers::Driver<'dst, F = #driverfield_ident>>>(
@@ -307,7 +313,7 @@ fn test_fail_enum() {
 }
 
 #[test]
-fn test_fail_where_clause() {
+fn test_where_clause() {
     let input: DeriveInput = parse_quote! {
         #[derive(Gadget)]
         struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
@@ -321,8 +327,8 @@ fn test_fail_where_clause() {
     };
 
     assert!(
-        derive(input, RaguCorePath::default()).is_err(),
-        "Expected error for where clause"
+        derive(input, RaguCorePath::default()).is_ok(),
+        "Where clauses should be supported"
     );
 }
 

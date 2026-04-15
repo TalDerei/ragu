@@ -1,6 +1,6 @@
 use syn::{
     GenericArgument, GenericParam, Ident, Lifetime, PathArguments, Type, TypeParam, TypeParamBound,
-    TypePath, parse_quote,
+    TypePath, WherePredicate, parse_quote,
 };
 
 trait Strategy {
@@ -128,32 +128,32 @@ pub fn replace_inferences(ty: &mut Type, field_type: &Type) {
     ty.substitute(&PhantomField { field_type });
 }
 
-/// Replace $D::F with $DriverField
+struct DriverFieldSubstitution<'a> {
+    driver_id: &'a Ident,
+    driverfield_ident: &'a Ident,
+}
+
+impl Strategy for DriverFieldSubstitution<'_> {
+    fn ty_path(&self, ty_path: &mut TypePath) -> bool {
+        if ty_path.qself.is_none() && ty_path.path.segments.len() == 2 {
+            let segs = &ty_path.path.segments;
+            if segs[0].ident == *self.driver_id && segs[1].ident == "F" {
+                let driverfield_ident = self.driverfield_ident;
+                *ty_path = parse_quote!(#driverfield_ident);
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+/// Replace $D::F with $DriverField in a generic parameter.
 pub fn replace_driver_field_in_generic_param(
     param: &mut syn::GenericParam,
     driver_id: &syn::Ident,
     driverfield_ident: &syn::Ident,
 ) {
-    struct DriverFieldSubstitution<'a> {
-        driver_id: &'a Ident,
-        driverfield_ident: &'a Ident,
-    }
-
-    impl Strategy for DriverFieldSubstitution<'_> {
-        fn ty_path(&self, ty_path: &mut TypePath) -> bool {
-            if ty_path.qself.is_none() && ty_path.path.segments.len() == 2 {
-                let segs = &ty_path.path.segments;
-                if segs[0].ident == *self.driver_id && segs[1].ident == "F" {
-                    let driverfield_ident = self.driverfield_ident;
-                    *ty_path = parse_quote!(#driverfield_ident);
-                    return true;
-                }
-            }
-
-            false
-        }
-    }
-
     let strategy = &DriverFieldSubstitution {
         driver_id,
         driverfield_ident,
@@ -168,6 +168,25 @@ pub fn replace_driver_field_in_generic_param(
         }
         if let Some(default_ty) = default {
             default_ty.substitute(strategy);
+        }
+    }
+}
+
+/// Replace $D::F with $DriverField in a where predicate.
+pub fn replace_driver_field_in_where_predicate(
+    predicate: &mut WherePredicate,
+    driver_id: &syn::Ident,
+    driverfield_ident: &syn::Ident,
+) {
+    let strategy = &DriverFieldSubstitution {
+        driver_id,
+        driverfield_ident,
+    };
+
+    if let WherePredicate::Type(pred_type) = predicate {
+        pred_type.bounded_ty.substitute(strategy);
+        for bound in pred_type.bounds.iter_mut() {
+            bound.substitute(strategy);
         }
     }
 }
