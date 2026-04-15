@@ -18,7 +18,7 @@
 
 use alloc::vec;
 
-use ff::{Field, WithSmallOrderMulGroup};
+use ff::{PrimeField, WithSmallOrderMulGroup};
 use pasta_curves::group::{Curve, WnafBase, WnafScalar, prime::PrimeCurveAffine};
 use ragu_arithmetic::{CurveAffine, Uendo};
 use ragu_circuits::{
@@ -74,7 +74,7 @@ impl<const NUM_POINTS: usize> Len for NumStepsLen<NUM_POINTS> {
 #[derive(Default)]
 pub struct EndoscalarStage;
 
-impl<F: Field, R: Rank> Stage<F, R> for EndoscalarStage {
+impl<F: PrimeField, R: Rank> Stage<F, R> for EndoscalarStage {
     type Parent = ();
 
     fn values() -> usize {

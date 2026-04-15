@@ -32,7 +32,10 @@ use crate::{
 
 /// Represents a challenge used to scale elliptic curve points.
 #[derive(Gadget)]
-pub struct Endoscalar<'dr, D: Driver<'dr>> {
+pub struct Endoscalar<'dr, D: Driver<'dr>>
+where
+    D::F: PrimeField,
+{
     /// The bits of this endoscalar in little-endian order.
     #[ragu(gadget)]
     bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ Uendo::BITS as usize }>>,
@@ -42,7 +45,10 @@ pub struct Endoscalar<'dr, D: Driver<'dr>> {
     value: DriverValue<D, Uendo>,
 }
 
-impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
+impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D>
+where
+    D::F: PrimeField,
+{
     /// Allocate an endoscalar with the provided `Uendo` value.
     pub fn alloc(dr: &mut D, value: DriverValue<D, Uendo>) -> Result<Self> {
         // Convert the provided Uendo into a little-endian representation of its
