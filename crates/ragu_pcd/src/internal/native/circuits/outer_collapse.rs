@@ -179,7 +179,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             preamble
                 .is_base_case(dr, allocator)?
                 .not(dr)
-                .conditional_enforce_equal(dr, &witnessed_c, &computed_c)?;
+                .conditional_enforce_equal(dr, allocator, &witnessed_c, &computed_c)?;
         }
 
         let (output, aux) = unified_output.finish(dr, allocator)?;
