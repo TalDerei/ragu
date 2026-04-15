@@ -162,11 +162,12 @@ impl<F: Field> Header<F> for LeafNode {
     type Data = F;                 // Data type
     type Output = Kind![F; Element<'_, _>]; // Gadget output
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)  // How to convert data to gadget
+        Element::alloc(dr, allocator, witness)
     }
 }
 ```

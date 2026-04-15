@@ -64,6 +64,7 @@ use ff::Field;
 use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
 use ragu_pcd::header::{Header, Suffix};
 use ragu_primitives::Element;
+use ragu_primitives::allocator::{Allocator, SimpleAllocator};
 use ragu_primitives::poseidon::Sponge;
 
 // LeafNode: carries a hash of raw data
@@ -74,11 +75,12 @@ impl<F: Field> Header<F> for LeafNode {
     type Data = F;                  // Field element
     type Output = Kind![F; Element<'_, _>];  // Circuit representation
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)  // Convert to circuit element
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -90,11 +92,12 @@ impl<F: Field> Header<F> for InternalNode {
     type Data = F;
     type Output = Kind![F; Element<'_, _>];
 
-    fn encode<'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 ```
@@ -146,7 +149,8 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
         Self: 'dr,
     {
         // 1. Allocate the witness value in the circuit
-        let leaf = Element::alloc(dr, witness)?;
+        let allocator = &mut SimpleAllocator::new();
+        let leaf = Element::alloc(dr, allocator, witness)?;
 
         // 2. Hash it using Poseidon
         let mut sponge = Sponge::new(dr, self.poseidon_params);
