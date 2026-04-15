@@ -3,7 +3,7 @@
 //! Provides the [`Boolean`] type representing a wire constrained to be zero or
 //! one, with logical operations implemented as circuit constraints.
 
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use ff::{Field, PrimeField};
@@ -691,6 +691,7 @@ fn test_multipack_vector() -> Result<()> {
 #[test]
 fn test_boolean_vec_equality() -> Result<()> {
     use crate::vec::ConstLen;
+    use alloc::vec;
     use ragu_core::gadgets::Gadget;
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
@@ -714,7 +715,7 @@ fn test_boolean_vec_equality() -> Result<()> {
         Ok(())
     })?;
 
-    assert_eq!(sim.num_linear_constraints(), 1);
+    assert_eq!(sim.num_constraints(), 1);
 
     Ok(())
 }
