@@ -99,11 +99,11 @@ unsafe impl<F: PrimeField> GadgetKind<F> for Boolean<'static, PhantomData<F>> {
         a: &[Bound<'dr, D2, Self>],
         b: &[Bound<'dr, D2, Self>],
     ) -> Result<()> {
+        assert_eq!(a.len(), b.len());
         let capacity = F::CAPACITY as usize;
-        let pairs: Vec<_> = a.iter().zip(b.iter()).collect();
-        for chunk in pairs.chunks(capacity) {
+        for (a_chunk, b_chunk) in a.chunks(capacity).zip(b.chunks(capacity)) {
             dr.enforce_zero(|mut lc| {
-                for (a_bit, b_bit) in chunk {
+                for (a_bit, b_bit) in a_chunk.iter().zip(b_chunk.iter()) {
                     lc = lc.add(&a_bit.wire).sub(&b_bit.wire);
                     lc = lc.gain(Coeff::Two);
                 }

@@ -258,6 +258,7 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         a: &[Bound<'dr, D2, Self>],
         b: &[Bound<'dr, D2, Self>],
     ) -> Result<()> {
+        assert_eq!(a.len(), b.len());
         for (a, b) in a.iter().zip(b.iter()) {
             Self::enforce_equal_gadget(dr, a, b)?;
         }
