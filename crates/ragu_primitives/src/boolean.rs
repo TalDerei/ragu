@@ -8,7 +8,6 @@ use core::marker::PhantomData;
 
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
-
 use ragu_core::{
     Result,
     convert::WireMap,
@@ -17,17 +16,15 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::vec::{CollectFixed, FixedVec, Len};
-
 #[cfg(test)]
 use crate::allocator::{PoolAllocator, SimpleAllocator};
-
 use crate::{
     Element, GadgetExt,
     consistent::Consistent,
     io::{Buffer, Write},
     promotion::{Demoted, Promotion},
     util::InternalMaybe,
+    vec::{CollectFixed, FixedVec, Len},
 };
 
 /// Represents a wire that is constrained to be zero or one, along with its
@@ -690,9 +687,11 @@ fn test_multipack_vector() -> Result<()> {
 
 #[test]
 fn test_boolean_vec_equality() -> Result<()> {
-    use crate::vec::ConstLen;
     use alloc::vec;
+
     use ragu_core::gadgets::Gadget;
+
+    use crate::vec::ConstLen;
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
 
