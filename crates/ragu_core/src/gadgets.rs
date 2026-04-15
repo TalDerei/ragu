@@ -138,6 +138,15 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         Self::Kind::enforce_equal_gadget::<D2, D>(dr, self, other)
     }
 
+    /// Proxy for [`GadgetKind::enforce_equal_gadget_slice`].
+    fn enforce_equal_slice<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
+        dr: &mut D2,
+        a: &[Self],
+        b: &[Self],
+    ) -> Result<()> {
+        Self::Kind::enforce_equal_gadget_slice::<D2, D>(dr, a, b)
+    }
+
     /// Returns how many wires are in this gadget.
     ///
     /// Gadgets do not vary in the number of wires they contain, so this
