@@ -33,7 +33,7 @@ pub mod suffix;
 mod util;
 pub mod vec;
 
-pub use boolean::{Boolean, BooleanVec, BooleanVecKind, multipack};
+pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{Endoscalar, extract_endoscalar, lift_endoscalar};
 use io::{Buffer, Write};
