@@ -147,6 +147,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
 /// Uses the standard inverse trick for zero checking in arithmetic circuits.
 pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     dr: &mut D,
+    allocator: &mut impl crate::allocator::Allocator<'dr, D>,
     x: &Element<'dr, D>,
 ) -> Result<Boolean<'dr, D>> {
     // We enforce the constraints:
@@ -164,7 +165,7 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     let is_zero = x.value().map(|v| *v == D::F::ZERO);
 
     // Constraint 1: x * is_zero = 0.
-    let (x_wire, is_zero_wire, zero_product) = dr.mul(|| {
+    let (x_wire, is_zero_wire, zero_product, extra) = dr.gate(|| {
         Ok((
             x.value().arbitrary().take(),
             is_zero.coeff().take(),
@@ -173,6 +174,9 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     })?;
     dr.enforce_equal(&x_wire, x.wire())?;
     dr.enforce_zero(|lc| lc.add(&zero_product))?;
+
+    // $C = 0$ makes the $D$ wire unconstrained; donate it.
+    allocator.donate(extra);
 
     // Constraint 2: x * inv = 1 - is_zero.
     let (x_wire, _, is_not_zero) = dr.mul(|| {
@@ -452,7 +456,7 @@ mod tests {
             let b = Element::alloc(dr, allocator, b_val)?;
 
             dr.reset();
-            let eq = a.is_equal(dr, &b)?;
+            let eq = a.is_equal(dr, allocator, &b)?;
 
             assert!(eq.value().take(), "Expected a == b");
             Ok(())
@@ -473,7 +477,7 @@ mod tests {
             let b = Element::alloc(dr, allocator, b_val)?;
 
             dr.reset();
-            let eq = a.is_equal(dr, &b)?;
+            let eq = a.is_equal(dr, allocator, &b)?;
 
             assert!(!eq.value().take(), "Expected a != b");
             Ok(())

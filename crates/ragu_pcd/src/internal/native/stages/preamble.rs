@@ -15,6 +15,7 @@ use ragu_core::{
 };
 use ragu_primitives::{
     Boolean, Element, GadgetExt,
+    allocator::Allocator,
     consistent::Consistent,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
@@ -138,9 +139,13 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
     }
 
     /// Returns true if this child proof is a trivial proof (output header suffix == 1).
-    pub fn is_trivial(&self, dr: &mut D) -> Result<Boolean<'dr, D>> {
+    pub fn is_trivial(
+        &self,
+        dr: &mut D,
+        allocator: &mut impl Allocator<'dr, D>,
+    ) -> Result<Boolean<'dr, D>> {
         let suffix = &self.output_header[HEADER_SIZE - 1];
-        suffix.is_equal(dr, &Element::one())
+        suffix.is_equal(dr, allocator, &Element::one())
     }
 }
 
@@ -232,9 +237,13 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEADER_SIZE: usiz
     Output<'dr, D, C, HEADER_SIZE>
 {
     /// Returns true if both child proofs are trivial proofs.
-    pub fn is_base_case(&self, dr: &mut D) -> Result<Boolean<'dr, D>> {
-        let left_is_trivial = self.left.is_trivial(dr)?;
-        let right_is_trivial = self.right.is_trivial(dr)?;
+    pub fn is_base_case(
+        &self,
+        dr: &mut D,
+        allocator: &mut impl Allocator<'dr, D>,
+    ) -> Result<Boolean<'dr, D>> {
+        let left_is_trivial = self.left.is_trivial(dr, allocator)?;
+        let right_is_trivial = self.right.is_trivial(dr, allocator)?;
         left_is_trivial.and(dr, &right_is_trivial)
     }
 }
