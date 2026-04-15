@@ -1,6 +1,7 @@
 //! Strips away the witness data from a gadget while preserving its wire
 //! structure.
 
+use alloc::vec::Vec;
 use core::ops::Deref;
 
 use ff::Field;

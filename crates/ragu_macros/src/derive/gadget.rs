@@ -333,6 +333,32 @@ fn test_where_clause() {
 }
 
 #[test]
+fn test_where_clause_driver_field_substitution() {
+    let input: DeriveInput = parse_quote! {
+        #[derive(Gadget)]
+        struct Foo<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
+            where MyD::F: PrimeField
+        {
+            #[ragu(wire)]
+            wire: MyD::W,
+            #[ragu(value)]
+            value: DriverValue<MyD, bool>,
+        }
+    };
+
+    let output = derive(input, RaguCorePath::default())
+        .expect("Where clause with D::F should be supported");
+    let code = output.to_string();
+
+    // The GadgetKind impl should substitute MyD::F with the driver field
+    // ident, not emit the original driver-relative path.
+    assert!(
+        !code.contains("MyD :: F"),
+        "GadgetKind impl should not reference MyD::F"
+    );
+}
+
+#[test]
 fn test_fail_multi_annotations() {
     let input: DeriveInput = parse_quote! {
         #[derive(Gadget)]

@@ -683,3 +683,101 @@ fn test_boolean_fixed_vec_equality() -> Result<()> {
 
     Ok(())
 }
+
+/// Packed equality rejects unequal boolean vectors.
+#[test]
+fn test_boolean_fixed_vec_equality_rejects_unequal() {
+    use alloc::vec;
+
+    use ragu_core::gadgets::Gadget;
+
+    use crate::vec::{CollectFixed, ConstLen, FixedVec};
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let a_bits = vec![true, false, true, true, false, false, true, true];
+    let b_bits = vec![true, false, true, true, false, false, true, false];
+    let sim = Simulator::simulate((a_bits, b_bits), |dr, witness| {
+        let (a_bits, b_bits) = witness.cast();
+        let a: FixedVec<Boolean<_>, ConstLen<8>> = (0..8)
+            .map(|i| Boolean::alloc(dr, &mut (), a_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        let b: FixedVec<Boolean<_>, ConstLen<8>> = (0..8)
+            .map(|i| Boolean::alloc(dr, &mut (), b_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        a.enforce_equal(dr, &b)?;
+        Ok(())
+    });
+
+    assert!(sim.is_err());
+}
+
+/// Packed equality produces ceil(N / CAPACITY) constraints at the chunk boundary.
+#[test]
+fn test_boolean_fixed_vec_equality_capacity_boundary() -> Result<()> {
+    use ragu_core::gadgets::Gadget;
+
+    use crate::vec::{CollectFixed, ConstLen, FixedVec};
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    // 254 bits = F::CAPACITY => exactly 1 constraint.
+    let bits_254: Vec<bool> = (0..254).map(|i| i % 3 == 0).collect();
+    let sim = Simulator::simulate((bits_254.clone(), bits_254), |dr, witness| {
+        let (a_bits, b_bits) = witness.cast();
+        let a: FixedVec<Boolean<_>, ConstLen<254>> = (0..254)
+            .map(|i| Boolean::alloc(dr, &mut (), a_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        let b: FixedVec<Boolean<_>, ConstLen<254>> = (0..254)
+            .map(|i| Boolean::alloc(dr, &mut (), b_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        dr.reset();
+        a.enforce_equal(dr, &b)?;
+        Ok(())
+    })?;
+    assert_eq!(sim.num_constraints(), 1);
+
+    // 255 bits = CAPACITY + 1 => exactly 2 constraints.
+    let bits_255: Vec<bool> = (0..255).map(|i| i % 3 == 0).collect();
+    let sim = Simulator::simulate((bits_255.clone(), bits_255), |dr, witness| {
+        let (a_bits, b_bits) = witness.cast();
+        let a: FixedVec<Boolean<_>, ConstLen<255>> = (0..255)
+            .map(|i| Boolean::alloc(dr, &mut (), a_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        let b: FixedVec<Boolean<_>, ConstLen<255>> = (0..255)
+            .map(|i| Boolean::alloc(dr, &mut (), b_bits.as_ref().map(|b| b[i])))
+            .try_collect_fixed()?;
+        dr.reset();
+        a.enforce_equal(dr, &b)?;
+        Ok(())
+    })?;
+    assert_eq!(sim.num_constraints(), 2);
+
+    Ok(())
+}
+
+/// Array `[Boolean; N]` delegates to `enforce_equal_gadget_slice`.
+#[test]
+fn test_boolean_array_equality() -> Result<()> {
+    use ragu_core::gadgets::Gadget;
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let bits: [bool; 8] = [true, false, true, true, false, false, true, true];
+    let sim = Simulator::simulate((bits, bits), |dr, witness| {
+        let (a_bits, b_bits) = witness.cast();
+        let a: [Boolean<_>; 8] = core::array::from_fn(|i| {
+            Boolean::alloc(dr, &mut (), a_bits.as_ref().map(|b| b[i])).unwrap()
+        });
+        let b: [Boolean<_>; 8] = core::array::from_fn(|i| {
+            Boolean::alloc(dr, &mut (), b_bits.as_ref().map(|b| b[i])).unwrap()
+        });
+        dr.reset();
+        a.enforce_equal(dr, &b)?;
+        Ok(())
+    })?;
+
+    assert_eq!(sim.num_constraints(), 1);
+
+    Ok(())
+}
