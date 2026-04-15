@@ -247,8 +247,8 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     /// per element. Gadget kinds whose values are bounded (e.g. booleans) can
     /// override this to pack multiple equalities into fewer constraints.
     ///
-    /// Container kinds like [`FixedVec`] delegate to this method so that the
-    /// element kind's optimization is applied automatically.
+    /// Container kinds delegate to this method so that the element kind's
+    /// optimization is applied automatically.
     fn enforce_equal_gadget_slice<
         'dr,
         D1: Driver<'dr, F = F>,
