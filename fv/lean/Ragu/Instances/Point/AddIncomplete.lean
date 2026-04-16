@@ -1,4 +1,5 @@
 import Ragu.Circuits.Point.AddIncomplete
+import Ragu.Instances.Point.Hints
 import Ragu.Core
 
 namespace Ragu.Instances.Point.AddIncomplete
@@ -97,7 +98,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     )
 
   reimplementation :=
-    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams 0
+    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
+      (Circuits.Core.AllocMul.readRow · 0)
 
   same_constraints := by
     intro input
