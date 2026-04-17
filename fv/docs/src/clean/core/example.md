@@ -2,7 +2,7 @@
 
 Let's walk through a simple example that shows all the concepts discussed so far.
 This is part of the Ragu gadgets currently formalized.
-Let's say we want to define a division circuit, that guarantees the correctness of the output as long as the provided denominator is non-zero.
+Let's say we want to define a division circuit, that guarantees the correctness of the output as long as the provided denominator or numerator is non-zero.
 
 Let's start with a basic template definition.
 
