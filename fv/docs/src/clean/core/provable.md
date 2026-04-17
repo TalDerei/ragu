@@ -54,7 +54,7 @@ def Var (M : TypeMap) (F : Type) := M (Expression F)
 ```
 
 This is one of the most important aliases in the framework.
-If `M F` means "concrete values of shape `M`", then `Var M F` means "symbolic expressions of the same shape".
+If `M F` means "concrete values of shape `M`", then `Var M F` means "symbolic expressions of the same shape `M`".
 
 
 ## Provable types
