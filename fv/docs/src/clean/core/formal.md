@@ -112,3 +112,24 @@ Completeness is the main property provided in the **honest prover** case. It pre
 Intuitively, we want to prove that running the default (honest) witness generation starting from inputs that satisfy the assumptions, the resulting assignment satisfies the constraints.
 
 More precisely, completeness states: take any offset and any possible environment, if the input satisfies `Assumptions`, and all the witness values in this circuit are derived from the honest witness generation function, then the constraints also hold on those values.
+
+## GeneralFormalCircuit
+
+We use `FormalCircuit` when the verifier (soundness) and the honest prover (completeness) assumes the same `Assumptions`. Sometimes we need different assumptions for soundness and completeness. For example, when there are data that the honest prover uses but the usual verifier doesn't have access to, the honest prover might want to assume something about the prover data.
+
+For these cases, Clean provides `GeneralFormalCircuit`:
+
+```lean
+structure GeneralFormalCircuit (F : Type) (Input Output : TypeMap) [Field F]
+    [ProvableType Input] [ProvableType Output] where
+  main : Var Input F → Circuit F (Var Output F)
+  Assumptions : Input F → ProverData F → Prop
+  Spec : Input F → Output F → ProverData F → Prop
+  soundness : GeneralFormalCircuit.Soundness F Spec
+  completeness : GeneralFormalCircuit.Completeness F Assumptions
+```
+
+Compared to `FormalCircuit`:
+- `Assumptions` and `Spec` take an extra `ProverData F` argument, representing data that is available to the honest prover but not necessarily to the verifier.
+- `Assumptions` is used only for completeness: it is what the honest prover assumes about the inputs (and prover-only data) when generating witnesses.
+- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→` some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred). The verifier also needs to make sure that `ProverData F` is not the empty type before using `Spec`.
