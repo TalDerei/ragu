@@ -37,7 +37,8 @@ pub enum Expr<F: Field> {
 /// - `Witness` corresponds to `FlatOperation.witness`
 /// - `Assert` corresponds to `FlatOperation.assert`
 pub enum Op<F: Field> {
-    /// Allocation of one or more consecutive wires starting at `first_idx`.
+    /// Allocation of `count` consecutive wires. Indices are implicit in the
+    /// order this op appears in the surrounding sequence.
     Witness { count: usize },
     /// Constraint that the given expression must evaluate to zero.
     Assert(Expr<F>),
