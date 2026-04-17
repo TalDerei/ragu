@@ -130,6 +130,6 @@ structure GeneralFormalCircuit (F : Type) (Input Output : TypeMap) [Field F]
 ```
 
 Compared to `FormalCircuit`:
-- `Assumptions` and `Spec` take an extra `ProverData F` argument, representing data that is available to the honest prover but not necessarily to the verifier.
+- `Assumptions` and `Spec` take an extra `ProverData F` argument, representing data that is available to the honest prover but not necessarily to the verifier. Even when `Spec` talks about the `ProverData F` in a meaningful way there is no guarantee that the verifier and the prover are talking about the same `ProverData F`.
 - `Assumptions` is used only for completeness: it is what the honest prover assumes about the inputs (and prover-only data) when generating witnesses.
-- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→` some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred). The verifier also needs to make sure that `ProverData F` is not the empty type before using `Spec`.
+- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→` some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred). At the moment `ProverData F` is not empty, so given `Input F` and `Output F`, it is possible to get a `Prop` out of `Spec`.
