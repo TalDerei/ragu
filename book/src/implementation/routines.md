@@ -9,8 +9,20 @@ permitted to do anything that normal circuit code can do with a
 
 It is possible to invoke them by manually calling their [`Routine::execute`]
 method, but this almost always defeats the purpose of the abstraction. Instead,
-they are meant to be invoked through the [`Driver::routine`] method, which hands
-control and visibility of its execution to the driver.
+they are meant to be invoked through the [`Driver::routine`] method, which
+preserves the context and boundaries of routine invocations for the driver.
+
+Routines can also further invoke other routines, creating **nested routines**.
+To avoid complicated call stack management, our drivers only keep _routine-local_
+states. When circuit code calls [`Driver::routine`], the driver saves its local
+scoped state (e.g., running wire monomial evaluations for `sx::Evaluator`,
+constraint counters for `metric::Counter` etc.), and initializes a fresh scope
+for the child routine. On return, the parent scope is restored and the child's
+contribution is rolled up in the parent's accumulated state. The `DriverScope`
+trait provides a `with_scope` helper that automates this save-then-restore; some
+drivers use manual `mem::replace` on the scoped state instead when they need to
+inspect the child scope's result before restoring.
+We refer our invocation-depth-independent drivers as being _context insensitive_.
 
 ```admonish info
 Drivers do not learn the [`TypeId`] of a [`Routine`] they are asked to `execute`,
@@ -35,26 +47,58 @@ algebraically convenient structure in the resulting wiring polynomial $s(X, Y)$:
 * [`gate`] advances an $i$ counter and returns $(X^{2n - 1 - i}, X^{2n + i}, X^{4n - 1 - i}, X^i)$ wires.
 * `enforce_zero` advances a counter $j$ and adds a fresh linear combination of previous wires multiplied by $Y^j$.
 
-Most of the linear constraints created within a routine consist purely of wires also
-created within that routine, meaning that the **internal** contribution of a
-routine can be written as polynomials $g_x, g_{x^{-1}}$ and memoized if the
-routine is invoked multiple times. Given a cache hit, we need only scale $g_x$
-and $g_{x^{-1}}$ by powers of $Y^j X^i$ (or $Y^j X^{-i}$) to obtain the correct
-internal $s(X, Y)$ for an equivalent invocation.
-
-The **interface** contribution to $s(X, Y)$ involves wires created outside the
-routine, such as the input gadget wires or the fixed `ONE` wire. This is less
-amenable to memoization because these wires can vary between invocations; we
-must generally maintain separate polynomials $h_\ell$ for every interface wire.
-
-Taken together, the **contribution** of a routine invocation to $s(X, Y)$ can be
-written as
+Most constraints within a routine only involve wires created within the routine.
+For a routine that starts at gate index $i$ and constraint index $j$, these
+constraints, constituting the **internal contribution** to $s(X, Y)$, can be
+written as:
 
 $$
-Y^j \Big( X^i g_x + X^{-i} g_{x^{-1}} + \sum_\ell h_\ell \Big)
+Y^j \Big( X^i \, g_1(X, Y) + X^{-i} \, g_2(X^{-1}, Y) \Big)
 $$
 
-for some **repositioning** values $i, j$.
+where $X^i Y^j$ (and $X^{-i} Y^j$ for wires allocated in reversed segments of a
+[structured](../../protocol/prelim/structured_vectors.md) trace) are the common
+factors extracted from all monomial terms in the contribution[^factoring].
+Crucially, $g_1$ and $g_2$ are **invariant to the routine invocation**: they are
+the same regardless of where or how many times the invocation is placed in a
+circuit. This makes _routine memoization_ possible: given a invocation cache hit,
+we only need to apply a **repositioning** by re-scaling them to the starting
+position ($X^i Y^j$ and $X^{-i} Y^j$) of that particular invocation.
+
+[^factoring]: Every wire allocated _after_ entering the routine at gate index $i$
+    has a positional monomial $X^{i+k}$ or $X^{-{i+k}}$ (reversed segment) for
+    some $k>0$. Each constraint on these internal wires is a linear combination
+    of these positional monomials multiplied by $Y^{j+\ell}$ for some $\ell > 0$.
+    Thus, the internal contribution, summing over all $Y$-power-scaled linear
+    combination of $X$ monomials, share a common factor $X^i Y^j$
+    (or $X^{-i}Y^j$). Extracting these factors yield $g_1$ and $g_2$.
+
+The overall contribution of a routine invocation to $s(X, Y)$ is the sum of this
+internal contribution, an **interface contribution** from constraints that
+reference wires created outside the routine (e.g., input gadget wires), and a
+**system contribution** from constraints that reference system wires (i.e.,
+`ONE`) at fixed locations.
+
+The interface contribution cannot be factored (or memoized) the same way:
+the input gadget is allocated by the routine caller at an unknown position, both
+absolute and relative to the start of the routine, so there is no a priori $X^i$
+factors to extract. We must compute interface contributions per-invocation.
+One crucial complication arises from nested routines. Our decision on
+_context-insensitive_ drivers demands that the output gadgets of nested/child
+routines are also part of the interface contribution of the parent routine.
+
+Meanwhile, system contributions are also memoizable:
+
+$$
+\sum_{\ell \in T} Y^\ell X^{2n} = X^{2n}Y^j \cdot g_3(Y)
+$$
+
+where $T$ is the set of constraint indices within the routine where system wires
+are referenced, $X^{2n}$ is the monomial for the $b_0 (= 1)$ wire during
+[wiring checks](../../protocol/local/wiring.md#layout).
+Similarly, we can extract the common factor $X^{2n}Y^j$ for the starting
+constraint index $j$ and the remaining univariate $g_3$ is invariant to the
+routine invocation.
 
 ## Pipeline {#pipeline}
 
@@ -103,15 +147,6 @@ a given witness, and the registry uses the floor plan to translate this to the
 actual trace polynomial $r(X)$.
 
 ## Invocations
-
-When circuit code calls [`Driver::routine`], the driver saves its current
-scoped state — running wire monomials, constraint counters, Horner
-accumulators, allocation pairing state — and initializes a fresh scope
-for the child routine. On return, the parent scope is restored and the
-child's contribution is folded into the parent's accumulated result. The
-`DriverScope` trait provides a `with_scope` helper that automates this
-save/restore; some drivers use manual `mem::replace` instead when they
-need to inspect the child scope's result before restoring the parent.
 
 Because synthesis is deterministic, invocations appear in a canonical **DFS
 order** that is stable across executions of the same circuit code. The
@@ -215,11 +250,11 @@ out-of-line.**
 ## Memoization
 
 The [algebraic description](#algebraic-description) decomposes a routine's
-contribution into **internal** polynomials $g_x, g_{x^{-1}}$ that depend only
-on the routine's constraint structure, and **interface** terms $h_\ell$ that
+contribution into **internal** polynomials $g_1(X, Y), g_2(X^{-1}, Y)$ that
+depend only on the routine's constraint structure, and **interface** terms that
 depend on wires crossing the routine boundary. Memoization caches the internal
-part: if two invocations produce the same constraint structure, their $g_x$ and
-$g_{x^{-1}}$ are identical and can be reused. The interface terms and
+part: if two invocations produce the same constraint structure, their $g_1$ and
+$g_2$ are identical and can be reused. The interface terms and
 [repositioning](#repositioning) factors $X^i, Y^j$ must still be computed
 per-invocation.
 
