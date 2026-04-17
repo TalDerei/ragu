@@ -111,6 +111,10 @@ fn export_all(autogen_root: &Path) -> std::io::Result<()> {
         println!("wrote {} to {}", target.name, path.display());
     }
 
+    let (path, contents) = generated_ragu_root(autogen_root);
+    fs::write(&path, contents)?;
+    println!("wrote Ragu to {}", path.display());
+
     Ok(())
 }
 
