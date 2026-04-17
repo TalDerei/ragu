@@ -14,6 +14,7 @@ The Ragu Formal Verification relies on some assumptions.
     - The same circuit/same output theorem statements suffice to fully characterize semantic equivalence of circuits
     - more generally, the formal instance in lean is correct
     - the Clean core statements about circuit semantics and subcircuit composition are correct
+    - the Lean elaborater creates an internal representation of the statement (to be checked together with the proof term by the Lean kernel) in a way that keeps the correct intention
 
 - The logical foundation is not contradictory
     - The Lean kernel theory and implementation are sound.
