@@ -76,10 +76,8 @@ impl<F: Field> WireDeserializer<F> {
     /// Consume this deserializer and produce `template` with its wires replaced
     /// by the wires held in this deserializer.
     ///
-    /// # Panics
-    ///
-    /// Panics if the number of wires remaining in this deserializer does not
-    /// equal `template.num_wires()`.
+    /// Returns [`ragu_core::Error::InvalidWitness`] if the number of wires
+    /// remaining in this deserializer does not equal `template.num_wires()`.
     pub fn into_gadget<'dr, G>(mut self, template: &G) -> ragu_core::Result<G>
     where
         G: Gadget<'dr, ExtractionDriver<F>>,
@@ -87,11 +85,15 @@ impl<F: Field> WireDeserializer<F> {
     {
         let actual = self.wires.len();
         let expected = template.num_wires()?;
-        assert_eq!(
-            actual, expected,
-            "WireDeserializer: wire count mismatch \
-             (source FixedVec has {actual} wires, target gadget expects {expected})"
-        );
+        if actual != expected {
+            return Err(ragu_core::Error::InvalidWitness(
+                format!(
+                    "WireDeserializer: wire count mismatch \
+                     (source has {actual} wires, target gadget expects {expected})"
+                )
+                .into(),
+            ));
+        }
         template.map(&mut self)
     }
 }
