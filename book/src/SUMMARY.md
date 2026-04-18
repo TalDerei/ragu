@@ -18,7 +18,7 @@
     - [The Kind! Macro](guide/gadgets/kind.md)
     - [Conversion](guide/gadgets/conversion.md)
   - [Routines](guide/routines.md)
-  - [The Primitives Standard Library](guide/primitives/index.md)
+  - [Primitives](guide/primitives/index.md)
     - [Allocation](guide/primitives/allocation.md)
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->

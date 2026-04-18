@@ -2,8 +2,8 @@
 
 All wires are created in groups whenever new gates are created via
 [`mul()`] (or, more generally, with [`gate()`]). In some rare cases,
-gadgets need _standalone_ wires that cannot be easily represented as
-linear combinations of existing wires. The [`Allocator`] trait
+gadgets need _standalone_ wires that cannot be represented as linear
+combinations of wires they have access to. The [`Allocator`] trait
 generalizes over (possibly stateful) strategies for assigning
 arbitrary data to free wires.
 
