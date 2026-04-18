@@ -42,7 +42,8 @@ mod common {
 mod poseidon_fp;
 mod poseidon_fq;
 
-pub use common::{PallasGenerators, PastaParams, VestaGenerators};
+pub use common::{Generators, PallasGenerators, PastaParams, VestaGenerators};
+use pasta_curves::arithmetic::CurveAffine;
 pub use pasta_curves::{Ep, EpAffine, Eq, EqAffine, Fp, Fq};
 pub use poseidon_fp::PoseidonFp;
 pub use poseidon_fq::PoseidonFq;
@@ -93,23 +94,17 @@ impl Cycle for Pasta {
     }
 }
 
-impl FixedGenerators<pasta_curves::EpAffine> for PallasGenerators {
-    fn g(&self) -> &[pasta_curves::EpAffine] {
+impl<C: CurveAffine> FixedGenerators<C> for Generators<C> {
+    fn g(&self) -> &[C] {
         &self.g
     }
 
-    fn h(&self) -> &pasta_curves::EpAffine {
-        &self.h
-    }
-}
-
-impl FixedGenerators<pasta_curves::EqAffine> for VestaGenerators {
-    fn g(&self) -> &[pasta_curves::EqAffine] {
-        &self.g
+    fn w(&self) -> &C {
+        &self.w
     }
 
-    fn h(&self) -> &pasta_curves::EqAffine {
-        &self.h
+    fn u(&self) -> &C {
+        &self.u
     }
 }
 
@@ -121,7 +116,7 @@ mod baked {
     use lazy_static::lazy_static;
     use pasta_curves::arithmetic::CurveAffine;
 
-    use super::{PallasGenerators, Pasta, PastaParams, VestaGenerators};
+    use super::{Generators, Pasta, PastaParams};
 
     const RAW_PARAMETERS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pasta_parameters.bin"));
 
@@ -138,28 +133,39 @@ mod baked {
         C::from_xy(x, y).unwrap()
     }
 
-    fn get_points_for_curve<C: CurveAffine>(source: &mut &[u8], n: usize) -> (Vec<C>, C) {
+    fn get_points_for_curve<C: CurveAffine>(source: &mut &[u8], n: usize) -> (Vec<C>, C, C) {
         let mut g = Vec::with_capacity(n);
         for _ in 0..n {
             g.push(get_point(source));
         }
-        let h = get_point(source);
+        let w = get_point(source);
+        let u = get_point(source);
 
-        (g, h)
+        (g, w, u)
     }
 
     lazy_static! {
         static ref PASTA_PARAMETERS: PastaParams = {
             let mut params = RAW_PARAMETERS;
 
-            let (ep_g, ep_h) = get_points_for_curve(&mut params, 1 << crate::common::DEFAULT_EP_K);
-            let (eq_g, eq_h) = get_points_for_curve(&mut params, 1 << crate::common::DEFAULT_EQ_K);
+            let (ep_g, ep_w, ep_u) =
+                get_points_for_curve(&mut params, 1 << crate::common::DEFAULT_EP_K);
+            let (eq_g, eq_w, eq_u) =
+                get_points_for_curve(&mut params, 1 << crate::common::DEFAULT_EQ_K);
 
             assert_eq!(params.len(), 0);
 
             PastaParams {
-                pallas: PallasGenerators { g: ep_g, h: ep_h },
-                vesta: VestaGenerators { g: eq_g, h: eq_h },
+                pallas: Generators {
+                    g: ep_g,
+                    w: ep_w,
+                    u: ep_u,
+                },
+                vesta: Generators {
+                    g: eq_g,
+                    w: eq_w,
+                    u: eq_u,
+                },
             }
         };
     }
@@ -197,12 +203,30 @@ mod baked {
             Pasta::host_generators(&regenerated).g()
         );
         assert_eq!(
-            Pasta::nested_generators(params).h(),
-            Pasta::nested_generators(&regenerated).h()
+            Pasta::nested_generators(params).w(),
+            Pasta::nested_generators(&regenerated).w()
         );
         assert_eq!(
-            Pasta::host_generators(params).h(),
-            Pasta::host_generators(&regenerated).h()
+            Pasta::host_generators(params).w(),
+            Pasta::host_generators(&regenerated).w()
+        );
+        assert_eq!(
+            Pasta::nested_generators(params).u(),
+            Pasta::nested_generators(&regenerated).u()
+        );
+        assert_eq!(
+            Pasta::host_generators(params).u(),
+            Pasta::host_generators(&regenerated).u()
+        );
+
+        // u must differ from w (distinct hash_to_curve domain tags).
+        assert_ne!(
+            Pasta::nested_generators(params).u(),
+            Pasta::nested_generators(params).w()
+        );
+        assert_ne!(
+            Pasta::host_generators(params).u(),
+            Pasta::host_generators(params).w()
         );
     }
 }

@@ -1,13 +1,8 @@
-use ragu_arithmetic::CurveExt;
-use group::{Curve, prime::PrimeCurveAffine};
-use pasta_curves::{
-    EpAffine,
-    EqAffine,
-    Ep,
-    Eq
-};
-
 use alloc::{vec, vec::Vec};
+
+use group::{Curve, prime::PrimeCurveAffine};
+use pasta_curves::{Ep, EpAffine, Eq, EqAffine, arithmetic::CurveAffine};
+use ragu_arithmetic::CurveExt;
 
 const DOMAIN_PREFIX: &str = "Ragu-Parameters";
 
@@ -17,23 +12,24 @@ pub const DEFAULT_EQ_K: usize = 13;
 /// Runtime parameters for the Pasta curve cycle, holding generator points
 /// for the Pallas and Vesta curves.
 pub struct PastaParams {
-    pub(crate) pallas: PallasGenerators,
-    pub(crate) vesta: VestaGenerators,
+    pub(crate) pallas: Generators<EpAffine>,
+    pub(crate) vesta: Generators<EqAffine>,
+}
+
+/// Fixed generators for one curve of the Pasta cycle.
+pub struct Generators<C: CurveAffine> {
+    pub(crate) g: Vec<C>,
+    pub(crate) w: C,
+    pub(crate) u: C,
 }
 
 /// Fixed generators for the Pallas curve.
-pub struct PallasGenerators {
-    pub(crate) g: Vec<EpAffine>,
-    pub(crate) h: EpAffine,
-}
+pub type PallasGenerators = Generators<EpAffine>;
 
 /// Fixed generators for the Vesta curve.
-pub struct VestaGenerators {
-    pub(crate) g: Vec<EqAffine>,
-    pub(crate) h: EqAffine,
-}
+pub type VestaGenerators = Generators<EqAffine>;
 
-fn params_for_curve<C: CurveExt>(n: usize) -> (Vec<C::AffineExt>, C::AffineExt) {
+fn params_for_curve<C: CurveExt>(n: usize) -> (Vec<C::AffineExt>, C::AffineExt, C::AffineExt) {
     let g_projective = {
         let hasher = C::hash_to_curve(DOMAIN_PREFIX);
         let mut g = Vec::with_capacity(n);
@@ -47,26 +43,29 @@ fn params_for_curve<C: CurveExt>(n: usize) -> (Vec<C::AffineExt>, C::AffineExt) 
     let mut g = vec![C::AffineExt::identity(); n];
     Curve::batch_normalize(&g_projective[..], &mut g);
 
-    let h: C::AffineExt = C::hash_to_curve(DOMAIN_PREFIX)(&[1]).into();
+    let w: C::AffineExt = C::hash_to_curve(DOMAIN_PREFIX)(&[1]).into();
+    let u: C::AffineExt = C::hash_to_curve(DOMAIN_PREFIX)(&[2]).into();
 
-    (g, h)
+    (g, w, u)
 }
 
 impl PastaParams {
     /// Generate Pasta parameters at runtime via hash-to-curve.
     pub(crate) fn generate() -> Self {
-        let (ep_g, ep_h) = params_for_curve::<Ep>(1usize << DEFAULT_EP_K);
-        let (eq_g, eq_h) = params_for_curve::<Eq>(1usize << DEFAULT_EQ_K);
+        let (ep_g, ep_w, ep_u) = params_for_curve::<Ep>(1usize << DEFAULT_EP_K);
+        let (eq_g, eq_w, eq_u) = params_for_curve::<Eq>(1usize << DEFAULT_EQ_K);
 
         PastaParams {
-            pallas: PallasGenerators {
+            pallas: Generators {
                 g: ep_g,
-                h: ep_h,
+                w: ep_w,
+                u: ep_u,
             },
-            vesta: VestaGenerators {
+            vesta: Generators {
                 g: eq_g,
-                h: eq_h,
-            }
+                w: eq_w,
+                u: eq_u,
+            },
         }
     }
 }
