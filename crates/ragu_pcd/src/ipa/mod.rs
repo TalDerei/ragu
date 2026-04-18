@@ -1,12 +1,11 @@
 //! Inner Product Argument (IPA) for polynomial commitments.
 //!
 //! Adapted from halo2's `halo2_proofs/src/poly/commitment`. Fiat-Shamir reuses
-//! the PCD [`Transcript`](crate::internal::transcript::Transcript) executed at
-//! concrete values via the [`Emulator`](ragu_core::drivers::emulator::Emulator)
-//! driver. Host curve commitments are hashed into the circuit-field transcript
-//! by reinterpreting each coordinate's little-endian byte representation as a
-//! circuit-field element (see [`field_from_bytes`]); infinity is rejected,
-//! matching halo2's `common_point`.
+//! the PCD `Transcript` executed at concrete values via the `Emulator` driver.
+//! Host curve commitments are hashed into the circuit-field transcript by
+//! reinterpreting each coordinate's little-endian byte representation as a
+//! circuit-field element; infinity is rejected, matching halo2's
+//! `common_point`.
 
 use alloc::vec::Vec;
 
@@ -19,10 +18,12 @@ use ragu_primitives::{Element, GadgetExt};
 use crate::internal::transcript::Transcript;
 
 pub mod compress;
+mod msm;
 mod prover;
 mod verifier;
 
 pub use compress::CompressedProof;
+pub use msm::MSM;
 pub use prover::create_proof;
 pub use verifier::verify_proof;
 

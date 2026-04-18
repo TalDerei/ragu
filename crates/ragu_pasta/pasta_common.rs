@@ -24,9 +24,11 @@ pub struct Generators<C: CurveAffine> {
 }
 
 /// Fixed generators for the Pallas curve.
+#[allow(dead_code)]
 pub type PallasGenerators = Generators<EpAffine>;
 
 /// Fixed generators for the Vesta curve.
+#[allow(dead_code)]
 pub type VestaGenerators = Generators<EqAffine>;
 
 fn params_for_curve<C: CurveExt>(n: usize) -> (Vec<C::AffineExt>, C::AffineExt, C::AffineExt) {

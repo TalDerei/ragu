@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 
 use ff::{Field, PrimeField};
 use pasta_curves::group::Curve;
-use rand::CryptoRng;
 use ragu_arithmetic::{
     CurveAffine, PoseidonPermutation, dot as compute_inner_product, eval as eval_polynomial,
     mul as best_multiexp, parallelize,
@@ -13,6 +12,7 @@ use ragu_core::{
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Element, GadgetExt};
+use rand::CryptoRng;
 
 use super::{Blind, IpaProof, Params, absorb_point};
 use crate::internal::transcript::Transcript;
@@ -128,8 +128,8 @@ where
         let value_r_j = compute_inner_product(&p_prime[0..half], &b[half..]);
         let l_j_randomness = C::Scalar::random(&mut rng);
         let r_j_randomness = C::Scalar::random(&mut rng);
-        let l_j = l_j + &best_multiexp(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
-        let r_j = r_j + &best_multiexp(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
+        let l_j = l_j + best_multiexp(&[value_l_j * z, l_j_randomness], &[params.u, params.w]);
+        let r_j = r_j + best_multiexp(&[value_r_j * z, r_j_randomness], &[params.u, params.w]);
         let l_j = l_j.to_affine();
         let r_j = r_j.to_affine();
 
@@ -145,8 +145,8 @@ where
         // TODO: parallelize
         #[allow(clippy::assign_op_pattern)]
         for i in 0..half {
-            p_prime[i] = p_prime[i] + &(p_prime[i + half] * &u_j_inv);
-            b[i] = b[i] + &(b[i + half] * &u_j);
+            p_prime[i] = p_prime[i] + (p_prime[i + half] * u_j_inv);
+            b[i] = b[i] + (b[i + half] * u_j);
         }
         p_prime.truncate(half);
         b.truncate(half);
@@ -156,8 +156,8 @@ where
         g_prime.truncate(half);
 
         // Update randomness (the synthetic blinding factor at the end)
-        f += &(l_j_randomness * &u_j_inv);
-        f += &(r_j_randomness * &u_j);
+        f += &(l_j_randomness * u_j_inv);
+        f += &(r_j_randomness * u_j);
     }
 
     // We have fully collapsed `p_prime`, `b`, `G'`
@@ -183,7 +183,7 @@ fn parallel_generator_collapse<C: CurveAffine>(g: &mut [C], challenge: C::Scalar
         let g_hi = &g_hi[start..];
         let mut tmp = Vec::with_capacity(g_lo.len());
         for (g_lo, g_hi) in g_lo.iter().zip(g_hi.iter()) {
-            tmp.push(g_lo.to_curve() + &(*g_hi * challenge));
+            tmp.push(g_lo.to_curve() + (*g_hi * challenge));
         }
         C::Curve::batch_normalize(&tmp, g_lo);
     });

@@ -27,6 +27,7 @@ extern crate std;
 mod fuse;
 pub mod header;
 mod internal;
+pub mod ipa;
 mod proof;
 pub mod step;
 mod verify;
@@ -35,6 +36,7 @@ use alloc::collections::BTreeMap;
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
 use header::Header;
+pub use ipa::{CompressedProof, IpaProof};
 pub use proof::{Pcd, Proof};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{

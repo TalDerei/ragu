@@ -10,7 +10,7 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, GadgetExt};
 
-use super::{IpaProof, Params, MSM, absorb_point};
+use super::{IpaProof, MSM, Params, absorb_point};
 use crate::internal::transcript::Transcript;
 
 /// A guard returned by the verifier
@@ -133,7 +133,7 @@ where
     Element::constant(dr, f).write(dr, transcript)?;
     let b = compute_b(x, &u);
 
-    msm.add_to_u_scalar(neg_c * &b * &z);
+    msm.add_to_u_scalar(neg_c * b * z);
     msm.add_to_w_scalar(-f);
 
     let guard = Guard { msm, neg_c, u };
@@ -146,7 +146,7 @@ fn compute_b<F: Field>(x: F, u: &[F]) -> F {
     let mut tmp = F::ONE;
     let mut cur = x;
     for u_j in u.iter().rev() {
-        tmp *= F::ONE + &(*u_j * &cur);
+        tmp *= F::ONE + (*u_j * cur);
         cur *= cur;
     }
     tmp
