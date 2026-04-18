@@ -12,8 +12,8 @@ pub const DEFAULT_EQ_K: usize = 13;
 /// Runtime parameters for the Pasta curve cycle, holding generator points
 /// for the Pallas and Vesta curves.
 pub struct PastaParams {
-    pub(crate) pallas: Generators<EpAffine>,
-    pub(crate) vesta: Generators<EqAffine>,
+    pub(crate) pallas: PallasGenerators,
+    pub(crate) vesta: VestaGenerators,
 }
 
 /// Fixed generators for one curve of the Pasta cycle.
