@@ -173,11 +173,14 @@ pub trait FixedGenerators<C: CurveAffine>: Send + Sync + 'static {
     fn g(&self) -> &[C];
 
     /// Generator used as a blinding factor or randomization.
-    fn h(&self) -> &C;
+    fn w(&self) -> &C;
+
+    /// Auxiliary generator used in the IPA.
+    fn u(&self) -> &C;
 
     /// Compute a commitment to a single value.
     fn short_commit(&self, value: C::ScalarExt, blind: C::ScalarExt) -> C {
-        (self.g()[0] * value + *self.h() * blind).into()
+        (self.g()[0] * value + *self.w() * blind).into()
     }
 }
 
