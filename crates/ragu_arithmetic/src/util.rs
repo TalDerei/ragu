@@ -172,6 +172,27 @@ pub fn batch_to_affine<C: CurveAffine, const N: usize>(projectives: [C::Curve; N
     affines
 }
 
+/// This simple utility function will parallelize an operation that is to be
+/// performed over a mutable slice.
+pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
+    let n = v.len();
+    let num_threads = crate::multicore::current_num_threads();
+    let mut chunk = n / num_threads;
+    if chunk < num_threads {
+        chunk = n;
+    }
+
+    crate::multicore::scope(|scope| {
+        for (chunk_num, v) in v.chunks_mut(chunk).enumerate() {
+            let f = f.clone();
+            scope.spawn(move |_| {
+                let start = chunk_num * chunk;
+                f(v, start);
+            });
+        }
+    });
+}
+
 /// Compute the multiscalar multiplication $\langle \mathbf{a}, \mathbf{G} \rangle$ where
 /// $\mathbf{a} \in \mathbb{F}^n$ is a vector of scalars and $\mathbf{G} \in \mathbb{G}^n$
 /// is a vector of bases.
