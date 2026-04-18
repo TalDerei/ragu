@@ -18,8 +18,8 @@
     - [The Kind! Macro](guide/gadgets/kind.md)
     - [Conversion](guide/gadgets/conversion.md)
   - [Routines](guide/routines.md)
-  - [Primitives](guide/primitives/index.md)
-    - [Allocation](guide/primitives/allocation.md)
+  - [Primitives](guide/primitives/index.md) <!-- todo -->
+    - [Allocation](guide/primitives/allocation.md) <!-- todo -->
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
 - [Part II: Protocol Design]()
