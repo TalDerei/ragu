@@ -19,11 +19,8 @@ use ragu_primitives::{Element, GadgetExt};
 use crate::internal::transcript::Transcript;
 
 pub mod compress;
-mod msm;
 mod prover;
 mod verifier;
-
-pub use msm::MSM;
 
 pub use compress::CompressedProof;
 pub use prover::create_proof;

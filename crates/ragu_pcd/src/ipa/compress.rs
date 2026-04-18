@@ -13,7 +13,7 @@ use ragu_core::{
 use ragu_primitives::{Element, GadgetExt};
 use rand::CryptoRng;
 
-use super::{Blind, IPA_TAG, IpaProof, absorb_point, prover, verifier};
+use super::{Blind, IPA_TAG, IpaProof, MSM, Params, absorb_point, prover, verifier};
 use crate::{internal::transcript::Transcript, proof::Proof};
 
 /// Succinct proof for external verification.
@@ -45,6 +45,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         C::ScalarField: PrimeField,
     {
         let generators = C::host_generators(self.params);
+        let params = Params::<C::HostCurve>::new(generators);
         let mut dr = Emulator::<Wireless<Always<()>, C::CircuitField>>::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), IPA_TAG)?;
 
@@ -52,7 +53,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         let u = proof.u;
         let v = proof.v();
 
-        absorb_point::<C>(&mut dr, &mut transcript, &p_commitment)?;
+        absorb_point(&mut dr, &mut transcript, &p_commitment)?;
         Element::constant(&mut dr, u).write(&mut dr, &mut transcript)?;
         Element::constant(&mut dr, v).write(&mut dr, &mut transcript)?;
 
@@ -60,8 +61,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         // provides ZK); pass zero as the blinding factor so the IPA's
         // reconstructed commitment matches `native_p_commitment` exactly.
         let p_coeffs: Vec<_> = proof.native_p_poly().iter_coeffs().collect();
-        let ipa = prover::create_proof::<C, _, _>(
-            generators,
+        let ipa = prover::create_proof::<C::HostCurve, _, _>(
+            &params,
             rng,
             &mut dr,
             &mut transcript,
@@ -85,22 +86,28 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         C::ScalarField: PrimeField,
     {
         let generators = C::host_generators(self.params);
+        let params = Params::<C::HostCurve>::new(generators);
         let mut dr = Emulator::<Wireless<Always<()>, C::CircuitField>>::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), IPA_TAG)?;
 
-        absorb_point::<C>(&mut dr, &mut transcript, &compressed.p_commitment)?;
+        absorb_point(&mut dr, &mut transcript, &compressed.p_commitment)?;
         Element::constant(&mut dr, compressed.u).write(&mut dr, &mut transcript)?;
         Element::constant(&mut dr, compressed.v).write(&mut dr, &mut transcript)?;
 
-        verifier::verify_proof::<C, _>(
-            generators,
+        // Seed the MSM with P (the commitment being opened) at scalar 1.
+        let mut msm = MSM::new(&params);
+        msm.append_term(C::CircuitField::ONE, compressed.p_commitment);
+
+        let guard = verifier::verify_proof::<C::HostCurve, _>(
+            &params,
+            msm,
             &mut dr,
             &mut transcript,
-            compressed.p_commitment,
+            &compressed.ipa,
             compressed.u,
             compressed.v,
-            &compressed.ipa,
-        )
+        )?;
+        Ok(guard.use_challenges().eval())
     }
 }
 
