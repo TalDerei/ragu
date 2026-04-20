@@ -87,7 +87,7 @@ This line is dense, so it is worth unpacking carefully.
 
 - `main` is the circuit-building function name.
 - `input : Var Inputs (F p)` is an input parameter to the `main` function. It means the input is not given as concrete field values, but as expressions arranged in the shape of `Inputs`.
-- `: Circuit (F p) (Var field (F p))` means that `main` returns a `Circuit`-wrapped result, which is `(Var field (F p))`.
+- `: Circuit (F p) (Var field (F p))` means that `main` returns a `Circuit`-wrapped result. The result is `(Var field (F p))`. The `Circuit` wrapping adds accounting for the additional operations and witness offsets.
 
 Since `field` is the one-element provable type for a single field element, `Var field (F p)` is just the symbolic representation of one output variable.
 In other words, this circuit returns one field element as output.
