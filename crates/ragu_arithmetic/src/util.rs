@@ -319,6 +319,34 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
     sum
 }
 
+/// Returns the coefficient vector for $c(X) = a(X) \cdot b(X)$ via FFT.
+pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
+    if a.is_empty() || b.is_empty() {
+        return vec![];
+    }
+
+    let result_len = a.len() + b.len() - 1;
+    let domain_size = result_len.next_power_of_two();
+    let domain = Domain::new(domain_size.ilog2());
+    let n = domain.n();
+
+    let mut a_evals = vec![F::ZERO; n];
+    a_evals[..a.len()].copy_from_slice(a);
+    domain.fft(&mut a_evals);
+
+    let mut b_evals = vec![F::ZERO; n];
+    b_evals[..b.len()].copy_from_slice(b);
+    domain.fft(&mut b_evals);
+
+    for (a, b) in a_evals.iter_mut().zip(b_evals.iter()) {
+        *a *= b;
+    }
+
+    domain.ifft(&mut a_evals);
+    a_evals.truncate(result_len);
+    a_evals
+}
+
 /// Computes the lowest degree monic polynomial
 ///
 /// $$
