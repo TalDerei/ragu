@@ -73,7 +73,7 @@ Without `ProvableStruct`, Clean would not know how to represent `Inputs` inside 
 
 Two very important instantiations that are useful for circuits are:
 - `Inputs (F p)`: this is a collection of two concrete field elements in `F p`.
-- `Inputs (Expression (F p))`: this is a collection of two expressions, which can be used in circuits to define constraints. Expressions are the main objects manipulated by the Clean framework, and this type is so important that there is a very common alias for it: `Var Inputs (F p)`.
+- `Inputs (Expression (F p))`: this is a collection of two expressions, which can be used in circuits to define constraints. Expressions are polynomials whose variables are witness locations. Expressions are the main objects manipulated by the Clean framework, and this type is so important that there is a very common alias for it: `Var Inputs (F p)`.
 
 ### Circuit type
 
