@@ -28,7 +28,20 @@ pub use prover::create_proof;
 pub use verifier::verify_proof;
 
 /// Domain separation tag for the IPA sub-protocol.
-pub(crate) const IPA_TAG: &[u8] = b"ragu-ipa";
+pub(crate) const IPA_TAG: &[u8] = b"FIXME";
+
+/// Log-size IPA proof.
+#[derive(Clone, Debug)]
+pub struct IpaProof<C: CurveAffine> {
+    /// Commitment to blinding polynomial S.
+    pub s_commitment: C,
+    /// Cross-term commitments $(L_j, R_j)$ per round.
+    pub rounds: Vec<(C, C)>,
+    /// Final collapsed coefficient.
+    pub c: C::ScalarExt,
+    /// Synthetic blinding factor.
+    pub f: C::ScalarExt,
+}
 
 /// These are the public parameters for the polynomial commitment scheme,
 /// mirroring halo2's `Params<C>`.
@@ -114,19 +127,6 @@ impl<F: Field> core::ops::MulAssign<F> for Blind<F> {
     fn mul_assign(&mut self, rhs: F) {
         self.0 *= rhs;
     }
-}
-
-/// Log-size IPA proof.
-#[derive(Clone, Debug)]
-pub struct IpaProof<C: CurveAffine> {
-    /// Commitment to blinding polynomial S.
-    pub s_commitment: C,
-    /// Cross-term commitments $(L_j, R_j)$ per round.
-    pub rounds: Vec<(C, C)>,
-    /// Final collapsed coefficient.
-    pub c: C::ScalarExt,
-    /// Synthetic blinding factor.
-    pub f: C::ScalarExt,
 }
 
 /// Absorb a curve point into the IPA transcript by byte-reinterpreting each
