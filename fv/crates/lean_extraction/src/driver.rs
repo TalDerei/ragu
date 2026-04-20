@@ -54,7 +54,7 @@ impl<F: Field> ExtractionDriver<F> {
     /// Wire 0 is pre-reserved as the constant-1 wire; allocations begin at 1.
     pub fn new() -> Self {
         ExtractionDriver {
-            next_wire: 1,
+            next_wire: 0,
             next_input_wire: 0,
             ops: Vec::new(),
             _phantom: PhantomData,
@@ -158,7 +158,7 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
     type Wire = Expr<F>;
 
     /// Wire 0 is always the constant-1 wire.
-    const ONE: Expr<F> = Expr::Var(0);
+    const ONE: Expr<F> = Expr::Const(Coeff::One);
 
     /// Returns a constant expression without allocating a wire.
     ///

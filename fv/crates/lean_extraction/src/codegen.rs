@@ -33,13 +33,7 @@ fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
 
 fn display_expr<F: Field + std::fmt::Debug>(expr: &Expr<F>) -> String {
     match expr {
-        Expr::Var(i) => {
-            if *i == 0 {
-                "1".to_owned()
-            } else {
-                format!("(var {})", i - 1)
-            }
-        }
+        Expr::Var(i) => format!("(var ⟨{}⟩)", i),
         Expr::InputVar(i) => format!("(input_var.get {i})"),
         Expr::Const(c) => display_coeff(c),
         Expr::Add(l, r) => format!("({} + {})", display_expr(l), display_expr(r)),
