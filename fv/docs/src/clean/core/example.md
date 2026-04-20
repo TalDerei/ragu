@@ -18,35 +18,35 @@ structure Inputs (F : Type) where
   y : F
 deriving ProvableStruct
 
-def main (hint : ProverData (F p) → Core.AllocMul.Row (F p)) (input : Var Inputs (F p))
+-- quotient * denominator = numerator, with denominator = y, numerator = x
+def main (idx : ℕ) (input : Var Inputs (F p))
     : Circuit (F p) (Var field (F p)) := do
-  let ⟨quotient, denominator, numerator⟩ ← Core.AllocMul.circuit hint ()
+  let ⟨quotient, denominator, numerator⟩ ← Core.AllocMul.circuit idx ()
   assertZero (input.x - numerator)
   assertZero (input.y - denominator)
   return quotient
 
-def GeneralAssumptions (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    (input : Inputs (F p)) (data : ProverData (F p)) :=
-  let r := hint data
+def GeneralAssumptions (idx : ℕ)
+    (input : Inputs (F p)) (_data : ProverData (F p)) (hint : ProverHint (F p)) :=
+  let r := Core.AllocMul.readRow hint idx
   r.y = input.y ∧ r.x * r.y = input.x ∧ (input.y ≠ 0 ∨ input.x = 0)
 
 def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
   input.y ≠ 0 ∨ input.x ≠ 0 → out = input.x / input.y
 
-instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : ElaboratedCircuit (F p) Inputs field where
-  main := main hint
+instance elaborated (idx : ℕ) : ElaboratedCircuit (F p) Inputs field where
+  main := main idx
   localLength _ := 3
 
-theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
+theorem generalSoundness (idx : ℕ)
+    : GeneralFormalCircuit.Soundness (F p) (elaborated idx) GeneralSpec := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
   ]
   grind
 
-theorem generalCompleteness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Completeness (F p) (elaborated hint) (GeneralAssumptions hint) := by
+theorem generalCompleteness (idx : ℕ)
+    : GeneralFormalCircuit.Completeness (F p) (elaborated idx) (GeneralAssumptions idx) := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Assumptions,
     Core.AllocMul.Spec, Core.AllocMul.CompletenessSpec
@@ -59,13 +59,13 @@ theorem generalCompleteness (hint : ProverData (F p) → Core.AllocMul.Row (F p)
   · rw [h_z_eq]; exact h_z_in.symm
   · rw [h_y_eq]; exact h_y_in.symm
 
-def generalCircuit (hint : ProverData (F p) → Core.AllocMul.Row (F p))
+def generalCircuit (idx : ℕ)
     : GeneralFormalCircuit (F p) Inputs field :=
-  { elaborated hint with
-    Assumptions := GeneralAssumptions hint,
+  { elaborated idx with
+    Assumptions := GeneralAssumptions idx,
     Spec := GeneralSpec,
-    soundness := generalSoundness hint,
-    completeness := generalCompleteness hint }
+    soundness := generalSoundness idx,
+    completeness := generalCompleteness idx }
 
 end Ragu.Circuits.Element.DivNonzero
 ```
@@ -74,6 +74,8 @@ In this template we define the input shape, which is a structure with two inputs
 The goal of the template is to return the division over the field `x / y`, as long as `x` or `y` is different from zero.
 The circuit invokes as a subcircuit `Core.AllocMul.circuit`, which allocates a triple `(a, b, c)` and enforces that `a * b = c`, returning the allocated triple to the caller.
 The division circuit enforces that the input `x` is equal to the third component of the triple, and that the input `y` is equal to the second component of the triple, returning the first component.
+
+The `idx : ℕ` parameter picks one row of the prover's hint table that `AllocMul` reads during witness generation — the honest prover is expected to have precomputed a `(quotient, denominator, numerator)` triple at that position.
 
 Intuitively, to compute `x / y`, the prover witnesses the result `z`, and then checks that `z * y = x`.
 Notice that if the caller provides both `x = 0` and `y = 0`, the circuit makes no guarantees.
@@ -90,8 +92,8 @@ def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (
 Let's start working on the soundness proof.
 
 ```lean
-theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
+theorem generalSoundness (idx : ℕ)
+    : GeneralFormalCircuit.Soundness (F p) (elaborated idx) GeneralSpec := by
   sorry
 ```
 
@@ -100,8 +102,8 @@ Lean will show a not particularly useful goal that we have to prove:
 ```lean
 p : ℕ
 inst✝ : Fact (Nat.Prime p)
-hint : ProverData (F p) → Core.AllocMul.Row (F p)
-⊢ GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec
+idx : ℕ
+⊢ GeneralFormalCircuit.Soundness (F p) (elaborated idx) GeneralSpec
 ```
 
 The first thing to do is invoking the `circuit_proof_start` tactic, that will set up the proof, and get rid of most of the machinery going on behind the scenes.
@@ -116,13 +118,13 @@ The proof state now becomes more interesting:
 ```lean
 p : ℕ
 inst✝ : Fact (Nat.Prime p)
-hint : ProverData (F p) → Core.AllocMul.Row (F p)
+idx : ℕ
 i₀ : ℕ
-env : Environment (F p)
+env : VerifierEnvironment (F p)
 input_x input_y : F p
 input_var_x input_var_y : Expression (F p)
 h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y
-h_holds : (Core.AllocMul.circuit hint).Spec (eval env ())
+h_holds : (Core.AllocMul.circuit idx).Spec (eval env ())
     { x := Expression.eval env (ElaboratedCircuit.output () i₀).x,
       y := Expression.eval env (ElaboratedCircuit.output () i₀).y,
       z := Expression.eval env (ElaboratedCircuit.output () i₀).z }
@@ -150,26 +152,26 @@ Now the proof goal is more explicit:
 ```lean
 p : ℕ
 inst✝ : Fact (Nat.Prime p)
-hint : ProverData (F p) → Core.AllocMul.Row (F p)
+idx : ℕ
 i₀ : ℕ
-env : Environment (F p)
+env : VerifierEnvironment (F p)
 input_x input_y : F p
 input_var_x input_var_y : Expression (F p)
 h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y
-h_holds : Expression.eval env (Core.AllocMul.main hint () i₀).1.x * Expression.eval env (Core.AllocMul.main hint () i₀).1.y =
-    Expression.eval env (Core.AllocMul.main hint () i₀).1.z ∧
-  input_x + -Expression.eval env (Core.AllocMul.main hint () i₀).1.z = 0 ∧
-    input_y + -Expression.eval env (Core.AllocMul.main hint () i₀).1.y = 0
-⊢ input_y ≠ 0 ∨ input_x ≠ 0 → Expression.eval env (Core.AllocMul.main hint () i₀).1.x = input_x / input_y
+h_holds : Expression.eval env (Core.AllocMul.main idx () i₀).1.x * Expression.eval env (Core.AllocMul.main idx () i₀).1.y =
+    Expression.eval env (Core.AllocMul.main idx () i₀).1.z ∧
+  input_x + -Expression.eval env (Core.AllocMul.main idx () i₀).1.z = 0 ∧
+    input_y + -Expression.eval env (Core.AllocMul.main idx () i₀).1.y = 0
+⊢ input_y ≠ 0 ∨ input_x ≠ 0 → Expression.eval env (Core.AllocMul.main idx () i₀).1.x = input_x / input_y
 ```
 
-We can see a big term `Expression.eval env (Core.AllocMul.main hint () i₀)` appears repeatedly, but all the ingredients are there. `h_input` is the assumption about the input. `h_holds` is what a verifier knows from constraints and the subcircuits.
+We can see a big term `Expression.eval env (Core.AllocMul.main idx () i₀)` appears repeatedly, but all the ingredients are there. `h_input` is the assumption about the input. `h_holds` is what a verifier knows from constraints and the subcircuits.
 
 A single `grind` tactic finishes the proof.
 
 ```lean
-theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
+theorem generalSoundness (idx : ℕ)
+    : GeneralFormalCircuit.Soundness (F p) (elaborated idx) GeneralSpec := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
   ]

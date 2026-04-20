@@ -50,7 +50,7 @@ A subcircuit call stores more than just a list of low-level operations:
 ```lean
 structure Subcircuit (F : Type) [Field F] (offset : ℕ) where
   ops : NestedOperations F
-  Soundness : Environment F → Prop
+  Soundness : VerifierEnvironment F → Prop
   Completeness : Environment F → Prop
   UsesLocalWitnesses : Environment F → Prop
   localLength : ℕ
@@ -59,6 +59,8 @@ structure Subcircuit (F : Type) [Field F] (offset : ℕ) where
 
 The important point here is that a subcircuit carries: its own operations, its witness length (i.e., how many variables are allocated internally) and the logical statements needed for compositional proofs.
 Clean can reason about a subcircuit as one atomic operation at the outer level, while still knowing how to expand it to primitive operations when needed.
+
+Notice the asymmetry between `Soundness` and the other two: soundness cannot see the prover's `hint`, while completeness and witness-generation can.
 
 ## Flattening
 

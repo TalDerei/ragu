@@ -20,7 +20,6 @@ In this style of export, the exported circuit object stays generic:
 - compile-time parameters may stay as Lean parameters,
 - the extracted object may preserve more of the original circuit structure.
 
-This gives a more general formalization, for example, one may hope to reason once about a whole circuit family, for example for all possible compile time parameters, rather than about one concrete instantiation.
 This gives a more general formalization: for example, one may hope to reason once about a whole circuit family, for all possible compile-time parameters, rather than about one concrete instantiation.
 
 The cost is that the exporter is complex, and becomes part of a large trusted interface: it has to preserve the meaning of high-level structure, parameters, constants, and symbolic circuit composition.

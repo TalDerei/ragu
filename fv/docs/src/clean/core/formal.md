@@ -81,7 +81,7 @@ The soundness statement is defined as:
 ```lean
 def Soundness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
     (Assumptions : Input F → Prop) (Spec : Input F → Output F → Prop) :=
-  ∀ offset : ℕ, ∀ env,
+  ∀ offset : ℕ, ∀ env : VerifierEnvironment F,
   ∀ input_var : Var Input F, ∀ input : Input F, eval env input_var = input →
   Assumptions input →
   ConstraintsHold.Soundness env (circuit.main input_var |>.operations offset) →
@@ -92,7 +92,9 @@ def Soundness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
 Soundness is the main property provided in the **adversarial prover** case. It precisely defines what guarantees the constraints provide to the verifier, and aims at avoiding underconstrained circuits.
 Intuitively, we want to prove that for every possible assignment to variables, if the Assumptions on the inputs are true, and the constraints defined in the circuit hold, then also the Spec is true.
 
-More precisely, soundness states: take any offset and any possible environment (i.e., any possible assignment from variables to field elements). Take any symbolic input, assume the input satisfies `Assumptions`, assume all circuit constraints hold, then that input/output pair satisfies `Spec`.
+More precisely, soundness states: take any offset and any possible `VerifierEnvironment` (i.e., any possible assignment from variables to field elements, plus the committed `ProverData`). Take any symbolic input, assume the input satisfies `Assumptions`, assume all circuit constraints hold, then that input/output pair satisfies `Spec`.
+
+Note that the environment here is a `VerifierEnvironment`, not the full `Environment`. The statement therefore quantifies only over what the verifier can see, so it cannot accidentally depend on the prover's `hint`.
 
 ## Completeness
 
@@ -101,7 +103,7 @@ The completeness statement is defined as:
 ```lean
 def Completeness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
     (Assumptions : Input F → Prop) :=
-  ∀ offset : ℕ, ∀ env, ∀ input_var : Var Input F,
+  ∀ offset : ℕ, ∀ env : Environment F, ∀ input_var : Var Input F,
   env.UsesLocalWitnessesCompleteness offset (circuit.main input_var |>.operations offset) →
   ∀ input : Input F, eval env input_var = input →
   Assumptions input →
@@ -115,7 +117,7 @@ More precisely, completeness states: take any offset and any possible environmen
 
 ## GeneralFormalCircuit
 
-We use `FormalCircuit` when the verifier (soundness) and the honest prover (completeness) assumes the same `Assumptions`. Sometimes we need different assumptions for soundness and completeness. For example, when there are data that the honest prover uses but the usual verifier doesn't have access to, the honest prover might want to assume something about the prover data.
+We use `FormalCircuit` when the verifier (soundness) and the honest prover (completeness) assume the same `Assumptions`. Sometimes we need different assumptions for soundness and completeness. For example, the honest prover may rely on hints that the verifier does not have access to, and those hints may have to satisfy some property for witness generation to succeed.
 
 For these cases, Clean provides `GeneralFormalCircuit`:
 
@@ -123,13 +125,21 @@ For these cases, Clean provides `GeneralFormalCircuit`:
 structure GeneralFormalCircuit (F : Type) (Input Output : TypeMap) [Field F]
     [ProvableType Input] [ProvableType Output] where
   main : Var Input F → Circuit F (Var Output F)
-  Assumptions : Input F → ProverData F → Prop
-  Spec : Input F → Output F → ProverData F → Prop
-  soundness : GeneralFormalCircuit.Soundness F Spec
-  completeness : GeneralFormalCircuit.Completeness F Assumptions
+  Assumptions      : Input F → ProverData F → ProverHint F → Prop
+  Spec             : Input F → Output F → ProverData F → Prop
+  CompletenessSpec : Input F → Output F → ProverHint F → Prop
+  soundness        : GeneralFormalCircuit.Soundness F Spec
+  completeness     : GeneralFormalCircuit.Completeness F Assumptions
+  completenessSpec : GeneralFormalCircuit.CompletenessSpecProof F Assumptions CompletenessSpec
 ```
 
+The two auxiliary pieces of data that `Input F`/`Output F` get paired with are complementary:
+
+- `ProverData F` is committed into the proof. Both the verifier and the honest prover see the same `ProverData`. It shows up in `Spec` (soundness) and in `Assumptions` (completeness) when a property depends on committed auxiliary data such as the content of a lookup table.
+- `ProverHint F` is the prover's runtime-only witness-generation aid. It never appears in the proof, so the verifier cannot observe it. It shows up in `Assumptions` (the honest prover may want to assume something about its own hint) and in `CompletenessSpec` (an extra output-side promise the honest prover can make to its caller), but not in `Spec`.
+
 Compared to `FormalCircuit`:
-- `Assumptions` and `Spec` take an extra `ProverData F` argument, representing data that is available to the honest prover but not necessarily to the verifier. Even when `Spec` talks about the `ProverData F` in a meaningful way there is no guarantee that the verifier and the prover are talking about the same `ProverData F`. The current codebase uses `ProverData F` for passing prover hints to the witness generation; this is arguably a hack. The Clean developers are currently considering another way to pass prover hints to witness generation.
-- `Assumptions` is used only for completeness: it is what the honest prover assumes about the inputs and the prover data when generating witnesses.
-- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→` some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred). At the moment `ProverData F` is not empty, so given `Input F` and `Output F`, it is possible to get a `Prop` out of `Spec`.
+
+- `Assumptions` is used only for completeness: it is what the honest prover assumes about the inputs, the committed `ProverData`, and its own `ProverHint` when generating witnesses.
+- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→`, some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred).
+- `CompletenessSpec` lets the honest prover promise an extra relation between inputs, outputs, and its hint. It defaults to the trivially-true predicate, so most circuits ignore it.

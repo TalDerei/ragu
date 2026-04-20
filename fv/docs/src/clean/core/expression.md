@@ -35,38 +35,43 @@ x * y - z
 
 instead of manually using constructors like `Expression.mul` and `Expression.add`.
 
-## Environment
+## Environments
 
-An environment provides concrete values for variables:
+Clean uses two environment structures, depending on who is allowed to look inside:
 
 ```lean
-structure Environment (F : Type) where
+structure VerifierEnvironment (F : Type) where
   get : ℕ → F
   data : ProverData F
+
+structure Environment (F : Type) extends VerifierEnvironment F where
+  hint : ProverHint F
 ```
 
-- `get` is a function that assigns a field element to each variable index,
-- `data` stores additional prover-side data that is not part of the current witness.
+- `get` assigns a field element to each variable index.
+- `data` stores auxiliary data that is committed into the proof — the verifier can access it (for example the content of a lookup table).
+- `hint` is a runtime-only map the prover uses during witness generation. It is *not* committed and the verifier never observes it.
+
+The split enforces that only the prover-facing side of the framework can see `hint`:
+
+- **Soundness-path** objects (expression evaluation, `ConstraintsHold.Soundness`, a subcircuit's `Soundness`, the `Spec` of a formal circuit) take a `VerifierEnvironment`. They have no way to depend on a hint.
+- **Completeness-path** objects (`ConstraintsHold.Completeness`, witness-generation callbacks, a subcircuit's `Completeness` and `UsesLocalWitnesses`) take the full `Environment`.
+
+`Environment.toVerifierEnvironment` drops the hint and returns the verifier view. In Lean this is also registered as a coercion, so in many places the user can write `env : Environment F` where a `VerifierEnvironment F` is expected and Lean inserts the projection automatically; in the remaining cases the user writes `env.toVerifierEnvironment` explicitly.
 
 ## Evaluation
 
-Expressions are evaluated in an environment by:
+Expressions are evaluated in a verifier environment:
 
 ```lean
-def eval (env : Environment F) : Expression F → F
+def eval (env : VerifierEnvironment F) : Expression F → F
   | var v => env.get v.index
   | const c => c
   | add x y => eval env x + eval env y
   | mul x y => eval env x * eval env y
 ```
 
-There is also a coercion
-
-```lean
-instance [Field F] : CoeFun (Environment F) (fun _ => (Expression F) → F)
-```
-
-so an environment can be used as a function. That is why Clean code often writes:
+Clean registers a `CoeFun` instance on both environment structs, so either kind of environment can be used directly as a function on expressions. That is why circuit code often writes:
 
 ```lean
 env x
@@ -77,3 +82,5 @@ instead of:
 ```lean
 Expression.eval env x
 ```
+
+The `CoeFun` mechanism is a standard Lean feature that lets a value be applied as if it were a function.
