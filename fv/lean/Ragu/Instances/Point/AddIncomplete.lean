@@ -28,34 +28,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output :=
-    input.P1.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    input.P2.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    (
-      -- If the x coordinates of P1 and P2 are different, then we can conclude that the
-      -- addition output is affine and is the correct result of the addition
-      input.P1.x ≠ input.P2.x -> (
-        (
-          match input.P1.add_incomplete input.P2  with
-          | none => False -- this case never happens
-          | some res => output.P3 = res
-        )
-        ∧ output.P3.isOnCurve Circuits.Point.Spec.EpAffineParams
-      )
-    ) ∧
-    (
-      -- if the x coordinates of P1 and P2 are equal, then output nonzero is 0
-      -- regardless of the input nonzero
-      (input.P1.x = input.P2.x -> output.nonzero = 0) ∧
-
-      -- if the x coordinates of P1 and P2 are not equal, then output nonzero preserves
-      -- non-zero-ness from input nonzero
-      (input.P1.x ≠ input.P2.x ->
-        (input.nonzero = 0 -> output.nonzero = 0) ∧
-        (input.nonzero ≠ 0 -> output.nonzero ≠ 0)
-      )
-    )
-
   reimplementation :=
     Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
       (Circuits.Core.AllocMul.readRow · 0)
@@ -82,10 +54,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor <;> congr)
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Point.AddIncomplete.circuit,
-      Circuits.Point.AddIncomplete.Spec]
-    aesop
 
 end Ragu.Instances.Point.AddIncomplete

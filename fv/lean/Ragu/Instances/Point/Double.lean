@@ -20,15 +20,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output :=
-    input.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    Circuits.Point.Spec.EpAffineParams.noOrderTwoPoints →
-    (match input.double with
-    | none => False
-    | some double => output = double)
-    ∧
-    output.isOnCurve Circuits.Point.Spec.EpAffineParams
-
   reimplementation :=
     Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
       (Circuits.Core.AllocMul.readRow · 0)
@@ -55,10 +46,4 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     constructor <;> rfl
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Point.Double.circuit,
-      Circuits.Point.Double.Spec]
-    aesop
-
 end Ragu.Instances.Point.Double

@@ -19,8 +19,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output := output.isOnCurve Circuits.Point.Spec.EqAffineParams
-
   reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams
     (fun data => ((data "alloc_square_w" 1).getD 0 default)[0])
     (fun data => ((data "alloc_square_w" 1).getD 2 default)[0])
@@ -34,6 +32,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     rfl
   same_output := by intro input; rfl
-  same_spec := by intro input output; rfl
 
 end Ragu.Instances.Point.AllocFq

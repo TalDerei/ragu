@@ -58,7 +58,8 @@ structure GeneralFormalInstance where
 
   reimplementation : GeneralFormalCircuit (F p) Input Output
 
-  Spec (input : Input (F p)) (output : Output (F p)) : Prop
+  Spec (input : Input (F p)) (output : Output (F p)) : Prop :=
+    reimplementation.Spec input output (fun _ _ => #[])
 
   -- Compare circuit constraints, ignoring witness generation
   same_constraints : ∀ (input : Vector (Expression (F p)) (size Input)),

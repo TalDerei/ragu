@@ -19,11 +19,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output :=
-    input.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    (output = Circuits.Point.Spec.Point.negate input
-      ∧ output.isOnCurve Circuits.Point.Spec.EpAffineParams)
-
   reimplementation :=
     FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Point.Spec.Point Circuits.Point.Spec.Point
       (Circuits.Point.Negate.circuit Circuits.Point.Spec.EpAffineParams)
@@ -43,11 +38,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.Negate.circuit, Circuits.Point.Negate.elaborated, Circuits.Point.Negate.main]
     show Expression.mul _ _ = Expression.mul _ _
     congr 1
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Point.Negate.circuit, Circuits.Point.Negate.Assumptions,
-      Circuits.Point.Negate.Spec]
-    rfl
 
 end Ragu.Instances.Point.Negate
