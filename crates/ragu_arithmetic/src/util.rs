@@ -320,9 +320,31 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
 }
 
 /// Returns the coefficient vector for $c(X) = a(X) \cdot b(X)$ via FFT.
+///
+/// For hot paths, see [`poly_mul_into`] which reuses caller-provided buffers.
 pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
+    let mut out = Vec::new();
+    let mut scratch = Vec::new();
+    poly_mul_into(a, b, &mut out, &mut scratch);
+    out
+}
+
+/// In-place variant of [`poly_mul`] that reuses caller-provided buffers.
+///
+/// Writes $c(X) = a(X) \cdot b(X)$ into `out`; `scratch` holds $b$'s evaluation
+/// form and is left unspecified on return. Both are resized as needed — reusing
+/// them across many calls avoids per-call allocations.
+pub fn poly_mul_into<F: PrimeField>(
+    a: &[F],
+    b: &[F],
+    out: &mut Vec<F>,
+    scratch: &mut Vec<F>,
+) {
+    out.clear();
+    scratch.clear();
+
     if a.is_empty() || b.is_empty() {
-        return vec![];
+        return;
     }
 
     let result_len = a.len() + b.len() - 1;
@@ -330,21 +352,20 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
     let domain = Domain::new(domain_size.ilog2());
     let n = domain.n();
 
-    let mut a_evals = vec![F::ZERO; n];
-    a_evals[..a.len()].copy_from_slice(a);
-    domain.fft(&mut a_evals);
+    out.resize(n, F::ZERO);
+    out[..a.len()].copy_from_slice(a);
+    domain.fft(out);
 
-    let mut b_evals = vec![F::ZERO; n];
-    b_evals[..b.len()].copy_from_slice(b);
-    domain.fft(&mut b_evals);
+    scratch.resize(n, F::ZERO);
+    scratch[..b.len()].copy_from_slice(b);
+    domain.fft(scratch);
 
-    for (a, b) in a_evals.iter_mut().zip(b_evals.iter()) {
+    for (a, b) in out.iter_mut().zip(scratch.iter()) {
         *a *= b;
     }
 
-    domain.ifft(&mut a_evals);
-    a_evals.truncate(result_len);
-    a_evals
+    domain.ifft(out);
+    out.truncate(result_len);
 }
 
 /// Computes the decomposition $(p, q)$ of $a(X) \cdot b(X)$, with $p$ the
@@ -403,13 +424,17 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     }
 
     let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
+    let mut out = Vec::new();
+    let mut scratch = Vec::new();
 
     while polys.len() > 1 {
         let pairs = polys.len() / 2;
         let has_odd = polys.len() % 2 == 1;
 
         for i in 0..pairs {
-            polys[i] = poly_mul(&polys[2 * i], &polys[2 * i + 1]);
+            poly_mul_into(&polys[2 * i], &polys[2 * i + 1], &mut out, &mut scratch);
+            polys[i].clear();
+            polys[i].extend_from_slice(&out);
         }
 
         if has_odd {
