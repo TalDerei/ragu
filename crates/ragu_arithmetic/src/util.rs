@@ -556,6 +556,7 @@ fn test_poly_with_roots() {
 
 #[cfg(test)]
 mod proptests {
+    use ff::{Field, PrimeField};
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
 
@@ -564,6 +565,30 @@ mod proptests {
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())
             .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
+    }
+
+    fn arb_fe_nonzero() -> impl Strategy<Value = F> {
+        arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero()))
+    }
+
+    /// Checks the [`decomp_poly`] identity
+    /// $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$ from precomputed
+    /// evaluations at $x$. Single source of truth for the exponents so any
+    /// future verifier that inlines the check can be asserted against this.
+    fn check_decomp_identity<F: PrimeField>(
+        a_at_x: F,
+        b_at_x: F,
+        p_at_x_inv: F,
+        q_at_x: F,
+        x: F,
+        n: usize,
+    ) -> bool {
+        if n == 0 {
+            return a_at_x * b_at_x == F::ZERO;
+        }
+        let x_pow_n_minus_1 = x.pow_vartime([(n - 1) as u64]);
+        let x_pow_n = x_pow_n_minus_1 * x;
+        a_at_x * b_at_x == x_pow_n_minus_1 * p_at_x_inv + x_pow_n * q_at_x
     }
 
     proptest! {
@@ -600,6 +625,60 @@ mod proptests {
             }
             prop_assert_eq!(geosum(r, m), naive);
         }
+
+        #[test]
+        fn decomp_poly_identity(
+            n in 1usize..=32,
+            x in arb_fe_nonzero(),
+            seed_a in any::<u64>(),
+            seed_b in any::<u64>(),
+        ) {
+            let a: Vec<F> = (0..n).map(|i| F::from(seed_a.wrapping_add(i as u64 * 13 + 2))).collect();
+            let b: Vec<F> = (0..n).map(|i| F::from(seed_b.wrapping_add(i as u64 * 17 + 5))).collect();
+
+            let (p, q) = decomp_poly(&a, &b);
+            prop_assert_eq!(p.len(), n);
+            prop_assert_eq!(q.len(), n);
+            prop_assert_eq!(q[n - 1], F::ZERO, "q's high coefficient is always zero");
+
+            let x_inv = x.invert().unwrap();
+            prop_assert!(check_decomp_identity(
+                eval(&a, x),
+                eval(&b, x),
+                eval(&p, x_inv),
+                eval(&q, x),
+                x,
+                n,
+            ));
+
+            let revdot: F = a.iter().zip(b.iter().rev()).map(|(&x, &y)| x * y).sum();
+            prop_assert_eq!(p[0], revdot);
+            prop_assert_eq!(revdot_poly(&a, &b), p);
+        }
+    }
+
+    #[test]
+    fn decomp_poly_n_eq_1() {
+        let a = vec![F::from(7)];
+        let b = vec![F::from(11)];
+        let (p, q) = decomp_poly(&a, &b);
+        assert_eq!(p, vec![F::from(77)]);
+        assert_eq!(q, vec![F::ZERO]);
+    }
+
+    #[test]
+    fn decomp_poly_empty() {
+        let (p, q) = decomp_poly::<F>(&[], &[]);
+        assert!(p.is_empty());
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "decomp_poly requires equal-length vectors")]
+    fn decomp_poly_length_mismatch() {
+        let a = vec![F::ONE, F::ONE];
+        let b = vec![F::ONE];
+        let _ = decomp_poly(&a, &b);
     }
 }
 
@@ -749,32 +828,3 @@ fn test_batched_quotient_streaming() {
     assert_eq!(f_at_y, expected_at_y);
 }
 
-/// Checks the Bootle decomposition identity $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$
-/// at a random point $x$, and confirms that $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$
-/// still holds through the [`revdot_poly`] wrapper.
-#[test]
-fn test_decomp_poly_identity() {
-    use ff::Field;
-    use pasta_curves::Fp as F;
-
-    let a: Vec<F> = (0..8).map(|i| F::from(i * 13 + 2)).collect();
-    let b: Vec<F> = (0..8).map(|i| F::from(i * 17 + 5)).collect();
-    let n = a.len();
-
-    let (p, q) = decomp_poly(&a, &b);
-    assert_eq!(p.len(), n);
-    assert_eq!(q.len(), n, "q is padded to length n");
-
-    let x = F::from(12345);
-    let x_inv = x.invert().unwrap();
-
-    let lhs = eval(&a, x) * eval(&b, x);
-    let x_pow_n_minus_1 = x.pow_vartime([(n - 1) as u64]);
-    let x_pow_n = x_pow_n_minus_1 * x;
-    let rhs = x_pow_n_minus_1 * eval(&p, x_inv) + x_pow_n * eval(&q, x);
-    assert_eq!(lhs, rhs);
-
-    let revdot: F = a.iter().zip(b.iter().rev()).map(|(&x, &y)| x * y).sum();
-    assert_eq!(p[0], revdot);
-    assert_eq!(revdot_poly(&a, &b), p);
-}
