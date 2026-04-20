@@ -24,14 +24,6 @@ drivers use manual `mem::replace` on the scoped state instead when they need to
 inspect the child scope's result before restoring.
 We refer our invocation-depth-independent drivers as being _context insensitive_.
 
-```admonish info
-Drivers do not learn the [`TypeId`] of a [`Routine`] they are asked to `execute`,
-since [`Routine`] does not implement [`Any`] / `'static`. Even if they could
-learn this, routines of the same type are allowed to diverge in their actual
-behavior because they can be arbitrarily configured, so long as they remain
-deterministic.
-```
-
 Drivers cannot distinguish routines themselves but merely their **invocations**;
 in each `routine` call, they learn the [`TypeId`] of their [`Input`] and
 [`Output`] gadgets, and thanks to
@@ -83,9 +75,15 @@ The interface contribution cannot be factored (or memoized) the same way:
 the input gadget is allocated by the routine caller at an unknown position, both
 absolute and relative to the start of the routine, so there is no a priori $X^i$
 factors to extract. We must compute interface contributions per-invocation.
-One crucial complication arises from nested routines. Our decision on
+One major complication arises from nested routines. Our decision on
 _context-insensitive_ drivers demands that the output gadgets of nested/child
 routines are also part of the interface contribution of the parent routine.
+It is always safe to categorize them as interface contributions and recompute on
+every invocation of the parent routine.
+However, if we know two routines have identical sub-routines, then these output
+gadgets can be correctively remapped in the parent routine's context such that
+further constraints on them can be memoized as internal contribution again.
+We will elaborate more [later](#fingerprint).
 
 Meanwhile, system contributions are also memoizable:
 
@@ -99,6 +97,98 @@ are referenced, $X^{2n}$ is the monomial for the $b_0 (= 1)$ wire during
 Similarly, we can extract the common factor $X^{2n}Y^j$ for the starting
 constraint index $j$ and the remaining univariate $g_3$ is invariant to the
 routine invocation.
+
+## Example: Synthesis Trace
+
+The following circuit serves as a concrete example for all upcoming discussion:
+
+```
+ Circuit Synthesis Trace
+ ────────────────────────
+ ├─ r0
+ ├─ Routine A
+ │   └─ a0
+ ├─ r1
+ ├─ Routine B
+ │   ├─ b0
+ │   ├─ Routine A
+ │   │   └─ a0
+ │   └─ b1
+ ├─ Routine B
+ │   ├─ b2
+ │   └─ Routine C
+ │       └─ c0
+ └─ r2
+```
+
+All `r0, a0, b0, .., r2` are contiguous sections of synthesized circuit trace
+allocated via [`gate`]. Intermittently, the circuit logic spawns a routine which
+can further spawn nested routines.
+
+## Segments
+
+Given an execution trace, we first need a global indexing of all sub-sections
+so that different drivers can refer to them consistently. Ragu divides the trace
+into **segments** and orders them naturally in a canonical **DFS order** as per
+the routine invocation. Particularly, circuit sections of the same invocation
+depth are merged into a single segment; wires allocated outside of any routine
+belong to a special **root segment**.[^root-segment] Each routine invocation
+creates a new **base segment** containing only the wires allocated directly
+within it; nested calls produce their own segments in turn. The DFS-ordered
+segments are built as [`SegmentRecord`]s during the [metric pass](#pipeline).
+Since circuit synthesis is deterministic, the ordered sequence is stable across
+all drivers of the same circuit code.
+
+[^root-segment]: The root segment is never repositioned. It contains the special
+    `ONE` wire and is where all stage wires of multi-stage circuits are located.
+
+```
+segments[0]: r0 + r1 + r2 (root segment)
+segments[1]: a0           (base segment of Routine A)
+segments[2]: b0 + b1      (base segment of Routine B)
+segments[3]: a0           (in the nested Routine A invoked in Routine B)
+segments[4]: b2           (base segment of the second invocation of Routine B)
+segments[5]: c0           (base segment of Routine C)
+```
+
+
+## Routine Fingerprints {#fingerprint}
+
+A prerequisite of routine memoization is identifying distinct routines.
+Let's start with some naive but incorrect ways to identify a routine:
+
+- by shape (`num_gates` and `num_constraints`):
+  different routines can coincidentally share the same shape.
+- by `(Input, Output)` gadget types:
+  routines executing different operations (e.g. `square` and `double`) can share the
+  same input/output types.
+- by `TypeId::of::<Routine>()`: 
+  routines can be [parameterized](../../guide/routines.md#param) and stateful,
+  even the same `ScaledTxz` routine type (or `RoutineB` in our example)
+  can synthesize to different traces.
+  
+In short, drivers cannot distinguish routines themselves but merely their
+**invocations**. Fingerprinting is the process by which a routine invocation is
+succinctly encapsulated so that _matching fingerprints implies opportunities for
+routine memoization_. There could be multiple fingerprints for one invocation,
+each fingerprint signals a different memoization strategy or aggressive level.
+Ragu produces two fingerprints: a **base fingerprint** that captures _segment-level
+equivalence_ and signals memoization of only the base segment of an invocation;
+and a **deep fingerprint** that captures _subtree-level equivalence_ and signals
+memoization of the entire routine, recursively include all nested sub-routines.
+
+Conceptually, the simplest approach is to pick a random point $(x_r, y_r)$
+and use the internal contribution of each routine invocation to $s(x_r, y_r)$
+as its fingerprint. By Schwartz-Zippel lemma, two different invocations will
+produce different polynomial contribution with overwhelming probability.
+However, such contribution requires tracking monomial evaluations in both
+forward direction ($X^i$ terms) and backward direction ($X^{4n-1-i}$ terms); and
+involves scalar multiplications (for $X^{2n}$ and $X^{4n}$) and expensive
+inversion (for $X^{-1}$) during initialization.
+
+In contrast, Ragu takes a more efficient approach where fingerprints 
+TODO
+
 
 ## Pipeline {#pipeline}
 
@@ -199,16 +289,10 @@ segments back into canonical DFS order.
 
 ## Segments
 
-Execution traces are divided into **segments**. All wires allocated outside of
-routine invocations belong to a single **root segment**.[^root-segment] Each
-routine invocation creates a new segment containing only the wires allocated
-directly within it; nested calls produce their own segments in turn. The
+The
 `CircuitExt::trace` method produces a `Trace` that contains these segments in DFS
 order, but their actual arrangement in the trace polynomial depends on the floor
 plan's repositioning values.
-
-[^root-segment]: The root segment is not repositioned. It contains the special
-    `ONE` wire and is where all stage wires are located.
 
 Each segment has its own [contribution](#algebraic-description) to $s(X, Y)$. A
 leaf routine invocation — one with no nested calls — contributes exactly one

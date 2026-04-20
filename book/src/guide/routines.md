@@ -74,7 +74,7 @@ expressions][poly-synthesis], and equivalent routines contribute structurally
 identical terms at different positions. The driver can derive one invocation's
 contribution from another without re-executing the body.
 
-### Parameterization
+### Parameterization {#param}
 
 Unlike gadgets, routines are not parameterized by a driver and are free to carry
 non-trivial state. This allows them to hold configuration, references, or
