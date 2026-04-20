@@ -42,37 +42,35 @@ def FlatOperation.eraseCompute {F : Type} [Field F] : FlatOperation F → FlatOp
 
 structure GeneralFormalInstance where
   p : ℕ
-  pPrime : Fact p.Prime := by infer_instance
+  [pPrime : Fact p.Prime]
 
-  inputLen : ℕ
-  outputLen : ℕ
+  {Input : TypeMap}
+  [InputProvable : ProvableType Input]
 
-  exportedOperations : Vector (Expression (F p)) inputLen → Operations (F p)
-  exportedOutput : Vector (Expression (F p)) inputLen → Vector (Expression (F p)) outputLen
+  {Output : TypeMap}
+  [OutputProvable : ProvableType Output]
 
-  Input : TypeMap
-  InputProvable : ProvableType Input := by infer_instance
+  exportedOperations : Vector (Expression (F p)) (size Input)  → Operations (F p)
+  exportedOutput : Vector (Expression (F p)) (size Input) → Vector (Expression (F p)) (size Output)
 
-  Output : TypeMap
-  OutputProvable : ProvableType Output := by infer_instance
-
-  deserializeInput : Vector (Expression (F p)) inputLen → Var Input (F p)
-  serializeOutput : Var Output (F p) → Vector (Expression (F p)) outputLen
-
-  Spec : Input (F p) → Output (F p) → Prop
+  deserializeInput : Vector (Expression (F p)) (size Input) → Var Input (F p)
+  serializeOutput : Var Output (F p) → Vector (Expression (F p)) (size Output)
 
   reimplementation : GeneralFormalCircuit (F p) Input Output
 
+  Spec (input : Input (F p)) (output : Output (F p)) : Prop
+
   -- Compare circuit constraints, ignoring witness generation
-  same_constraints : ∀ (input : Vector (Expression (F p)) inputLen),
+  same_constraints : ∀ (input : Vector (Expression (F p)) (size Input)),
     (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
     = (exportedOperations input).toFlat.map FlatOperation.eraseCompute
 
-  same_output : ∀ (input : Vector (Expression (F p)) inputLen),
+  same_output : ∀ (input : Vector (Expression (F p)) (size Input)),
     (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
 
   -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
   same_spec : ∀ input : Input (F p), ∀ output : Output (F p),
     (Spec input output) ↔ (reimplementation.Spec input output (fun _ _ => #[]))
+    := by intros; rfl
 
 end Ragu.Core.Statements
