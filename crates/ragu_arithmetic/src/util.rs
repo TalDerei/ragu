@@ -344,6 +344,7 @@ pub fn poly_mul_into<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>, scratch:
 
     let result_len = a.len() + b.len() - 1;
     let domain_size = result_len.next_power_of_two();
+    // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
     let domain = Domain::new(domain_size.ilog2());
     let n = domain.n();
 
