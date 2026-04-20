@@ -627,6 +627,23 @@ mod proptests {
         }
 
         #[test]
+        fn poly_mul_convolution(
+            a in proptest::collection::vec(arb_fe(), 1..32),
+            b in proptest::collection::vec(arb_fe(), 1..32),
+        ) {
+            let c = poly_mul(&a, &b);
+            prop_assert_eq!(c.len(), a.len() + b.len() - 1);
+
+            let mut expected = vec![F::ZERO; a.len() + b.len() - 1];
+            for (i, &ai) in a.iter().enumerate() {
+                for (j, &bj) in b.iter().enumerate() {
+                    expected[i + j] += ai * bj;
+                }
+            }
+            prop_assert_eq!(c, expected);
+        }
+
+        #[test]
         fn decomp_poly_identity(
             n in 1usize..=32,
             x in arb_fe_nonzero(),
@@ -679,6 +696,21 @@ mod proptests {
         let a = vec![F::ONE, F::ONE];
         let b = vec![F::ONE];
         let _ = decomp_poly(&a, &b);
+    }
+
+    #[test]
+    fn poly_mul_empty() {
+        assert!(poly_mul::<F>(&[], &[F::ONE]).is_empty());
+        assert!(poly_mul::<F>(&[F::ONE], &[]).is_empty());
+        assert!(poly_mul::<F>(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn poly_mul_by_one() {
+        let a = vec![F::from(2), F::from(3), F::from(5)];
+        let one = vec![F::ONE];
+        assert_eq!(poly_mul(&a, &one), a);
+        assert_eq!(poly_mul(&one, &a), a);
     }
 }
 
