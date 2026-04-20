@@ -47,7 +47,7 @@ The field
 Assumptions : Input F → Prop
 ```
 
-specifies the **preconditions under which the circuit is intended to be used**. Soundness is provided conditioned on the assumptions.
+specifies the **preconditions under which the circuit is intended to be used**. Soundness and completeness are provided conditioned on the assumptions.
 The caller circuit is able to derive the specification property of the sub-formal circuit only if they can discharge such assumptions.
 
 Typical assumptions include:
