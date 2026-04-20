@@ -755,3 +755,33 @@ fn test_batched_quotient_streaming() {
         .sum();
     assert_eq!(f_at_y, expected_at_y);
 }
+
+/// Checks the Bootle decomposition identity $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$
+/// at a random point $x$, and confirms that $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$
+/// still holds through the [`revdot_poly`] wrapper.
+#[test]
+fn test_decomp_poly_identity() {
+    use ff::Field;
+    use pasta_curves::Fp as F;
+
+    let a: Vec<F> = (0..8).map(|i| F::from(i * 13 + 2)).collect();
+    let b: Vec<F> = (0..8).map(|i| F::from(i * 17 + 5)).collect();
+    let n = a.len();
+
+    let (p, q) = decomp_poly(&a, &b);
+    assert_eq!(p.len(), n);
+    assert_eq!(q.len(), n, "q is padded to length n");
+
+    let x = F::from(12345);
+    let x_inv = x.invert().unwrap();
+
+    let lhs = eval(&a, x) * eval(&b, x);
+    let x_pow_n_minus_1 = x.pow_vartime([(n - 1) as u64]);
+    let x_pow_n = x_pow_n_minus_1 * x;
+    let rhs = x_pow_n_minus_1 * eval(&p, x_inv) + x_pow_n * eval(&q, x);
+    assert_eq!(lhs, rhs);
+
+    let revdot: F = a.iter().zip(b.iter().rev()).map(|(&x, &y)| x * y).sum();
+    assert_eq!(p[0], revdot);
+    assert_eq!(revdot_poly(&a, &b), p);
+}
