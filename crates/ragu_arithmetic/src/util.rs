@@ -355,8 +355,8 @@ pub fn poly_mul_into<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>, scratch:
     scratch[..b.len()].copy_from_slice(b);
     domain.fft(scratch);
 
-    for (a, b) in out.iter_mut().zip(scratch.iter()) {
-        *a *= b;
+    for (lhs, rhs) in out.iter_mut().zip(scratch.iter()) {
+        *lhs *= rhs;
     }
 
     domain.ifft(out);
@@ -369,7 +369,7 @@ pub fn poly_mul_into<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>, scratch:
 ///
 /// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x) $$
 ///
-/// and in particular $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$.
+/// and in particular $p(0) = \mathrm{revdot}(\mathbf{a}, \mathbf{b})$.
 ///
 /// # Panics
 ///
@@ -385,23 +385,15 @@ pub fn decomp_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
         return (vec![], vec![]);
     }
 
+    // `c` has length `2n - 1`. Split off the upper `n - 1` coefficients into `q`
+    // and zero-pad to `n`; reverse the remaining lower `n` coefficients in place
+    // to form `p`.
     let n = a.len();
-    let c = poly_mul(a, b);
-
-    let p: Vec<F> = c[..n].iter().copied().rev().collect();
-    let mut q = vec![F::ZERO; n];
-    q[..n - 1].copy_from_slice(&c[n..]);
-    (p, q)
-}
-
-/// Thin wrapper over [`decomp_poly`] returning only $p$, such that
-/// $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$.
-///
-/// # Panics
-///
-/// Panics if `a` and `b` have different lengths.
-pub fn revdot_poly<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
-    decomp_poly(a, b).0
+    let mut c = poly_mul(a, b);
+    let mut q = c.split_off(n);
+    q.push(F::ZERO);
+    c.reverse();
+    (c, q)
 }
 
 /// Computes the lowest degree monic polynomial
@@ -419,8 +411,10 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     }
 
     let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
-    let mut out = Vec::new();
-    let mut scratch = Vec::new();
+    // Largest FFT domain size used by any `poly_mul_into` call in the tree.
+    let max_n = (roots.len() + 1).next_power_of_two();
+    let mut out = Vec::with_capacity(max_n);
+    let mut scratch = Vec::with_capacity(max_n);
 
     while polys.len() > 1 {
         let pairs = polys.len() / 2;
@@ -670,7 +664,6 @@ mod proptests {
 
             let revdot: F = a.iter().zip(b.iter().rev()).map(|(&x, &y)| x * y).sum();
             prop_assert_eq!(p[0], revdot);
-            prop_assert_eq!(revdot_poly(&a, &b), p);
         }
     }
 
@@ -859,4 +852,3 @@ fn test_batched_quotient_streaming() {
         .sum();
     assert_eq!(f_at_y, expected_at_y);
 }
-

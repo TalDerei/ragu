@@ -99,7 +99,7 @@ pub use ragu_macros::repr256;
 pub use u128 as Uendo;
 pub use util::{
     batch_to_affine, decomp_poly, dot, eval, factor, factor_iter, geosum, low_u64, mul, poly_mul,
-    poly_mul_into, poly_with_roots, revdot_poly,
+    poly_mul_into, poly_with_roots,
 };
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
