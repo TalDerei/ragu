@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 use instance::CircuitInstance;
 
 use crate::instances::{
+    core_alloc_mul::CoreAllocMulInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
     element_mul::ElementMulInstance,
@@ -77,6 +78,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.DivNonzero",
         export: export_instance::<ElementDivNonzeroInstance>,
         generated_file: generated_file_instance::<ElementDivNonzeroInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Core.AllocMul",
+        export: export_instance::<CoreAllocMulInstance>,
+        generated_file: generated_file_instance::<CoreAllocMulInstance>,
     },
 ];
 
