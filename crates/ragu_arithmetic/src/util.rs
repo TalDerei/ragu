@@ -334,12 +334,7 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
 /// Writes $c(X) = a(X) \cdot b(X)$ into `out`; `scratch` holds $b$'s evaluation
 /// form and is left unspecified on return. Both are resized as needed — reusing
 /// them across many calls avoids per-call allocations.
-pub fn poly_mul_into<F: PrimeField>(
-    a: &[F],
-    b: &[F],
-    out: &mut Vec<F>,
-    scratch: &mut Vec<F>,
-) {
+pub fn poly_mul_into<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>, scratch: &mut Vec<F>) {
     out.clear();
     scratch.clear();
 
