@@ -347,6 +347,47 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
     a_evals
 }
 
+/// Computes the decomposition $(p, q)$ of $a(X) \cdot b(X)$, with $p$ the
+/// reversed lower half of $c = a \cdot b$ and $q$ its upper half zero-padded
+/// to length $n$. The pair satisfies
+///
+/// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x) $$
+///
+/// and in particular $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$.
+///
+/// # Panics
+///
+/// Panics if `a` and `b` have different lengths.
+pub fn decomp_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "decomp_poly requires equal-length vectors"
+    );
+
+    if a.is_empty() {
+        return (vec![], vec![]);
+    }
+
+    let n = a.len();
+    let c = poly_mul(a, b);
+
+    let p: Vec<F> = c[..n].iter().copied().rev().collect();
+    let mut q = vec![F::ZERO; n];
+    q[..n - 1].copy_from_slice(&c[n..]);
+    (p, q)
+}
+
+/// Thin wrapper over [`decomp_poly`] returning only $p$, such that
+/// $p(0) = \text{revdot}(\mathbf{a}, \mathbf{b})$.
+///
+/// # Panics
+///
+/// Panics if `a` and `b` have different lengths.
+pub fn revdot_poly<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
+    decomp_poly(a, b).0
+}
+
 /// Computes the lowest degree monic polynomial
 ///
 /// $$
