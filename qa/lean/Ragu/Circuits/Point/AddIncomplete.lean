@@ -58,7 +58,7 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Out
     input.P1.x ≠ input.P2.x -> (
       (
         match input.P1.add_incomplete input.P2  with
-        | none => False
+        | none => False -- this case never happens
         | some res => output.P3 = res
       )
       ∧ output.P3.isOnCurve curveParams
