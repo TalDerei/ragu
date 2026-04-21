@@ -16,12 +16,13 @@ Routines can further invoke other routines, creating **nested routines**.
 To avoid complicated call-stack management, drivers keep only _routine-local_
 state. When circuit code calls [`Driver::routine`], the driver saves its
 scoped state (e.g., running wire monomial evaluations for `sx::Evaluator`,
-constraint counters for `metric::Counter`), and initializes a fresh scope
+constraint counters for `metrics::Counter`), and initializes a fresh scope
 for the child routine. On return, the parent scope is restored and the child's
 contribution is folded into the parent's accumulated result. The `DriverScope`
 trait provides a `with_scope` helper that automates this save-and-restore; some
 drivers use manual `mem::replace` instead when they need to inspect the child
 scope before restoring the parent.
+
 Because driver behavior does not depend on invocation depth, we call them
 _context insensitive_.
 
@@ -30,10 +31,13 @@ _context insensitive_.
 Routines exploit the fact that contiguous sections of code tend to have
 algebraically convenient structure in the resulting wiring polynomial $s(X, Y)$:
 
-* [`gate`] advances an $i$ counter and returns $(X^{2n - 1 - i}, X^{2n + i}, X^{4n - 1 - i}, X^i)$ wires.
-* `enforce_zero` advances a counter $j$ and adds a fresh linear combination of previous wires multiplied by $Y^j$.
+* [`gate`] advances an $i$ counter and returns
+  $(X^{2n - 1 - i}, X^{2n + i}, X^{4n - 1 - i}, X^i)$ wires.
+* `enforce_zero` advances a counter $j$ and adds a fresh linear
+  combination of previous wires multiplied by $Y^j$.
 
-Most constraints within a routine involve only wires created within that routine.
+Most constraints within a routine involve only wires created within
+that routine.
 For a routine that starts at gate index $i$ and constraint index $j$, these
 constraints, constituting the **internal contribution** to $s(X, Y)$, can be
 written as:
@@ -43,18 +47,19 @@ Y^j \Big( X^i \, g_1(X, Y) + X^{-i} \, g_2(X^{-1}, Y) \Big)
 $$
 
 where $X^i Y^j$ (and $X^{-i} Y^j$ for wires allocated in reversed segments of a
-[structured](../../protocol/prelim/structured_vectors.md) trace) are the common
+[structured](../protocol/prelim/structured_vectors.md) trace) are the common
 factors extracted from all monomial terms in the contribution[^factoring].
 Crucially, $g_1$ and $g_2$ are **invariant to the routine invocation**: they are
 the same regardless of where or how many times the invocation is placed in a
-circuit. This makes _routine memoization_ possible: given an invocation cache hit,
-we only need to apply a **repositioning** by re-scaling to the starting position
-($X^i Y^j$ and $X^{-i} Y^j$) of that particular invocation.
+circuit. This makes _routine memoization_ possible: given an invocation
+cache hit, we only need to apply a **repositioning** by re-scaling to the
+starting position ($X^i Y^j$ and $X^{-i} Y^j$) of that particular invocation.
 
-[^factoring]: Every wire allocated _after_ entering the routine at gate index $i$
-    has a positional monomial $X^{i+k}$ or $X^{-{i+k}}$ (reversed segment) for
-    some $k>0$. Each constraint on these internal wires is a linear combination
-    of these positional monomials multiplied by $Y^{j+\ell}$ for some $\ell > 0$.
+[^factoring]: Every wire allocated within the routine, starting at gate
+    index $i$, has a positional monomial $X^{i+k}$ or $X^{-(i+k)}$
+    (reversed segment) for some $k\geq 0$. Each constraint on these
+    internal wires is a linear combination of these positional monomials
+    multiplied by $Y^{j+\ell}$ for some $\ell \geq 0$.
     The internal contribution — the sum of all $Y$-power-scaled linear
     combinations of $X$ monomials — therefore shares a common factor $X^i Y^j$
     (or $X^{-i}Y^j$). Extracting these factors yields $g_1$ and $g_2$.
@@ -70,6 +75,7 @@ the input gadget is allocated by the caller at an unknown position, both
 absolute and relative to the start of the routine, so there are no a priori
 $X^i$ factors to extract. Interface contributions must be computed
 per-invocation.
+
 A complication arises from nested routines. The context-insensitive design
 requires that output gadgets of child routines are also treated as interface
 contributions of the parent routine.
@@ -80,7 +86,7 @@ output gadgets can be remapped to matching positions in the parent's context,
 allowing further constraints on them to be memoized as internal contributions.
 We elaborate on this [below](#memoization).
 
-Meanwhile, system contributions are also memoizable:
+System contributions are memoizable by similar reasoning:
 
 $$
 \sum_{\ell \in T} Y^\ell X^{2n} = X^{2n}Y^j \cdot g_3(Y)
@@ -88,14 +94,15 @@ $$
 
 where $T$ is the set of constraint indices within the routine where system wires
 are referenced, $X^{2n}$ is the monomial for the $b_0 (= 1)$ wire during
-[wiring checks](../../protocol/local/wiring.md#layout).
+[wiring checks](../protocol/local/wiring.md#layout).
 The common factor $X^{2n}Y^j$ can be extracted for the starting constraint
-index $j$, and the remaining univariate $g_3$ is again invariant to the routine
-invocation.
+index $j$, and the remaining univariate $g_3$ is again invariant to the
+routine invocation: the relative offsets $\ell - j$ within the routine
+depend only on its structure, not on the absolute starting index.
 
 ## Example: Synthesis Trace {#example}
 
-The following circuit serves as a concrete example for all upcoming discussion:
+The following circuit is a concrete example for all upcoming discussion:
 
 ```
  Circuit Synthesis Trace
@@ -120,7 +127,7 @@ Each label `r0, a0, b0, …, r2` denotes a contiguous section of circuit trace
 allocated via [`gate`]. At various points the circuit logic invokes a routine,
 which may in turn invoke nested routines.
 
-## Segments
+## Segments {#segments}
 
 Given an execution trace, we need a global indexing of all sub-sections so
 that different drivers can refer to them consistently. Ragu divides the trace
@@ -155,14 +162,14 @@ Consider some naive but incorrect ways to identify one:
 - by shape (`num_gates` and `num_constraints`):
   different routines can coincidentally share the same shape.
 - by `(Input, Output)` gadget types:
-  routines performing different operations (e.g. `square` and `double`) can share
-  the same input/output types.
+  routines performing different operations (e.g. `square` and `double`)
+  can share the same input/output types.
 - by `TypeId::of::<Routine>()`: 
-  routines can be [parameterized](../../guide/routines.md#param) and stateful;
+  routines can be [parameterized](../guide/routines.md#param) and stateful;
   even the same `ScaledTxz` routine type (or `RoutineB` in our example)
   can synthesize different traces depending on its configuration.
   
-In short, drivers cannot distinguish routines statically but must also consider
+Drivers cannot distinguish routines statically but must also consider
 their **invocations**. Fingerprinting is the process by which a routine
 invocation is succinctly encapsulated so that _matching fingerprints imply
 opportunities for routine memoization_. An invocation can carry multiple
@@ -250,7 +257,7 @@ sequence.
 
 ### Deep fingerprint {#deep-fingerprint}
 
-The most aggressive memoization applies when two routine invocations are
+Deep-fingerprint memoization applies when two routine invocations are
 tree-level equivalent: structurally identical in both their base segment and all
 nested sub-routines. Two invocations with identical deep fingerprints have
 matching shapes (gate and constraint counts) and matching polynomial
@@ -285,10 +292,12 @@ tree.
 [^swapped]: As an example, suppose two `RoutineB` invocations each nest a call
     to `RoutineA`. The first `RoutineA` invocation runs
     `alloc(w1); alloc(w2); enforce_zero(w1 + w2); return (w1, w2)`;
-    the second runs `alloc(w2); alloc(w1); enforce_zero(w1 + w2); return (w1, w2)`.
-    In the `BaseFingerprint` computation, the output wires `(w1, w2)` from both
-    invocations are mapped to the same values in their parent `RoutineB` context,
-    so the two `RoutineB` invocations receive identical base fingerprints.
+    the second runs
+    `alloc(w2); alloc(w1); enforce_zero(w1 + w2); return (w1, w2)`.
+    In the `BaseFingerprint` computation, the output wires `(w1, w2)` from
+    both invocations are mapped to the same values in their parent
+    `RoutineB` context, so the two `RoutineB` invocations receive
+    identical base fingerprints.
     However, after inlining, the invocations differ because of the swapped
     allocation order of `w1` and `w2`.
 
@@ -323,18 +332,20 @@ The registry collects segment records from every circuit and feeds them into a
 **floor planner** that assigns each segment a non-overlapping absolute position
 `(gate_start, constraint_start)` in the polynomial layout. The floor planner
 aligns segments with matching fingerprints to maximize
-[memoization](#memoization) across the entire registry, both within and between
-circuits: matching base fingerprints enable memoization of the base segment's internal
-contribution, while matching deep fingerprints enable memoization of entire
-routine subtrees. Currently, the floor planner only rearranges segment
-placement; it does not perform circuit-equivalence substitutions that would
-alter the circuit logic itself.
+[memoization](#memoization) across the entire registry, both within and
+between circuits: matching base fingerprints enable memoization of the
+base segment's internal contribution, while matching deep fingerprints
+enable memoization of entire routine subtrees. Currently, the floor
+planner only rearranges segment placement; it does not perform
+circuit-equivalence substitutions that would alter the circuit logic
+itself.
 
-The floor plan encodes this rearrangement and serves as an auxiliary input to
+The floor plan encodes this rearrangement and is an auxiliary input to
 downstream drivers: the wiring polynomial evaluators use it to
-[reposition](#algebraic-description) each segment's contribution to its assigned offset
-in $s(X, Y)$, and the trace polynomial evaluator uses it to scatter each
-segment's gate values to the correct range in $r(X)$.
+[reposition](#algebraic-description) each segment's contribution to its
+assigned offset in $s(X, Y)$, and the trace polynomial evaluator uses
+it to scatter each segment's gate values to the correct range in
+$r(X)$.
 
 ## Memoization {#memoization}
 
@@ -344,10 +355,22 @@ and $g_2(X^{-1}, Y)$, a **system** polynomial $g_3(Y)$, and **interface** terms
 that cross the routine boundary. The internal and system polynomials depend only
 on the routine's constraint structure and are invariant to invocation context;
 the interface terms depend on externally allocated wires and must be recomputed.
-Memoization caches the invariant parts — $g_1$, $g_2$, and $g_3$ — and replays
-them for subsequent invocations whose [fingerprints](#fingerprint) match, applying
-fresh [repositioning](#algebraic-description) factors $X^i$, $X^{-i}$, $Y^j$ to
-place the cached contribution at the correct offset.
+Memoization caches the invariant parts — $g_1$, $g_2$, and $g_3$ — and
+replays them for subsequent invocations whose [fingerprints](#fingerprint)
+match, applying fresh [repositioning](#algebraic-description) factors
+$X^i$, $X^{-i}$, $Y^j$ to place the cached contribution at the correct
+offset.
+
+Caching follows $s(X, Y)$'s evaluation logic, not the simplified
+computation used for [fingerprinting](#base-fingerprint). During
+fingerprinting, interface wires receive context-insensitive values so
+their contributions cancel across equivalent invocations (approach 2
+[above](#base-fingerprint)). During memoization, the driver must
+actually _exclude_ interface contributions from the cached result so
+that only the invariant part is stored. This requires approach 1:
+the wire type carries an `Interface` discriminant so that the driver
+can identify interface terms in each constraint and route them to the
+per-invocation computation rather than the cache.
 
 The registry collects fingerprints from the [metric pass](#pipeline) and records
 matches — both within a single circuit and across circuits — so that downstream
@@ -360,18 +383,20 @@ How much of a routine can be cached depends on which fingerprint matches.
 **Base-fingerprint memoization.** When two invocations share a
 [base fingerprint](#base-fingerprint), only the _base segment_ of the routine is
 known to be equivalent. The driver caches $g_1$, $g_2$, and $g_3$ for that
-segment and repositions them at the new invocation's offset. Contributions from
-nested sub-routines — including any constraints the parent places on their output
-gadgets — remain interface contributions and are recomputed per-invocation.
+segment and repositions them at the new invocation's offset.
+Contributions from nested sub-routines — including any constraints the
+parent places on their output gadgets — remain interface contributions
+and are recomputed per-invocation.
 
 **Deep-fingerprint memoization.** When two invocations share a
 [deep fingerprint](#deep-fingerprint), the entire invocation tree is equivalent:
 the base segment _and_ all nested sub-routines have matching structure. This
-changes what counts as an interface contribution: output gadgets of child
-routines, which must be treated as interface contributions under base-fingerprint
-memoization, can now be remapped to matching positions within the parent's
-context. Constraints on these output wires become part of the internal
-contribution and are memoizable along with the rest of the subtree.
+changes what counts as an interface contribution: output gadgets of
+child routines, which must be treated as interface contributions under
+base-fingerprint memoization, can now be remapped to matching positions
+within the parent's context. Constraints on these output wires become
+part of the internal contribution and are memoizable along with the
+rest of the subtree.
 
 ```admonish important title="Deep memoization redefines the internal contribution"
 Under deep-fingerprint equivalence, the output wires of nested sub-routines are
@@ -407,8 +432,9 @@ $$
 \Big(\sum_{k \in K} \ell_k(w)\Big) \cdot \big(X^i Y^j \cdot g(X, Y)\big)
 $$
 
-where $K$ is the set of circuits sharing the routine at that position. The
-routine's contribution is computed once and multiplied by the sum of the relevant
+where $K$ is the set of circuits sharing the routine at that position
+and $g$ denotes the combined invariant contribution. The routine's
+contribution is computed once and multiplied by the sum of the relevant
 Lagrange coefficients, rather than being recomputed per-circuit.
 
 The floor planner prioritizes deep-fingerprint alignment for the largest
@@ -433,10 +459,10 @@ constraint counts declared by the floor plan — would fire. A memoization
 error manifests differently: a cached internal contribution that disagrees
 with the fresh computation produces a different $s(x, y)$ value, and
 because the final evaluation is a single field element, any discrepancy is
-detectable by comparison. Incorrect repositioning rescaling shifts a
-routine's contribution to the wrong polynomial position, breaking the
-relationship between $s(X, Y)$ and $r(X)$, which verification catches as
-a polynomial identity failure.
+detectable by comparison. Incorrect repositioning shifts a routine's
+contribution to the wrong polynomial position, breaking the
+relationship between $s(X, Y)$ and
+$r(X)$, which verification catches as a polynomial identity failure.
 
 These failure modes are all covered by a single reference comparison. The
 native evaluation path computes the registry polynomial $m(w, x, y)$ by
@@ -455,8 +481,6 @@ itself — a routine fingerprint that over-groups, or a memo fingerprint
 that omits a necessary field — not only bugs in the memoization code.
 
 [`WireMap`]: ragu_core::convert::WireMap
-[`RoutineFingerprint`]: ragu_circuits::metrics::RoutineFingerprint
-[`MemoFingerprint`]: ragu_circuits::metrics::MemoFingerprint
 [`TypeId`]: core::any::TypeId
 [`Routine`]: ragu_core::routines::Routine
 [`Driver`]: ragu_core::drivers::Driver
