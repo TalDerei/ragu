@@ -24,13 +24,6 @@ drivers use manual `mem::replace` on the scoped state instead when they need to
 inspect the child scope's result before restoring.
 We refer our invocation-depth-independent drivers as being _context insensitive_.
 
-Drivers cannot distinguish routines themselves but merely their **invocations**;
-in each `routine` call, they learn the [`TypeId`] of their [`Input`] and
-[`Output`] gadgets, and thanks to
-[fungibility](../guide/gadgets/index.md#fungibility) this is very
-useful for their structural analysis (via [conversions]) and induces stable
-algebraic properties at routine boundaries.
-
 ## Algebraic Description {#algebraic-description}
 
 Routines exploit the fact that contiguous sections of code tend to have
@@ -98,7 +91,7 @@ Similarly, we can extract the common factor $X^{2n}Y^j$ for the starting
 constraint index $j$ and the remaining univariate $g_3$ is invariant to the
 routine invocation.
 
-## Example: Synthesis Trace
+## Example: Synthesis Trace {#example}
 
 The following circuit serves as a concrete example for all upcoming discussion:
 
@@ -167,17 +160,43 @@ Let's start with some naive but incorrect ways to identify a routine:
   even the same `ScaledTxz` routine type (or `RoutineB` in our example)
   can synthesize to different traces.
   
-In short, drivers cannot distinguish routines themselves but merely their
-**invocations**. Fingerprinting is the process by which a routine invocation is
-succinctly encapsulated so that _matching fingerprints implies opportunities for
-routine memoization_. There could be multiple fingerprints for one invocation,
-each fingerprint signals a different memoization strategy or aggressive level.
+In short, drivers cannot distinguish routines statically alone, but must also 
+consider their **invocations**. Fingerprinting is the process by which a routine
+invocation is succinctly encapsulated so that _matching fingerprints implies
+opportunities for routine memoization_. There could be multiple fingerprints for
+an invocation, each signals a different memoization strategy or aggressive level.
 Ragu produces two fingerprints: a **base fingerprint** that captures _segment-level
 equivalence_ and signals memoization of only the base segment of an invocation;
-and a **deep fingerprint** that captures _subtree-level equivalence_ and signals
-memoization of the entire routine, recursively include all nested sub-routines.
+and a **deep fingerprint** that captures _tree-level equivalence_ and signals
+memoization of the entire routine, recursively including all nested sub-routines.
 
-Conceptually, the simplest approach is to pick a random point $(x_r, y_r)$
+### Base fingerprint {#base-fingerprint}
+
+Ragu tracks the gates and constraint counts of the local/base segment of a
+routine invocation and its polynomial contribution for `BaseFingerprint`.
+In the [example above](#example), although the two invocations of `RoutineB`
+are obviously different, it's possible that the internal contribution of their
+base segments are identical thus memoizable (i.e., `b0 + b1 = b2`).
+
+Note that the polynomial contribution only include invocation's internal and
+system contributions, those invariant to the invocation's context and location,
+and exclude all interface contributions. Further note that polynomial evaluation
+alone is insufficient because it only captures `enforce_zero` calls, not gate
+count which is crucial for floor planner later. Technically, the constraint
+count, already bounded in the contribution scalar, is purely defense-in-depth.
+
+```rust
+struct BaseFingerprint {
+    /// shape of the **base segment** of a routine
+    num_gates: usize,
+    num_constraints: usize,
+    /// polynomial contribution of the base segment
+    /// in practice, we use `low_u64<F>(eval) -> u64`
+    eval: F,
+}
+```
+
+Conceptually, the simplest approach to `eval` is to pick a random $(x_r, y_r)$
 and use the internal contribution of each routine invocation to $s(x_r, y_r)$
 as its fingerprint. By Schwartz-Zippel lemma, two different invocations will
 produce different polynomial contribution with overwhelming probability.
@@ -186,9 +205,88 @@ forward direction ($X^i$ terms) and backward direction ($X^{4n-1-i}$ terms); and
 involves scalar multiplications (for $X^{2n}$ and $X^{4n}$) and expensive
 inversion (for $X^{-1}$) during initialization.
 
-In contrast, Ragu takes a more efficient approach where fingerprints 
-TODO
+Instead, Ragu takes a more efficient approach: use 4 _independent_ geometric
+sequences for wire values (one for each of `a/b/c/d`-wires) and Horner-accumulate
+contribution of `enforce_zero` constraints with $Y$ powers of a random $Y=y_r$.
+Wires from the $i$-th gate corresponds to $(x_0^i, x_1^i, x_2^i, x_3^i)$ monomial
+evaluations for a random $(x_0, x_1, x_2, x_3)$ picked at initialization.
+This simplification is possible thanks to the relaxed requirement on the
+fingerprint: characterize the constraints in any binding way, not necessarily in
+the same way as the wiring polynomial $s(X, Y)$.
 
+Handling interface contributions is the most subtle logic. In our example, the
+first invocation of `RoutineB` accepts an input gadget from the parent routine
+on enter and receives an output gadget from the child `RoutineA` in the middle.
+Both gadgets are allocated outside the scope of the base segment of `RoutineB`,
+thus any constraint on them belongs to interface contributions and should not
+meaningfully affect the `eval` computation. Concretely, relocating wires in these
+interface gadgets should not affect the `eval` fingerprint.
+
+There are two approaches to dealing with wires in these interface gadgets:
+
+1. discriminate them as a separate wire type:
+   (e.g. `enum WireEval { Value, One, Interface }`) so that routines can flag
+   them as `WireEval::Interface(F)` and drivers can drop their contribution.
+2. assign context-insensitive values to them so that their contributions are
+   cancelled out among otherwise equivalent invocations, thus cannot impact
+   equivalence meaningfully.
+
+Ragu takes the second approach, implemented via a wire remapping [`WireMap`]:
+all wires in interface gadgets are remapped to hold values from an independent
+geometric sequence with another random base.[^x-remap] Importantly, every
+routine, no matter at which invocation depth, starts with the same geometric
+sequence re-initialized so that the input gadget wires holds a positional value
+that is context-insensitive. Furthermore, before exit, every routine remap
+the output gadget and appended to its parent's context.
+
+[^x-remap]: For code reference, the variable is named `x_remap` and remapped 
+    wires take on values `x_remap^i` which is independent of normal sequences
+    $(x_0^i, x_1^i, x_2^i, x_3^i)$. Intuitively, every routine starts with a
+    blank page for interface gadget wires written sequentially from the page;
+    and their output gadget wires are appended to the parent's page.
+
+### Deep fingerprint {#deep-fingerprint}
+
+The most aggressive memoization is possible when two routine invocations are
+tree-level equivalent with the structurally identical base and subroutines.
+Intuitively, two invocations with identical deep fingerprints means that their
+shapes (gate and constraint counts) and their polynomial contributions are
+identical if we _flatten and inline all their nested subroutines_.
+
+The main gap from [base fingerprint](#base-fingerprint) is how to handle wires
+of output gadgets from the child subroutines. In base fingerprint, output wires
+are remapped in their parent's context. This remapping erases their positions
+relative to the start of the base/parent routine, which is necessary to test
+equivalence of the inlined routine.[^swapped] Therefore, we must capture the
+positional values of these output wires in the parent's deep fingerprint.
+
+```rust
+struct DeepFingerprint {
+    base: BaseFingerprint,
+    /// deep hash: 
+    /// H(self.base, output_gadget, child_deep_hashes, input_type, output_type)
+    deep: u64,
+}
+```
+
+Ragu augments the base fingerprint with the wire values of the output gadget,
+the deep fingerprint of all its child invocations (one level deeper), and the
+`TypeId` of the input and output gadget types (optional, only defense-in-depth).
+The monomial evaluation of output wires (of a subroutine) already encodes their
+positions relative to the start of the subroutine (thus transitively relative
+to the start of the parent routine). Since the deep fingerprint of the parent
+routine recursively hash in the deep hashes of all child subroutines, the final
+hash binds the entire invocation tree.
+
+
+[^swapped]: As an example, two `RoutineB` nested-call `RoutineA`. The first
+    `RoutineA` invocation: `alloc(w1); alloc(w2); enforce_zero(w1 + w2); return (w1, w2)`;
+    the second invocation: `alloc(w2); alloc(w1); enforce_zero(w1 + w2); return (w1, w2)`.
+    In `BaseFingerprint` computation, the output wires `(w1, w2)` from both
+    invocations are mapped to the same values in their parent `RoutineB` context.
+    Two `RoutineB` invocations gets identical base fingerprints.
+    However, after inlining, the two invocations differ because of swapped
+    allocation of `w1` and `w2`.
 
 ## Pipeline {#pipeline}
 
@@ -457,6 +555,7 @@ fingerprinting model at all, this comparison catches errors in the model
 itself — a routine fingerprint that over-groups, or a memo fingerprint
 that omits a necessary field — not only bugs in the memoization code.
 
+[`WireMap`]: ragu_core::convert::WireMap
 [`RoutineFingerprint`]: ragu_circuits::metrics::RoutineFingerprint
 [`MemoFingerprint`]: ragu_circuits::metrics::MemoFingerprint
 [`TypeId`]: core::any::TypeId
