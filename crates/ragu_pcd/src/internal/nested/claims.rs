@@ -139,6 +139,20 @@ where
             BridgeEval => {
                 processor.bonding_claim(id, source.rx(RxIndex::BridgeEval))?;
             }
+            Loading => {
+                let groups = source
+                    .rx(RxIndex::PointsStage)
+                    .zip(source.rx(RxIndex::BridgePreamble))
+                    .zip(source.rx(RxIndex::BridgeSPrime))
+                    .zip(source.rx(RxIndex::BridgeInnerError))
+                    .zip(source.rx(RxIndex::BridgeAB))
+                    .zip(source.rx(RxIndex::BridgeQuery))
+                    .zip(source.rx(RxIndex::BridgeF))
+                    .map(|((((((ps, bp), bs), bi), ba), bq), bf)| {
+                        [ps, bp, bs, bi, ba, bq, bf].into_iter()
+                    });
+                processor.grouped_bonding_claim(id, groups)?;
+            }
         }
     }
 

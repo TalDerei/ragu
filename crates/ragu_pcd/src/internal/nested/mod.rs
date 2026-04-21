@@ -1,7 +1,13 @@
-//! Nested field circuits for endoscaling verification.
+//! Nested field circuits for the scalar field.
 //!
-//! These circuits operate over the scalar field and verify that the
-//! commitment accumulation was computed correctly via Horner's rule.
+//! Contains two groups of circuits:
+//!
+//! - **Endoscaling**: verifies that the commitment accumulation
+//!   in `compute_p` was computed correctly via Horner's rule.
+//! - **Loading**: enforces consistency between [`PointsStage`]
+//!   inputs and the bridge stage commitments for the current step.
+//!
+//! [`PointsStage`]: crate::internal::endoscalar::PointsStage
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -10,6 +16,10 @@ use ragu_circuits::{
     staging::{MultiStage, StageExt},
 };
 use ragu_core::Result;
+
+pub mod circuits {
+    pub mod loading;
+}
 
 use crate::internal::{Side, endoscalar};
 
@@ -58,12 +68,14 @@ pub enum InternalCircuitIndex {
     BridgeF,
     /// Bridge `eval` stage mask.
     BridgeEval,
+    /// Loading circuit over all nested stages.
+    Loading,
 }
 
 impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`],
     /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 11;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 12;
 
     /// All variants in canonical iteration order.
     ///
@@ -96,6 +108,7 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
+        push(&mut slots, &mut c, Self::Loading);
         assert!(c == Self::NUM);
         slots
     }
@@ -273,6 +286,10 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
             BridgeF => registry.register_bonding(stages::f::Stage::<C::HostCurve, R>::mask()?),
             BridgeEval => {
                 registry.register_bonding(stages::eval::Stage::<C::HostCurve, R>::mask()?)
+            }
+            Loading => {
+                let circuit = circuits::loading::Circuit::<C::HostCurve, R>::new();
+                registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
             }
         };
     }
