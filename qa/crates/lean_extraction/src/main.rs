@@ -23,6 +23,7 @@ use crate::instances::{
     element_div_nonzero::ElementDivNonzeroInstance,
     element_double::ElementDoubleInstance,
     element_enforce_zero::ElementEnforceZeroInstance,
+    element_fold::ElementFoldInstance,
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
     element_mul::ElementMulInstance,
@@ -131,6 +132,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.Multiadd",
         export: export_instance::<ElementMultiaddInstance>,
         generated_file: generated_file_instance::<ElementMultiaddInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.Fold",
+        export: export_instance::<ElementFoldInstance>,
+        generated_file: generated_file_instance::<ElementFoldInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Element.Scale",

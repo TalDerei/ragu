@@ -6,6 +6,7 @@ pub mod element_alloc_square;
 pub mod element_div_nonzero;
 pub mod element_double;
 pub mod element_enforce_zero;
+pub mod element_fold;
 pub mod element_invert;
 pub mod element_invert_with;
 pub mod element_mul;
