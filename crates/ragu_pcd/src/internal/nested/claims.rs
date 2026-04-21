@@ -153,6 +153,21 @@ where
                     });
                 processor.grouped_bonding_claim(id, groups)?;
             }
+            Copying(side) => {
+                let groups = source
+                    .rx(RxIndex::ChildPointsStage(side))
+                    .zip(source.rx(RxIndex::BridgePreamble))
+                    .zip(source.rx(RxIndex::ChildBridgeSPrime(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeInnerError(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeOuterError(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeAB(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeQuery(side)))
+                    .zip(source.rx(RxIndex::ChildBridgeEval(side)))
+                    .map(|(((((((cp, bp), cs), ci), co), ca), cq), ce)| {
+                        [cp, bp, cs, ci, co, ca, cq, ce].into_iter()
+                    });
+                processor.grouped_bonding_claim(id, groups)?;
+            }
         }
     }
 

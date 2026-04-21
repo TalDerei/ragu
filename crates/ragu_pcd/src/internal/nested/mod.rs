@@ -1,12 +1,16 @@
 //! Nested field circuits for the scalar field.
 //!
-//! Contains two groups of circuits:
+//! Contains three groups of circuits:
 //!
 //! - **Endoscaling**: verifies that the commitment accumulation
 //!   in `compute_p` was computed correctly via Horner's rule.
 //! - **Loading**: enforces consistency between [`PointsStage`]
 //!   inputs and the bridge stage commitments for the current step.
+//! - **Copying**: enforces that [`ChildWitness`] stash fields in
+//!   `BridgePreamble` match the corresponding child proof's bridge
+//!   stage contents.
 //!
+//! [`ChildWitness`]: stages::preamble::ChildWitness
 //! [`PointsStage`]: crate::internal::endoscalar::PointsStage
 
 use ragu_arithmetic::Cycle;
@@ -18,6 +22,7 @@ use ragu_circuits::{
 use ragu_core::Result;
 
 pub mod circuits {
+    pub mod copying;
     pub mod loading;
 }
 
@@ -70,12 +75,14 @@ pub enum InternalCircuitIndex {
     BridgeEval,
     /// Loading circuit over all nested stages.
     Loading,
+    /// Copying circuit relating current preamble to a child proof's stages.
+    Copying(Side),
 }
 
 impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`],
     /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 12;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 14;
 
     /// All variants in canonical iteration order.
     ///
@@ -109,6 +116,8 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
         push(&mut slots, &mut c, Self::Loading);
+        push(&mut slots, &mut c, Self::Copying(Side::Left));
+        push(&mut slots, &mut c, Self::Copying(Side::Right));
         assert!(c == Self::NUM);
         slots
     }
@@ -289,6 +298,10 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
             }
             Loading => {
                 let circuit = circuits::loading::Circuit::<C::HostCurve, R>::new();
+                registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
+            }
+            Copying(side) => {
+                let circuit = circuits::copying::Circuit::<C::HostCurve, R>::new(side);
                 registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
             }
         };
