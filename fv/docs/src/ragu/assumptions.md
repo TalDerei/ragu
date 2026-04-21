@@ -44,7 +44,7 @@ The completeness theorem in the Ragu Formal Verification does not guarantee that
 
 If values in the circuit are copied or used somewhere else, the Ragu Formal Verification results are not applicable to the copied and used value in the new context (it's likely that the new context needs to constrain the copied value).
 
-The Ragu Fromal Verification might not be applicable because of missing constraints on the inputs and the outputs of the circuit. The verifier needs to be sure of the Lean assumptions of the circuit soundness without relying on the circuit. The prover needs to be sure of the Lean assumptions of the circuit completeness without relying on the circuit.
+The Ragu Formal Verification might not be applicable because of missing constraints on the inputs and the outputs of the circuit. The verifier needs to be sure of the Lean assumptions of the circuit soundness without relying on the circuit. The prover needs to be sure of the Lean assumptions of the circuit completeness without relying on the circuit.
 
 The Lean theorems talk about field elements. In order to use the Lean theorems to reason about the implementation, the field elements in Lean need to correspond to field elements in the implementation. The field elements in the implementation might exist verbatim in the memory (of the prover or the verifier), in the network, or only conceptually accessible through commitment schemes. When the same variable is used multiple times in a Lean statement, all occurrences of the same variables need to correspond to the same field element in the implementation.
 
