@@ -78,7 +78,7 @@ of the parent.
 However, if two parent routines are known to have identical sub-routines, the
 output gadgets can be remapped to matching positions in the parent's context,
 allowing further constraints on them to be memoized as internal contributions.
-We elaborate on this [below](#fingerprint).
+We elaborate on this [below](#memoization).
 
 Meanwhile, system contributions are also memoizable:
 
@@ -336,16 +336,90 @@ downstream drivers: the wiring polynomial evaluators use it to
 in $s(X, Y)$, and the trace polynomial evaluator uses it to scatter each
 segment's gate values to the correct range in $r(X)$.
 
-## Memoization
+## Memoization {#memoization}
 
-The [algebraic description](#algebraic-description) decomposes a routine's
-contribution into **internal** polynomials $g_1(X, Y)$ and $g_2(X^{-1}, Y)$
-that depend only on the routine's constraint structure, and **interface** terms
-that depend on wires crossing the routine boundary. Memoization caches the
-internal part: if two invocations produce the same constraint structure, their
-$g_1$ and $g_2$ are identical and can be reused. The interface terms and
-[repositioning](#algebraic-description) factors $X^i, X^{-i}, Y^j$ must still be
-computed per-invocation.
+The [algebraic description](#algebraic-description) decomposes a routine
+invocation's contribution to $s(X, Y)$ into **internal** polynomials $g_1(X, Y)$
+and $g_2(X^{-1}, Y)$, a **system** polynomial $g_3(Y)$, and **interface** terms
+that cross the routine boundary. The internal and system polynomials depend only
+on the routine's constraint structure and are invariant to invocation context;
+the interface terms depend on externally allocated wires and must be recomputed.
+Memoization caches the invariant parts — $g_1$, $g_2$, and $g_3$ — and replays
+them for subsequent invocations whose [fingerprints](#fingerprint) match, applying
+fresh [repositioning](#algebraic-description) factors $X^i$, $X^{-i}$, $Y^j$ to
+place the cached contribution at the correct offset.
+
+The registry collects fingerprints from the [metric pass](#pipeline) and records
+matches — both within a single circuit and across circuits — so that downstream
+drivers (the wiring polynomial evaluator for $s(X, Y)$ and the trace evaluator
+for $r(X)$) can determine on entry to each routine whether to record a fresh
+contribution or replay a cached one.
+
+How much of a routine can be cached depends on which fingerprint matches.
+
+**Base-fingerprint memoization.** When two invocations share a
+[base fingerprint](#base-fingerprint), only the _base segment_ of the routine is
+known to be equivalent. The driver caches $g_1$, $g_2$, and $g_3$ for that
+segment and repositions them at the new invocation's offset. Contributions from
+nested sub-routines — including any constraints the parent places on their output
+gadgets — remain interface contributions and are recomputed per-invocation.
+
+**Deep-fingerprint memoization.** When two invocations share a
+[deep fingerprint](#deep-fingerprint), the entire invocation tree is equivalent:
+the base segment _and_ all nested sub-routines have matching structure. This
+changes what counts as an interface contribution: output gadgets of child
+routines, which must be treated as interface contributions under base-fingerprint
+memoization, can now be remapped to matching positions within the parent's
+context. Constraints on these output wires become part of the internal
+contribution and are memoizable along with the rest of the subtree.
+
+```admonish important title="Deep memoization redefines the internal contribution"
+Under deep-fingerprint equivalence, the output wires of nested sub-routines are
+no longer interface contributions — the deep fingerprint guarantees that child
+routines produce structurally identical output at identical relative positions.
+The parent can treat these wires as internal, collapsing the entire subtree into
+a single memoizable unit. This is the key advantage of the deep fingerprint: it
+enables full-tree memoization rather than segment-by-segment caching.
+```
+
+When matching fingerprints occur only _within_ a single circuit, memoization
+requires nothing beyond caching and repositioning: the driver records the
+contribution on the first invocation and rescales it for subsequent ones.
+Alignment becomes relevant when matching fingerprints span _multiple_ circuits
+in the registry.
+
+### Inter-Circuit Alignment {#inter-circuit-alignment}
+
+The registry polynomial combines per-circuit wiring polynomials via Lagrange
+interpolation:
+
+$$
+m(w, x, y) = \sum_k \ell_k(w) \cdot s_k(x, y)
+$$
+
+where $\ell_k$ is the Lagrange basis polynomial for circuit $k$. Without
+optimization, each circuit evaluates its routines independently and scales by
+$\ell_k(w)$. If the floor planner places equivalent routines at the _same_
+absolute position across circuits, their invariant contributions coincide and
+can be factored:
+
+$$
+\Big(\sum_{k \in K} \ell_k(w)\Big) \cdot \big(X^i Y^j \cdot g(X, Y)\big)
+$$
+
+where $K$ is the set of circuits sharing the routine at that position. The
+routine's contribution is computed once and multiplied by the sum of the relevant
+Lagrange coefficients, rather than being recomputed per-circuit.
+
+The floor planner prioritizes deep-fingerprint alignment for the largest
+segments, since collapsing an entire subtree yields the greatest savings.
+Alignment introduces implicit padding between segments in the global layout, but
+this padding does not materialize in memory: all downstream drivers process
+segments in a streaming fashion using absolute offsets from the floor plan, so
+padded regions are either skipped or processed at negligible cost. The trace
+polynomial $r(X)$ remains sparse, and padding does not increase the cost of the
+polynomial commitment. Base-fingerprint alignment is also applied when the base
+segment is large enough to justify the padding overhead.
 
 ### Testability
 
