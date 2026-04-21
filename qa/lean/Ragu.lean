@@ -16,6 +16,7 @@ import Ragu.Instances.Element.Double
 import Ragu.Instances.Element.Sum
 import Ragu.Instances.Element.Multiadd
 import Ragu.Instances.Element.Fold
+import Ragu.Instances.Element.EnforceRootOfUnity
 import Ragu.Instances.Element.Scale
 import Ragu.Instances.Element.AddCoeff
 import Ragu.Instances.Element.EnforceZero
