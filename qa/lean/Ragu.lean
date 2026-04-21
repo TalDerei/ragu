@@ -13,3 +13,4 @@ import Ragu.Instances.Element.EnforceZero
 import Ragu.Instances.Element.Invert
 import Ragu.Instances.Element.InvertWith
 import Ragu.Instances.Core.AllocMul
+import Ragu.Instances.Boolean.Alloc

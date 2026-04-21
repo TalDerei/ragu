@@ -1,3 +1,4 @@
+pub mod boolean_alloc;
 pub mod core_alloc_mul;
 pub mod element_alloc;
 pub mod element_alloc_square;

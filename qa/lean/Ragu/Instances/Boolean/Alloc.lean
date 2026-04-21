@@ -1,0 +1,57 @@
+import Ragu.Circuits.Boolean.Alloc
+import Ragu.Instances.Autogen.Boolean.Alloc
+import Ragu.Core
+
+namespace Ragu.Instances.Boolean.Alloc
+open Ragu.Instances.Autogen.Boolean.Alloc
+
+set_option linter.unusedVariables false in
+def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var unit (F p) := ()
+
+def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
+  #v[output]
+
+def formal_instance : Core.Statements.GeneralFormalInstance where
+  p
+  inputLen
+  outputLen
+  exportedOperations
+  exportedOutput
+
+  Input := unit
+  Output := field
+
+  deserializeInput
+  serializeOutput
+
+  Spec (_input : Unit) (output : F p) := output = 0 ∨ output = 1
+
+  reimplementation :=
+    Circuits.Boolean.Alloc.generalCircuit (fun _ => ⟨0, 1, 0⟩)
+
+  same_constraints := by
+    intro input
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm,
+      GeneralFormalCircuit.toSubcircuit,
+      deserializeInput, exportedOperations,
+      Circuits.Boolean.Alloc.generalCircuit,
+      Circuits.Boolean.Alloc.elaborated,
+      Circuits.Boolean.Alloc.main]
+    repeat (constructor; rfl)
+    constructor
+  same_output := by
+    intro input
+    simp [circuit_norm,
+      GeneralFormalCircuit.toSubcircuit,
+      deserializeInput, serializeOutput,
+      Circuits.Boolean.Alloc.generalCircuit,
+      Circuits.Boolean.Alloc.elaborated,
+      Circuits.Boolean.Alloc.main]
+  same_spec := by
+    intro input output
+    dsimp only [Circuits.Boolean.Alloc.generalCircuit,
+      Circuits.Boolean.Alloc.GeneralSpec]
+    aesop
+
+end Ragu.Instances.Boolean.Alloc
