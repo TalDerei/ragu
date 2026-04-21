@@ -24,7 +24,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec (input : F p) (output : F p) := output = input * input
+  Spec (input : F p) (output : F p) := output = input^2
 
   reimplementation :=
     FormalCircuit.isGeneralFormalCircuit (F p) field field

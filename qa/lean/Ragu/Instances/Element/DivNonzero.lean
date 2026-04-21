@@ -24,6 +24,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
+  -- See `Circuits/Element/DivNonzero.lean` for the rationale behind the
+  -- `y ≠ 0 ∨ x ≠ 0` premise.
   Spec input output :=
     input.y ≠ 0 ∨ input.x ≠ 0 → output = input.x / input.y
 

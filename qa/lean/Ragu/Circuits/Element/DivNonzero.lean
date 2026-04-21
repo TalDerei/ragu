@@ -22,6 +22,15 @@ def GeneralAssumptions (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p
   let r := hintReader hint
   r.y = input.y ∧ r.x * r.y = input.x ∧ (input.y ≠ 0 ∨ input.x = 0)
 
+-- The disjunction `y ≠ 0 ∨ x ≠ 0` (rather than just `y ≠ 0`) reflects what the
+-- circuit actually enforces via `quotient · y = x`:
+--  * `y ≠ 0`: quotient is forced to `x / y`.
+--  * `y = 0 ∧ x ≠ 0`: no valid witness exists; any prover transcript fails.
+--  * `y = 0 ∧ x = 0`: quotient is unconstrained (premise is false, Spec is
+--    vacuously true).
+-- Callers of this gadget must establish `(x, y) ≠ (0, 0)` upstream or accept
+-- the unconstrained-output carve-out. See `element.rs:273-280` for the
+-- corresponding Rust `div_nonzero` doc comment.
 def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
   input.y ≠ 0 ∨ input.x ≠ 0 → out = input.x / input.y
 
