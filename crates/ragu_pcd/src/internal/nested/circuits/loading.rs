@@ -18,7 +18,8 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::Bound,
+    gadgets::{Bound, Gadget},
+    maybe::Maybe,
 };
 
 use crate::internal::{
@@ -60,16 +61,29 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         _witness: DriverValue<D, ()>,
     ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
         let dr = dr.skip_stage::<EndoscalarStage>()?;
-        let (_points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
+        let (points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
         let (_preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::s_prime::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::inner_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::outer_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::ab::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::query::Stage<C, R>>()?;
-        let dr = dr.skip_stage::<stages::f::Stage<C, R>>()?;
+        let (f_guard, dr) = dr.add_stage::<stages::f::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::eval::Stage<C, R>>()?;
-        let _dr = dr.finish();
+        let dr = dr.finish();
+
+        // Load stage gadgets. Witness values are never accessed — the circuit
+        // only runs during `into_bonding_object` where MaybeKind = Empty.
+        macro_rules! w {
+            () => {
+                _witness.as_ref().map(|_| unreachable!())
+            };
+        }
+        let points = points_guard.unenforced(dr, w!())?;
+        let f_stage = f_guard.unenforced(dr, w!())?;
+
+        // The initial point (f.commitment) must match BridgeF.native_f.
+        points.initial.enforce_equal(dr, &f_stage.native_f)?;
 
         Ok(WithAux::new((), D::unit()))
     }
