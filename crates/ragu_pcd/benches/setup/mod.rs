@@ -3,8 +3,7 @@ use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use rand::{SeedableRng, rngs::StdRng};
 
 pub fn setup_register() -> (
     nontrivial::WitnessLeaf<'static, Pasta>,
@@ -51,79 +50,74 @@ pub fn setup_seed() -> (
 
 pub fn setup_fuse() -> (
     Application<'static, Pasta, ProductionRank, 4>,
-    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
-    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
+    Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
+    Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
     &'static <Pasta as Cycle>::CircuitPoseidon,
     StdRng,
 ) {
     let (app, poseidon_params, mut rng) = setup_seed();
 
-    let (proof1, aux1) = app
+    let (leaf1, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(1u64),
         )
         .unwrap();
-    let leaf1 = proof1.carry::<nontrivial::LeafNode>(aux1);
 
-    let (proof2, aux2) = app
+    let (leaf2, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(2u64),
         )
         .unwrap();
-    let leaf2 = proof2.carry::<nontrivial::LeafNode>(aux2);
 
     (app, leaf1, leaf2, poseidon_params, rng)
 }
 
 pub fn setup_verify_leaf() -> (
     Application<'static, Pasta, ProductionRank, 4>,
-    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
+    Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
     StdRng,
 ) {
     let (app, poseidon_params, mut rng) = setup_seed();
 
-    let (proof, aux) = app
+    let (leaf, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(1u64),
         )
         .unwrap();
-    let leaf = proof.carry::<nontrivial::LeafNode>(aux);
 
     (app, leaf, rng)
 }
 
 pub fn setup_verify_node() -> (
     Application<'static, Pasta, ProductionRank, 4>,
-    Pcd<'static, Pasta, ProductionRank, nontrivial::InternalNode>,
+    Pcd<Pasta, ProductionRank, nontrivial::InternalNode>,
     StdRng,
 ) {
     let (app, poseidon_params, mut rng) = setup_seed();
 
-    let (proof1, aux1) = app
+    let (leaf1, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(1u64),
         )
         .unwrap();
-    let leaf1 = proof1.carry::<nontrivial::LeafNode>(aux1);
 
-    let (proof2, aux2) = app
+    let (leaf2, _) = app
         .seed(
             &mut rng,
             nontrivial::WitnessLeaf { poseidon_params },
             Fp::from(2u64),
         )
         .unwrap();
-    let leaf2 = proof2.carry::<nontrivial::LeafNode>(aux2);
 
-    let (proof, aux) = app
+    let (node, _) = app
         .fuse(
             &mut rng,
             nontrivial::Hash2 { poseidon_params },
@@ -132,7 +126,6 @@ pub fn setup_verify_node() -> (
             leaf2,
         )
         .unwrap();
-    let node = proof.carry::<nontrivial::InternalNode>(aux);
 
     (app, node, rng)
 }

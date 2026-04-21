@@ -16,4 +16,11 @@ extend-exclude = [
 
 [default.extend-words]
 ND = "ND" # ND = NewDriver
-Bootle = "Bootle" # Bootle is a person's name
+Bootle = "Bootle" # person name
+Groth= "Groth" # person name, not Growth
+ba = "ba" # variable name (b*a)
+
+[default]
+extend-ignore-words-re = [
+  "(?i)projecti(ve|ves)", # math term
+]

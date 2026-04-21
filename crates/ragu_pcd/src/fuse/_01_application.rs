@@ -1,19 +1,17 @@
 //! Evaluate the [`Step`] circuit.
 //!
 //! This creates a witness for the step circuit given the two input [`Pcd`]s and
-//! the step witness. This produces the [`proof::Application`] component of the
-//! proof. The inputs are all consumed, and the `left` and `right proofs are
-//! returned to the caller along with the auxiliary data from the application
-//! synthesis.
+//! the step witness. This sets the application fields on the [`ProofBuilder`]
+//! and returns the child proofs along with the output data from the step circuit.
 
-use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{CircuitExt, polynomials::Rank};
 use ragu_core::Result;
 use rand::CryptoRng;
 
 use crate::{
-    Application, Pcd, Proof, proof,
+    Application, Header, Pcd, Proof,
+    proof::ProofBuilder,
     step::{Step, internal::adapter::Adapter},
 };
 
@@ -23,36 +21,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
-        left: Pcd<'source, C, R, S::Left>,
-        right: Pcd<'source, C, R, S::Right>,
+        left: Pcd<C, R, S::Left>,
+        right: Pcd<C, R, S::Right>,
+        builder: &mut ProofBuilder<'_, C, R>,
     ) -> Result<(
         Proof<C, R>,
         Proof<C, R>,
-        proof::Application<C, R>,
+        <S::Output as Header<C::CircuitField>>::Data,
         S::Aux<'source>,
     )> {
-        let (trace, aux) =
-            Adapter::<C, S, R, HEADER_SIZE>::new(step).rx((left.data, right.data, witness))?;
-        let rx = self
-            .native_registry
-            .assemble(&trace, S::INDEX.circuit_index(self.num_application_steps)?)?;
-        let blind = C::CircuitField::random(&mut *rng);
-        let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
+        let (left_proof, left_data) = left.into_parts();
+        let (right_proof, right_data) = right.into_parts();
+        let (trace, aux) = Adapter::<C, S, R, HEADER_SIZE>::new(step)
+            .trace((left_data, right_data, witness))?
+            .into_parts();
+        let rx = self.native_registry.assemble(
+            &trace,
+            S::INDEX.circuit_index(self.num_application_steps)?,
+            &mut *rng,
+        )?;
 
-        let ((left_header, right_header), aux) = aux;
+        let ((left_header, right_header), output_data, step_aux) = aux;
 
-        Ok((
-            left.proof,
-            right.proof,
-            proof::Application {
-                circuit_id: S::INDEX.circuit_index(self.num_application_steps)?,
-                left_header: left_header.into_inner(),
-                right_header: right_header.into_inner(),
-                rx,
-                blind,
-                commitment,
-            },
-            aux,
-        ))
+        builder.set_circuit_id(S::INDEX.circuit_index(self.num_application_steps)?);
+        builder.set_left_header(left_header.into_inner());
+        builder.set_right_header(right_header.into_inner());
+        builder.set_native_application_rx(rx);
+
+        Ok((left_proof, right_proof, output_data, step_aux))
     }
 }

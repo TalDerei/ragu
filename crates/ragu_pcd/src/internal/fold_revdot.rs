@@ -1,0 +1,966 @@
+//! Operations and utilities for reasoning about folded revdot claims.
+
+use core::{borrow::Borrow, iter, marker::PhantomData};
+
+use ff::Field;
+use ragu_circuits::{
+    horner::Horner,
+    polynomials::{Rank, sparse},
+};
+use ragu_core::{Result, drivers::Driver};
+use ragu_primitives::{
+    Element,
+    io::Buffer,
+    vec::{CollectFixed, ConstLen, FixedVec, Len},
+};
+
+/// The two operations a Horner-style fold needs: scale all components, then
+/// add another element in.
+pub trait Foldable<F: Field>: Default + Clone {
+    fn fold_scale(&mut self, by: F);
+    fn fold_add_assign(&mut self, other: &Self);
+}
+
+impl<F: Field, R: Rank> Foldable<F> for sparse::Polynomial<F, R> {
+    fn fold_scale(&mut self, by: F) {
+        self.scale(by);
+    }
+    fn fold_add_assign(&mut self, other: &Self) {
+        self.add_assign(other);
+    }
+}
+
+/// Generic Horner fold over any [`Foldable`] type.
+pub(crate) fn fold<T: Foldable<F>, F: Field>(
+    items: impl IntoIterator<Item = impl Borrow<T>>,
+    scale_factor: F,
+) -> T {
+    items.into_iter().fold(T::default(), |mut acc, item| {
+        acc.fold_scale(scale_factor);
+        acc.fold_add_assign(item.borrow());
+        acc
+    })
+}
+
+/// The parameters $(m, n)$ that dictate the multi-layer revdot reduction.
+///
+/// The first layer involves $n$ instances of size-$m$ revdot reductions, and
+/// the second layer reduces these into a single revdot using a single size-$n$
+/// revdot reduction.
+///
+/// The parameters here collapse as much as $m \cdot n$ claims into a single
+/// claim using roughly $f(m, n) = nm^2 + n^2 - n + 3$ gates
+/// (using nested Horner evaluation).
+pub trait Parameters: 'static + Send + Sync + Clone + Copy + Default {
+    type NumGroups: Len;
+    type GroupSize: Len;
+}
+
+/// Represents the number of "error" terms produced during a folding operation
+/// of many `revdot` claims.
+///
+/// Given $m$ claims being folded, the error terms are defined as the
+/// off-diagonal entries of an $m \times m$ matrix, which by definition has $m *
+/// (m - 1)$ terms.
+///
+pub struct NumErrorTerms<L: Len>(PhantomData<L>);
+
+impl<L: Len> Len for NumErrorTerms<L> {
+    fn len() -> usize {
+        let n = L::len();
+        // n * (n - 1) = n² - n
+        n * n - n
+    }
+}
+
+/// Returns an iterator over off-diagonal (i, j) pairs where i != j.
+fn off_diagonal_pairs(n: usize) -> impl Iterator<Item = (usize, usize)> {
+    (0..n).flat_map(move |i| (0..n).filter_map(move |j| (i != j).then_some((i, j))))
+}
+
+/// Reduction step for polynomials in the first layer of revdot folding.
+///
+/// This takes a slice of polynomials (less than or equal to `GroupSize * NumGroups`
+/// in length) and, assuming absent polynomials are zero, folds each group of
+/// `GroupSize` polynomials into one polynomial using the provided scale factor.
+///
+/// # Panics
+///
+/// Panics if `source.len()` exceeds `GroupSize * NumGroups`, which would cause
+/// silent truncation.
+pub fn fold_inner<T: Foldable<F>, F: Field, P: Parameters>(
+    source: &[impl Borrow<T>],
+    scale_factor: F,
+) -> FixedVec<T, P::NumGroups> {
+    assert!(
+        source.len() <= P::GroupSize::len() * P::NumGroups::len(),
+        "source length {} exceeds GroupSize*NumGroups = {}",
+        source.len(),
+        P::GroupSize::len() * P::NumGroups::len()
+    );
+
+    let m = P::GroupSize::len();
+    source
+        .chunks(m)
+        .map(|chunk| {
+            fold(
+                chunk
+                    .iter()
+                    .map(|p| p.borrow().clone())
+                    .chain(iter::repeat_with(T::default).take(m - chunk.len())),
+                scale_factor,
+            )
+        })
+        .chain(iter::repeat_with(T::default))
+        .take(P::NumGroups::len())
+        .collect_fixed()
+        .expect("iterator produces exactly NumGroups elements")
+}
+
+/// Reduction step for polynomials in the second layer of revdot folding.
+///
+/// This takes a length-`NumGroups` vector of polynomials and performs a simple
+/// folding procedure with the scaling factor. This function exists mainly to
+/// complement `fold_inner` as its behavior is trivial.
+pub fn fold_outer<T: Foldable<F>, F: Field, P: Parameters>(
+    source: FixedVec<T, P::NumGroups>,
+    scale_factor: F,
+) -> T {
+    fold(source.iter(), scale_factor)
+}
+
+/// Error computation for revdot folding.
+///
+/// This computes off-diagonal revdot products for each group of `Inner`
+/// polynomials, producing `Outer` groups of error terms.
+fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
+) -> FixedVec<FixedVec<F, NumErrorTerms<Inner>>, Outer> {
+    assert_eq!(a.len(), b.len(), "a and b must have same length");
+    assert!(
+        a.len() <= Outer::len() * Inner::len(),
+        "input length {} exceeds Outer*Inner = {}",
+        a.len(),
+        Outer::len() * Inner::len()
+    );
+
+    // Iterate over `Inner::len()`-sized chunks of a and b as pairs.
+    a.chunks(Inner::len())
+        .zip(b.chunks(Inner::len()))
+        // For each chunk, compute off-diagonal revdot products.
+        .map(|(a_chunk, b_chunk)| {
+            // Computed using the cartesian product of indices, filtering out
+            // diagonal entries.
+            off_diagonal_pairs(Inner::len())
+                // Missing entries are zero polynomials, producing zero revdot products.
+                .map(|(i, j)| {
+                    a_chunk
+                        .get(i)
+                        .zip(b_chunk.get(j))
+                        .map_or(F::ZERO, |(l, r)| l.borrow().revdot(r.borrow()))
+                })
+                .collect_fixed()
+                .expect("lengths are correct")
+        })
+        // ... and missing pairs produce zeroed error term groups.
+        .chain(iter::repeat_with(|| FixedVec::from_fn(|_| F::ZERO)))
+        .take(Outer::len())
+        .collect_fixed()
+        .expect("lengths are correct")
+}
+
+/// Inner error terms: `NumGroups` groups of `GroupSize`*(`GroupSize`-1) off-diagonal revdot products.
+pub fn inner_error_terms<F: Field, R: Rank, P: Parameters>(
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
+) -> FixedVec<FixedVec<F, NumErrorTerms<P::GroupSize>>, P::NumGroups> {
+    compute_errors_impl::<F, R, P::NumGroups, P::GroupSize>(a, b)
+}
+
+/// Outer error terms: `NumGroups`*(`NumGroups`-1) off-diagonal revdot products.
+pub fn outer_error_terms<F: Field, R: Rank, P: Parameters>(
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
+) -> FixedVec<F, NumErrorTerms<P::NumGroups>> {
+    compute_errors_impl::<F, R, ConstLen<1>, P::NumGroups>(a, b)
+        .into_iter()
+        .next()
+        .expect("Outer produces exactly one group")
+}
+
+/// Precomputed folding context for computing revdot claim `c`.
+///
+/// Computing `mu_nu` and `mu_inv` once and reusing across multiple calls
+/// saves 2*(N-1) multiplications in the two-layer reduction.
+pub struct ClaimFolder<'dr, D: Driver<'dr>> {
+    mu_nu: Element<'dr, D>,
+    mu_inv: Element<'dr, D>,
+}
+
+impl<'dr, D: Driver<'dr>> ClaimFolder<'dr, D> {
+    /// Create a folding context from mu and nu.
+    pub fn new(dr: &mut D, mu: &Element<'dr, D>, nu: &Element<'dr, D>) -> Result<Self> {
+        let mu_nu = mu.mul(dr, nu)?;
+        let mu_inv = mu.invert(dr)?;
+        Ok(Self { mu_nu, mu_inv })
+    }
+
+    /// Compute folded revdot claim `c` for layer 1 (`GroupSize`-element reduction).
+    pub fn fold_inner<P: Parameters>(
+        &self,
+        dr: &mut D,
+        error_terms: &FixedVec<Element<'dr, D>, NumErrorTerms<P::GroupSize>>,
+        ky_values: &FixedVec<Element<'dr, D>, P::GroupSize>,
+    ) -> Result<Element<'dr, D>> {
+        fold_products_impl::<_, P::GroupSize>(dr, &self.mu_nu, &self.mu_inv, error_terms, ky_values)
+    }
+
+    /// Compute folded revdot claim `c` for layer 2 (`NumGroups`-element reduction).
+    pub fn fold_outer<P: Parameters>(
+        &self,
+        dr: &mut D,
+        error_terms: &FixedVec<Element<'dr, D>, NumErrorTerms<P::NumGroups>>,
+        ky_values: &FixedVec<Element<'dr, D>, P::NumGroups>,
+    ) -> Result<Element<'dr, D>> {
+        fold_products_impl::<_, P::NumGroups>(dr, &self.mu_nu, &self.mu_inv, error_terms, ky_values)
+    }
+}
+
+/// Core folding computation using precomputed mu_nu and mu_inv.
+fn fold_products_impl<'dr, D: Driver<'dr>, S: Len>(
+    dr: &mut D,
+    mu_nu: &Element<'dr, D>,
+    mu_inv: &Element<'dr, D>,
+    error_terms: &FixedVec<Element<'dr, D>, NumErrorTerms<S>>,
+    ky_values: &FixedVec<Element<'dr, D>, S>,
+) -> Result<Element<'dr, D>> {
+    let mut error_terms = error_terms.iter();
+    let mut ky_values = ky_values.iter();
+
+    let mut outer_horner = Horner::new(mu_inv);
+
+    let n = S::len();
+    for i in 0..n {
+        let mut inner_horner = Horner::new(mu_nu);
+        for j in 0..n {
+            let term = if i == j {
+                ky_values.next().expect("should exist")
+            } else {
+                error_terms.next().expect("should exist")
+            };
+            inner_horner.write(dr, term)?;
+        }
+        let row_result = inner_horner.finish(dr);
+        outer_horner.write(dr, &row_result)?;
+    }
+
+    Ok(outer_horner.finish(dr))
+}
+
+pub fn fold_two_layer<'dr, D: Driver<'dr>, P: Parameters>(
+    dr: &mut D,
+    sources: &[Element<'dr, D>],
+    layer1_scale: &Element<'dr, D>,
+    layer2_scale: &Element<'dr, D>,
+) -> Result<Element<'dr, D>> {
+    let m = P::GroupSize::len();
+    let mut results = alloc::vec::Vec::with_capacity(P::NumGroups::len());
+
+    let zero = Element::zero(dr);
+    for chunk in sources.chunks(m) {
+        results.push(Element::fold(
+            dr,
+            chunk.iter().chain(iter::repeat_n(&zero, m - chunk.len())),
+            layer1_scale,
+        )?);
+    }
+
+    while results.len() < P::NumGroups::len() {
+        results.push(zero.clone());
+    }
+
+    Element::fold(dr, results.iter(), layer2_scale)
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::{vec, vec::Vec};
+
+    use ff::Field;
+    use ragu_circuits::polynomials::{TestRank, sparse};
+    use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
+    use ragu_pasta::Fp;
+    use ragu_primitives::{Simulator, allocator::Standard, vec::CollectFixed};
+    use rand::SeedableRng;
+
+    use super::*;
+    use crate::internal::native::RevdotParameters;
+
+    /// Test parameters with configurable N and M.
+    #[derive(Clone, Copy, Default)]
+    struct TestParams<const N: usize, const M: usize>;
+    impl<const N: usize, const M: usize> Parameters for TestParams<N, M> {
+        type NumGroups = ConstLen<N>;
+        type GroupSize = ConstLen<M>;
+    }
+
+    #[test]
+    fn test_revdot_folding() -> Result<()> {
+        type P = TestParams<3, 3>;
+
+        let n = <P as Parameters>::NumGroups::len();
+        let mut rng = rand::rng();
+
+        // Create N random polynomial pairs
+        let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..n)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+        let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..n)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+
+        // Compute ky values: diagonal revdot products
+        let ky: Vec<Fp> = lhs.iter().zip(&rhs).map(|(l, r)| l.revdot(r)).collect();
+
+        // Compute error terms using outer_error_terms (single-layer N-sized reduction)
+        let error_terms = outer_error_terms::<Fp, TestRank, P>(&lhs, &rhs);
+        let error: Vec<Fp> = error_terms.iter().copied().collect();
+
+        let mu = Fp::random(&mut rng);
+        let nu = Fp::random(&mut rng);
+        let mu_inv = mu.invert().unwrap();
+        let munu = mu * nu;
+
+        // Fold polynomials
+        let folded_lhs = sparse::Polynomial::fold(lhs.iter(), mu_inv);
+        let folded_rhs = sparse::Polynomial::fold(rhs.iter(), munu);
+
+        // Run routine with Emulator
+        let dr = &mut Emulator::execute();
+        let mu_elem = Element::constant(dr, mu);
+        let nu_elem = Element::constant(dr, nu);
+
+        let error_terms = error
+            .iter()
+            .map(|&v| Element::constant(dr, v))
+            .collect_fixed()
+            .unwrap();
+
+        let ky_values = ky
+            .iter()
+            .map(|&v| Element::constant(dr, v))
+            .collect_fixed()
+            .unwrap();
+
+        let fold_products = ClaimFolder::new(dr, &mu_elem, &nu_elem)?;
+        let result = fold_products.fold_outer::<P>(dr, &error_terms, &ky_values)?;
+        let computed_c = *result.value().take();
+
+        // Verify the folding invariant: folded polynomials produce the same c
+        assert_eq!(
+            folded_lhs.revdot(&folded_rhs),
+            computed_c,
+            "Folded polynomials should produce the same c as ClaimFolder"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fold_polys_variable_sizes() -> Result<()> {
+        use alloc::vec::Vec;
+
+        type P = TestParams<6, 5>; // M=5, N=6, so max = 30
+
+        let m = <P as Parameters>::GroupSize::len();
+        let n = <P as Parameters>::NumGroups::len();
+
+        fn verify(count: usize, m: usize, n: usize) -> Result<()> {
+            let mut rng = rand::rng();
+
+            // Create `count` random polynomial pairs
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+
+            // Compute diagonal revdot products (ky values)
+            let ky_values: Vec<Fp> = lhs.iter().zip(&rhs).map(|(l, r)| l.revdot(r)).collect();
+
+            // Layer 1 challenges
+            let mu = Fp::random(&mut rng);
+            let nu = Fp::random(&mut rng);
+            let mu_inv = mu.invert().unwrap();
+            let munu = mu * nu;
+
+            // Compute inner error and fold polynomials for layer 1
+            let inner_error = inner_error_terms::<Fp, TestRank, P>(&lhs, &rhs);
+            let folded_lhs_m = fold_inner::<_, Fp, P>(&lhs, mu_inv);
+            let folded_rhs_m = fold_inner::<_, Fp, P>(&rhs, munu);
+
+            // Verify layer 1 invariant for each group
+            let dr = &mut Emulator::execute();
+            let mu_elem = Element::constant(dr, mu);
+            let nu_elem = Element::constant(dr, nu);
+            let fold_products = ClaimFolder::new(dr, &mu_elem, &nu_elem)?;
+
+            for g in 0..n {
+                // Compute expected claim from folded polynomials
+                let expected = folded_lhs_m[g].revdot(&folded_rhs_m[g]);
+
+                // Compute claim via ClaimFolder
+                let ky_start = g * m;
+                let ky_end = (ky_start + m).min(count);
+                let ky_group: FixedVec<Element<'_, _>, _> = FixedVec::from_fn(|i| {
+                    let val = if ky_start + i < ky_end {
+                        ky_values[ky_start + i]
+                    } else {
+                        Fp::ZERO
+                    };
+                    Element::constant(dr, val)
+                });
+                let error_group: FixedVec<Element<'_, _>, _> =
+                    FixedVec::from_fn(|i| Element::constant(dr, inner_error[g][i]));
+
+                let computed = fold_products.fold_inner::<P>(dr, &error_group, &ky_group)?;
+                let computed_val = *computed.value().take();
+
+                assert_eq!(
+                    expected, computed_val,
+                    "Layer 1 group {} invariant failed for count={}",
+                    g, count
+                );
+            }
+
+            Ok(())
+        }
+
+        // Test various sizes below or equal to M*N
+        for &count in &[1, 2, 5, 7, 10, 15, 20, 25, 29, 30] {
+            verify(count, m, n)?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fold_products_constraints() -> Result<()> {
+        fn measure<P: Parameters>() -> Result<usize> {
+            let sim = Simulator::simulate((), |dr, _| {
+                let mu = Element::constant(dr, Fp::random(&mut rand::rng()));
+                let nu = Element::constant(dr, Fp::random(&mut rand::rng()));
+                let error_terms =
+                    FixedVec::from_fn(|_| Element::constant(dr, Fp::random(&mut rand::rng())));
+                let ky_values =
+                    FixedVec::from_fn(|_| Element::constant(dr, Fp::random(&mut rand::rng())));
+
+                let fold_products = ClaimFolder::new(dr, &mu, &nu)?;
+                fold_products.fold_outer::<P>(dr, &error_terms, &ky_values)?;
+                Ok(())
+            })?;
+
+            Ok(sim.num_gates())
+        }
+
+        // Formula: N^2 + 1
+        assert_eq!(measure::<TestParams<5, 1>>()?, 26);
+        assert_eq!(measure::<TestParams<15, 1>>()?, 226);
+        assert_eq!(measure::<TestParams<30, 1>>()?, 901);
+        assert_eq!(measure::<TestParams<60, 1>>()?, 3601);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_multireduce() -> Result<()> {
+        /// Verify two-layer folding correctness with actual polynomials.
+        fn verify<P: Parameters>() -> Result<()> {
+            let mut rng = rand::rng();
+            let n = P::NumGroups::len();
+            let m = P::GroupSize::len();
+            let count = n * m;
+
+            // Create N*M random polynomial pairs
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+
+            // Compute ky values: diagonal revdot products
+            let ky_values: Vec<Fp> = lhs.iter().zip(&rhs).map(|(l, r)| l.revdot(r)).collect();
+
+            // Layer 1 challenges
+            let mu = Fp::random(&mut rng);
+            let nu = Fp::random(&mut rng);
+            let mu_inv = mu.invert().unwrap();
+            let munu = mu * nu;
+
+            // Compute inner error: N groups of M*(M-1) off-diagonal revdot products
+            let inner_error = inner_error_terms::<Fp, TestRank, P>(&lhs, &rhs);
+
+            // Fold polynomials for layer 1
+            let folded_lhs = fold_inner::<_, Fp, P>(&lhs, mu_inv);
+            let folded_rhs = fold_inner::<_, Fp, P>(&rhs, munu);
+
+            // Compute collapsed values via ClaimFolder
+            let collapsed: FixedVec<Fp, P::NumGroups> =
+                Emulator::emulate_wireless((&inner_error, &ky_values, mu, nu), |dr, witness| {
+                    let (inner_error, ky_values, mu, nu) = witness.cast();
+                    let allocator = &mut ();
+                    let mu = Element::alloc(dr, allocator, mu)?;
+                    let nu = Element::alloc(dr, allocator, nu)?;
+                    let fold_products = ClaimFolder::new(dr, &mu, &nu)?;
+
+                    let mut ky_idx = 0;
+                    let collapsed = FixedVec::try_from_fn(|group| {
+                        let errors = FixedVec::try_from_fn(|j| {
+                            Element::alloc(dr, allocator, inner_error.as_ref().map(|e| e[group][j]))
+                        })?;
+                        let ky = FixedVec::try_from_fn(|_| {
+                            let idx = ky_idx;
+                            ky_idx += 1;
+                            Element::alloc(dr, allocator, ky_values.as_ref().map(|kv| kv[idx]))
+                        })?;
+                        let v = fold_products.fold_inner::<P>(dr, &errors, &ky)?;
+                        Ok(*v.value().take())
+                    })?;
+                    Ok(collapsed)
+                })?;
+
+            // Verify layer 1 invariant: each collapsed[i] == folded_lhs[i].revdot(&folded_rhs[i])
+            for i in 0..n {
+                assert_eq!(
+                    folded_lhs[i].revdot(&folded_rhs[i]),
+                    collapsed[i],
+                    "Layer 1 group {} invariant failed",
+                    i
+                );
+            }
+
+            // Layer 2 challenges
+            let mu_prime = Fp::random(&mut rng);
+            let nu_prime = Fp::random(&mut rng);
+            let mu_prime_inv = mu_prime.invert().unwrap();
+            let mu_prime_nu_prime = mu_prime * nu_prime;
+
+            // Compute outer error from layer 1 folded polynomials
+            let outer_error = outer_error_terms::<Fp, TestRank, P>(&folded_lhs, &folded_rhs);
+
+            // Fold to final polynomials
+            let final_lhs = fold_outer::<_, Fp, P>(folded_lhs, mu_prime_inv);
+            let final_rhs = fold_outer::<_, Fp, P>(folded_rhs, mu_prime_nu_prime);
+
+            // Compute final c via ClaimFolder
+            let final_c: Fp = Emulator::emulate_wireless(
+                (&outer_error, &collapsed, mu_prime, nu_prime),
+                |dr, witness| {
+                    let (outer_error, collapsed, mu_prime, nu_prime) = witness.cast();
+                    let allocator = &mut ();
+                    let mu_prime = Element::alloc(dr, allocator, mu_prime)?;
+                    let nu_prime = Element::alloc(dr, allocator, nu_prime)?;
+                    let fold_products = ClaimFolder::new(dr, &mu_prime, &nu_prime)?;
+
+                    let error_terms = FixedVec::try_from_fn(|i| {
+                        Element::alloc(dr, allocator, outer_error.as_ref().map(|e| e[i]))
+                    })?;
+                    let collapsed = FixedVec::try_from_fn(|i| {
+                        Element::alloc(dr, allocator, collapsed.as_ref().map(|c| c[i]))
+                    })?;
+
+                    let c = fold_products.fold_outer::<P>(dr, &error_terms, &collapsed)?;
+                    Ok(*c.value().take())
+                },
+            )?;
+
+            // Verify final invariant: final_lhs.revdot(&final_rhs) == final_c
+            assert_eq!(
+                final_lhs.revdot(&final_rhs),
+                final_c,
+                "Final folding invariant failed"
+            );
+
+            Ok(())
+        }
+
+        // Test various parameter combinations
+        verify::<TestParams<2, 2>>()?;
+        verify::<TestParams<3, 3>>()?;
+        verify::<TestParams<4, 3>>()?;
+        verify::<TestParams<3, 4>>()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fold_two_layer_evaluations() -> Result<()> {
+        use alloc::vec::Vec;
+
+        /// Verify fold_two_layer on evaluations matches evaluating folded polynomials
+        /// for both lhs and rhs polynomial sets with their respective scale factors.
+        fn verify<P: Parameters>(count: usize) -> Result<()> {
+            let mut rng = rand::rng();
+
+            // Create `count` random polynomial pairs (up to m*n)
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
+                .collect();
+
+            // Random evaluation point
+            let x = Fp::random(&mut rng);
+
+            // Challenge values (matching compute_v.rs usage pattern)
+            let mu = Fp::random(&mut rng);
+            let nu = Fp::random(&mut rng);
+            let mu_prime = Fp::random(&mut rng);
+            let nu_prime = Fp::random(&mut rng);
+
+            // Derived scale factors for lhs: mu_inv, mu_prime_inv
+            let mu_inv = mu.invert().unwrap();
+            let mu_prime_inv = mu_prime.invert().unwrap();
+
+            // Derived scale factors for rhs: munu, mu_prime_nu_prime
+            let munu = mu * nu;
+            let mu_prime_nu_prime = mu_prime * nu_prime;
+
+            // === LHS: fold with mu_inv (layer1), mu_prime_inv (layer2) ===
+            let folded_lhs_m = fold_inner::<_, Fp, P>(&lhs, mu_inv);
+            let folded_lhs_n = fold_outer::<_, Fp, P>(folded_lhs_m, mu_prime_inv);
+            let expected_lhs = folded_lhs_n.eval(x);
+
+            // === RHS: fold with munu (layer1), mu_prime_nu_prime (layer2) ===
+            let folded_rhs_m = fold_inner::<_, Fp, P>(&rhs, munu);
+            let folded_rhs_n = fold_outer::<_, Fp, P>(folded_rhs_m, mu_prime_nu_prime);
+            let expected_rhs = folded_rhs_n.eval(x);
+
+            // Compute evaluations at x
+            let lhs_evals: Vec<Fp> = lhs.iter().map(|p| p.eval(x)).collect();
+            let rhs_evals: Vec<Fp> = rhs.iter().map(|p| p.eval(x)).collect();
+
+            // Fold evaluations using fold_two_layer with Emulator
+            let dr = &mut Emulator::execute();
+
+            let lhs_elems: Vec<Element<'_, _>> = lhs_evals
+                .iter()
+                .map(|&v| Element::constant(dr, v))
+                .collect();
+            let rhs_elems: Vec<Element<'_, _>> = rhs_evals
+                .iter()
+                .map(|&v| Element::constant(dr, v))
+                .collect();
+
+            let mu_inv_elem = Element::constant(dr, mu_inv);
+            let mu_prime_inv_elem = Element::constant(dr, mu_prime_inv);
+            let munu_elem = Element::constant(dr, munu);
+            let mu_prime_nu_prime_elem = Element::constant(dr, mu_prime_nu_prime);
+
+            let lhs_result =
+                fold_two_layer::<_, P>(dr, &lhs_elems, &mu_inv_elem, &mu_prime_inv_elem)?;
+            let rhs_result =
+                fold_two_layer::<_, P>(dr, &rhs_elems, &munu_elem, &mu_prime_nu_prime_elem)?;
+
+            let computed_lhs = *lhs_result.value().take();
+            let computed_rhs = *rhs_result.value().take();
+
+            assert_eq!(
+                expected_lhs, computed_lhs,
+                "fold_two_layer(lhs_evals) should equal fold_polys(lhs).eval(x)"
+            );
+            assert_eq!(
+                expected_rhs, computed_rhs,
+                "fold_two_layer(rhs_evals) should equal fold_polys(rhs).eval(x)"
+            );
+
+            Ok(())
+        }
+
+        // Test with various parameter combinations and various sizes
+        for &count in &[1, 2, 3, 4] {
+            verify::<TestParams<2, 2>>(count)?;
+        }
+        for &count in &[1, 3, 5, 7, 9] {
+            verify::<TestParams<3, 3>>(count)?;
+        }
+        for &count in &[1, 4, 7, 10, 12] {
+            verify::<TestParams<4, 3>>(count)?;
+        }
+        for &count in &[1, 4, 7, 10, 12] {
+            verify::<TestParams<3, 4>>(count)?;
+        }
+
+        // Test native parameters (6*18=108) with various sizes
+        for &count in &[1, 10, 33, 50, 80, 100, 108] {
+            verify::<TestParams<6, 18>>(count)?;
+        }
+
+        Ok(())
+    }
+
+    /// Computes the number of gates for given M, N.
+    ///
+    /// Formula: NM^2 + N^2 - N + 3
+    /// - Layer 1: 2 + N(M^2 - 1) = NM^2 - N + 2
+    /// - Layer 2: 2 + (N^2 - 1) = N^2 + 1
+    fn muls(m: usize, n: usize) -> usize {
+        n * m * m + n * n - n + 3
+    }
+
+    /// Computes the number of allocations for given M, N.
+    ///
+    /// Formula: NM^2 + N^2 - N + 4
+    /// - 4 top-level: mu, nu, mu', nu'
+    /// - Layer 1: N * (M^2 - M) error terms + N * M ky values = NM^2
+    /// - Layer 2: N^2 - N error terms
+    fn allocs(m: usize, n: usize) -> usize {
+        n * m * m + n * n - n + 4
+    }
+
+    /// This measures the effective constraint cost that accounts
+    /// for both multiplication gates and allocations for various M
+    /// and N combinations. The optimal accounting here is to maximize
+    /// M * N, while staying under the circuit budget.
+    ///
+    /// [`Standard`] pairs consecutive allocations into gates, so
+    /// the total gate count is `muls + allocs / 2` (exact when `allocs`
+    /// is even, which holds for the tested parameters). Each gate
+    /// consumes two trace slots, giving an effective cost of
+    /// `2 * total_gates`.
+    #[test]
+    fn test_cost_formulas() -> Result<()> {
+        fn verify<const M: usize, const N: usize>() -> Result<()> {
+            let rng = rand::rngs::StdRng::from_rng(&mut rand::rng());
+            let sim = Simulator::simulate(rng, |dr, mut rng| {
+                let allocator = &mut Standard::new();
+                let mu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let nu = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let mu_prime = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+                let nu_prime = Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))?;
+
+                // Layer 1: N instances of M-sized reductions (uses mu, nu).
+                let fold_products_layer1 = ClaimFolder::new(dr, &mu, &nu)?;
+                let all_error_terms_m: FixedVec<
+                    FixedVec<_, NumErrorTerms<ConstLen<M>>>,
+                    ConstLen<N>,
+                > = FixedVec::try_from_fn(|_| {
+                    FixedVec::try_from_fn(|_| {
+                        Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                    })
+                })?;
+                let all_ky_values_m: FixedVec<FixedVec<_, ConstLen<M>>, ConstLen<N>> =
+                    FixedVec::try_from_fn(|_| {
+                        FixedVec::try_from_fn(|_| {
+                            Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                        })
+                    })?;
+
+                let collapsed: FixedVec<_, ConstLen<N>> = FixedVec::try_from_fn(|i| {
+                    fold_products_layer1.fold_inner::<TestParams<N, M>>(
+                        dr,
+                        &all_error_terms_m[i],
+                        &all_ky_values_m[i],
+                    )
+                })?;
+
+                // Layer 2: Single N-sized reduction (uses mu', nu' - separate ClaimFolder).
+                let fold_products_layer2 = ClaimFolder::new(dr, &mu_prime, &nu_prime)?;
+                let error_terms_n: FixedVec<_, NumErrorTerms<ConstLen<N>>> =
+                    FixedVec::try_from_fn(|_| {
+                        Element::alloc(dr, allocator, rng.as_mut().map(Fp::random))
+                    })?;
+
+                fold_products_layer2.fold_outer::<TestParams<N, M>>(
+                    dr,
+                    &error_terms_n,
+                    &collapsed,
+                )?;
+                Ok(())
+            })?;
+
+            assert_eq!(sim.num_gates(), muls(M, N) + allocs(M, N) / 2);
+            Ok(())
+        }
+
+        verify::<6, 17>()?;
+        verify::<7, 14>()?;
+
+        // Verify optimal parameters fit circuit budget.
+        // Each gate uses 2 trace slots, so effective cost = 2 * total_gates.
+        let total_gates = muls(6, 17) + allocs(6, 17) / 2;
+        assert!(
+            total_gates < (1 << 11),
+            "M = 6, N = 17 exceeds budget: {total_gates}",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_input() {
+        type P = TestParams<3, 3>;
+
+        let n = <P as Parameters>::NumGroups::len();
+
+        // Empty input should produce all-zero folded polynomials
+        let empty: Vec<sparse::Polynomial<Fp, TestRank>> = vec![];
+        let folded = fold_inner::<_, Fp, P>(&empty, Fp::ONE);
+
+        // All N groups should be zero polynomials
+        for g in 0..n {
+            assert!(
+                folded[g].iter_coeffs().all(|c| c == Fp::ZERO),
+                "Group {} should be zero polynomial for empty input",
+                g
+            );
+        }
+
+        // Error computation on empty input should produce zero errors
+        let inner_error = inner_error_terms::<Fp, TestRank, P>(&empty, &empty);
+        for g in 0..n {
+            for e in inner_error[g].iter() {
+                assert_eq!(*e, Fp::ZERO, "Error terms should be zero for empty input");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds GroupSize*NumGroups")]
+    fn test_fold_inner_overflow_panics() {
+        type P = TestParams<2, 2>; // max = 4
+
+        // Create 5 polynomials, which exceeds GroupSize*NumGroups=4
+        let polys: Vec<_> = (0..5)
+            .map(|_| sparse::Polynomial::<Fp, TestRank>::new())
+            .collect();
+        let _ = fold_inner::<_, Fp, P>(&polys, Fp::ONE);
+    }
+
+    #[test]
+    fn test_error_term_ordering() {
+        let mut rng = rand::rng();
+
+        // Create 3 distinct polynomial pairs
+        let a: Vec<sparse::Polynomial<Fp, TestRank>> = (0..3)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+        let b: Vec<sparse::Polynomial<Fp, TestRank>> = (0..3)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+
+        // Compute error terms (should be 3*(3-1)=6 terms)
+        let errors = outer_error_terms::<Fp, TestRank, TestParams<3, 3>>(&a, &b);
+
+        // Verify row-major ordering: (0,1), (0,2), (1,0), (1,2), (2,0), (2,1)
+        let expected_pairs = [(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)];
+        for (idx, &(i, j)) in expected_pairs.iter().enumerate() {
+            let expected = a[i].revdot(&b[j]);
+            assert_eq!(
+                errors[idx], expected,
+                "Error term {} should be revdot(a[{}], b[{}])",
+                idx, i, j
+            );
+        }
+    }
+
+    #[test]
+    fn test_fold_inner_constraints() -> Result<()> {
+        // Verify layer 1 constraint count formula: 2M^2 + 1 per group
+        fn measure_m<const M: usize>() -> Result<usize> {
+            let sim = Simulator::simulate((), |dr, _| {
+                let mu = Element::constant(dr, Fp::random(&mut rand::rng()));
+                let nu = Element::constant(dr, Fp::random(&mut rand::rng()));
+                let error_terms: FixedVec<_, NumErrorTerms<ConstLen<M>>> =
+                    FixedVec::from_fn(|_| Element::constant(dr, Fp::random(&mut rand::rng())));
+                let ky_values: FixedVec<_, ConstLen<M>> =
+                    FixedVec::from_fn(|_| Element::constant(dr, Fp::random(&mut rand::rng())));
+
+                let fold_products = ClaimFolder::new(dr, &mu, &nu)?;
+                fold_products.fold_inner::<TestParams<1, M>>(dr, &error_terms, &ky_values)?;
+                Ok(())
+            })?;
+
+            Ok(sim.num_gates())
+        }
+
+        // Formula: M^2 + 1
+        assert_eq!(measure_m::<3>()?, 9 + 1); // 10
+        assert_eq!(measure_m::<5>()?, 25 + 1); // 26
+        assert_eq!(measure_m::<6>()?, 36 + 1); // 37
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_native_parameters_correctness() -> Result<()> {
+        // Test with actual RevdotParameters (M=6, N=18)
+
+        let mut rng = rand::rng();
+        let m = <RevdotParameters as Parameters>::GroupSize::len();
+        let _n = <RevdotParameters as Parameters>::NumGroups::len();
+
+        // Use a subset of the full capacity to keep test fast
+        let count: usize = 20; // Less than M*N=108
+
+        let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+        let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+            .map(|_| sparse::Polynomial::random(&mut rng))
+            .collect();
+
+        let mu = Fp::random(&mut rng);
+        let nu = Fp::random(&mut rng);
+        let mu_inv = mu.invert().unwrap();
+        let munu = mu * nu;
+
+        // Fold with RevdotParameters
+        let folded_lhs = fold_inner::<_, Fp, RevdotParameters>(&lhs, mu_inv);
+        let folded_rhs = fold_inner::<_, Fp, RevdotParameters>(&rhs, munu);
+
+        // Verify at least the first few groups
+        let dr = &mut Emulator::execute();
+        let mu_elem = Element::constant(dr, mu);
+        let nu_elem = Element::constant(dr, nu);
+        let fold_products = ClaimFolder::new(dr, &mu_elem, &nu_elem)?;
+
+        let ky_values: Vec<Fp> = lhs.iter().zip(&rhs).map(|(l, r)| l.revdot(r)).collect();
+        let inner_error = inner_error_terms::<Fp, TestRank, RevdotParameters>(&lhs, &rhs);
+
+        // Check first 4 groups (those with actual data)
+        let num_groups = count.div_ceil(m);
+        for g in 0..num_groups {
+            let expected = folded_lhs[g].revdot(&folded_rhs[g]);
+
+            let ky_start = g * m;
+            let ky_end = (ky_start + m).min(count);
+            let ky_group: FixedVec<Element<'_, _>, _> = FixedVec::from_fn(|i| {
+                let val = if ky_start + i < ky_end {
+                    ky_values[ky_start + i]
+                } else {
+                    Fp::ZERO
+                };
+                Element::constant(dr, val)
+            });
+            let error_group: FixedVec<Element<'_, _>, _> =
+                FixedVec::from_fn(|i| Element::constant(dr, inner_error[g][i]));
+
+            let computed =
+                fold_products.fold_inner::<RevdotParameters>(dr, &error_group, &ky_group)?;
+            let computed_val = *computed.value().take();
+
+            assert_eq!(
+                expected, computed_val,
+                "RevdotParameters: group {} invariant failed",
+                g
+            );
+        }
+
+        Ok(())
+    }
+}

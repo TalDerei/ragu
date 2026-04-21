@@ -1,14 +1,16 @@
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use ragu_arithmetic::{Cycle, Uendo};
-use ragu_core::drivers::Driver;
-use ragu_core::drivers::emulator::{Emulator, Wireless};
-use ragu_core::maybe::Always;
+use ragu_core::{
+    drivers::{
+        Driver,
+        emulator::{Emulator, Wireless},
+    },
+    maybe::Always,
+};
 use ragu_pasta::{EpAffine, Fp, Fq, Pasta, PoseidonFp};
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Boolean, Element, Endoscalar, Point};
-use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
+use ragu_primitives::{Boolean, Element, Endoscalar, Point, poseidon::Sponge};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 pub type BenchEmu = Emulator<Wireless<Always<()>, Fp>>;
 
@@ -55,7 +57,7 @@ pub fn setup_emu<Fns: SetupEmu<T>, T>(fns: Fns) -> (BenchEmu, T) {
 // Allocator functions - each takes (emu, rng) and returns an allocated primitive
 pub fn alloc_elem(emu: &mut BenchEmu, rng: &mut StdRng) -> Element<'static, BenchEmu> {
     let v = Fp::random(rng);
-    Element::alloc(emu, BenchEmu::just(|| v)).unwrap()
+    Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
 }
 
 pub fn alloc_point(emu: &mut BenchEmu, rng: &mut StdRng) -> Point<'static, BenchEmu, EpAffine> {
@@ -83,7 +85,7 @@ pub fn alloc_elems<const N: usize>(
     (0..N)
         .map(|_| {
             let v = Fp::random(&mut *rng);
-            Element::alloc(emu, BenchEmu::just(|| v)).unwrap()
+            Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
         })
         .collect()
 }
@@ -95,7 +97,7 @@ pub fn alloc_bools<const N: usize>(
     (0..N)
         .map(|_| {
             let v: bool = rng.random();
-            Boolean::alloc(emu, BenchEmu::just(|| v)).unwrap()
+            Boolean::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
         })
         .collect()
 }

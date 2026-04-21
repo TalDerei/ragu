@@ -20,7 +20,8 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 all-features = true
 
 [features]
-default = []
+alloc = []
+default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_arithmetic/multicore", "std"]
 std = []
 
@@ -49,6 +50,6 @@ name = "circuits"
 harness = false
 
 [[bench]]
-name = "rx_criterion"
-path = "benches/criterion/rx.rs"
+name = "trace_criterion"
+path = "benches/criterion/trace.rs"
 harness = false

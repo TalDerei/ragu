@@ -1,6 +1,6 @@
 [toolchain]
 channel = "1.90.0"
-components = ["clippy", "rustfmt"]
+components = ["clippy"]
 
 # Bumping MSRV
 # * update `toolchain.channel` key in `rust-toolchain.toml` (this file)

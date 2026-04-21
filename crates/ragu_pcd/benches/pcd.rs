@@ -2,6 +2,8 @@
 
 mod setup;
 
+use std::hint::black_box;
+
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
@@ -12,7 +14,6 @@ use rand::rngs::StdRng;
 use setup::{
     setup_finalize, setup_fuse, setup_register, setup_seed, setup_verify_leaf, setup_verify_node,
 };
-use std::hint::black_box;
 
 #[library_benchmark(setup = setup_register)]
 #[bench::register()]
@@ -69,8 +70,8 @@ fn seed(
 fn fuse(
     (app, leaf1, leaf2, poseidon_params, mut rng): (
         Application<'static, Pasta, ProductionRank, 4>,
-        Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
-        Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
+        Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
+        Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
         &'static <Pasta as Cycle>::CircuitPoseidon,
         StdRng,
     ),
@@ -95,7 +96,7 @@ library_benchmark_group!(
 fn verify_leaf(
     (app, leaf, mut rng): (
         Application<'static, Pasta, ProductionRank, 4>,
-        Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
+        Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,
         StdRng,
     ),
 ) {
@@ -107,7 +108,7 @@ fn verify_leaf(
 fn verify_node(
     (app, node, mut rng): (
         Application<'static, Pasta, ProductionRank, 4>,
-        Pcd<'static, Pasta, ProductionRank, nontrivial::InternalNode>,
+        Pcd<Pasta, ProductionRank, nontrivial::InternalNode>,
         StdRng,
     ),
 ) {
@@ -119,7 +120,7 @@ fn verify_node(
 fn rerandomize(
     (app, node, mut rng): (
         Application<'static, Pasta, ProductionRank, 4>,
-        Pcd<'static, Pasta, ProductionRank, nontrivial::InternalNode>,
+        Pcd<Pasta, ProductionRank, nontrivial::InternalNode>,
         StdRng,
     ),
 ) {

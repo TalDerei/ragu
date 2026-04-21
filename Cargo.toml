@@ -20,7 +20,7 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 all-features = true
 
 [features]
-default = []
+default = ["multicore"]
 multicore = [
   "ragu_arithmetic/multicore",
   "ragu_circuits/multicore",
@@ -49,7 +49,7 @@ members = [
   "crates/ragu_primitives",
   "crates/ragu_pcd",
   "crates/ragu_testing",
-  "fv/crates/lean_extraction",
+  "qa/crates/lean_extraction",
 ]
 
 resolver = "2"

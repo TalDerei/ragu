@@ -1,6 +1,6 @@
-use ff::Field;
-
 use core::ops::{Add, Mul};
+
+use ff::Field;
 
 /// Represents a field element (typically a coefficient) that may have a special
 /// value. By representing these cases explicitly, `Coeff` maintains context
@@ -118,9 +118,10 @@ impl<F: Field> Add for Coeff<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::Coeff;
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
+
+    use super::Coeff;
 
     fn arb_fe() -> impl proptest::strategy::Strategy<Value = F> {
         use proptest::prelude::*;

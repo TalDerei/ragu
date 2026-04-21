@@ -11,9 +11,13 @@
 #![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_primitives` requires the `alloc` feature to be enabled.");
 extern crate alloc;
+
 extern crate self as ragu_primitives;
 
+pub mod allocator;
 mod boolean;
 pub mod consistent;
 mod element;
@@ -25,22 +29,23 @@ pub mod poseidon;
 pub mod promotion;
 mod sendable;
 mod simulator;
+pub mod suffix;
 mod util;
 pub mod vec;
-
-use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
-
-use io::{Buffer, Write};
-use promotion::Demoted;
 
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{Endoscalar, extract_endoscalar, lift_endoscalar};
+use io::{Buffer, Write};
 pub use point::Point;
+use promotion::Demoted;
+use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 pub use sendable::Sendable;
 pub use simulator::Simulator;
+pub use suffix::WithSuffix;
 
-/// Primitive extension trait for all gadgets.
+/// Extension trait that adds serialization ([`write`](GadgetExt::write)) and
+/// witness-stripping ([`demote`](GadgetExt::demote)) to all gadgets.
 pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     /// Write this gadget into a buffer, assuming the gadget's
     /// [`Kind`](Gadget::Kind) implements [`Write`].

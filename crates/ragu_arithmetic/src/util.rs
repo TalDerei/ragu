@@ -1,13 +1,28 @@
+use alloc::{boxed::Box, vec, vec::Vec};
+
 use ff::{Field, PrimeField};
 use pasta_curves::{
     arithmetic::CurveAffine,
     group::{Curve, Group},
 };
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use crate::{domain::Domain, multicore::*};
 
-use crate::domain::Domain;
-use crate::multicore::*;
+/// Returns the low 64 bits of a [`PrimeField`] element's canonical
+/// little-endian representation.
+///
+/// # Panics
+///
+/// Panics if the field's canonical representation is shorter than 8 bytes.
+pub fn low_u64<F: PrimeField>(f: &F) -> u64 {
+    let repr = f.to_repr();
+    let bytes = repr.as_ref();
+    u64::from_le_bytes(
+        bytes[..8]
+            .try_into()
+            .expect("field repr is at least 8 bytes"),
+    )
+}
 
 /// Evaluates a polynomial $p \in \mathbb{F}\[X]$ at a point $x \in \mathbb{F}$,
 /// where $p$ is defined by `coeffs` in ascending order of degree.
@@ -71,8 +86,9 @@ where
     })
 }
 
-/// Returns an iterator that yields the coefficients of $a / (X - b)$ with no remainder
-/// for the given univariate polynomial $a \in \mathbb{F}\[X]$ and value $b \in \mathbb{F}$.
+/// Returns an iterator that yields the coefficients of $a / (X - b)$,
+/// assuming $b$ is a root of $a$ (i.e., the division is exact). If $b$ is not
+/// a root, the returned quotient silently drops the remainder.
 /// The coefficients are yielded in reverse order (highest degree first).
 ///
 /// # Panics
@@ -88,7 +104,9 @@ where
     Box::new(factor_iter_inner(a, b))
 }
 
-/// Computes $a / (X - b)$ with no remainder for the given univariate polynomial $a \in \mathbb{F}\[X]$ and value $b \in \mathbb{F}$.
+/// Computes $a / (X - b)$, assuming $b$ is a root of $a$ (i.e., the division
+/// is exact). If $b$ is not a root, the returned quotient silently drops the
+/// remainder.
 ///
 /// # Panics
 ///
@@ -158,10 +176,14 @@ pub fn batch_to_affine<C: CurveAffine, const N: usize>(projectives: [C::Curve; N
 /// $\mathbf{a} \in \mathbb{F}^n$ is a vector of scalars and $\mathbf{G} \in \mathbb{G}^n$
 /// is a vector of bases.
 ///
-/// # Usage
+/// When the `multicore` feature is enabled, window computation is parallelized
+/// using rayon.
 ///
-/// Ensure that the provided iterators have the same length, or this function may not
-/// behave properly or could even panic.
+/// # Correctness
+///
+/// The caller must ensure that `coeffs` and `bases` yield the same number of
+/// elements. If they differ, the shorter iterator silently wins (via `zip`)
+/// and the result will be incorrect.
 pub fn mul<
     'a,
     C: CurveAffine,
@@ -363,10 +385,11 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
 
 #[cfg(test)]
 mod poly_with_roots_tests {
-    use super::*;
     use ff::Field;
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn check(roots: &[F]) -> Result<(), TestCaseError> {
         let poly = poly_with_roots(roots);
@@ -471,9 +494,10 @@ fn test_poly_with_roots() {
 
 #[cfg(test)]
 mod proptests {
-    use super::*;
     use pasta_curves::Fp as F;
     use proptest::prelude::*;
+
+    use super::*;
 
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())

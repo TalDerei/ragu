@@ -28,4 +28,4 @@ jobs:
           build-args: "--wfail"
           test: false
           lint: false
-          lake-package-directory: fv/lean
+          lake-package-directory: qa/lean

@@ -4,6 +4,9 @@
 //! [Poseidon](https://eprint.iacr.org/2019/458) sponge construction for
 //! in-circuit hashing.
 
+use alloc::{vec, vec::Vec};
+use core::{marker::PhantomData, panic};
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -13,13 +16,9 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 
-use crate::consistent::Consistent;
-
-use alloc::{vec, vec::Vec};
-use core::{marker::PhantomData, panic};
-
 use crate::{
     Element,
+    consistent::Consistent,
     io::{Buffer, Write},
     multiadd,
     vec::{FixedVec, Len},
@@ -27,6 +26,7 @@ use crate::{
 
 /// Error type for sponge save operations.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SaveError {
     /// Cannot save: sponge is already in squeeze mode.
     #[error("sponge is already in squeeze mode")]
@@ -135,6 +135,24 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
         Ok(())
     }
 
+    /// Get the current pending values in the sponge.
+    #[inline(always)]
+    fn values(&self) -> &[Element<'dr, D>] {
+        match &self.mode {
+            Mode::Squeeze { values, .. } => values,
+            Mode::Absorb { values, .. } => values,
+        }
+    }
+
+    /// Get the current internal state of the sponge.
+    #[inline(always)]
+    fn state(&self) -> &SpongeState<'dr, D, P> {
+        match &self.mode {
+            Mode::Squeeze { state, .. } => state,
+            Mode::Absorb { state, .. } => state,
+        }
+    }
+
     /// Squeeze a value from the sponge.
     pub fn squeeze(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
         match &mut self.mode {
@@ -147,17 +165,25 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
                     return Ok(values.pop().expect("values is not empty, so pop succeeds"));
                 }
             }
-            Mode::Absorb { values, state } => {
+            Mode::Absorb { values, .. } => {
                 if values.is_empty() {
-                    // Nothing was absorbed, so we can switch to squeeze mode
-                    // with the same state.
+                    return Err(ragu_core::Error::Initialization(
+                        "cannot squeeze from empty sponge: no values absorbed".into(),
+                    ));
+                } else {
+                    // Before we can switch to squeeze mode, we need to permute
+                    // to absorb the pending values into the state.
+                    self.permute(dr)?;
+
+                    // This is the same state boundary that save_state/resume
+                    // operates on: save_state permutes pending values, then
+                    // resume enters squeeze mode with rate values extracted
+                    // from the post-permutation state.
+                    let state = self.state();
                     self.mode = Mode::Squeeze {
                         values: state.get_rate(),
                         state: state.clone(),
                     };
-                } else {
-                    // Before we can switch to squeeze mode, we need to permute
-                    self.permute(dr)?;
                 }
             }
         }
@@ -188,7 +214,12 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
         }
 
         // Second attempt, which always succeeds
-        self.absorb(dr, value)
+        self.absorb(dr, value)?;
+        assert!(
+            !self.values().is_empty(),
+            "Post condition: values should never be empty after absorb"
+        );
+        Ok(())
     }
 
     /// Save the internal [`SpongeState`].
@@ -212,6 +243,8 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
             Mode::Squeeze { .. } => Err(SaveError::AlreadyInSqueezeMode),
             Mode::Absorb { values, .. } => {
                 if values.is_empty() {
+                    // Post condition of absorb is that values is never empty,
+                    // so empty values implies that nothing was absorbed.
                     Err(SaveError::NothingAbsorbed)
                 } else {
                     // permute() absorbs pending values into state
@@ -389,18 +422,22 @@ impl<F: Field, P: ragu_arithmetic::PoseidonPermutation<F>> Routine<F> for Permut
         _: &mut D,
         _: &Bound<'dr, D, Self::Input>,
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
-        Ok(Prediction::Unknown(D::just(|| ())))
+        Ok(Prediction::Unknown(D::unit()))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use core::cell::Cell;
+
     use ragu_arithmetic::Cycle;
     use ragu_core::maybe::Maybe;
     use ragu_pasta::{Fp, Pasta};
 
+    use super::*;
+
     type Simulator = crate::Simulator<Fp>;
+    use crate::allocator::Standard;
 
     #[test]
     fn test_permutation_constraints() -> Result<()> {
@@ -411,15 +448,16 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
+
+            dr.reset();
             sponge.squeeze(dr)?;
 
             Ok(())
         })?;
-
-        assert_eq!(sim.num_allocations(), 1);
-        assert_eq!(sim.num_multiplications(), 288);
+        assert_eq!(sim.num_gates(), 288);
 
         Ok(())
     }
@@ -444,6 +482,20 @@ mod tests {
     }
 
     #[test]
+    fn test_squeeze_before_any_absorb() -> Result<()> {
+        let params = Pasta::baked();
+        let mut dr = Simulator::new();
+        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
+            &mut dr,
+            Pasta::circuit_poseidon(params),
+        );
+
+        // Squeeze without absorbing anything should fail
+        assert!(sponge.squeeze(&mut dr).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn test_save_state_already_in_squeeze_mode() -> Result<()> {
         let params = Pasta::baked();
 
@@ -452,7 +504,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             // Squeeze to enter squeeze mode
             sponge.squeeze(dr)?;
@@ -475,7 +528,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             // Save should succeed
             let _state = sponge.save_state(dr).expect("save_state should succeed");
@@ -488,8 +542,6 @@ mod tests {
 
     #[test]
     fn test_save_resume_produces_same_output_as_normal_sponge() -> Result<()> {
-        use core::cell::Cell;
-
         let params = Pasta::baked();
 
         // Use Cell to extract the output values from inside the closures
@@ -502,7 +554,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             let squeezed = sponge.squeeze(dr)?;
             normal_output.set(*squeezed.value().take());
@@ -515,7 +568,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             let state = sponge.save_state(dr).expect("save_state should succeed");
             let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
@@ -526,6 +580,63 @@ mod tests {
 
         // Both should produce identical output
         assert_eq!(normal_output.get(), save_resume_output.get());
+
+        Ok(())
+    }
+
+    #[test]
+    // Misuse: forgetting to squeeze after resuming put sponge in a bad state.
+    fn test_absorb_before_squeeze_after_resume() -> Result<()> {
+        let params = Pasta::baked();
+
+        let normal_output = Cell::new(Fp::ZERO);
+        let bad_resume_output = Cell::new(Fp::ZERO);
+
+        let witness = (Fp::from(1), Fp::from(2));
+
+        // Normal flow: absorb v1, absorb v2, squeeze
+        Simulator::simulate(witness, |dr, v| {
+            let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
+                dr,
+                Pasta::circuit_poseidon(params),
+            );
+            let (v1, v2) = v.cast();
+            let allocator = &mut Standard::new();
+            let v1 = Element::alloc(dr, allocator, v1)?;
+            let v2 = Element::alloc(dr, allocator, v2)?;
+            sponge.absorb(dr, &v1)?;
+            sponge.absorb(dr, &v2)?;
+            let squeezed = sponge.squeeze(dr)?;
+            normal_output.set(*squeezed.value().take());
+            Ok(())
+        })?;
+
+        // Wrong flow: absorb v1, save, resume, absorb v2 (without squeezing first), squeeze.
+        // On resume the sponge enters squeeze mode; absorbing without squeezing first
+        // switches back to absorb mode mid-stream, producing a different state than
+        // the continuous absorb path above.
+        Simulator::simulate(witness, |dr, v| {
+            let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
+                dr,
+                Pasta::circuit_poseidon(params),
+            );
+            let (v1, v2) = v.cast();
+            let allocator = &mut Standard::new();
+            let v1 = Element::alloc(dr, allocator, v1)?;
+            let v2 = Element::alloc(dr, allocator, v2)?;
+            sponge.absorb(dr, &v1)?;
+            let state = sponge.save_state(dr).expect("save_state should succeed");
+            let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
+
+            // Misuse: absorb before squeezing corrupts the transcript
+            sponge.absorb(dr, &v2)?;
+            let squeezed = sponge.squeeze(dr)?;
+            bad_resume_output.set(*squeezed.value().take());
+            Ok(())
+        })?;
+
+        // The misuse produces a different hash, demonstrating the bad state.
+        assert_ne!(normal_output.get(), bad_resume_output.get());
 
         Ok(())
     }

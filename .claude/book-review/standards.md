@@ -3,6 +3,11 @@
 Master standards that apply to all book reviewers. Every reviewer agent reads
 this file in addition to its focus-specific policy.
 
+## Shared Policies
+
+For content placement decisions (book vs. rustdoc), see
+`.claude/review-shared/surface-placement.md`.
+
 ## Page Roles
 
 The book's introduction (`book/src/introduction.md`) serves as a landing page,
@@ -93,6 +98,21 @@ Specific anti-patterns to avoid:
   grammar.md and prose.md) flag patterns that are acceptable in
   isolation. Flag them when they repeat within a section or when
   several appear together — not on a single occurrence.
+
+## Synced Content
+
+Some content appears in both the README and the book, delimited by
+`<!-- BEGIN SYNC -->` / `<!-- END SYNC -->` HTML comments. The canonical
+pairs are:
+
+| README section | Book page |
+|---------------|-----------|
+| `## Requirements` | `book/src/guide/requirements.md` |
+
+When reviewing changes inside a synced block, verify that the
+corresponding file contains identical content. Flag any drift as
+`must-fix`. When editing a synced block (e.g. during fix-up), update
+both files in the same change.
 
 ## Deferred Issues
 

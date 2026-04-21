@@ -1,5 +1,4 @@
-use ragu_core::drivers::Driver;
-use ragu_core::gadgets::Gadget;
+use ragu_core::{drivers::Driver, gadgets::Gadget};
 
 /// A wrapper that asserts its contents are [`Send`].
 ///

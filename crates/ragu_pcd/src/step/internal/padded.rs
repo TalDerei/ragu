@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use ff::{Field, PrimeField};
 use ragu_core::{
     Result,
@@ -5,14 +7,11 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind, Kind},
 };
 use ragu_primitives::{
-    Element, GadgetExt,
+    Element, GadgetExt, WithSuffix,
     io::{Buffer, Write},
 };
 
-use core::marker::PhantomData;
-
 use crate::Header;
-use crate::components::suffix::WithSuffix;
 
 /// A header gadget padded to a fixed size with a suffix element appended.
 ///
@@ -120,6 +119,7 @@ where
 #[cfg(test)]
 mod tests {
     use alloc::vec;
+
     use ragu_core::{
         Result,
         drivers::{Driver, emulator::Emulator},
@@ -128,13 +128,12 @@ mod tests {
     };
     use ragu_pasta::Fp as F;
     use ragu_primitives::{
-        Element, GadgetExt,
+        Element, GadgetExt, WithSuffix,
         io::Write,
         vec::{CollectFixed, ConstLen, FixedVec},
     };
 
     use super::Padded;
-    use crate::components::suffix::WithSuffix;
 
     #[derive(Gadget, Write)]
     struct MySillyGadget<'dr, D: Driver<'dr>> {
@@ -148,7 +147,7 @@ mod tests {
         let dr = &mut dr;
         let gadget = MySillyGadget {
             blah: (1u64..=4)
-                .map(|n| Element::alloc(dr, Always::maybe_just(|| F::from(n))))
+                .map(|n| Element::alloc(dr, &mut (), Always::maybe_just(|| F::from(n))))
                 .try_collect_fixed()?,
         };
 
@@ -182,7 +181,7 @@ mod tests {
         let dr = &mut dr;
         let gadget = MySillyGadget {
             blah: (1u64..=4)
-                .map(|n| Element::alloc(dr, Always::maybe_just(|| F::from(n))))
+                .map(|n| Element::alloc(dr, &mut (), Always::maybe_just(|| F::from(n))))
                 .try_collect_fixed()?,
         };
 

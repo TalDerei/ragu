@@ -22,10 +22,10 @@ Add Ragu to your `Cargo.toml`:
 [dependencies]
 ragu_circuits = "0.1"
 ragu_core = "0.1"
-ragu_pasta = "0.1"
+ragu_pasta = { version = "0.1", features = ["baked"] }
 ragu_pcd = "0.1"
 ragu_primitives = "0.1"
-arithmetic = "0.1"
+ragu_arithmetic = "0.1"
 ff = "0.13"
 rand = "0.8"
 ```
@@ -64,6 +64,7 @@ use ff::Field;
 use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
 use ragu_pcd::header::{Header, Suffix};
 use ragu_primitives::Element;
+use ragu_primitives::allocator::{Allocator, Standard};
 use ragu_primitives::poseidon::Sponge;
 
 // LeafNode: carries a hash of raw data
@@ -71,14 +72,15 @@ struct LeafNode;
 
 impl<F: Field> Header<F> for LeafNode {
     const SUFFIX: Suffix = Suffix::new(0);  // Unique ID
-    type Data<'source> = F;                  // Field element
+    type Data = F;                  // Field element
     type Output = Kind![F; Element<'_, _>];  // Circuit representation
 
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
-        witness: DriverValue<D, Self::Data<'source>>,
+        allocator: &mut A,
+        witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)  // Convert to circuit element
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -87,14 +89,15 @@ struct InternalNode;
 
 impl<F: Field> Header<F> for InternalNode {
     const SUFFIX: Suffix = Suffix::new(1);  // Different ID
-    type Data<'source> = F;
+    type Data = F;
     type Output = Kind![F; Element<'_, _>];
 
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
-        witness: DriverValue<D, Self::Data<'source>>,
+        allocator: &mut A,
+        witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 ```
@@ -110,8 +113,8 @@ impl<F: Field> Header<F> for InternalNode {
 This step creates leaf proofs from raw values:
 
 ```rust
-use arithmetic::Cycle;
-use ragu_pcd::step::{Encoded, Encoder, Index, Step};
+use ragu_arithmetic::Cycle;
+use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_primitives::poseidon::Sponge;
 
 struct CreateLeaf<'params, C: Cycle> {
@@ -122,30 +125,32 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
     const INDEX: Index = Index::new(0);  // Step ID
 
     type Witness<'source> = C::CircuitField;  // Input: field element
-    type Aux<'source> = C::CircuitField;      // Output: hash result
-    type Left = ();                            // No left input
-    type Right = ();                           // No right input
-    type Output = LeafNode;                    // Produces LeafNode
+    type Aux<'source> = ();                   // Output: hash result
+    type Left = ();                           // No left input
+    type Right = ();                          // No right input
+    type Output = LeafNode;                   // Produces LeafNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        _: Encoder<'dr, 'source, D, Self::Left, HEADER_SIZE>,
-        _: Encoder<'dr, 'source, D, Self::Right, HEADER_SIZE>,
+        _: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data>,
+        _: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where
         Self: 'dr,
     {
         // 1. Allocate the witness value in the circuit
-        let leaf = Element::alloc(dr, witness)?;
+        let allocator = &mut Standard::new();
+        let leaf = Element::alloc(dr, allocator, witness)?;
 
         // 2. Hash it using Poseidon
         let mut sponge = Sponge::new(dr, self.poseidon_params);
@@ -158,14 +163,15 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
         // 4. Encode as a proof
         let leaf_encoded = Encoded::from_gadget(leaf);
 
-        // 5. Return (left, right, output) proofs + aux data
+        // 5. Return (left, right, output) proofs + output data + aux
         Ok((
             (
                 Encoded::from_gadget(()),  // No left
                 Encoded::from_gadget(()),  // No right
-                leaf_encoded,               // Our output
+                leaf_encoded,              // Our output
             ),
             leaf_value,  // Hash result
+            D::unit(),
         ))
     }
 }
@@ -190,32 +196,33 @@ struct CombineNodes<'params, C: Cycle> {
 impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
     const INDEX: Index = Index::new(1);  // Different step ID
 
-    type Witness<'source> = ();           // No extra witness
-    type Aux<'source> = C::CircuitField;  // Return combined hash
-    type Left = LeafNode;                 // Takes LeafNode
-    type Right = LeafNode;                // Takes LeafNode
-    type Output = InternalNode;           // Produces InternalNode
+    type Witness<'source> = ();  // No extra witness
+    type Aux<'source> = ();      // Return combined hash
+    type Left = LeafNode;        // Takes LeafNode
+    type Right = LeafNode;       // Takes LeafNode
+    type Output = InternalNode;  // Produces InternalNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: Encoder<'dr, 'source, D, Self::Left, HEADER_SIZE>,
-        right: Encoder<'dr, 'source, D, Self::Right, HEADER_SIZE>,
+        left: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data>,
+        right: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where
         Self: 'dr,
     {
-        // 1. Encode input proofs (verifies them!)
-        let left = left.encode(dr)?;
-        let right = right.encode(dr)?;
+        // 1. Encode input proofs
+        let left = Encoded::new(dr, left)?;
+        let right = Encoded::new(dr, right)?;
 
         // 2. Hash both headers together
         let mut sponge = Sponge::new(dr, self.poseidon_params);
@@ -227,16 +234,16 @@ impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
         let output_value = output.value().map(|v| *v);
         let output = Encoded::from_gadget(output);
 
-        // 4. Return verified proofs + combined hash
-        Ok(((left, right, output), output_value))
+        // 4. Return verified proofs + output data + aux
+        Ok(((left, right, output), output_value, D::unit()))
     }
 }
 ```
 
-**What `.encode(dr)?` does:** The `Header::encode` call converts the header
-data into a circuit gadget by allocating field elements. This makes the input
-proof's header data available for use in the circuit logic (e.g., hashing the
-two headers together).
+**What `Encoded::new(dr, left)?` does:** Converts the header data into a
+circuit gadget by allocating field elements. This makes the input proof's
+header data available for use in the circuit logic (e.g., hashing the two
+headers together).
 
 ## Step 4: Build the Application
 

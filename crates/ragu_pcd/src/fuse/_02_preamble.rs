@@ -1,7 +1,7 @@
 //! Commit to the preamble.
 //!
-//! This creates the [`proof::Preamble`] component of the proof, which commits
-//! to the instance and trace polynomials used in the fuse step.
+//! This sets the preamble fields on the [`ProofBuilder`], which commits to the
+//! instance and trace polynomials used in the fuse step.
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
@@ -11,8 +11,8 @@ use rand::CryptoRng;
 
 use crate::{
     Application, Proof,
-    circuits::{native::stages::preamble as native_preamble, nested},
-    proof,
+    internal::{native, nested},
+    proof::ProofBuilder,
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -21,45 +21,54 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        application: &proof::Application<C, R>,
-    ) -> Result<(
-        proof::Preamble<C, R>,
-        native_preamble::Witness<'a, C, R, HEADER_SIZE>,
-    )> {
-        let preamble_witness = native_preamble::Witness::new(
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>> {
+        let preamble_witness = self.compute_native_preamble(rng, left, right, builder)?;
+        self.compute_bridge_preamble(rng, left, right, builder)?;
+        Ok(preamble_witness)
+    }
+
+    fn compute_native_preamble<'a, RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        left: &'a Proof<C, R>,
+        right: &'a Proof<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>> {
+        let preamble_witness = native::stages::preamble::Witness::new(
             left,
             right,
-            &application.left_header,
-            &application.right_header,
+            builder.left_header(),
+            builder.right_header(),
         )?;
 
-        let native_rx = native_preamble::Stage::<C, R, HEADER_SIZE>::rx(&preamble_witness)?;
-        let native_blind = C::CircuitField::random(&mut *rng);
-        let native_commitment =
-            native_rx.commit_to_affine(C::host_generators(self.params), native_blind);
+        let rx = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::rx(
+            C::CircuitField::random(&mut *rng),
+            &preamble_witness,
+        )?;
 
-        let nested_preamble_witness = nested::stages::preamble::Witness {
-            native_preamble: native_commitment,
-            left: nested::stages::preamble::ChildWitness::from_proof(left),
-            right: nested::stages::preamble::ChildWitness::from_proof(right),
-        };
+        builder.set_native_preamble_rx(rx);
 
-        let nested_rx =
-            nested::stages::preamble::Stage::<C::HostCurve, R>::rx(&nested_preamble_witness)?;
-        let nested_blind = C::ScalarField::random(&mut *rng);
-        let nested_commitment =
-            nested_rx.commit_to_affine(C::nested_generators(self.params), nested_blind);
+        Ok(preamble_witness)
+    }
 
-        Ok((
-            proof::Preamble {
-                native_rx,
-                native_blind,
-                native_commitment,
-                nested_rx,
-                nested_blind,
-                nested_commitment,
+    fn compute_bridge_preamble<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        left: &Proof<C, R>,
+        right: &Proof<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
+        let bridge_rx = nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
+            C::ScalarField::random(&mut *rng),
+            &nested::stages::preamble::Witness {
+                native_preamble: builder.native_preamble_commitment(),
+                left: nested::stages::preamble::ChildWitness::from_proof(left),
+                right: nested::stages::preamble::ChildWitness::from_proof(right),
             },
-            preamble_witness,
-        ))
+        )?;
+        let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
+        builder.set_bridge_preamble_rx(bridge_rx, bridge_commitment);
+        Ok(())
     }
 }

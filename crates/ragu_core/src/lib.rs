@@ -14,7 +14,6 @@
 
 #[cfg(not(feature = "alloc"))]
 compile_error!("`ragu_core` requires the `alloc` feature to be enabled.");
-
 extern crate alloc;
 
 pub mod convert;

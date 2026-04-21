@@ -13,20 +13,23 @@ use ragu_pcd::{
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
-use ragu_primitives::Element;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use ragu_primitives::{
+    Element,
+    allocator::{Allocator, Standard},
+};
+use rand::{SeedableRng, rngs::StdRng};
 
 // Header A (suffix 0) - unit data
 struct HeaderA;
 
 impl<F: Field> Header<F> for HeaderA {
     const SUFFIX: Suffix = Suffix::new(0);
-    type Data<'source> = ();
+    type Data = ();
     type Output = ();
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
@@ -37,13 +40,14 @@ struct HeaderWithData;
 
 impl Header<Fp> for HeaderWithData {
     const SUFFIX: Suffix = Suffix::new(2);
-    type Data<'source> = Fp;
+    type Data = Fp;
     type Output = Kind![Fp; Element<'_, _>];
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+    fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
         dr: &mut D,
-        witness: DriverValue<D, Self::Data<'source>>,
+        allocator: &mut A,
+        witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)
+        Element::alloc(dr, allocator, witness)
     }
 }
 
@@ -52,7 +56,7 @@ struct StepWithData;
 impl Step<Pasta> for StepWithData {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = Fp;
-    type Aux<'source> = Fp;
+    type Aux<'source> = ();
     type Left = ();
     type Right = ();
     type Output = HeaderWithData;
@@ -68,12 +72,14 @@ impl Step<Pasta> for StepWithData {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<Fp>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
-        let output = Encoded::new(dr, witness.clone())?;
-        Ok(((left, right, output), witness))
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
+        let output = Encoded::new(dr, allocator, witness.clone())?;
+        Ok(((left, right, output), witness, D::unit()))
     }
 }
 
@@ -98,12 +104,14 @@ impl<C: Cycle> Step<C> for Step0 {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
-        Ok(((left, right, output), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -127,12 +135,14 @@ impl<C: Cycle> Step<C> for Step1 {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
-        Ok(((left, right, output), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -149,19 +159,16 @@ fn rerandomization_flow() {
 
     let mut rng = StdRng::seed_from_u64(1234);
 
-    let seeded = app.seed(&mut rng, Step0, ()).unwrap().0;
-    let seeded = seeded.carry::<HeaderA>(());
+    let (seeded, _) = app.seed(&mut rng, Step0, ()).unwrap();
     assert!(app.verify(&seeded, &mut rng).unwrap());
 
     // Rerandomize
     let seeded = app.rerandomize(seeded, &mut rng).unwrap();
     assert!(app.verify(&seeded, &mut rng).unwrap());
 
-    let fused = app
+    let (fused, _) = app
         .fuse(&mut rng, Step1, (), seeded.clone(), seeded)
-        .unwrap()
-        .0;
-    let fused = fused.carry::<HeaderA>(());
+        .unwrap();
     assert!(app.verify(&fused, &mut rng).unwrap());
 
     let fused = app.rerandomize(fused, &mut rng).unwrap();
@@ -179,8 +186,7 @@ fn multiple_rerandomizations_all_verify() {
 
     let mut rng = StdRng::seed_from_u64(9999);
 
-    let original = app.seed(&mut rng, Step0, ()).unwrap().0;
-    let original = original.carry::<HeaderA>(());
+    let (original, _) = app.seed(&mut rng, Step0, ()).unwrap();
     assert!(app.verify(&original, &mut rng).unwrap());
 
     // Rerandomize multiple times - each should verify
@@ -209,8 +215,7 @@ fn rerandomization_preserves_header_data() {
     // Use a non-trivial data value
     let test_data = Fp::from(123456789u64);
 
-    let original = app.seed(&mut rng, StepWithData, test_data).unwrap().0;
-    let original = original.carry::<HeaderWithData>(test_data);
+    let (original, _) = app.seed(&mut rng, StepWithData, test_data).unwrap();
     assert!(app.verify(&original, &mut rng).unwrap());
 
     let rerandomized = app.rerandomize(original.clone(), &mut rng).unwrap();
@@ -218,11 +223,12 @@ fn rerandomization_preserves_header_data() {
 
     // Header data should be preserved (non-unit comparison)
     assert_eq!(
-        original.data, rerandomized.data,
+        *original.data(),
+        *rerandomized.data(),
         "rerandomization should preserve header data"
     );
     assert_eq!(
-        rerandomized.data,
+        *rerandomized.data(),
         Fp::from(123456789u64),
         "header data should match original value"
     );
@@ -242,20 +248,11 @@ fn rerandomized_fused_proof_verifies() {
     let mut rng = StdRng::seed_from_u64(7777);
 
     // Create two seeded proofs
-    let left = app
-        .seed(&mut rng, Step0, ())
-        .unwrap()
-        .0
-        .carry::<HeaderA>(());
-    let right = app
-        .seed(&mut rng, Step0, ())
-        .unwrap()
-        .0
-        .carry::<HeaderA>(());
+    let (left, _) = app.seed(&mut rng, Step0, ()).unwrap();
+    let (right, _) = app.seed(&mut rng, Step0, ()).unwrap();
 
     // Fuse them
-    let fused = app.fuse(&mut rng, Step1, (), left, right).unwrap().0;
-    let fused = fused.carry::<HeaderA>(());
+    let (fused, _) = app.fuse(&mut rng, Step1, (), left, right).unwrap();
     assert!(app.verify(&fused, &mut rng).unwrap());
 
     // Rerandomize the fused proof

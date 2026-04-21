@@ -6,34 +6,53 @@
 mod _01_application;
 mod _02_preamble;
 mod _03_s_prime;
-mod _04_error_m;
-mod _05_error_n;
+mod _04_inner_error;
+mod _05_outer_error;
 mod _06_ab;
 mod _07_query;
 mod _08_f;
 mod _09_eval;
 mod _10_p;
 mod _11_circuits;
+pub(crate) mod claims;
 
+use claims::FuseProofSource;
+use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{
-    polynomials::{Rank, structured},
-    registry::CircuitIndex,
-};
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 use rand::CryptoRng;
 
 use crate::{
-    Application, Pcd, Proof, RAGU_TAG,
-    components::claims::{Source, native::RxComponent},
-    components::transcript::Transcript,
-    proof,
-    step::Step,
+    Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
 };
+
+/// Ephemeral native-field data for $f(X)$, used only during the fuse step.
+struct NativeF<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
+
+/// Ephemeral $m(w, X, y)$ registry restriction, used only during the fuse step.
+struct RegistryWy<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
+
+/// Ephemeral native-field data for $s'(X)$, used only during the fuse step.
+struct NativeSPrime<C: Cycle, R: Rank> {
+    registry_wx0_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx0_commitment: C::HostCurve,
+    registry_wx1_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx1_commitment: C::HostCurve,
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
+    ///
+    /// The provided `step` must have been previously registered with this
+    /// [`Application`] via [`ApplicationBuilder::register`](crate::ApplicationBuilder::register).
     ///
     /// ## Parameters
     ///
@@ -54,32 +73,40 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
-        left: Pcd<'source, C, R, S::Left>,
-        right: Pcd<'source, C, R, S::Right>,
-    ) -> Result<(Proof<C, R>, S::Aux<'source>)> {
-        let (left, right, application, application_aux) =
-            self.compute_application_proof(rng, step, witness, left, right)?;
+        left: Pcd<C, R, S::Left>,
+        right: Pcd<C, R, S::Right>,
+    ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
+        let mut builder = ProofBuilder::new(self.params, C::ScalarField::random(&mut *rng));
+
+        let (left, right, application_data, application_aux) =
+            self.compute_application_proof(rng, step, witness, left, right, &mut builder)?;
 
         let mut dr = Emulator::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), RAGU_TAG)?;
 
-        let (preamble, preamble_witness) =
-            self.compute_preamble(rng, &left, &right, &application)?;
-        let preamble_commitment = Point::constant(&mut dr, preamble.nested_commitment)?;
+        let preamble_witness = self.compute_preamble(rng, &left, &right, &mut builder)?;
+        let preamble_commitment = Point::constant(&mut dr, builder.bridge_preamble_commitment())?;
         preamble_commitment.write(&mut dr, &mut transcript)?;
         let w = transcript.challenge(&mut dr)?;
-        let registry_at_w = self.native_registry.at(*w.value().take());
+        let native_registry = self.native_registry.at(*w.value().take());
 
-        let s_prime = self.compute_s_prime(rng, &registry_at_w, &left, &right)?;
-        let s_prime_commitment = Point::constant(&mut dr, s_prime.nested_s_prime_commitment)?;
+        let native_s_prime =
+            self.compute_s_prime(rng, &native_registry, &left, &right, &mut builder)?;
+        let s_prime_commitment = Point::constant(&mut dr, builder.bridge_s_prime_commitment())?;
         s_prime_commitment.write(&mut dr, &mut transcript)?;
         let y = transcript.challenge(&mut dr)?;
         let z = transcript.challenge(&mut dr)?;
 
-        let (error_m, error_m_witness, claims) =
-            self.compute_errors_m(rng, &registry_at_w, &y, &z, &left, &right)?;
-        let error_m_commitment = Point::constant(&mut dr, error_m.nested_commitment)?;
-        error_m_commitment.write(&mut dr, &mut transcript)?;
+        let source = FuseProofSource {
+            left: &left,
+            right: &right,
+        };
+
+        let (inner_error_witness, claims, registry_wy) =
+            self.inner_error_terms(rng, &native_registry, &y, &z, &source, &mut builder)?;
+        let inner_error_commitment =
+            Point::constant(&mut dr, builder.bridge_inner_error_commitment())?;
+        inner_error_commitment.write(&mut dr, &mut transcript)?;
 
         // Clone-then-save: `save_state` consumes the transcript, but we need
         // the original to keep squeezing. Both paths apply the same permutation.
@@ -95,115 +122,109 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = transcript.challenge(&mut dr)?;
         let nu = transcript.challenge(&mut dr)?;
 
-        let (error_n, error_n_witness, a, b) = self.compute_errors_n(
+        let (outer_error_witness, a, b) = self.outer_error_terms(
             rng,
             &preamble_witness,
-            &error_m_witness,
+            &inner_error_witness,
             claims,
             &y,
             &mu,
             &nu,
             saved_transcript_state,
+            &mut builder,
         )?;
-        let error_n_commitment = Point::constant(&mut dr, error_n.nested_commitment)?;
-        error_n_commitment.write(&mut dr, &mut transcript)?;
+        let outer_error_commitment =
+            Point::constant(&mut dr, builder.bridge_outer_error_commitment()?)?;
+        outer_error_commitment.write(&mut dr, &mut transcript)?;
         let mu_prime = transcript.challenge(&mut dr)?;
         let nu_prime = transcript.challenge(&mut dr)?;
 
-        let ab = self.compute_ab(rng, a, b, &mu_prime, &nu_prime)?;
-        let ab_commitment = Point::constant(&mut dr, ab.nested_commitment)?;
+        self.compute_ab(a, b, &source, &mu_prime, &nu_prime, &mut builder)?;
+        let ab_commitment = Point::constant(&mut dr, builder.bridge_ab_commitment()?)?;
         ab_commitment.write(&mut dr, &mut transcript)?;
         let x = transcript.challenge(&mut dr)?;
 
-        let (query, query_witness) =
-            self.compute_query(rng, &w, &x, &y, &z, &error_m, &left, &right)?;
-        let query_commitment = Point::constant(&mut dr, query.nested_commitment)?;
+        let query_witness = self.compute_query(
+            rng,
+            &w,
+            &x,
+            &y,
+            &z,
+            &registry_wy,
+            &left,
+            &right,
+            &mut builder,
+        )?;
+        let query_commitment = Point::constant(&mut dr, builder.bridge_query_commitment()?)?;
         query_commitment.write(&mut dr, &mut transcript)?;
         let alpha = transcript.challenge(&mut dr)?;
 
-        let f = self.compute_f(
-            rng, &w, &y, &z, &x, &alpha, &s_prime, &error_m, &ab, &query, &left, &right,
+        let native_f = self.compute_f(
+            rng,
+            &w,
+            &y,
+            &z,
+            &x,
+            &alpha,
+            &native_s_prime,
+            &registry_wy,
+            &mut builder,
+            &left,
+            &right,
         )?;
-        let f_commitment = Point::constant(&mut dr, f.nested_commitment)?;
+        let f_commitment = Point::constant(&mut dr, builder.bridge_f_commitment())?;
         f_commitment.write(&mut dr, &mut transcript)?;
         let u = transcript.challenge(&mut dr)?;
 
-        let (eval, eval_witness) =
-            self.compute_eval(rng, &u, &left, &right, &s_prime, &error_m, &ab, &query)?;
-        let eval_commitment = Point::constant(&mut dr, eval.nested_commitment)?;
+        let eval_witness = self.compute_eval(
+            rng,
+            &u,
+            &left,
+            &right,
+            &native_s_prime,
+            &registry_wy,
+            &mut builder,
+        )?;
+        let eval_commitment = Point::constant(&mut dr, builder.bridge_eval_commitment()?)?;
         eval_commitment.write(&mut dr, &mut transcript)?;
         let pre_beta = transcript.challenge(&mut dr)?;
 
-        let p = self.compute_p(
-            &pre_beta, &u, &left, &right, &s_prime, &error_m, &ab, &query, &f,
+        self.compute_p(
+            rng,
+            &pre_beta,
+            &left,
+            &right,
+            &native_s_prime,
+            &registry_wy,
+            &native_f,
+            &mut builder,
         )?;
 
-        let challenges = proof::Challenges::new(
-            &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &x, &alpha, &u, &pre_beta,
-        );
+        // Set challenges on builder.
+        builder.set_w(*w.value().take());
+        builder.set_y(*y.value().take());
+        builder.set_z(*z.value().take());
+        builder.set_mu(*mu.value().take());
+        builder.set_nu(*nu.value().take());
+        builder.set_mu_prime(*mu_prime.value().take());
+        builder.set_nu_prime(*nu_prime.value().take());
+        builder.set_x(*x.value().take());
+        builder.set_alpha(*alpha.value().take());
+        builder.set_u(*u.value().take());
+        builder.set_pre_beta(*pre_beta.value().take());
 
-        let circuits = self.compute_internal_circuits(
+        self.compute_internal_circuits(
             rng,
-            &preamble,
-            &s_prime,
-            &error_n,
-            &error_m,
-            &ab,
-            &query,
-            &f,
-            &eval,
-            &p,
             &preamble_witness,
-            &error_n_witness,
-            &error_m_witness,
+            &outer_error_witness,
+            &inner_error_witness,
             &query_witness,
             &eval_witness,
-            &challenges,
+            &mut builder,
         )?;
 
-        Ok((
-            Proof {
-                application,
-                preamble,
-                s_prime,
-                error_n,
-                error_m,
-                ab,
-                query,
-                f,
-                eval,
-                p,
-                challenges,
-                circuits,
-            },
-            application_aux,
-        ))
-    }
-}
+        let proof = builder.build()?;
 
-pub(crate) struct FuseProofSource<'rx, C: Cycle, R: Rank> {
-    pub(crate) left: &'rx Proof<C, R>,
-    pub(crate) right: &'rx Proof<C, R>,
-}
-
-impl<'rx, C: Cycle, R: Rank> Source for FuseProofSource<'rx, C, R> {
-    type RxComponent = RxComponent;
-    type Rx = &'rx structured::Polynomial<C::CircuitField, R>;
-    type AppCircuitId = CircuitIndex;
-
-    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
-        [
-            self.left.native_rx(component),
-            self.right.native_rx(component),
-        ]
-        .into_iter()
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
-        [
-            self.left.application.circuit_id,
-            self.right.application.circuit_id,
-        ]
-        .into_iter()
+        Ok((proof.carry(application_data), application_aux))
     }
 }

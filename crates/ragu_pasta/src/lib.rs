@@ -10,11 +10,15 @@
 //! Runtime initialization can be done through [`Pasta::generate`]. This can be
 //! time consuming, which is obnoxious for tests and other purposes.
 //!
-//! Alternatively, the crate feature `baked` can be enabled to generate the
-//! parameters at compile time and store them as a static in memory.
-//! [`Pasta::baked`] can then be used to obtain a `&'static PastaParams` with
-//! substantially lower computational cost for initialization, at the expense of
-//! a larger binary size.
+//! Alternatively, enabling the `baked` crate feature causes the build script
+//! to precompute the parameters and embed them in the binary.
+//! [`Pasta::baked`] then deserializes them on first access, which is
+//! substantially cheaper than regenerating via [`Pasta::generate`], at the
+//! expense of a larger binary size.
+//!
+//! For configuration guidance, see the
+//! [Configuration](https://tachyon.z.cash/ragu/guide/configuration.html) chapter
+//! in the Ragu book.
 
 #![no_std]
 #![allow(rustdoc::broken_intra_doc_links)]
@@ -24,6 +28,8 @@
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_pasta` requires the `alloc` feature to be enabled.");
 extern crate alloc;
 
 #[macro_use]
@@ -36,18 +42,19 @@ mod common {
 mod poseidon_fp;
 mod poseidon_fq;
 
-use ragu_arithmetic::{Cycle, FixedGenerators};
-
 pub use common::{PallasGenerators, PastaParams, VestaGenerators};
 pub use pasta_curves::{Ep, EpAffine, Eq, EqAffine, Fp, Fq};
 pub use poseidon_fp::PoseidonFp;
 pub use poseidon_fq::PoseidonFq;
+use ragu_arithmetic::{Cycle, FixedGenerators};
 
 /// Zero-sized marker type for the [Pasta
 /// curve](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/)
 /// cycle.
 ///
-/// Runtime parameters are stored in [`PastaParams`].
+/// Runtime parameters are stored in [`PastaParams`]. See the
+/// [Configuration](https://tachyon.z.cash/ragu/guide/configuration.html) guide for
+/// usage patterns.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Pasta;
 
@@ -109,6 +116,7 @@ impl FixedGenerators<pasta_curves::EqAffine> for VestaGenerators {
 #[cfg(feature = "baked")]
 mod baked {
     use alloc::vec::Vec;
+
     use ff::PrimeField;
     use lazy_static::lazy_static;
     use pasta_curves::arithmetic::CurveAffine;

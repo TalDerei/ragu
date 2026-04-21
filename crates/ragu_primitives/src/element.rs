@@ -3,6 +3,9 @@
 //! Provides the [`Element`] type representing a wire and its field element
 //! assignment, the fundamental building block for circuit construction.
 
+use alloc::vec::Vec;
+use core::borrow::Borrow;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
@@ -12,13 +15,10 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::consistent::Consistent;
-
-use alloc::vec::Vec;
-use core::borrow::Borrow;
-
 use crate::{
     Boolean,
+    allocator::Allocator,
+    consistent::Consistent,
     io::{Buffer, Write},
 };
 
@@ -61,11 +61,16 @@ pub struct Element<'dr, D: Driver<'dr>> {
 }
 
 impl<'dr, D: Driver<'dr>> Element<'dr, D> {
-    /// Allocates an element with the provided witness assignment.
+    /// Allocates an element with the provided witness assignment, using the
+    /// supplied [`Allocator`] to create the underlying wire.
     ///
     /// This costs one allocation.
-    pub fn alloc(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<Self> {
-        let wire = dr.alloc(|| Ok(Coeff::Arbitrary(*assignment.snag())))?;
+    pub fn alloc<A: Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        assignment: DriverValue<D, D::F>,
+    ) -> Result<Self> {
+        let wire = allocator.alloc(dr, || Ok(Coeff::Arbitrary(*assignment.snag())))?;
 
         Ok(Element {
             value: assignment,
@@ -76,7 +81,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Allocates an element $a$ with the provided witness assignment and
     /// squares it in a single step. Returns $(a, a^2)$.
     ///
-    /// This costs one multiplication constraint.
+    /// This costs one gate.
     pub fn alloc_square(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<(Self, Self)> {
         let square = D::just(|| assignment.snag().square());
         let (a, b, c) = dr.mul(|| {
@@ -127,7 +132,8 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
     /// Constructs a new element from a wire and a witness value. **It is the
     /// caller's responsibility to ensure that the provided witness value is
-    /// consistent with the provided wire's value.**
+    /// consistent with the provided wire's value.** If the values disagree,
+    /// downstream constraints may silently produce incorrect witnesses.
     pub fn promote(wire: D::Wire, value: DriverValue<D, D::F>) -> Self {
         Element { wire, value }
     }
@@ -303,14 +309,23 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Returns a boolean indicating whether this element is zero.
-    pub fn is_zero(&self, dr: &mut D) -> Result<Boolean<'dr, D>> {
-        crate::boolean::is_zero(dr, self)
+    pub fn is_zero(
+        &self,
+        dr: &mut D,
+        allocator: &mut impl Allocator<'dr, D>,
+    ) -> Result<Boolean<'dr, D>> {
+        crate::boolean::is_zero(dr, allocator, self)
     }
 
     /// Returns a boolean indicating whether this element equals another.
-    pub fn is_equal(&self, dr: &mut D, other: &Self) -> Result<Boolean<'dr, D>> {
+    pub fn is_equal(
+        &self,
+        dr: &mut D,
+        allocator: &mut impl Allocator<'dr, D>,
+        other: &Self,
+    ) -> Result<Boolean<'dr, D>> {
         let diff = self.sub(dr, other);
-        diff.is_zero(dr)
+        diff.is_zero(dr, allocator)
     }
 
     /// Computes a weighted sum of the elements yielded by an iterator by the
@@ -334,10 +349,22 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         })
     }
 
+    /// Constrains that `self` is a $2^k$-th root of unity, i.e., $\mathtt{self}^{2^k} = 1$.
+    pub fn enforce_root_of_unity(&self, dr: &mut D, k: u32) -> Result<()> {
+        let mut value = self.clone();
+        for _ in 0..k {
+            value = value.square(dr)?;
+        }
+        let one = Element::one();
+        let diff = value.sub(dr, &one);
+        diff.enforce_zero(dr)?;
+        Ok(())
+    }
+
     /// Sums an iterator of elements.
     ///
     /// This is more efficient than [`Element::fold`] with scale=1 because it
-    /// avoids multiplication constraints.
+    /// avoids gates.
     pub fn sum<E: Borrow<Element<'dr, D>>>(
         dr: &mut D,
         elements: impl IntoIterator<Item = E>,
@@ -416,16 +443,100 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 }
 
 #[cfg(test)]
+mod root_of_unity_tests {
+    use alloc::{vec, vec::Vec};
+
+    use ff::Field;
+    use ragu_pasta::{Fp, fp};
+
+    use super::*;
+    use crate::{Simulator, allocator::Standard};
+
+    // (omega, k, should_pass)
+    fn test_cases() -> Vec<(Fp, u32, bool)> {
+        // 2^32 primitive roots of unity
+        let root_of_unity1 =
+            fp!(0x2bce74deac30ebda362120830561f81aea322bf2b7bb7584bdad6fabd87ea32f);
+        let root_of_unity2 =
+            fp!(0x16d296aa2b2fb60c7f2cf0bd729140e59875893be132b539a16988b46a2131f1);
+        let root_of_unity3 =
+            fp!(0x0e16194e05e127fc65f98157c0a42b1c050cd2c5dd8b481c9d9e9fd0a13ee1c9);
+
+        vec![
+            // 1 is a 2^0 root of unity (1^1 = 1)
+            (Fp::ONE, 0, true),
+            // 1 is also a 2^k root of unity for any k (1^(2^k) = 1)
+            (Fp::ONE, 1, true),
+            (Fp::ONE, 2, true),
+            (Fp::ONE, 3, true),
+            (Fp::ONE, 8, true),
+            (Fp::ONE, 30, true),
+            (Fp::ONE, 31, true),
+            (Fp::ONE, 32, true),
+            (Fp::ONE, 1000, true),
+            // -1 is a 2^k root of unity where k >= 1
+            (-Fp::ONE, 0, false),
+            (-Fp::ONE, 1, true),
+            (-Fp::ONE, 2, true),
+            (-Fp::ONE, 32, true),
+            // 0 is not a root of unity for any k
+            (Fp::ZERO, 0, false),
+            (Fp::ZERO, 1, false),
+            (Fp::ZERO, 8, false),
+            (Fp::ZERO, 32, false),
+            // 2 is not a root of unity
+            (Fp::from(2), 0, false),
+            (Fp::from(2), 1, false),
+            (Fp::from(2), 8, false),
+            // Arbitrary value is (likely) not a root of unity
+            (Fp::from(0xdeadbeef), 4, false),
+            // Examples of 2^32 roots of unity
+            (root_of_unity1, 32, true),
+            (root_of_unity1, 31, false),
+            (root_of_unity1, 1, false),
+            (root_of_unity2, 32, true),
+            (root_of_unity2, 31, false),
+            (root_of_unity2, 1, false),
+            (root_of_unity3, 32, true),
+            (root_of_unity3, 31, false),
+            (root_of_unity3, 1, false),
+        ]
+    }
+
+    #[test]
+    fn test_enforce_root_of_unity() -> Result<()> {
+        for (i, (omega, k, should_pass)) in test_cases().into_iter().enumerate() {
+            let result = Simulator::simulate(omega, |dr, witness| {
+                let allocator = &mut Standard::new();
+                let omega = Element::alloc(dr, allocator, witness)?;
+                omega.enforce_root_of_unity(dr, k)?;
+                Ok(())
+            });
+
+            assert_eq!(
+                result.is_ok(),
+                should_pass,
+                "test case {i} failed: omega={omega:?}, k={k}, expected should_pass={should_pass}",
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 mod proptests {
     use alloc::format;
 
-    use super::*;
     use ff::PrimeField;
     use proptest::prelude::*;
     use ragu_core::maybe::Maybe;
 
+    use super::*;
+
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
+    use crate::allocator::Standard;
 
     fn arb_fe() -> impl Strategy<Value = F> {
         (any::<u64>(), any::<u64>())
@@ -438,8 +549,9 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let a = Element::alloc(dr, a)?;
-                let b = Element::alloc(dr, b)?;
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, a)?;
+                let b = Element::alloc(dr, allocator, b)?;
                 let sum = a.add(dr, &b);
                 let result = sum.sub(dr, &b);
                 actual = Some(*result.value().take());
@@ -453,8 +565,9 @@ mod proptests {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
-                let a = Element::alloc(dr, a)?;
-                let b = Element::alloc(dr, b)?;
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, a)?;
+                let b = Element::alloc(dr, allocator, b)?;
                 let ab = a.mul(dr, &b)?;
                 let ba = b.mul(dr, &a)?;
                 actual = Some((*ab.value().take(), *ba.value().take()));
@@ -469,64 +582,68 @@ mod proptests {
     }
 }
 
-#[test]
-fn test_div_nonzero() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::allocator::Standard;
 
-    let alloc = |a: F, b: F| {
-        let sim = Simulator::simulate((a, b), |dr, witness| {
-            let (a, b) = witness.cast();
-            let a = Element::alloc(dr, a.clone())?;
-            let b = Element::alloc(dr, b.clone())?;
+    #[test]
+    fn test_div_nonzero() -> Result<()> {
+        type F = ragu_pasta::Fp;
+        type Simulator = crate::Simulator<F>;
 
-            let quotient = a.div_nonzero(dr, &b)?;
+        let alloc = |a: F, b: F| {
+            let sim = Simulator::simulate((a, b), |dr, witness| {
+                let (a, b) = witness.cast();
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, a.clone())?;
+                let b = Element::alloc(dr, allocator, b.clone())?;
 
-            assert_eq!(
-                *quotient.value().take(),
-                *a.value().take() * b.value().take().invert().unwrap()
-            );
+                let quotient = a.div_nonzero(dr, &b)?;
 
+                assert_eq!(
+                    *quotient.value().take(),
+                    *a.value().take() * b.value().take().invert().unwrap()
+                );
+
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 2);
+            assert_eq!(sim.num_constraints(), 2);
             Ok(())
-        })?;
+        };
 
-        assert_eq!(sim.num_allocations(), 2);
-        assert_eq!(sim.num_multiplications(), 1);
-        assert_eq!(sim.num_linear_constraints(), 2);
+        alloc(F::from(4578u64), F::from(372u64))?;
+        alloc(F::ZERO, F::from(372u64))?;
+        assert!(alloc(F::from(4578u64), F::ZERO).is_err());
+
         Ok(())
-    };
+    }
 
-    alloc(F::from(4578u64), F::from(372u64))?;
-    alloc(F::ZERO, F::from(372u64))?;
-    assert!(alloc(F::from(4578u64), F::ZERO).is_err());
+    #[test]
+    fn test_invert() -> Result<()> {
+        type F = ragu_pasta::Fp;
+        type Simulator = crate::Simulator<F>;
 
-    Ok(())
-}
+        let inv = |a: F| {
+            let sim = Simulator::simulate(a, |dr, witness| {
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, witness.clone())?;
+                dr.reset();
+                let ainv = a.invert(dr)?;
 
-#[test]
-fn test_invert() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+                assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
 
-    let inv = |a: F| {
-        let sim = Simulator::simulate(a, |dr, witness| {
-            let a = Element::alloc(dr, witness.clone())?;
-            dr.reset();
-            let ainv = a.invert(dr)?;
-
-            assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
-
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
             Ok(())
-        })?;
+        };
 
-        assert_eq!(sim.num_allocations(), 0);
-        assert_eq!(sim.num_multiplications(), 1);
-        assert_eq!(sim.num_linear_constraints(), 2);
+        inv(F::from(4578u64))?;
+        assert!(inv(F::ZERO).is_err());
+
         Ok(())
-    };
-
-    inv(F::from(4578u64))?;
-    assert!(inv(F::ZERO).is_err());
-
-    Ok(())
+    }
 }

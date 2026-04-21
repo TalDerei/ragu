@@ -24,13 +24,15 @@ and the synthesis context it runs in.
 
 The driver exposes three core operations:
 
-* [`mul()`]: returns wires $(a, b, c)$ with the initial constraint $a \cdot b =
-      c$, simultaneously assigning their values. The caller provides a closure
-      that returns the three assignments; it is evaluated only in contexts where
-      [witness data](witness.md) is needed.
+* [`mul()`]: returns wires $(a, b, c)$ with the constraint $a \cdot b = c$,
+      simultaneously assigning their values. The caller provides a closure that
+      returns the three assignments; it is evaluated only in contexts where
+      [witness data](witness.md) is needed. See [`DriverTypes`](#drivertypes)
+      for the lower-level [`gate()`] method that [`mul()`] delegates to by
+      default.
 * [`enforce_zero()`]: enforces that a linear combination of previously created
       wires equals zero. This operation takes a closure that is only executed
-      when the driver needs to know about the constraint system. The closure is
+      when the driver needs to know about constraints. The closure is
       used to [build the linear combination](linear.md#the-closure-pattern) in a
       way that suits the driver's needs and optimization opportunities.
 * [`add()`]: returns a new _virtual_ wire representing a linear combination of
@@ -43,20 +45,7 @@ available everywhere. The [`constant()`] method is a simple helper that returns
 a virtual wire assigned to a constant, which is free because it is a virtual
 wire that scales [`ONE`].
 
-### Allocation
-
-Sometimes only a single wire is needed, but [`mul()`] always allocates three. To
-support single-wire allocation, drivers provide an additional [`alloc()`] method
-that allocates and assigns one wire.
-
-By default, `alloc` calls `mul`, returns the $a$ wire, and sets the
-corresponding $b$ and $c$ wires to zero to satisfy the multiplication
-constraint—wasting $b$ and $c$. Drivers may override `alloc` to avoid this
-overhead. For example, synthesis drivers return the $a$ wire from a `mul`
-operation, stash the associated $b$ wire for the next `alloc` call, and fill in
-$c$ later to satisfy the constraint.
-
-### The `'dr` Lifetime
+### The `'dr` Lifetime {#the-dr-lifetime}
 
 Drivers are parameterized by a lifetime `'dr` that ties [routines] to the
 driver's scope. The [`routine()`] method bounds routines by `'dr`, ensuring
@@ -66,22 +55,29 @@ routines holding borrowed references can be safely sent to worker threads.
 
 ### `DriverTypes` {#drivertypes}
 
-`Driver<'dr>` has a supertrait, [`DriverTypes`], that collects associated types
-which can be named without binding the `'dr` lifetime. The field type
-`ImplField` and wire type `ImplWire` are re-exported on `Driver` as
-[`F`][driver-f] and [`Wire`], but the remaining associated types (`MaybeKind`,
-`LCadd`, and `LCenforce`) live only on `DriverTypes` because circuit code rarely
-needs to refer to them by name.
+`Driver<'dr>` has a supertrait, [`DriverTypes`], that collects implementation
+details which are agnostic to the `'dr` lifetime. These include associated types
+(`ImplField`, `ImplWire`, `MaybeKind`, `LCadd`, `LCenforce`) and the low-level
+[`gate()`] method.
 
-The lifetime-free aspect lets conversion infrastructure (see the
-[`convert`][convert-mod] module) and the [`DriverValue`] type alias work without
-a driver lifetime in scope. Circuit code should always use `Driver<'dr>` as its
-bound directly; `DriverTypes` only matters when writing lifetime-polymorphic
-abstractions over drivers.
+The most important item on `DriverTypes` is [`gate()`]. It allocates four wires
+$(a, b, c, d)$ subject to the constraints $a \cdot b = c$ and $c \cdot d = 0$.
+The second constraint makes $d$ useless in the typical case: whenever $c$ is
+nonzero, $d$ is forced to zero. For this reason [`mul()`] delegates to `gate`
+by default and discards $d$, and circuit code should always prefer `mul`. But
+when $c$ is guaranteed to be zero, $d$ becomes unconstrained—code can call
+`gate` directly and use the returned $d$.
+
+`Driver<'dr>` re-exports the field and wire types as [`F`][driver-f] and
+[`Wire`]; the remaining associated types live only on `DriverTypes` because
+circuit code rarely needs to name them. The lifetime-free aspect lets conversion
+infrastructure (see the [`convert`][convert-mod] module) and the
+[`DriverValue`] type alias work without a driver lifetime in scope. Circuit code
+should always bound on `Driver<'dr>`, not `DriverTypes`.
 
 ### Purity {#purity}
 
-All four closure-accepting `Driver` methods—[`mul()`], [`alloc()`], [`add()`],
+All three closure-accepting `Driver` methods—[`mul()`], [`add()`],
 and [`enforce_zero()`]—require their closures to be [`Fn`], not `FnOnce` or
 `FnMut`. This is a deliberate signal that closures should be side-effect-free:
 synthesis must produce identical constraints regardless of whether a given
@@ -89,10 +85,10 @@ driver invokes the closure. `Fn` prevents accidental `&mut` captures, although
 it does not prevent interior mutability.
 
 The two closure families differ in whether they have additional protection
-beyond `Fn`. For the witness-providing closures on [`mul()`] and [`alloc()`],
+beyond `Fn`. For the witness-providing closure on [`mul()`],
 the [`Maybe`]/[`DriverValue`] system provides a harder compile-time guarantee:
-drivers with `MaybeKind = Empty` never call those closures at all, and the
-closure bodies are dead-code-eliminated. The expression-building closures on
+drivers with `MaybeKind = Empty` never call the closure at all, and the
+closure body is dead-code-eliminated. The expression-building closures on
 [`add()`] and [`enforce_zero()`] have no such backstop; drivers with `MaybeKind
 = Empty` still call these closures when building constraint structure.
 
@@ -102,11 +98,11 @@ The [`enforce_equal()`] method is a convenience helper that constrains two wires
 to have the same value by calling [`enforce_zero()`] on their difference.
 
 [`mul()`]: ragu_core::drivers::Driver::mul
+[`gate()`]: ragu_core::drivers::DriverTypes::gate
 [`enforce_zero()`]: ragu_core::drivers::Driver::enforce_zero
 [`add()`]: ragu_core::drivers::Driver::add
 [`ONE`]: ragu_core::drivers::Driver::ONE
 [`constant()`]: ragu_core::drivers::Driver::constant
-[`alloc()`]: ragu_core::drivers::Driver::alloc
 [`Driver`]: ragu_core::drivers::Driver
 [`Routine`]: ragu_core::routines::Routine
 [`routine()`]: ragu_core::drivers::Driver::routine

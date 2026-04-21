@@ -13,6 +13,8 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
+use alloc::vec::Vec;
+
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use ragu_arithmetic::{Coeff, CurveAffine, Uendo};
 use ragu_core::{
@@ -21,8 +23,6 @@ use ragu_core::{
     gadgets::Gadget,
     maybe::Maybe,
 };
-
-use alloc::vec::Vec;
 
 use crate::{
     Boolean, Element, Point,
@@ -51,6 +51,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             .map(|i| {
                 let bit = Boolean::alloc(
                     dr,
+                    &mut (),
                     value
                         .as_ref()
                         .map(|v| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64)),
@@ -75,7 +76,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Extracts an endoscalar from a random element in the field.
-    pub fn extract(dr: &mut D, elem: Element<'dr, D>) -> Result<Self>
+    pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        elem: Element<'dr, D>,
+    ) -> Result<Self>
     where
         D::F: WithSmallOrderMulGroup<3>,
     {
@@ -110,14 +115,14 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                 }
             });
 
-            let bit = Boolean::alloc(dr, bit)?;
+            let bit = Boolean::alloc(dr, allocator, bit)?;
             let (_, square) = Element::alloc_square(dr, sqrt)?;
             let vb = elem.mul(dr, &bit.element())?;
 
             // Enforce that the square is equal to
             //     (elem + i) if bit == 1
             //     (elem + i) * MULTIPLICATIVE_GENERATOR) if bit == 0
-            // This is done by enforcing the linear constraint:
+            // This is done by enforcing the constraint:
             //
             //     square = bit * (elem + i)
             //            + (1 - bit) * ((elem + i) * MULTIPLICATIVE_GENERATOR)
@@ -237,8 +242,8 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: Uendo) -> F {
 /// is a quadratic residue for each bit position `i`.
 pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> Uendo {
     Emulator::emulate_wireless(value, |dr, witness| {
-        let elem = Element::alloc(dr, witness)?;
-        let endo = Endoscalar::extract(dr, elem)?;
+        let elem = Element::alloc(dr, &mut (), witness)?;
+        let endo = Endoscalar::extract(dr, &mut (), elem)?;
         Ok(*endo.value.snag())
     })
     .expect("wireless emulation should not fail")
@@ -246,7 +251,6 @@ pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -
 
 #[cfg(test)]
 mod tests {
-    use super::{Element, Endoscalar, Maybe, Point};
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::{CurveAffine, CurveExt, Uendo};
@@ -254,7 +258,8 @@ mod tests {
     use ragu_pasta::{EpAffine, Fp};
     use rand::RngExt;
 
-    use crate::Simulator;
+    use super::{Element, Endoscalar, Maybe, Point};
+    use crate::{Simulator, allocator::Standard};
 
     pub struct EndoscalarTest {
         pub value: Uendo,
@@ -316,8 +321,9 @@ mod tests {
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
             let (r, extracted, p) = witness.cast();
             let p = Point::alloc(dr, p)?;
-            let r = Element::alloc(dr, r)?;
-            let my_extracted = Endoscalar::extract(dr, r)?;
+            let allocator = &mut Standard::new();
+            let r = Element::alloc(dr, allocator, r)?;
+            let my_extracted = Endoscalar::extract(dr, &mut (), r)?;
             let allocated = Endoscalar::alloc(dr, extracted)?;
 
             assert_eq!(my_extracted.value.snag(), allocated.value.snag());
@@ -345,10 +351,7 @@ mod tests {
 
             dr.reset();
             assert_eq!(r.group_scale(dr, &p)?.value().take(), expected);
-            assert_eq!(
-                dr.num_multiplications(),
-                7 * (1 + (Uendo::BITS as usize / 2))
-            );
+            assert_eq!(dr.num_gates(), 7 * (1 + (Uendo::BITS as usize / 2)));
 
             Ok(())
         })?;

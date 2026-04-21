@@ -1,5 +1,8 @@
 # PCD Step and Proofs
 
+> API reference: see the [`ragu_pcd`](https://tachyon.z.cash/ragu/internal/ragu_pcd/) crate documentation
+> for `Application`, `Step`, `Header`, `Proof`, and `Pcd`.
+
 The proof structure in Ragu represents the cryptographic evidence that a
 computation was performed correctly. Proofs are _recursive_ and each proof can
 verify previous proofs while simultaneously attesting to a new computation.
@@ -8,25 +11,20 @@ carries evidence of its entire computational history.
 
 ## Arity-2 PCD
 
-Instead of using separate proof structures for IVC and PCD which would inject
-additional engineering complexity into the internal layers. Ragu treats all
-recursion steps as PCD-based, even when only IVC semantics are required for a
-given step. This allows the use of a dummy second input to maintain a uniform
-structure.
-
-Although conjectural, the performance cost of two-input PCD over single-input
-IVC is likely negligible, which motivates this design choice. Visually, this
-corresponds to an arity-2 PCD tree, where IVC emerges as the degenerate case
-with dummy accumulator inputs, forming a lopsided binary tree structure.
+Ragu treats all recursion steps as arity-2 PCD, even when only IVC semantics
+are required for a given step (using a dummy second input). This avoids
+separate proof structures for IVC and PCD, and the performance cost is
+believed to be negligible. IVC emerges as the degenerate case with a dummy
+accumulator input, forming a lopsided binary tree.
 
 ## The `Pcd` Type
 
 The primary type that applications interact with is `Pcd` (proof-carrying data):
 
 ```rust
-pub struct Pcd<'source, C: Cycle, R: Rank, H: Header<C::CircuitField>> {
-    pub proof: Proof<C, R>,
-    pub data: H::Data<'source>,
+pub struct Pcd<C: Cycle, R: Rank, H: Header<C::CircuitField>> {
+    proof: Proof<C, R>,
+    data: H::Data,
 }
 ```
 
@@ -71,8 +69,8 @@ The associated types define the step's interface:
 
 * **`INDEX`**: Unique identifier for this step within the application.
 * **`Witness`**: Private data provided by the prover (not visible to verifiers).
-* **`Aux`**: Auxiliary output returned after proving, often used to construct
-  the output header data.
+* **`Aux`**: Auxiliary data produced during synthesis, returned alongside the
+  output header data. Used for pipelining values to future steps.
 * **`Left`, `Right`**: The header types of the two child proofs.
 * **`Output`**: The header type of the resulting proof.
 
@@ -124,8 +122,8 @@ must have `Left = ()` and `Right = ()`.
 A _trivial proof_ is a dummy proof used to seed the base case of
 recursion. It does not encode any real computation; instead, it
 provides a well-formed starting proof that allows the recursive
-machinery to bootstrap. Internally, trivial proofs use zero
-polynomials and deterministic blinding factors.
+machinery to bootstrap. Internally, trivial proofs use non-degenerate
+polynomials and deterministic challenges.
 
 Trivial proofs are not meant to verify independently—they exist
 solely to provide valid input structure for `seed()` when no real
@@ -186,10 +184,7 @@ This is useful for privacy-preserving applications where proof linkability
 must be prevented.
 
 Internally, rerandomization folds the input proof with a _seeded
-trivial proof_ using a dedicated rerandomization step. The
-[`Application`](../guide/configuration.md) caches this seeded trivial
-proof (created once via `seed()`) to avoid regenerating it on each
-call. This cached proof provides valid structure while the fresh
+trivial proof_ using a dedicated rerandomization step. The fresh
 randomness from `rng` ensures the output proof is unlinkable to the
 original.
 
@@ -266,5 +261,5 @@ For deeper background, see
 The `Proof` type contains the cryptographic data required for
 verification, organized into components that mirror the protocol's
 [staging system](../protocol/extensions/staging.md). Each proof
-component captures polynomials,
-blinding factors, and commitments on both the host and nested curves.
+component captures polynomials and commitments on both the host and
+nested curves.

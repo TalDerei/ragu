@@ -37,6 +37,9 @@
 //! situations involving _nested_ optionality of witness data, which can be
 //! confusing in the context of recursive proofs.
 //!
+//! See the *Witness Data* chapter in the [book] for the full motivation
+//! and design rationale.
+//!
 //! ## Design
 //!
 //! End users typically have access to a [`Maybe<T>`] type that they can treat
@@ -65,13 +68,15 @@
 //! This is done by value in a way that often does not lead to any runtime
 //! overhead due to existing memory layout optimizations in the Rust compiler.
 //!
-//! See also the [book] for a user-oriented introduction to witness handling.
-//!
 //! [book]: https://tachyon.z.cash/ragu/guide/drivers/witness.html
 
 mod always;
 mod cast;
 mod empty;
+
+mod sealed {
+    pub trait Sealed {}
+}
 
 pub use always::Always;
 pub use empty::Empty;
@@ -81,7 +86,7 @@ pub use empty::Empty;
 /// discriminant. This means that _non-existing_ `Maybe<T>` values are
 /// zero-sized types and _existing_ `Maybe<T>` values are transparently
 /// equivalent to their enclosed `T` values.
-pub trait Maybe<T: Send>: Send {
+pub trait Maybe<T: Send>: sealed::Sealed + Send {
     /// The kind of this `Maybe<T>` that defines how it is rebound when mapped.
     type Kind: MaybeKind;
 
@@ -154,7 +159,7 @@ pub trait Maybe<T: Send>: Send {
 /// This trait defines the nature of rebinding for a [`Maybe<T>`] type back into
 /// its concrete type, using generic associated types to simulate a
 /// higher-kinded type abstraction.
-pub trait MaybeKind {
+pub trait MaybeKind: sealed::Sealed {
     /// How a `Maybe<T>` is rebound into a `Maybe<U>` for this kind.
     /// Use [`Perhaps`] type alias instead of accessing this directly.
     type Rebind<T: Send>: Maybe<T, Kind = Self>;
@@ -487,8 +492,9 @@ mod tests {
     }
 
     mod proptests {
-        use super::*;
         use proptest::prelude::*;
+
+        use super::*;
 
         proptest! {
             #[test]

@@ -1,5 +1,8 @@
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{Circuit, polynomials::Rank};
+use ragu_circuits::{Circuit, WithAux, polynomials::Rank};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -10,9 +13,6 @@ use ragu_primitives::{
     Element,
     vec::{CollectFixed, ConstLen, FixedVec, Len},
 };
-
-use alloc::vec::Vec;
-use core::marker::PhantomData;
 
 use super::super::Step;
 use crate::Header;
@@ -46,11 +46,11 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
     type Instance<'source> = (
         FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
         FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
-        <S::Output as Header<C::CircuitField>>::Data<'source>,
+        <S::Output as Header<C::CircuitField>>::Data,
     );
     type Witness<'source> = (
-        <S::Left as Header<C::CircuitField>>::Data<'source>,
-        <S::Right as Header<C::CircuitField>>::Data<'source>,
+        <S::Left as Header<C::CircuitField>>::Data,
+        <S::Right as Header<C::CircuitField>>::Data,
         S::Witness<'source>,
     );
     type Output = Kind![C::CircuitField; FixedVec<Element<'_, _>, TripleConstLen<HEADER_SIZE>>];
@@ -59,6 +59,7 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
             FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
             FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
         ),
+        <S::Output as Header<C::CircuitField>>::Data,
         S::Aux<'source>,
     );
 
@@ -74,16 +75,13 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'source>>,
-    )>
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr,
     {
         let (left, right, witness) = witness.cast();
 
-        let ((left, right, output), aux) = self
+        let ((left, right, output), output_data, step_aux) = self
             .step
             .witness::<_, HEADER_SIZE>(dr, witness, left, right)?;
 
@@ -92,7 +90,7 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
         right.write(dr, &mut elements)?;
         output.write(dr, &mut elements)?;
 
-        let aux = D::try_just(|| {
+        let adapter_aux = D::try_just(|| {
             let left_header = elements[0..HEADER_SIZE]
                 .iter()
                 .map(|e| *e.value().take())
@@ -103,18 +101,19 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
                 .map(|e| *e.value().take())
                 .collect_fixed()?;
 
-            Ok(((left_header, right_header), aux.take()))
+            Ok((
+                (left_header, right_header),
+                output_data.take(),
+                step_aux.take(),
+            ))
         })?;
 
-        Ok((FixedVec::try_from(elements)?, aux))
+        Ok(WithAux::new(FixedVec::try_from(elements)?, adapter_aux))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::header::{Header, Suffix};
-    use crate::step::{Encoded, Index, Step};
     use ragu_circuits::polynomials::TestRank;
     use ragu_core::{
         drivers::emulator::Emulator,
@@ -122,6 +121,13 @@ mod tests {
         maybe::{Always, Maybe, MaybeKind},
     };
     use ragu_pasta::{Fp, Pasta};
+    use ragu_primitives::allocator::{Allocator, Standard};
+
+    use super::*;
+    use crate::{
+        header::{Header, Suffix},
+        step::{Encoded, Index, Step},
+    };
 
     type TestR = TestRank;
     const HEADER_SIZE: usize = 4;
@@ -130,14 +136,15 @@ mod tests {
 
     impl Header<Fp> for TestHeader {
         const SUFFIX: Suffix = Suffix::new(50);
-        type Data<'source> = Fp;
+        type Data = Fp;
         type Output = Kind![Fp; Element<'_, _>];
 
-        fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+        fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
             dr: &mut D,
-            witness: DriverValue<D, Self::Data<'source>>,
+            allocator: &mut A,
+            witness: DriverValue<D, Self::Data>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            Element::alloc(dr, witness)
+            Element::alloc(dr, allocator, witness)
         }
     }
 
@@ -146,7 +153,7 @@ mod tests {
     impl Step<Pasta> for TestStep {
         const INDEX: Index = Index::new(0);
         type Witness<'source> = ();
-        type Aux<'source> = Fp;
+        type Aux<'source> = ();
         type Left = TestHeader;
         type Right = TestHeader;
         type Output = TestHeader;
@@ -164,10 +171,12 @@ mod tests {
                 Encoded<'dr, D, Self::Output, HS>,
             ),
             DriverValue<D, Fp>,
+            DriverValue<D, ()>,
         )> {
+            let allocator = &mut Standard::new();
             // Allocate elements for left and right
-            let left_elem = Element::alloc(dr, left)?;
-            let right_elem = Element::alloc(dr, right)?;
+            let left_elem = Element::alloc(dr, allocator, left)?;
+            let right_elem = Element::alloc(dr, allocator, right)?;
 
             // Output is sum of left and right
             let output_elem = left_elem.add(dr, &right_elem);
@@ -177,7 +186,7 @@ mod tests {
             let right_enc = Encoded::from_gadget(right_elem);
             let output_enc = Encoded::from_gadget(output_elem);
 
-            Ok(((left_enc, right_enc, output_enc), output_val))
+            Ok(((left_enc, right_enc, output_enc), output_val, D::unit()))
         }
     }
 
@@ -196,9 +205,10 @@ mod tests {
         let adapter = Adapter::<Pasta, TestStep, TestR, HEADER_SIZE>::new(TestStep);
         let witness = Always::maybe_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
 
-        let (output, _aux) = adapter
+        let output = adapter
             .witness(dr, witness)
-            .expect("witness should succeed");
+            .expect("witness should succeed")
+            .into_output();
 
         // Output should have 3 * HEADER_SIZE elements (left + right + output headers)
         assert_eq!(output.len(), HEADER_SIZE * 3);
@@ -212,17 +222,18 @@ mod tests {
         let adapter = Adapter::<Pasta, TestStep, TestR, HEADER_SIZE>::new(TestStep);
         let witness = Always::maybe_just(|| (Fp::from(10u64), Fp::from(20u64), ()));
 
-        let (_output, aux) = adapter
+        let aux = adapter
             .witness(dr, witness)
-            .expect("witness should succeed");
+            .expect("witness should succeed")
+            .into_aux();
 
-        let ((left_header, right_header), step_aux) = aux.take();
+        let ((left_header, right_header), output_data, _step_aux) = aux.take();
 
         // Left header should start with 10
         assert_eq!(left_header[0], Fp::from(10u64));
         // Right header should start with 20
         assert_eq!(right_header[0], Fp::from(20u64));
         // Step aux should be 10 + 20 = 30
-        assert_eq!(step_aux, Fp::from(30u64));
+        assert_eq!(output_data, Fp::from(30u64));
     }
 }

@@ -1,5 +1,7 @@
 //! Evaluation of the $t(X, Z)$ polynomial.
 
+use core::marker::PhantomData;
+
 use ff::Field;
 use ragu_core::{
     Error, Result,
@@ -9,8 +11,6 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_primitives::Element;
-
-use core::marker::PhantomData;
 
 use super::Rank;
 
@@ -115,6 +115,7 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
         // Compute output using the precomputed inversions
         let output = Element::alloc(
             dr,
+            &mut (),
             D::try_just(|| {
                 let x = *input.0.value().take();
                 let z = *input.1.value().take();
@@ -143,10 +144,11 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::Fp;
+    use ragu_primitives::{Simulator, allocator::Standard};
+
     use super::*;
     use crate::polynomials::ProductionRank;
-    use ragu_pasta::Fp;
-    use ragu_primitives::Simulator;
 
     #[test]
     fn simulate_txz() -> Result<()> {
@@ -159,15 +161,14 @@ mod tests {
 
         Simulator::simulate((x, z), |dr, witness| {
             let (x, z) = witness.cast();
-            let x = Element::alloc(dr, x)?;
-            let z = Element::alloc(dr, z)?;
+            let allocator = &mut Standard::new();
+            let x = Element::alloc(dr, allocator, x)?;
+            let z = Element::alloc(dr, allocator, z)?;
 
             dr.reset();
             dr.routine(evaluator.clone(), (x, z))?;
-
-            assert_eq!(dr.num_allocations(), 0);
-            assert_eq!(dr.num_multiplications(), 76);
-            assert_eq!(dr.num_linear_constraints(), 152);
+            assert_eq!(dr.num_gates(), 76);
+            assert_eq!(dr.num_constraints(), 152);
 
             Ok(())
         })?;

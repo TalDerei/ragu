@@ -68,6 +68,8 @@
 #![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_arithmetic` requires the `alloc` feature to be enabled.");
 extern crate alloc;
 
 mod coeff;
@@ -77,20 +79,16 @@ mod multicore;
 mod uendo;
 mod util;
 
-use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
-
 pub use coeff::Coeff;
 pub use domain::Domain;
+use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 pub use fft::{Ring, bitreverse};
 pub use pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
-pub use util::{batch_to_affine, dot, eval, factor, factor_iter, geosum, mul, poly_with_roots};
-
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`
 /// representation that e.g. [`Fp::from_raw`](pasta_curves::Fp::from_raw) or
 /// [`Fp::pow`](pasta_curves::Fp::pow) need as input. This makes constants
 /// slightly more readable, but is not intended for use in other contexts.
 pub use ragu_macros::repr256;
-
 /// TODO(ebfull): Use this if we need to increase the bit size of endoscalars.
 ///
 /// The `uendo` module is a speculative implementation. We may need a
@@ -99,6 +97,9 @@ pub use ragu_macros::repr256;
 /// that's generic over bit length, in case the security proof demands something
 /// like 134-bit challenges. This may end up being removed if 128 bits suffices.
 pub use u128 as Uendo;
+pub use util::{
+    batch_to_affine, dot, eval, factor, factor_iter, geosum, low_u64, mul, poly_with_roots,
+};
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
 /// is the base field of the other, and vice-versa.
@@ -186,12 +187,11 @@ pub trait PoseidonPermutation<F: Field>: Send + Sync + 'static {
     const T: usize;
 
     /// The rate, which caps the number of elements that can be squeezed or
-    /// absorbed before a permutation is applied. This must be smaller than `T`.
+    /// absorbed before a permutation is applied. Must be smaller than `T`.
     const RATE: usize;
 
     /// Number of full rounds where the sbox is applied to every element of the
-    /// state. This must be even, since exactly half of these rounds are applied
-    /// at the start and then half at the end of the permutation.
+    /// state. Must be even (half at the start, half at the end).
     const FULL_ROUNDS: usize;
 
     /// Number of partial rounds where the sbox is applied only to the first

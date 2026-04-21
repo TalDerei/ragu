@@ -6,6 +6,8 @@
 //! This module only supports curves with `a = 0` in the short Weierstrass form,
 //! specifically curves of the form `y^2 = x^3 + b`.
 
+use core::marker::PhantomData;
+
 use ff::WithSmallOrderMulGroup;
 use ragu_arithmetic::{Coeff, CurveAffine};
 use ragu_core::{
@@ -15,11 +17,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::consistent::Consistent;
-
-use core::marker::PhantomData;
-
-use crate::{Boolean, Element, io::Write};
+use crate::{Boolean, Element, consistent::Consistent, io::Write};
 
 /// Represents an affine point on a curve defined over the circuit's field.
 #[derive(Gadget, Write)]
@@ -145,7 +143,8 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
         Ok(Point::new_unchecked(x3, y3))
     }
 
-    /// Adds two points with different x-coordinates.
+    /// Adds two points with different x-coordinates. If the x-coordinates are
+    /// equal, the division by `x_1 - x_0` is undefined and synthesis will fail.
     ///
     /// If you cannot guarantee `x_0 != x_1` up front, pass `Some(acc)` via
     /// `nonzero`. On each call, `*acc` is multiplied by `x_1 - x_0`. After
@@ -181,6 +180,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
 
     /// Computes $\[2\] Q + P$. **The caller must ensure that $P$ and $Q$ do not
     /// have the same x-coordinate and that the result is not the identity.**
+    /// Violating either precondition causes a division by zero during synthesis.
     pub fn double_and_add_incomplete(&self, dr: &mut D, other: &Self) -> Result<Self> {
         // See <https://github.com/zcash/zcash/issues/3924> for an explanation.
 
@@ -260,10 +260,8 @@ fn test_point_double() -> Result<()> {
 
             Ok(())
         })?;
-
-        assert_eq!(sim.num_allocations(), 0);
-        assert_eq!(sim.num_multiplications(), 4);
-        assert_eq!(sim.num_linear_constraints(), 8);
+        assert_eq!(sim.num_gates(), 4);
+        assert_eq!(sim.num_constraints(), 8);
         Ok(())
     };
 
@@ -275,6 +273,7 @@ fn test_point_double() -> Result<()> {
 #[test]
 fn test_add_incomplete() -> Result<()> {
     use alloc::vec;
+
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::CurveExt;
 
@@ -313,9 +312,8 @@ fn test_add_incomplete() -> Result<()> {
                 assert!(sim.is_err());
             } else {
                 let sim = sim?;
-                assert_eq!(sim.num_allocations(), 0);
-                assert_eq!(sim.num_multiplications(), 3);
-                assert_eq!(sim.num_linear_constraints(), 6);
+                assert_eq!(sim.num_gates(), 3);
+                assert_eq!(sim.num_constraints(), 6);
             }
         }
     }
@@ -325,8 +323,8 @@ fn test_add_incomplete() -> Result<()> {
 
 #[test]
 fn test_double_and_add_incomplete() -> Result<()> {
-    use alloc::vec;
-    use alloc::vec::Vec;
+    use alloc::{vec, vec::Vec};
+
     use group::{Group, prime::PrimeCurveAffine};
     use ragu_arithmetic::CurveExt;
 
@@ -368,9 +366,8 @@ fn test_double_and_add_incomplete() -> Result<()> {
                 assert!(sim.is_err());
             } else {
                 let sim = sim?;
-                assert_eq!(sim.num_allocations(), 0);
-                assert_eq!(sim.num_multiplications(), 5);
-                assert_eq!(sim.num_linear_constraints(), 10);
+                assert_eq!(sim.num_gates(), 5);
+                assert_eq!(sim.num_constraints(), 10);
             }
         }
     }

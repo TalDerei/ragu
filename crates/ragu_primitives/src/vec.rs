@@ -1,22 +1,23 @@
 //! Provides [`FixedVec`], a wrapper around [`Vec<T>`] with a compile-time
 //! length guarantee that allows it to implement [`Gadget`].
 //!
-//! [`Vec<T>`] cannot implement [`Gadget`] (when `T` implements `Gadget`)
-//! because gadgets must be _fungible_: their synthesis behavior must be
-//! type-determined, not instance-determined. A `Vec` has dynamic length,
-//! meaning different instances could have different wire counts, causing
-//! [`GadgetKind::map_gadget`] to behave differently per instance.
-//!
-//! Ragu provides [`Gadget`] implementations for `[T; N]` and `Box<[T; N]>`
-//! where `const N: usize`, but const generics are still [somewhat
-//! limited](https://github.com/rust-lang/rust/issues/60551) in Rust.
+//! `Vec<T>` cannot implement `Gadget` because its dynamic length violates
+//! fungibility — different instances could have different wire counts. Ragu
+//! provides `Gadget` implementations for `[T; N]` and `Box<[T; N]>`, but const
+//! generics are still [somewhat limited](https://github.com/rust-lang/rust/issues/60551)
+//! in Rust.
 //!
 //! [`FixedVec`] solves this by parameterizing on a [`Len`] type `L` that
 //! statically determines the vector's length. All instances of `FixedVec<T, L>`
-//! have exactly [`L::len()`](Len::len) elements, making their synthesis
-//! behavior type-determined. `FixedVec` implements [`Gadget`] if `T` implements
-//! `Gadget`, and can also be serialized via [`Write`] if `T::Kind` implements
-//! `Write`.
+//! have exactly [`L::len()`](Len::len) elements. `FixedVec` implements
+//! [`Gadget`] if `T` implements `Gadget`, and can also be serialized via
+//! [`Write`] if `T::Kind` implements `Write`.
+
+use alloc::vec::Vec;
+use core::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
 use ff::Field;
 use ragu_core::{
@@ -26,15 +27,10 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind},
 };
 
-use crate::consistent::Consistent;
-
-use alloc::vec::Vec;
-use core::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
+use crate::{
+    consistent::Consistent,
+    io::{Buffer, Write},
 };
-
-use crate::io::{Buffer, Write};
 
 /// A type that statically determines the length of a [`FixedVec`].
 pub trait Len: Send + Sync + 'static {
@@ -214,6 +210,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>, L: Len> Gadget<'dr, D> for FixedVec
 #[test]
 fn test_vector_length_mismatch() {
     use alloc::vec;
+
     use ragu_core::Error;
     let result = FixedVec::<i32, ConstLen<3>>::new(vec![1, 2]);
     match result {

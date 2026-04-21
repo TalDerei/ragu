@@ -26,7 +26,8 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 all-features = true
 
 [features]
-default = []
+alloc = []
+default = ["alloc"]
 std = []
 
 [lib]

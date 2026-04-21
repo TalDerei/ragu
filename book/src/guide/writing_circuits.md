@@ -34,14 +34,15 @@ pub trait Step<C: Cycle> {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        left: Encoder<'dr, 'source, D, Self::Left, HEADER_SIZE>,
-        right: Encoder<'dr, 'source, D, Self::Right, HEADER_SIZE>,
+        left: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data>,
+        right: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )>;
 }
@@ -67,7 +68,7 @@ distinct index starting from 0.
 type Witness<'source> = FieldElement;  // What the prover knows
 ```
 
-**Aux**: Data returned to the caller (output values)
+**Aux**: Auxiliary data returned alongside the output header value (e.g., for pipelining to future steps)
 ```rust
 type Aux<'source> = FieldElement;  // What to return
 ```
@@ -87,7 +88,7 @@ type Output = InternalNode;  // What this step creates
 
 This is where the circuit logic is implemented. The function:
 1. Receives witness data from the prover
-2. Receives encoders for left/right input proofs
+2. Receives left/right header data as `DriverValue`s
 3. Performs computation (constraints)
 4. Returns encoded proofs and auxiliary output
 
@@ -122,23 +123,23 @@ type Output = InternalNode;  // Produces InternalNode
 
 The key operations in a fuse step:
 1. **Encode inputs** - Convert input proof headers to circuit gadgets via
-   `.encode(dr)?`
+   `Encoded::new(dr, left)?`
 2. **Extract data** - Get header values with `.as_gadget()`
 3. **Combine** - Hash or process the data together
 4. **Encode output** - Package combined result as a new proof
 
 These proofs are created using `app.fuse()`.
 
-## Understanding .encode()
+## Understanding Encoded::new()
 
 When working with input proofs in a fuse step:
 
 ```rust
-let left = left.encode(dr)?;
-let right = right.encode(dr)?;
+let left = Encoded::new(dr, left)?;
+let right = Encoded::new(dr, right)?;
 ```
 
-The `.encode()` call:
+The `Encoded::new()` call:
 - Converts the header data into circuit gadgets (allocates field elements)
 - Makes the proof's header data available for use in circuit logic
 - Returns an `Encoded` proof that can be passed to the next step
@@ -158,14 +159,15 @@ struct LeafNode;
 
 impl<F: Field> Header<F> for LeafNode {
     const SUFFIX: Suffix = Suffix::new(0);  // Unique ID
-    type Data<'source> = F;                 // Data type
+    type Data = F;                 // Data type
     type Output = Kind![F; Element<'_, _>]; // Gadget output
 
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
-        witness: DriverValue<D, Self::Data<'source>>,
+        allocator: &mut A,
+        witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, witness)  // How to convert data to gadget
+        Element::alloc(dr, allocator, witness)
     }
 }
 ```

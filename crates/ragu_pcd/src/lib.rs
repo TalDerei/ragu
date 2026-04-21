@@ -1,4 +1,14 @@
-//! # `ragu_pcd`
+//! Proof-carrying data framework for Ragu.
+//!
+//! This crate provides the top-level API for building PCD applications:
+//!
+//! - [`ApplicationBuilder`] / [`Application`] — configure, build, then
+//!   [`seed`](Application::seed), [`fuse`](Application::fuse),
+//!   [`rerandomize`](Application::rerandomize), and
+//!   [`verify`](Application::verify) proofs.
+//! - [`step::Step`] — the trait that defines computation nodes (transitions).
+//! - [`header::Header`] — the trait that defines succinct state representations.
+//! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
 
 #![no_std]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -7,18 +17,25 @@
 #![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_pcd` requires the `alloc` feature to be enabled.");
 extern crate alloc;
-#[cfg(feature = "multicore")]
+
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
-mod circuits;
-mod components;
 mod fuse;
 pub mod header;
+mod internal;
 mod proof;
 pub mod step;
 mod verify;
 
+use alloc::collections::BTreeMap;
+use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
+
+use header::Header;
+pub use proof::{Pcd, Proof};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
@@ -26,12 +43,6 @@ use ragu_circuits::{
 };
 use ragu_core::{Error, Result};
 use rand::CryptoRng;
-
-use alloc::collections::BTreeMap;
-use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
-
-use header::Header;
-pub use proof::{Pcd, Proof};
 use step::{Step, internal::adapter::Adapter};
 
 /// Domain separation tag for Ragu PCD protocol.
@@ -70,8 +81,14 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     }
 
     /// Register a new application-defined [`Step`] in this context. The
-    /// provided [`Step`]'s [`INDEX`](Step::INDEX) should be the next sequential
+    /// provided [`Step`]'s [`INDEX`](Step::INDEX) must be the next sequential
     /// index that has not been inserted yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the step's index is not the next sequential index,
+    /// or if any of the step's header suffixes conflict with an
+    /// already-registered header type.
     pub fn register<S: Step<C> + 'params>(mut self, step: S) -> Result<Self> {
         S::INDEX.assert_index(self.num_application_steps)?;
 
@@ -104,20 +121,24 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 
     /// Perform finalization and optimization steps to produce the
     /// [`Application`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if internal circuit registration or registry
+    /// finalization fails.
     pub fn finalize(
         mut self,
         params: &'params C::Params,
     ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
         // Build the native registry:
-        // 1. Internal masks
-        // 2. Internal circuits
+        // 1. Application circuits (already registered)
+        // 2. Internal circuits and masks
         // 3. Internal steps
-        // 4. Application circuits (already registered)
         let (total_circuits, log2_circuits) =
-            circuits::native::total_circuit_counts(self.num_application_steps);
+            internal::native::total_circuit_counts(self.num_application_steps);
 
-        // First, register internal masks and circuits
-        self.native_registry = circuits::native::register_all::<C, R, HEADER_SIZE>(
+        // First, register internal circuits and masks
+        self.native_registry = internal::native::register_all::<C, R, HEADER_SIZE>(
             self.native_registry,
             params,
             log2_circuits,
@@ -125,15 +146,15 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 
         // Then, register internal steps
         self.native_registry =
-            self.native_registry.register_internal_circuit(
-                Adapter::<C, _, R, HEADER_SIZE>::new(
+            self.native_registry
+                .register_internal_step(Adapter::<C, _, R, HEADER_SIZE>::new(
                     step::internal::rerandomize::Rerandomize::<()>::new(),
-                ),
-            )?;
+                ))?;
         self.native_registry =
-            self.native_registry.register_internal_circuit(
-                Adapter::<C, _, R, HEADER_SIZE>::new(step::internal::trivial::Trivial::new()),
-            )?;
+            self.native_registry
+                .register_internal_step(Adapter::<C, _, R, HEADER_SIZE>::new(
+                    step::internal::trivial::Trivial::new(),
+                ))?;
 
         assert_eq!(
             self.native_registry.log2_circuits(),
@@ -147,7 +168,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         );
 
         // Register nested internal circuits (no application steps, no headers).
-        self.nested_registry = circuits::nested::register_all::<C, R>(self.nested_registry)?;
+        self.nested_registry = internal::nested::register_all::<C, R>(self.nested_registry)?;
 
         Ok(Application {
             native_registry: self.native_registry.finalize()?,
@@ -199,7 +220,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
-    ) -> Result<(Proof<C, R>, S::Aux<'source>)> {
+    ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
         self.fuse(rng, step, witness, self.trivial_pcd(), self.trivial_pcd())
     }
 
@@ -209,16 +230,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// (folded with itself). This gives it valid proof structure, avoiding
     /// base case detection issues.
     ///
-    /// The proof is lazily created on first use and cached. *Importantly*,
-    /// note that this may return the same proof on subsequent calls, and
-    /// is not random.
-    fn seeded_trivial_pcd<'source, RNG: CryptoRng>(&self, rng: &mut RNG) -> Pcd<'source, C, R, ()> {
-        let proof = self.seeded_trivial.get_or_init(|| {
-            self.seed(rng, step::internal::trivial::Trivial::new(), ())
-                .expect("seeded trivial seed should not fail")
-                .0
-        });
-        proof.clone().carry(())
+    /// The proof is lazily created on first use and cached; subsequent calls
+    /// return the same (non-random) proof.
+    fn seeded_trivial_pcd<RNG: CryptoRng>(&self, rng: &mut RNG) -> Pcd<C, R, ()> {
+        self.seeded_trivial
+            .get_or_init(|| {
+                self.seed(rng, step::internal::trivial::Trivial::new(), ())
+                    .expect("seeded trivial seed should not fail")
+                    .0
+                    .into_parts()
+                    .0
+            })
+            .clone()
+            .carry(())
     }
 
     /// Rerandomize proof-carrying data.
@@ -228,24 +252,29 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// is valid for the same [`Header`] but reveals nothing else about the
     /// original proof. As a result, [`Application::verify`] should produce the
     /// same result on the provided `pcd` as it would the output of this method.
-    pub fn rerandomize<'source, RNG: CryptoRng, H: Header<C::CircuitField>>(
+    pub fn rerandomize<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
-        pcd: Pcd<'source, C, R, H>,
+        pcd: Pcd<C, R, H>,
         rng: &mut RNG,
-    ) -> Result<Pcd<'source, C, R, H>> {
-        let data = pcd.data.clone();
-
+    ) -> Result<Pcd<C, R, H>> {
         // Seed a trivial proof for rerandomization.
         // TODO: this is a temporary hack that allows the base case logic to be simple
         let seeded_trivial = self.seeded_trivial_pcd(rng);
-        let rerandomized_proof = self.fuse(
+
+        // The Rerandomize step's witness() returns the left input's data as
+        // output data, preserving it through rerandomization.
+        self.fuse(
             rng,
             step::internal::rerandomize::Rerandomize::new(),
             (),
             pcd,
             seeded_trivial,
-        )?;
+        )
+        .map(|(pcd, ())| pcd)
+    }
 
-        Ok(rerandomized_proof.0.carry(data))
+    /// Returns a reference to the native [`Registry`].
+    pub fn native_registry(&self) -> &Registry<'_, C::CircuitField, R> {
+        &self.native_registry
     }
 }

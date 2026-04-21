@@ -16,14 +16,12 @@ mod path_resolution;
 mod proc;
 mod substitution;
 
-use proc_macro::TokenStream;
-use syn::{DeriveInput, LitInt, parse_macro_input};
-
 use helpers::macro_body;
-
+use proc_macro::TokenStream;
 #[cfg(test)]
 #[allow(unused_imports)]
 use ragu_arithmetic::repr256 as _;
+use syn::{DeriveInput, LitInt, parse_macro_input};
 
 // Documentation for the `repr256` macro is in `macro@ragu_arithmetic::repr256`.
 #[allow(missing_docs)]

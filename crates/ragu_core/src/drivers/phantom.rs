@@ -27,6 +27,27 @@
 
 use super::{Coeff, Driver, DriverTypes, Field, Result};
 
+impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
+    type ImplField = F;
+    type ImplWire = ();
+    type MaybeKind = crate::maybe::Empty;
+    type LCadd = ();
+    type LCenforce = ();
+
+    type Extra = ();
+
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<((), (), (), ())> {
+        Ok(((), (), (), ()))
+    }
+
+    fn assign_extra(&mut self, _: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<()> {
+        Ok(())
+    }
+}
+
 /// Dummy driver that does absolutely nothing. All gates and constraints are
 /// no-ops, and witness closures are dead-code eliminated via `MaybeKind =
 /// Empty`.
@@ -35,13 +56,6 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
     type Wire = ();
     const ONE: Self::Wire = ();
 
-    fn mul(
-        &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        Ok(((), (), ()))
-    }
-
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
 
     fn enforce_zero(&mut self, _: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
@@ -49,23 +63,17 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
     }
 }
 
-impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
-    type ImplField = F;
-    type ImplWire = ();
-    type MaybeKind = crate::maybe::Empty;
-    type LCadd = ();
-    type LCenforce = ();
-}
-
 #[cfg(test)]
 mod tests {
-    use core::cell::Cell;
-    use core::marker::PhantomData;
+    use core::{cell::Cell, marker::PhantomData};
 
-    use crate::Result;
-    use crate::drivers::{Coeff, Driver};
-    use crate::maybe::Empty;
     use ragu_pasta::Fp;
+
+    use crate::{
+        Result,
+        drivers::{Coeff, Driver},
+        maybe::Empty,
+    };
 
     type F = Fp;
 
@@ -89,11 +97,6 @@ mod tests {
             lc
         })?;
 
-        dr.alloc(|| {
-            called.set(called.get() + 1);
-            Ok(Coeff::One)
-        })?;
-
         dr.constant(Coeff::One);
 
         assert_eq!(called.get(), 0);
@@ -101,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn phantom_mul_returns_unit_triple() -> Result<()> {
+    fn phantom_mul_returns_unit_tuple() -> Result<()> {
         let mut dr = PhantomData::<F>;
         let (_a, _b, _c): ((), (), ()) = dr.mul(|| panic!("must not be called"))?;
         Ok(())
@@ -117,13 +120,6 @@ mod tests {
     fn phantom_enforce_zero_succeeds() -> Result<()> {
         let mut dr = PhantomData::<F>;
         dr.enforce_zero(|_lc| panic!("must not be called"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn phantom_alloc_returns_unit() -> Result<()> {
-        let mut dr = PhantomData::<F>;
-        let _: () = dr.alloc(|| panic!("must not be called"))?;
         Ok(())
     }
 

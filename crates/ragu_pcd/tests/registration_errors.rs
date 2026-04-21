@@ -6,11 +6,12 @@ use ragu_core::{
     gadgets::Bound,
 };
 use ragu_pasta::Pasta;
-use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_pcd::{
     ApplicationBuilder,
     header::{Header, Suffix},
+    step::{Encoded, Index, Step},
 };
+use ragu_primitives::allocator::{Allocator, Standard};
 
 // Header A with suffix 0
 struct HSuffixA;
@@ -21,11 +22,12 @@ struct HSuffixAOther;
 
 impl<F: Field> Header<F> for HSuffixA {
     const SUFFIX: Suffix = Suffix::new(0);
-    type Data<'source> = ();
+    type Data = ();
     type Output = ();
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
@@ -33,11 +35,12 @@ impl<F: Field> Header<F> for HSuffixA {
 
 impl<F: Field> Header<F> for HSuffixB {
     const SUFFIX: Suffix = Suffix::new(1);
-    type Data<'source> = ();
+    type Data = ();
     type Output = ();
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
@@ -45,11 +48,12 @@ impl<F: Field> Header<F> for HSuffixB {
 
 impl<F: Field> Header<F> for HSuffixAOther {
     const SUFFIX: Suffix = Suffix::new(0); // duplicate suffix
-    type Data<'source> = ();
+    type Data = ();
     type Output = ();
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }
@@ -76,13 +80,15 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -107,13 +113,15 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
@@ -138,13 +146,15 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::from_gadget(());
 
-        Ok(((left, right, output), D::just(|| ())))
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 

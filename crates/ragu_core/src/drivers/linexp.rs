@@ -110,6 +110,7 @@ impl<F: Field> LinearExpression<F, F> for DirectSum<F> {
 #[test]
 fn test_linexp_direct() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     let acc = DirectSum::default()
@@ -128,6 +129,7 @@ fn test_linexp_direct() {
 #[allow(clippy::unit_cmp)]
 fn test_linexp_trivial() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     assert_eq!(
@@ -179,6 +181,7 @@ fn direct_sum_all_coeff_arms() {
 #[test]
 fn direct_sum_gain_interactions() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     // gain(Zero) annihilates subsequent terms
@@ -272,6 +275,7 @@ fn direct_sum_sub_with_nontrivial_gain() {
 #[test]
 fn direct_sum_extend_with_nontrivial_gain() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     let acc = DirectSum::<Fp>::default()
@@ -391,6 +395,7 @@ fn direct_sum_gain_zero_is_irrecoverable() {
 #[test]
 fn direct_sum_gain_zero_affects_sub_and_extend() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     let wire = Fp::from(50);
@@ -416,6 +421,7 @@ fn direct_sum_gain_zero_affects_sub_and_extend() {
 #[test]
 fn direct_sum_extend_mixed_zero_coefficients() {
     use alloc::vec;
+
     use ragu_pasta::Fp;
 
     // With default gain (One): zeros interleaved with live terms.
@@ -520,9 +526,10 @@ fn direct_sum_all_coeff_arms_with_gain_negative_one() {
 
 #[cfg(test)]
 mod proptests {
-    use super::*;
     use proptest::prelude::*;
     use ragu_pasta::Fp;
+
+    use super::*;
 
     fn arb_fe() -> impl Strategy<Value = Fp> {
         (0u64..1000).prop_map(Fp::from)

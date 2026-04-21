@@ -19,8 +19,7 @@ ragu_macros::impl_maybe_cast_tuple!(32);
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
-    use alloc::vec::Vec;
+    use alloc::{vec, vec::Vec};
 
     use crate::maybe::{Always, Empty, Maybe, MaybeKind};
 

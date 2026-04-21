@@ -15,6 +15,7 @@
 mod pipe;
 
 use ff::Field;
+pub use pipe::Pipe;
 use ragu_core::{
     Result,
     drivers::Driver,
@@ -22,8 +23,6 @@ use ragu_core::{
 };
 
 use crate::Element;
-
-pub use pipe::Pipe;
 
 /// Represents a gadget that can be serialized into a sequence of [`Element`]s
 /// that are written to a [`Buffer`].

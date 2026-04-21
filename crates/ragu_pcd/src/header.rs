@@ -1,15 +1,15 @@
 //! Headers are succinct representations of data used to represent the current
 //! state of a computation.
 
+use core::any::Any;
+
 use ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
-use ragu_primitives::io::Write;
-
-use core::any::Any;
+use ragu_primitives::{allocator::Allocator, io::Write};
 
 /// The number of suffixes used internally by Ragu.
 ///
@@ -78,21 +78,28 @@ fn test_suffix_map() {
 /// Headers are succinct representations of data, essentially used as public
 /// inputs to recursive proofs in order to represent the current state of the
 /// computation.
+///
+/// See the [Writing Circuits](https://tachyon.z.cash/ragu/guide/writing_circuits.html)
+/// guide for usage patterns and examples.
 pub trait Header<F: Field>: Send + Sync + Any {
     /// Each header should use a unique suffix to distinguish itself from other
     /// headers.
     const SUFFIX: Suffix;
 
     /// The data needed to encode a header.
-    type Data<'source>: Send + Clone;
+    type Data: Send + Clone;
 
     /// The output gadget that encodes the data for this header.
     type Output: Write<F>;
 
     /// Encode some data into a gadget representing this header.
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    ///
+    /// Implementations should pass `allocator` through to all allocation
+    /// calls rather than substituting a different allocator.
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
-        witness: DriverValue<D, Self::Data<'source>>,
+        allocator: &mut A,
+        witness: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>>;
 }
 
@@ -100,12 +107,13 @@ pub trait Header<F: Field>: Send + Sync + Any {
 impl<F: Field> Header<F> for () {
     const SUFFIX: Suffix = Suffix::internal(1);
 
-    type Data<'source> = ();
+    type Data = ();
     type Output = ();
 
-    fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         _: &mut D,
-        _: DriverValue<D, Self::Data<'source>>,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
     }

@@ -15,18 +15,17 @@
 //! to compile the added circuits into a registry polynomial representation that can
 //! be efficiently evaluated at different restrictions.
 
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
+
 use blake2b_simd::Params;
 use ff::{Field, FromUniformBytes, PrimeField};
 use ragu_arithmetic::{Domain, bitreverse};
 use ragu_core::{Error, Result};
 
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
-
 use crate::{
-    Circuit, CircuitExt, CircuitObject,
+    BondingObject, Circuit, WiringObject,
     floor_planner::ConstraintSegment,
-    polynomials::{Rank, structured, unstructured},
-    staging::{Stage, StageExt},
+    polynomials::{Rank, sparse},
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
@@ -70,44 +69,47 @@ impl From<CircuitIndex> for usize {
 
 /// A builder that constructs a [`Registry`].
 ///
-/// Circuits are organized into three categories:
-/// - Internal masks: stage masks and final masks for internal stages
-/// - Internal circuits: system circuits and internal steps
+/// Circuits are organized into four categories:
+/// - Internal circuits: system circuits for the PCD construction
+/// - Bonding: bonding polynomials for well-formedness enforcement
+/// - Internal steps: internal step circuits (e.g. rerandomize, trivial)
 /// - Application steps: user-defined application step circuits
 ///
-/// During finalization, circuits are concatenated in registration order,
-/// ensuring internal masks can be optimized separately from circuits
-/// while maintaining proper PCD indexing.
+/// During finalization, circuits are concatenated in the order above,
+/// ensuring internal circuits get lower indices while maintaining
+/// proper PCD indexing.
 pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
-    internal_masks: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
-    internal_circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
-    application_steps: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    internal_circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    bonding: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    internal_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    application_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
 }
 
-impl<F: PrimeField, R: Rank> Default for RegistryBuilder<'_, F, R> {
+impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
+impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// Creates a new empty [`Registry`] builder.
     pub fn new() -> Self {
         Self {
-            internal_masks: Vec::new(),
             internal_circuits: Vec::new(),
+            bonding: Vec::new(),
+            internal_steps: Vec::new(),
             application_steps: Vec::new(),
         }
     }
 
-    /// Returns the number of internal circuits (masks + circuits).
+    /// Returns the number of internal circuits (circuits + bonding).
     pub fn num_internal_circuits(&self) -> usize {
-        self.internal_masks.len() + self.internal_circuits.len()
+        self.bonding.len() + self.internal_circuits.len()
     }
 
     /// Returns the total number of circuits across all categories.
     pub fn num_circuits(&self) -> usize {
-        self.num_internal_circuits() + self.application_steps.len()
+        self.num_internal_circuits() + self.internal_steps.len() + self.application_steps.len()
     }
 
     /// Returns the log2 of the smallest power-of-2 domain size that fits all circuits.
@@ -120,7 +122,8 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     where
         C: Circuit<F> + 'params,
     {
-        self.application_steps.push(circuit.into_object()?);
+        self.application_steps
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
@@ -129,38 +132,37 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     where
         C: Circuit<F> + 'params,
     {
-        self.internal_circuits.push(circuit.into_object()?);
+        self.internal_circuits
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
-    /// Registers an internal stage mask.
-    pub fn register_internal_mask<S>(mut self) -> Result<Self>
+    /// Registers an internal step circuit.
+    pub fn register_internal_step<C>(mut self, circuit: C) -> Result<Self>
     where
-        S: Stage<F, R>,
+        C: Circuit<F> + 'params,
     {
-        self.internal_masks.push(S::mask()?);
+        self.internal_steps
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
-    /// Registers an internal final stage mask.
-    pub fn register_internal_final_mask<S>(mut self) -> Result<Self>
-    where
-        S: Stage<F, R>,
-    {
-        self.internal_masks.push(S::final_mask()?);
-        Ok(self)
+    /// Registers a bonding polynomial.
+    pub fn register_bonding(mut self, bonding: BondingObject<'params, F, R>) -> Self {
+        self.bonding.push(bonding.into_inner());
+        self
     }
 
     /// Builds the [`Registry`].
     ///
     /// Circuits are concatenated in the following order for proper indexing:
-    /// 1. Internal masks: Stage enforcement masks and final masks
-    /// 2. Internal circuits: System circuits and internal steps
-    /// 3. Application steps: User-defined step circuits
+    /// 1. Internal circuits: System circuits for the PCD construction
+    /// 2. Bonding: bonding polynomials
+    /// 3. Internal steps: Internal step circuits (e.g. rerandomize, trivial)
+    /// 4. Application steps: User-defined step circuits
     ///
-    /// This ordering ensures internal masks can be optimized separately while
-    /// maintaining proper PCD indexing where internal items occupy indices
-    /// $0 \ldots N$ and application steps occupy indices $N$ onward.
+    /// This concatenation order must match `InternalCircuitIndex::ALL` in
+    /// `ragu_pcd`, which derives [`CircuitIndex`] from position in the array.
     pub fn finalize(self) -> Result<Registry<'params, F, R>>
     where
         F: FromUniformBytes<64>,
@@ -176,9 +178,10 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
         let domain = Domain::<F>::new(log2_circuits);
 
         let circuits: Vec<_> = self
-            .internal_masks
+            .internal_circuits
             .into_iter()
-            .chain(self.internal_circuits)
+            .chain(self.bonding)
+            .chain(self.internal_steps)
             .chain(self.application_steps)
             .collect();
 
@@ -205,7 +208,7 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
             omega_lookup.insert(omega_j, i);
         }
 
-        // Create provisional registry (circuits still have placeholder K)
+        // Create provisional registry (key not yet computed)
         let mut registry = Registry {
             domain,
             circuits,
@@ -259,46 +262,33 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
 /// break the self-reference more elegantly without preprocessing or reliance on
 /// public inputs.
 ///
-/// Concretely, we retroactively inject the registry key into each member circuit
-/// of `m` as a special wire `key_wire`, enforced by a simple linear constraint
-/// `key_wire = k`. This binds each circuit's wiring polynomial to the registry
-/// polynomial, and thus the entire registry polynomial to the Fiat-Shamir
-/// transcript without self-reference. The key randomizes the wiring polynomial
-/// directly.
+/// Concretely, the registry key $k$ is injected as the monomial
+/// $k \cdot (XY)^{4n-1}$ at the registry level, binding each circuit's wiring
+/// polynomial to the registry polynomial and thus the entire registry polynomial
+/// to the Fiat-Shamir transcript without self-reference. The key randomizes the
+/// wiring polynomial directly.
 ///
 /// The key is computed during [`RegistryBuilder::finalize`] and used during
-/// polynomial evaluations of [`CircuitObject`].
+/// polynomial evaluations of circuits in the registry.
 ///
 /// [#78]: https://github.com/tachyon-zcash/ragu/issues/78
-/// [`CircuitObject`]: crate::CircuitObject
-pub struct Key<F: Field> {
-    /// Registry digest value
-    val: F,
-    /// Cached inverse of digest
-    inv: F,
-}
+pub struct Key<F: Field>(F);
 
 impl<F: Field> Default for Key<F> {
     fn default() -> Self {
-        Self::new(F::ONE)
+        Self(F::ONE)
     }
 }
 
 impl<F: Field> Key<F> {
-    /// Creates a new registry key from a field element, panic if zero.
+    /// Creates a new registry key from a field element.
     pub fn new(val: F) -> Self {
-        let inv = val.invert().expect("registry digest should never be zero");
-        Self { val, inv }
+        Self(val)
     }
 
     /// Returns the registry key value.
     pub fn value(&self) -> F {
-        self.val
-    }
-
-    /// Returns the cached inverse of the registry key.
-    pub fn inverse(&self) -> F {
-        self.inv
+        self.0
     }
 }
 
@@ -308,7 +298,7 @@ impl<F: Field> Key<F> {
 /// they can be queried efficiently.
 pub struct Registry<'params, F: PrimeField, R: Rank> {
     domain: Domain<F>,
-    circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
 
     /// Per-circuit floor plans computed during finalization.
     floor_plans: Vec<Vec<ConstraintSegment>>,
@@ -339,6 +329,7 @@ enum LagrangeCache<F> {
 pub struct RegistryAt<'a, F: PrimeField, R: Rank> {
     registry: &'a Registry<'a, F, R>,
     cache: LagrangeCache<F>,
+    mask_coeff_sum: F,
 }
 
 /// Represents a key for identifying a unique $\omega^j$ value where $\omega$ is
@@ -353,26 +344,40 @@ impl<F: PrimeField> From<F> for OmegaKey {
         // TODO: This only holds for the Pasta curves. See issue #51
         let product = f.double().double() + f;
 
-        let bytes = product.to_repr();
-        let byte_slice = bytes.as_ref();
-
-        OmegaKey(u64::from_le_bytes(
-            byte_slice[..8]
-                .try_into()
-                .expect("field representation is at least 8 bytes"),
-        ))
+        OmegaKey(ragu_arithmetic::low_u64(&product))
     }
 }
 
 impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
-    /// Assembles a [`Trace`](crate::Trace) into a [`structured::Polynomial`] using
-    /// this registry's key and the floor plan for the specified circuit.
+    /// Assembles a [`Trace`](crate::Trace) into a [`sparse::Polynomial`] using
+    /// the floor plan for the specified circuit.
+    ///
+    /// Calls [`assemble_with_alpha`](Self::assemble_with_alpha) with a
+    /// random value sampled from `rng`.
     pub fn assemble(
         &self,
-        trace: &crate::rx::Trace<F>,
+        trace: &crate::trace::Trace<F>,
         circuit: CircuitIndex,
-    ) -> Result<structured::Polynomial<F, R>> {
-        trace.assemble_with_key(&self.key, &self.floor_plans[usize::from(circuit)])
+        rng: &mut impl rand::CryptoRng,
+    ) -> Result<sparse::Polynomial<F, R>> {
+        self.assemble_with_alpha(trace, circuit, F::random(rng))
+    }
+
+    /// Like [`assemble`](Self::assemble), but accepts an explicit
+    /// `alpha` instead of sampling one from an RNG.
+    ///
+    /// `alpha` is written to `d[0]` of the assembled polynomial to
+    /// prevent point-at-infinity commitments. Circuit traces are never
+    /// all-zero (the ONE wire ensures this), but linear combinations of
+    /// polynomials with predictable `d[0]` values could cancel to zero
+    /// in derived polynomials.
+    pub fn assemble_with_alpha(
+        &self,
+        trace: &crate::trace::Trace<F>,
+        circuit: CircuitIndex,
+        alpha: F,
+    ) -> Result<sparse::Polynomial<F, R>> {
+        trace.assemble(&self.floor_plans[usize::from(circuit)], alpha)
     }
 
     /// Returns the registry digest value.
@@ -384,33 +389,70 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         self.key.value()
     }
 
-    /// Returns a slice of the circuit objects in this registry.
-    pub fn circuits(&self) -> &[Box<dyn CircuitObject<F, R> + '_>] {
-        &self.circuits
+    /// Returns the number of circuits in this registry.
+    pub fn num_circuits(&self) -> usize {
+        self.circuits.len()
+    }
+
+    /// Returns the constraint counts for the given circuit.
+    pub fn constraint_counts(&self, circuit: CircuitIndex) -> (usize, usize) {
+        self.circuits[usize::from(circuit)].constraint_counts()
+    }
+
+    /// Evaluates the registry key contribution $k \cdot (XY)^{4n-1}$
+    /// at $(x, y)$, returning a scalar.
+    fn key_sxy(&self, x: F, y: F) -> F {
+        if x == F::ZERO || y == F::ZERO {
+            return F::ZERO;
+        }
+        let xy_4n_minus_1 = (x * y).pow_vartime([(4 * R::n() - 1) as u64]);
+        self.key.value() * xy_4n_minus_1
     }
 
     /// Evaluate the registry polynomial unrestricted at $W$.
-    pub fn xy(&self, x: F, y: F) -> unstructured::Polynomial<F, R> {
-        let mut coeffs = unstructured::Polynomial::default();
+    pub fn xy(&self, x: F, y: F) -> sparse::Polynomial<F, R> {
+        let key_scalar = self.key_sxy(x, y);
+        let mut coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
+
+        // Masking polynomials return only -notch from sxy(); add the shared
+        // global term to each mask slot inline.
+        let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
-            coeffs[j] = circuit.sxy(x, y, &self.key, &self.floor_plans[i]);
+            let mut v = circuit.sxy(x, y, &self.floor_plans[i]);
+            if circuit.is_mask() {
+                v += global_xy;
+            }
+            coeffs[j] = v;
         }
+
         // Convert from the Lagrange basis.
         let domain = &self.domain;
         domain.ifft(&mut coeffs[..domain.n()]);
 
-        coeffs
+        // The key term k * (XY)^{4n-1} has no W factor, so it evaluates to
+        // the same scalar at every domain point. After IFFT the contribution
+        // lives entirely in the W^0 (DC) coefficient.
+        coeffs[0] += key_scalar;
+
+        sparse::Polynomial::from_coeffs(coeffs)
     }
 
     /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
     /// the registry polynomial unrestricted at $X$.
     ///
-    /// Wraps [`Registry::at`] and [`RegistryAt::wy`].
+    /// Wraps [`Registry::at`] and [`RegistryAt::y`].
     /// See [`CircuitIndex::omega_j`] for more details.
-    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
+    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> sparse::Polynomial<F, R> {
         let w: F = i.omega_j();
-        self.at(w).wy(y)
+        self.at(w).y(y)
+    }
+
+    /// Evaluates $s_i(x, y)$ for circuit `i` at point $(x, y)$.
+    ///
+    /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
+    pub fn circuit_xy(&self, i: CircuitIndex, x: F, y: F) -> F {
+        self.wxy(i.omega_j(), x, y)
     }
 
     /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
@@ -422,18 +464,18 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $X$.
-    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
-        self.at(w).wy(y)
+    pub fn wy(&self, w: F, y: F) -> sparse::Polynomial<F, R> {
+        self.at(w).y(y)
     }
 
     /// Evaluate the registry polynomial unrestricted at $Y$.
-    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
-        self.at(w).wx(x)
+    pub fn wx(&self, w: F, x: F) -> sparse::Polynomial<F, R> {
+        self.at(w).x(x)
     }
 
     /// Evaluate the registry polynomial at the provided point.
     pub fn wxy(&self, w: F, x: F, y: F) -> F {
-        self.at(w).wxy(x, y)
+        self.at(w).xy(x, y)
     }
 
     /// Computes the polynomial restricted at $W$ based on the provided
@@ -442,7 +484,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         &self,
         cache: &LagrangeCache<F>,
         init: impl FnOnce() -> T,
-        add_poly: impl Fn(&dyn CircuitObject<F, R>, &[ConstraintSegment], F, &mut T),
+        add_poly: impl Fn(&dyn WiringObject<F, R>, &[ConstraintSegment], F, &mut T),
     ) -> T {
         let mut result = init();
 
@@ -464,11 +506,41 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                 }
             }
             LagrangeCache::Empty => {
-                // The circuit is not defined and defaults to the zero polynomial.
+                // No circuit at this domain point; circuit contribution is zero.
+                // The registry key term is added by the caller (`RegistryAt`
+                // methods), so the overall evaluation is not zero.
             }
         }
 
         result
+    }
+
+    /// Sums Lagrange coefficients for masking polynomials at the given $W$ point.
+    ///
+    /// Only circuits where [`WiringObject::is_mask`] returns `true` contribute.
+    fn mask_coeff_sum(&self, cache: &LagrangeCache<F>) -> F {
+        match cache {
+            LagrangeCache::Interpolate(coeffs) => {
+                let mut sum = F::ZERO;
+                for (i, circuit) in self.circuits.iter().enumerate() {
+                    if circuit.is_mask() {
+                        let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
+                        sum += coeffs[j];
+                    }
+                }
+                sum
+            }
+            LagrangeCache::Direct(i) => {
+                // W is exactly omega^bitreverse(i), so the Lagrange
+                // coefficient for circuit i is ONE and all others are ZERO.
+                if self.circuits[*i].is_mask() {
+                    F::ONE
+                } else {
+                    F::ZERO
+                }
+            }
+            LagrangeCache::Empty => F::ZERO,
+        }
     }
 
     /// Bind the registry to a specific $W$ point, caching Lagrange coefficients.
@@ -486,53 +558,100 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
             // w is in the domain but no circuit registered at that index.
             LagrangeCache::Empty
         };
+        let mask_coeff_sum = self.mask_coeff_sum(&cache);
         RegistryAt {
             registry: self,
             cache,
+            mask_coeff_sum,
         }
     }
 }
 
 impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
-    /// Evaluate the registry polynomial restricted at $W$, unrestricted at $Y$.
-    pub fn wy(&self, y: F) -> structured::Polynomial<F, R> {
-        self.registry.w_cached(
+    /// Evaluate the registry polynomial restricted at $W$ and $Y$, unrestricted at $X$.
+    pub fn y(&self, y: F) -> sparse::Polynomial<F, R> {
+        let mut poly = self.registry.w_cached(
             &self.cache,
-            structured::Polynomial::default,
+            sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sy(y, &self.registry.key, floor_plan);
+                let mut tmp = circuit.sy(y, floor_plan);
                 tmp.scale(coeff);
                 poly.add_assign(&tmp);
             },
-        )
+        );
+
+        // Masking polynomials return only -notch; add the shared global once,
+        // weighted by the sum of Lagrange coefficients for all mask circuits at W.
+        let mut global = crate::staging::mask::global_project::<F, R>(y);
+        global.scale(self.mask_coeff_sum);
+        poly.add_assign(&global);
+
+        // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
+        // at Y, this is k * y^{4n-1} at X^{4n-1} (c-wire of the SYSTEM gate in
+        // the wiring layout).
+        if y != F::ZERO {
+            let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
+            let mut key_view = sparse::View::<_, R, _>::wiring();
+            key_view.c.push(self.registry.key.value() * y_4n_minus_1);
+            poly.add_assign(&key_view.build());
+        }
+
+        poly
     }
 
-    /// Evaluate the registry polynomial restricted at $W$, unrestricted at $X$.
-    pub fn wx(&self, x: F) -> unstructured::Polynomial<F, R> {
-        self.registry.w_cached(
+    /// Evaluate the registry polynomial restricted at $W$ and $X$, unrestricted at $Y$.
+    pub fn x(&self, x: F) -> sparse::Polynomial<F, R> {
+        let mut poly = self.registry.w_cached(
             &self.cache,
-            unstructured::Polynomial::default,
+            sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sx(x, &self.registry.key, floor_plan);
+                let mut tmp = circuit.sx(x, floor_plan);
                 tmp.scale(coeff);
-                poly.add_unstructured(&tmp);
+                poly.add_assign(&tmp);
             },
-        )
+        );
+
+        // Masking polynomials return only -notch; add the shared global once,
+        // weighted by the sum of Lagrange coefficients for all mask circuits at W.
+        let mut global = crate::staging::mask::global_project::<F, R>(x);
+        global.scale(self.mask_coeff_sum);
+        poly.add_assign(&global);
+
+        // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
+        // at X, this is k * x^{4n-1} at Y^{4n-1}.
+        if x != F::ZERO {
+            let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+            let key_coeff = self.registry.key.value() * x_4n_minus_1;
+            let mut key_coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
+            // Y^{4n-1} is the last coefficient (index num_coeffs() - 1 = 4n - 1),
+            // the slot reserved by circuit-level bounds checks.
+            key_coeffs[R::num_coeffs() - 1] = key_coeff;
+            poly.add_assign(&sparse::Polynomial::from_coeffs(key_coeffs));
+        }
+
+        poly
     }
 
     /// Evaluate the registry polynomial at the point ($W$, $X$, $Y$).
-    pub fn wxy(&self, x: F, y: F) -> F {
-        self.registry.w_cached(
+    pub fn xy(&self, x: F, y: F) -> F {
+        let mut result: F = self.registry.w_cached(
             &self.cache,
             || F::ZERO,
             |circuit, floor_plan, coeff, result| {
-                *result += circuit.sxy(x, y, &self.registry.key, floor_plan) * coeff;
+                *result += circuit.sxy(x, y, floor_plan) * coeff;
             },
-        )
+        );
+
+        // Masking polynomials return only -notch; apply the shared global
+        // scalar once.
+        result += self.mask_coeff_sum * crate::staging::mask::global_mask::<F, R>(x, y);
+
+        // Add the registry key contribution.
+        result + self.registry.key_sxy(x, y)
     }
 }
 
-impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
+impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
     /// Compute a digest of this registry using BLAKE2b.
     fn compute_registry_digest(&self) -> F {
         let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
@@ -577,16 +696,15 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CircuitIndex, OmegaKey, RegistryBuilder};
-    use crate::polynomials::TestRank;
-    use crate::tests::SquareCircuit;
-    use alloc::collections::BTreeSet;
-    use alloc::collections::btree_map::BTreeMap;
-    use ff::Field;
-    use ff::PrimeField;
+    use alloc::collections::{BTreeSet, btree_map::BTreeMap};
+
+    use ff::{Field, PrimeField};
     use ragu_arithmetic::{Domain, bitreverse};
     use ragu_core::Result;
     use ragu_pasta::Fp;
+
+    use super::{CircuitIndex, OmegaKey, RegistryBuilder};
+    use crate::{polynomials::TestRank, tests::SquareCircuit};
     type TestRegistryBuilder<'a> = RegistryBuilder<'a, Fp, TestRank>;
 
     #[test]
@@ -674,29 +792,29 @@ mod tests {
         let registry_at_w = registry.at(w);
 
         assert_eq!(
-            registry_at_w.wx(x).eval(eval_point),
+            registry_at_w.x(x).eval(eval_point),
             registry.wx(w, x).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w.wy(y).eval(eval_point),
+            registry_at_w.y(y).eval(eval_point),
             registry.wy(w, y).eval(eval_point)
         );
-        assert_eq!(registry_at_w.wxy(x, y), registry.wxy(w, x, y));
+        assert_eq!(registry_at_w.xy(x, y), registry.wxy(w, x, y));
 
         // Test with w in domain (omega^j)
         let w_in_domain = registry.domain.omega();
         let registry_at_w_in_domain = registry.at(w_in_domain);
 
         assert_eq!(
-            registry_at_w_in_domain.wx(x).eval(eval_point),
+            registry_at_w_in_domain.x(x).eval(eval_point),
             registry.wx(w_in_domain, x).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w_in_domain.wy(y).eval(eval_point),
+            registry_at_w_in_domain.y(y).eval(eval_point),
             registry.wy(w_in_domain, y).eval(eval_point)
         );
         assert_eq!(
-            registry_at_w_in_domain.wxy(x, y),
+            registry_at_w_in_domain.xy(x, y),
             registry.wxy(w_in_domain, x, y)
         );
 
@@ -717,7 +835,7 @@ mod tests {
 
         let x = Fp::from(42u64);
         let y = Fp::from(43u64);
-        assert_ne!(registry.at(w).wxy(x, y), registry.at(omega).wxy(x, y));
+        assert_ne!(registry.at(w).xy(x, y), registry.at(omega).xy(x, y));
 
         Ok(())
     }
@@ -744,7 +862,7 @@ mod tests {
 
         let x = Fp::from(42u64);
         let y = Fp::from(43u64);
-        assert_ne!(registry.at(w).wxy(x, y), registry.at(omega).wxy(x, y));
+        assert_ne!(registry.at(w).xy(x, y), registry.at(omega).xy(x, y));
 
         Ok(())
     }
@@ -893,13 +1011,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "registry digest should never be zero"]
-    fn zero_registry_key_panics() {
-        use ff::Field;
-        let _ = super::Key::new(<Fp as Field>::ZERO);
-    }
-
-    #[test]
     fn test_registry_with_internal_circuits() -> Result<()> {
         // Create a builder
         let builder = TestRegistryBuilder::new();
@@ -946,7 +1057,7 @@ mod tests {
 
         // Finalize the registry
         let registry = builder.finalize()?;
-        assert_eq!(registry.circuits().len(), 4);
+        assert_eq!(registry.num_circuits(), 4);
 
         Ok(())
     }
@@ -961,7 +1072,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 4 })?
             .finalize()?;
 
-        assert_eq!(registry.circuits().len(), 4);
+        assert_eq!(registry.num_circuits(), 4);
 
         // Test circuit count with interleaved registration
         let registry2 = TestRegistryBuilder::new()
@@ -971,7 +1082,36 @@ mod tests {
             .register_internal_circuit(SquareCircuit { times: 2 })?
             .finalize()?;
 
-        assert_eq!(registry2.circuits().len(), 4);
+        assert_eq!(registry2.num_circuits(), 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_registry_with_internal_steps() -> Result<()> {
+        let builder = TestRegistryBuilder::new()
+            .register_internal_circuit(SquareCircuit { times: 1 })?
+            .register_internal_circuit(SquareCircuit { times: 2 })?
+            .register_internal_step(SquareCircuit { times: 3 })?
+            .register_internal_step(SquareCircuit { times: 4 })?
+            .register_circuit(SquareCircuit { times: 5 })?;
+
+        // num_internal_circuits counts masks + circuits only (not steps)
+        assert_eq!(builder.num_internal_circuits(), 2);
+        // num_circuits counts all categories
+        assert_eq!(builder.num_circuits(), 5);
+
+        let registry = builder.finalize()?;
+        assert_eq!(registry.num_circuits(), 5);
+
+        // Verify evaluation consistency
+        let w = Fp::random(&mut rand::rng());
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        let wxy = registry.wxy(w, x, y);
+        let xy = registry.xy(x, y);
+        assert_eq!(wxy, xy.eval(w));
 
         Ok(())
     }

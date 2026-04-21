@@ -2,15 +2,15 @@
 
 mod setup;
 
+use std::hint::black_box;
+
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_pasta::{EpAffine, Fp, PoseidonFp};
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Boolean, Element, Endoscalar, Point, multiadd, multipack};
+use ragu_primitives::{Boolean, Element, Endoscalar, Point, multiadd, multipack, poseidon::Sponge};
 use setup::{
     BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo, alloc_point,
     alloc_sponge, setup_emu,
 };
-use std::hint::black_box;
 
 #[library_benchmark(setup = setup_emu)]
 #[bench::element_mul((alloc_elem, alloc_elem))]
@@ -43,7 +43,7 @@ fn element_fold(
 #[library_benchmark(setup = setup_emu)]
 #[bench::element_is_zero((alloc_elem,))]
 fn element_is_zero((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(elem.is_zero(&mut emu)).unwrap();
+    black_box(elem.is_zero(&mut emu, &mut ())).unwrap();
 }
 
 #[library_benchmark(setup = setup_emu)]
@@ -152,7 +152,7 @@ fn endoscalar_group_scale(
 #[library_benchmark(setup = setup_emu)]
 #[bench::endoscalar_extract((alloc_elem,))]
 fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(Endoscalar::extract(&mut emu, elem)).unwrap();
+    black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
 }
 
 #[library_benchmark(setup = setup_emu)]

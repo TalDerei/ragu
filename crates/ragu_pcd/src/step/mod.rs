@@ -3,6 +3,7 @@
 mod encoder;
 pub(crate) mod internal;
 
+pub use encoder::Encoded;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::registry::CircuitIndex;
 use ragu_core::{
@@ -11,9 +12,7 @@ use ragu_core::{
 };
 
 use super::header::Header;
-use crate::circuits::native::NUM_INTERNAL_CIRCUITS;
-
-pub use encoder::Encoded;
+use crate::internal::native::InternalCircuitIndex;
 
 #[derive(Copy, Clone)]
 #[repr(usize)]
@@ -54,8 +53,8 @@ impl Index {
 
     /// Returns the circuit index for this step.
     ///
-    /// Circuits are registered in the following order: internal masks,
-    /// internal circuits, internal steps, then application steps.
+    /// Circuits are registered in the following order: internal circuits,
+    /// internal masks, internal steps, then application steps.
     ///
     /// Pass the known number of application steps to validate and compute the
     /// final index of this step. Returns an error if an application step index
@@ -65,7 +64,7 @@ impl Index {
             StepIndex::Internal(i) => {
                 // Internal steps come after internal circuits
                 Ok(CircuitIndex::from_u32(
-                    NUM_INTERNAL_CIRCUITS as u32 + i as u32,
+                    InternalCircuitIndex::NUM as u32 + i as u32,
                 ))
             }
             StepIndex::Application(i) => {
@@ -76,7 +75,7 @@ impl Index {
                 }
 
                 Ok(CircuitIndex::new(
-                    NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS + i,
+                    NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM + i,
                 ))
             }
         }
@@ -114,22 +113,20 @@ impl Index {
 
 #[test]
 fn test_index_map() -> Result<()> {
-    use crate::circuits::native::NUM_INTERNAL_CIRCUITS;
-
     let num_application_steps = 10;
-    let app_offset = NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+    let app_offset = NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM;
 
     // Internal steps come after internal circuits
     assert_eq!(
         Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
-        CircuitIndex::new(NUM_INTERNAL_CIRCUITS)
+        CircuitIndex::new(InternalCircuitIndex::NUM)
     );
     assert_eq!(
         Index::internal(InternalStepIndex::Trivial).circuit_index(num_application_steps)?,
-        CircuitIndex::new(NUM_INTERNAL_CIRCUITS + 1)
+        CircuitIndex::new(InternalCircuitIndex::NUM + 1)
     );
 
-    // Application steps occupy indices (NUM_INTERNAL_CIRCUITS + NUM_INTERNAL_STEPS)..
+    // Application steps occupy indices (InternalCircuitIndex::NUM + NUM_INTERNAL_STEPS)..
     assert_eq!(
         Index::new(0).circuit_index(num_application_steps)?,
         CircuitIndex::new(app_offset)
@@ -146,6 +143,9 @@ fn test_index_map() -> Result<()> {
 
 /// Represents a node in the computational graph (or the proof-carrying data
 /// tree) that represents the merging of two pieces of proof-carrying data.
+///
+/// See the [Writing Circuits](https://tachyon.z.cash/ragu/guide/writing_circuits.html)
+/// guide for usage patterns and examples.
 pub trait Step<C: Cycle>: Sized + Send + Sync {
     /// Each unique [`Step`] implementation within a provided context must have
     /// a unique index.
@@ -153,10 +153,6 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
 
     /// The witness data needed to construct a proof for this step.
     type Witness<'source>: Send;
-
-    /// Auxiliary information produced during circuit synthesis. This may be
-    /// necessary to construct the [`Header::Data`] for the resulting proof.
-    type Aux<'source>: Send;
 
     /// The "left" header expected during this step.
     type Left: Header<C::CircuitField>;
@@ -167,19 +163,27 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
     /// The header produced during this step.
     type Output: Header<C::CircuitField>;
 
+    /// Auxiliary information produced during circuit synthesis that may be
+    /// used to pipeline witness data to future steps.
+    type Aux<'source>: Send;
+
     /// The main synthesis method that checks the validity of this merging step.
+    ///
+    /// Returns the encoded headers (left, right, output), the data to be
+    /// carried in the resulting PCD, and any auxiliary witness data.
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data<'source>>,
-        right: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data<'source>>,
+        left: DriverValue<D, <Self::Left as Header<C::CircuitField>>::Data>,
+        right: DriverValue<D, <Self::Right as Header<C::CircuitField>>::Data>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
             Encoded<'dr, D, Self::Right, HEADER_SIZE>,
             Encoded<'dr, D, Self::Output, HEADER_SIZE>,
         ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where

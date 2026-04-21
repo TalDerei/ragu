@@ -1,5 +1,7 @@
-//! Strips away the witness data from a gadget while still preserving access to
-//! it.
+//! Strips away the witness data from a gadget while preserving its wire
+//! structure.
+
+use core::ops::Deref;
 
 use ff::Field;
 use ragu_arithmetic::Coeff;
@@ -10,8 +12,6 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind},
     maybe::Empty,
 };
-
-use core::ops::Deref;
 
 /// Trait for gadgets that support promotion from a [`Demoted`] state.
 ///
@@ -44,23 +44,32 @@ impl<D: DriverTypes> DriverTypes for DemotedDriver<D> {
     type LCenforce = ();
     type ImplField = D::ImplField;
     type ImplWire = D::ImplWire;
+    type Extra = D::Extra;
+
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(
+            Coeff<Self::ImplField>,
+            Coeff<Self::ImplField>,
+            Coeff<Self::ImplField>,
+        )>,
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)> {
+        unreachable!("DemotedDriver cannot be constructed")
+    }
+
+    fn assign_extra(
+        &mut self,
+        _: Self::Extra,
+        _: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire> {
+        unreachable!("DemotedDriver cannot be constructed")
+    }
 }
 
 impl<'dr, D: Driver<'dr>> Driver<'dr> for DemotedDriver<D> {
     const ONE: D::Wire = D::ONE;
     type F = D::F;
     type Wire = D::Wire;
-
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        unreachable!("DemotedDriver cannot be constructed")
-    }
-
-    fn mul(
-        &mut self,
-        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        unreachable!("DemotedDriver cannot be constructed")
-    }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
         unreachable!("DemotedDriver cannot be constructed")
