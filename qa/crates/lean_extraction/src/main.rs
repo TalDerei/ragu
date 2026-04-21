@@ -26,6 +26,7 @@ use crate::instances::{
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
     element_mul::ElementMulInstance,
+    element_multiadd::ElementMultiaddInstance,
     element_negate::ElementNegateInstance,
     element_scale::ElementScaleInstance,
     element_square::ElementSquareInstance,
@@ -125,6 +126,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.Sum",
         export: export_instance::<ElementSumInstance>,
         generated_file: generated_file_instance::<ElementSumInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.Multiadd",
+        export: export_instance::<ElementMultiaddInstance>,
+        generated_file: generated_file_instance::<ElementMultiaddInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Element.Scale",

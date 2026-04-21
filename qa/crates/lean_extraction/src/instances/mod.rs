@@ -9,6 +9,7 @@ pub mod element_enforce_zero;
 pub mod element_invert;
 pub mod element_invert_with;
 pub mod element_mul;
+pub mod element_multiadd;
 pub mod element_negate;
 pub mod element_scale;
 pub mod element_square;
