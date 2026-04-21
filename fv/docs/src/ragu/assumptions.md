@@ -27,6 +27,8 @@ Also, any gaps between the requirements and the formalizatioon can render the Ra
 
 Lean and other proof assistants that are based on intuitionistic and classical logic suffer from a problem called [explosivity](https://plato.stanford.edu/archives/fall2017/entries/logic-paraconsistent/). From a contradiction about any topic, it is possible to prove all true and false statements. For this reason, when any one of arguments or hypotheses is false, a theorem in Lean does not carry any guarantees.
 
+Because of explosivity, approximations do not work well with Lean and other proof assistants. Just because a situation looks close to satisfy the hypotheses of a theorem, that doesn't mean that the situation is close to satisfy the conclusion of the theorem. The logic behind Lean and other proof assistants does not have the notion of degree of falsehood so any tiny gap between the reality and the formalization can be used to prove things that are utterly wrong.
+
 It is difficult to list all potential gaps between the reality and the formalization. The same holds for potential gaps between the requirements and the formalization. The potential gaps listed are just some typical examples and not to be taken as exhaustive.
 
 Future changes might introduce new gaps.
