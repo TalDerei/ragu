@@ -18,7 +18,7 @@ The Ragu Formal Verification relies on some assumptions.
 
 - The logical foundation is not contradictory
     - The Lean kernel theory and implementation are sound.
-    - The axioms we use do not turn false propositions to be provable. After a theorem, the command `#print axioms <theoremName>` prints the axioms the theorem transitively depends on. Typically the axioms reported are `propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, and `Ragu.Core.Primes.p_prime`. It is known that `Lean.trustCompiler` and `Lean.ofReduceBool` can be used to prove falsehood, so there is a possibility that these axioms are used somewhere to prove something that is not true. Moreover, it is unknown whether the commonly used axioms `propext`, `Classical.choice`, and `Quot.sound` can be used to prove falsehood.
+    - The axioms we use do not turn false propositions to be provable. After a theorem, the command `#print axioms <theoremName>` prints the axioms the theorem transitively depends on. Typically the axioms reported are `propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, and `Ragu.Core.Primes.p_prime`. There is a chance that `Lean.trustCompiler` and `Lean.ofReduceBool` can be used to prove falsehood, so there is a possibility that these axioms are used somewhere to prove something that is not true. Moreover, it is unknown whether the commonly used axioms `propext`, `Classical.choice`, and `Quot.sound` can be used to prove falsehood.
 
 ## Assumptions for the Ragu Formal Verification to be useful
 
