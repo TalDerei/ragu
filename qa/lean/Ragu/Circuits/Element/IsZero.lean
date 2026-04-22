@@ -2,7 +2,7 @@ import Clean.Circuit
 import Mathlib.Tactic.LinearCombination
 import Ragu.Circuits.Core.AllocMul
 
-namespace Ragu.Circuits.Boolean.IsZero
+namespace Ragu.Circuits.Element.IsZero
 variable {p : ℕ} [Fact p.Prime]
 
 /-- `is_zero(x)` implements the standard inverse trick over two gates:
@@ -97,4 +97,4 @@ theorem completeness : Completeness (F p) elaborated Assumptions := by
 def circuit : FormalCircuit (F p) field field :=
   { elaborated with Assumptions, Spec, soundness, completeness }
 
-end Ragu.Circuits.Boolean.IsZero
+end Ragu.Circuits.Element.IsZero

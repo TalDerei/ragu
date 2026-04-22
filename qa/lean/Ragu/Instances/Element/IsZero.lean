@@ -1,9 +1,9 @@
-import Ragu.Circuits.Boolean.IsZero
-import Ragu.Instances.Autogen.Boolean.IsZero
+import Ragu.Circuits.Element.IsZero
+import Ragu.Instances.Autogen.Element.IsZero
 import Ragu.Core
 
-namespace Ragu.Instances.Boolean.IsZero
-open Ragu.Instances.Autogen.Boolean.IsZero
+namespace Ragu.Instances.Element.IsZero
+open Ragu.Instances.Autogen.Element.IsZero
 
 def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var field (F p) :=
   input[0]
@@ -29,7 +29,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   reimplementation :=
     FormalCircuit.isGeneralFormalCircuit (F p) field field
-      Circuits.Boolean.IsZero.circuit
+      Circuits.Element.IsZero.circuit
 
   same_constraints := by
     intro input
@@ -38,9 +38,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Boolean.IsZero.circuit,
-      Circuits.Boolean.IsZero.elaborated,
-      Circuits.Boolean.IsZero.main]
+      Circuits.Element.IsZero.circuit,
+      Circuits.Element.IsZero.elaborated,
+      Circuits.Element.IsZero.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -49,15 +49,15 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
-      Circuits.Boolean.IsZero.circuit,
-      Circuits.Boolean.IsZero.elaborated,
-      Circuits.Boolean.IsZero.main]
+      Circuits.Element.IsZero.circuit,
+      Circuits.Element.IsZero.elaborated,
+      Circuits.Element.IsZero.main]
   same_spec := by
     intro input output
     dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Boolean.IsZero.circuit,
-      Circuits.Boolean.IsZero.Assumptions,
-      Circuits.Boolean.IsZero.Spec]
+      Circuits.Element.IsZero.circuit,
+      Circuits.Element.IsZero.Assumptions,
+      Circuits.Element.IsZero.Spec]
     aesop
 
-end Ragu.Instances.Boolean.IsZero
+end Ragu.Instances.Element.IsZero

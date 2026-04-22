@@ -8,9 +8,9 @@ use crate::{
     instance::{CircuitInstance, WireCollector, WireDeserializer},
 };
 
-pub struct BooleanIsZeroInstance;
+pub struct ElementIsZeroInstance;
 
-impl CircuitInstance for BooleanIsZeroInstance {
+impl CircuitInstance for ElementIsZeroInstance {
     type Field = Fp;
 
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {

@@ -1,6 +1,6 @@
 import Ragu.Core
 
-namespace Ragu.Instances.Autogen.Boolean.IsZero
+namespace Ragu.Instances.Autogen.Element.IsZero
 open Core.Primes
 
 @[reducible]
@@ -30,4 +30,4 @@ def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Ex
   (var ⟨1⟩)
 ]
 
-end Ragu.Instances.Autogen.Boolean.IsZero
+end Ragu.Instances.Autogen.Element.IsZero

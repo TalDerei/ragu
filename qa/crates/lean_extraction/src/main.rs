@@ -19,7 +19,6 @@ use crate::instances::{
     boolean_and::BooleanAndInstance,
     boolean_conditional_enforce_equal::BooleanConditionalEnforceEqualInstance,
     boolean_conditional_select::BooleanConditionalSelectInstance,
-    boolean_is_zero::BooleanIsZeroInstance,
     boolean_not::BooleanNotInstance,
     core_alloc_mul::CoreAllocMulInstance,
     element_alloc::ElementAllocInstance,
@@ -31,6 +30,7 @@ use crate::instances::{
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
     element_is_equal::ElementIsEqualInstance,
+    element_is_zero::ElementIsZeroInstance,
     element_mul::ElementMulInstance,
     element_square::ElementSquareInstance,
     point_add_incomplete::PointAddIncompleteInstance,
@@ -122,6 +122,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         generated_file: generated_file_instance::<ElementIsEqualInstance>,
     },
     ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.IsZero",
+        export: export_instance::<ElementIsZeroInstance>,
+        generated_file: generated_file_instance::<ElementIsZeroInstance>,
+    },
+    ExportTarget {
         name: "Ragu.Instances.Autogen.Core.AllocMul",
         export: export_instance::<CoreAllocMulInstance>,
         generated_file: generated_file_instance::<CoreAllocMulInstance>,
@@ -150,11 +155,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Boolean.ConditionalEnforceEqual",
         export: export_instance::<BooleanConditionalEnforceEqualInstance>,
         generated_file: generated_file_instance::<BooleanConditionalEnforceEqualInstance>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.IsZero",
-        export: export_instance::<BooleanIsZeroInstance>,
-        generated_file: generated_file_instance::<BooleanIsZeroInstance>,
     },
 ];
 
