@@ -185,11 +185,11 @@ impl Routine<Fp> for Duplicate {
 
 /// Passthrough — returns input unchanged. No constraints.
 ///
-/// With [`DropFirst`], forms a pair whose `(scalar, mul_count,
-/// linear_count)` triples are identical: neither routine calls
-/// `enforce_zero`, so both leave the Horner accumulator at the initial
-/// seed `h`, and neither emits any gate. Only the `TypeId` of `Input`
-/// distinguishes them.
+/// With [`DropFirst`], forms a pair whose [`BaseFingerprint`] fields
+/// `(scalar, num_gates, num_constraints)` are identical: neither routine
+/// calls `enforce_zero` (the zero-seeded Horner accumulator stays at 0),
+/// and neither emits any gate. Only the `TypeId` of `Input`
+/// distinguishes them via the deep hash.
 #[derive(Clone)]
 struct Passthrough;
 
@@ -219,8 +219,7 @@ impl Routine<Fp> for Passthrough {
 /// Takes two inputs, returns the first. No constraints.
 ///
 /// Paired with [`Passthrough`]: both have zero body constraints and
-/// identical Horner scalars (the untouched seed `h`), but different
-/// `Input` types.
+/// identical zero-valued Horner scalars, but different `Input` types.
 #[derive(Clone)]
 struct DropFirst;
 
@@ -659,11 +658,11 @@ impl Routine<Fp> for AllocThenAddEnforce {
     }
 }
 
-/// Like SquareOnce but preceded by two trivial enforce_zero calls (empty linear
-/// combination). The $s(X, Y)$ polynomial differs because the real constraints
-/// land at $Y^2$ and $Y^3$ instead of $Y^0$ and $Y^1$. The nonzero Horner seed
-/// `h` ensures the leading empty constraints shift the accumulator (via
-/// `h * y^k`), so the scalars also differ.
+/// Like [`SquareOnce`] but preceded by two trivial `enforce_zero` calls
+/// (empty linear combination). The two leading empty constraints
+/// contribute zero to the zero-seeded Horner accumulator, so the final
+/// eval scalar is identical to [`SquareOnce`]; the pair is discriminated
+/// solely by `num_constraints` (2 vs 4) in [`BaseFingerprint`].
 #[derive(Clone)]
 struct SquareOnceWithLeadingTrivial;
 
@@ -833,8 +832,8 @@ impl Routine<Fp> for DelegateAllocEnforceFirst {
 
 /// Three input wires, returns first. Paired with [`PassthroughQuad`]:
 /// neither routine calls `enforce_zero`, so both leave the Horner
-/// accumulator at the initial seed `h`. Only the `TypeId` of `Input`
-/// distinguishes them.
+/// accumulator at zero and produce identical [`BaseFingerprint`]s.
+/// Only the input `TypeId` distinguishes them via the deep hash.
 #[derive(Clone)]
 struct PassthroughTriple;
 
@@ -1560,7 +1559,7 @@ fn test_mixed_constraints() {
     assert_ne!(mixed, fingerprint_elem(&LinearOnly));
 }
 
-/// Pure delegation wrappers share the same shallow fingerprint (same constraint
+/// Pure delegation wrappers share the same base fingerprint (same constraint
 /// shape) but differ in their deep fingerprint (different recursive subtree).
 #[test]
 fn test_triple_nesting() {
@@ -1595,8 +1594,8 @@ fn test_aliasing_delegate_vs_alloc_enforce() {
 }
 
 /// Pure delegation wrapper vs local alloc with no constraints.  With no
-/// `enforce_zero` calls the scalars are both equal to the Horner seed
-/// `h`, but the mul counts differ (0 vs 1).
+/// `enforce_zero` calls the scalars are both zero (the Horner seed), but
+/// the gate counts differ (0 vs 1), so the base fingerprints differ.
 #[test]
 fn test_aliasing_delegate_vs_alloc_no_constraints() {
     assert_ne!(fingerprint_elem(&PureNesting), fingerprint_elem(&AllocOnly),);
@@ -1614,11 +1613,12 @@ fn test_aliasing_propagates_through_linear_combinations() {
     );
 }
 
-/// SquareOnce (2 constraints) vs SquareOnceWithLeadingTrivial
-/// (2 leading empty `enforce_zero` + 2 from square = 4 total).  The
-/// nonzero Horner seed makes leading empty constraints visible: the
-/// seed shifts through extra powers of $y$, producing distinct scalars.
-/// Constraint counts also differ (2 vs 4).
+/// [`SquareOnce`] (2 constraints) vs [`SquareOnceWithLeadingTrivial`]
+/// (2 leading empty `enforce_zero` + 2 from square = 4 total). Leading
+/// empty constraints are invisible to the zero-seeded Horner accumulator
+/// (both routines produce the same eval scalar), but `num_constraints`
+/// — part of [`BaseFingerprint`] — differs (2 vs 4), so the fingerprints
+/// differ.
 #[test]
 fn test_aliasing_leading_trivial_constraints() {
     assert_ne!(
@@ -1714,9 +1714,10 @@ fn test_cross_path_consistency() {
     ];
 }
 
-/// Regression: via `eval`, PureNesting and AllocOnly have identical
-/// scalars (both equal to the Horner seed `h`, since neither has
-/// `enforce_zero` calls) but differ in mul count (0 vs 1).
+/// Via `eval`, [`PureNesting`] and [`AllocOnly`] have identical (zero)
+/// scalars — neither calls `enforce_zero`, so the Horner accumulator
+/// stays at its zero seed — but differ in gate count (0 vs 1), and are
+/// therefore distinguished by `num_gates` in [`BaseFingerprint`].
 #[test]
 fn test_missing_counts_via_eval() {
     assert_ne!(
@@ -1725,9 +1726,10 @@ fn test_missing_counts_via_eval() {
     );
 }
 
-/// Regression: via `eval`, SquareOnce and SquareOnceWithLeadingTrivial
-/// now produce distinct scalars thanks to the nonzero Horner seed.
-/// They also differ in constraint count (2 vs 4).
+/// Via `eval`, [`SquareOnce`] and [`SquareOnceWithLeadingTrivial`] produce
+/// identical Horner scalars (leading zero LCs vanish under the zero-seeded
+/// accumulator) but differ in `num_constraints` (2 vs 4), so they are
+/// distinguished by [`BaseFingerprint::num_constraints`].
 #[test]
 fn test_vanishing_leading_trivial_via_eval() {
     assert_ne!(
@@ -1767,7 +1769,7 @@ fn test_wire_collision_via_eval_metrics_identical() {
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
 /// Element)) have zero body constraints and identical Horner scalars —
-/// same polynomial contribution (routine fingerprints match), but
+/// same polynomial contribution (base fingerprints match), but
 /// different memoization identity (deep hashes differ via TypeIds).
 #[test]
 fn test_type_distinct_input_discrimination() {
@@ -1917,6 +1919,95 @@ fn test_type_distinct_one_wire_constraint() {
     assert_eq!(a.base(), b.base());
     assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
+}
+
+/// Allocates `w1` then `w2`, both zero, and enforces `w1 + w2 = 0`.
+/// Returns `(w1, w2)`. Paired with [`SwapOrderReordered`], which swaps
+/// the allocation order.
+#[derive(Clone)]
+struct SwapOrderIdentity;
+
+impl Routine<Fp> for SwapOrderIdentity {
+    type Input = Kind![Fp; ()];
+    type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        _input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        let w1 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let w2 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        w1.add(dr, &w2).enforce_zero(dr)?;
+        Ok((w1, w2))
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::just(|| ())))
+    }
+}
+
+/// Same shape as [`SwapOrderIdentity`] but allocates `w2` before `w1`.
+/// Still enforces `w1 + w2 = 0` and returns `(w1, w2)`, so the output
+/// gadget is identical; only the underlying wire values are swapped.
+#[derive(Clone)]
+struct SwapOrderReordered;
+
+impl Routine<Fp> for SwapOrderReordered {
+    type Input = Kind![Fp; ()];
+    type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        _input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        // Allocations in opposite order: first alloc is labelled `w2`.
+        let w2 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let w1 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        w1.add(dr, &w2).enforce_zero(dr)?;
+        Ok((w1, w2))
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::just(|| ())))
+    }
+}
+
+/// Two routines with identical local shape and the same symmetric LC
+/// `w1 + w2 = 0`, but opposite allocation order. Their base fingerprints
+/// match (same `num_gates`, `num_constraints`, and Horner scalar). Their
+/// deep fingerprints differ because the output-wire sequence — captured
+/// in the deep hash before any parent-context remap — encodes the
+/// swapped underlying wire values.
+#[test]
+fn test_swap_allocation_order_base_matches_deep_differs() {
+    let a = fingerprint_unit(&SwapOrderIdentity);
+    let b = fingerprint_unit(&SwapOrderReordered);
+
+    assert_eq!(
+        a.base(),
+        b.base(),
+        "symmetric LC + identical shape ⇒ identical base fingerprint",
+    );
+    assert_ne!(
+        a, b,
+        "swapped output-wire order ⇒ different deep fingerprint",
+    );
 }
 
 /// Circuit wrapper for `(Element, Element) → Element` routines.
