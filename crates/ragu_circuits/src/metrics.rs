@@ -114,30 +114,24 @@ pub struct BaseFingerprint {
     local_num_constraints: usize,
 }
 
-/// Full recursive fingerprint for memoization.
+/// Full recursive fingerprint for a routine invocation.
 ///
-/// Extends [`BaseFingerprint`] with `output_eval` (which wires flow to
-/// which output slots) and a recursive `deep` hash that folds in [`TypeId`]
-/// pairs, all routine fingerprint fields, `output_eval`, child count, and
-/// each child's deep hash. Two routines with the same memo fingerprint are
-/// fully equivalent: same constraint structure, same output wire mapping,
-/// same recursive subtree structure, and same Rust type identity.
+/// Augments [`BaseFingerprint`] with a 64-bit BLAKE2b digest that recursively
+/// folds in the routine's input/output [`TypeId`]s, the raw values of its
+/// output-gadget wires (which carry positional information relative to the
+/// routine's own scope), and the deep fingerprints of every direct child
+/// routine. Two invocations with matching `DeepFingerprint`s are structurally
+/// identical at every nesting level — same base shape, same output wire
+/// placement, same recursive subtree.
 ///
-/// The separation from [`BaseFingerprint`] prevents accidental conflation
-/// of polynomial equivalence (floor planning) with memoization safety (cache
-/// keys). The floor planner groups by [`BaseFingerprint`]; the memo cache
-/// keys by [`DeepFingerprint`].
-///
-/// The 64-bit `deep` hash gives ~2^{-64} collision probability per pair,
-/// adequate for memoization equivalence classes. If fingerprints are ever
-/// used for security-critical decisions, store the full field
-/// representation (`[u8; 32]`) instead — the cost is negligible.
+/// The separation from [`BaseFingerprint`] matters because deep equivalence is
+/// a stronger claim than base equivalence and enables stronger memoization
+/// (caching an entire routine subtree, not just the base segment).
 ///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeepFingerprint {
     base: BaseFingerprint,
-    output_eval: u64,
     deep: u64,
 }
 
@@ -167,49 +161,86 @@ fn type_id_u64(id: TypeId) -> u64 {
     h.finish()
 }
 
-/// Computes the recursive deep hash from [`TypeId`] pairs, all
-/// [`BaseFingerprint`] fields, `output_eval`, child count, and each
-/// child's deep hash, producing a single 64-bit BLAKE2b digest.
+/// Domain tag for the deep fingerprint hash.
+const DEEP_HASH_PERSONAL: &[u8; 16] = b"ragu_deep_hash__";
+
+/// Computes the recursive deep hash for a routine invocation.
 ///
-/// [`TypeId`] pairs are included here (not in [`BaseFingerprint`]) because
-/// they are relevant to memoization safety — routines with different types may
-/// have different output wire layouts — but not to polynomial equivalence.
+/// Inputs, in order:
+///
+/// 1. The routine's input and output [`TypeId`]s (one `u64` each);
+/// 2. all [`BaseFingerprint`] fields: `eval`, `num_gates`, `num_constraints`;
+/// 3. the number of output-gadget wires (length-bound to avoid
+///    concatenation ambiguity on the subsequent stream) followed by each
+///    output wire's raw field-element value in canonical byte repr;
+/// 4. the number of direct child routines (length-bound) followed by each
+///    child's deep hash.
+///
+/// Hashing output-wire values directly (rather than collapsing them to a
+/// single scalar first) lets the deep hash pick up swapped allocation
+/// orders that leave the output gadget tuple-equal but the wire sequence
+/// permuted — the book footnote `[^swapped]` regression case.
+///
+/// The output is the first 8 bytes of the BLAKE2b-64 digest interpreted
+/// as a little-endian `u64`.
 ///
 /// [`TypeId`]: core::any::TypeId
-fn deep_hash(
+fn deep_hash<F: PrimeField, Ro: Routine<F>>(
+    base: &BaseFingerprint,
+    output_wires: &[F],
+    children: &[u64],
+) -> u64 {
+    deep_hash_with_typeids::<F>(
+        TypeId::of::<Ro::Input>(),
+        TypeId::of::<Ro::Output>(),
+        base,
+        output_wires,
+        children,
+    )
+}
+
+/// Core of [`deep_hash`] parameterized over the input/output `TypeId`s
+/// directly. Exposed via `tests::deep_hash_wrapper` so proptests can
+/// exercise type-id sensitivity without routing through a `Routine`
+/// generic.
+fn deep_hash_with_typeids<F: PrimeField>(
     input_kind: TypeId,
     output_kind: TypeId,
     base: &BaseFingerprint,
-    output_eval: u64,
+    output_wires: &[F],
     children: &[u64],
 ) -> u64 {
-    let mut state = blake2b_simd::Params::new().personal(b"FIXME").to_state();
+    let mut state = blake2b_simd::Params::new()
+        .personal(DEEP_HASH_PERSONAL)
+        .to_state();
     state.update(&type_id_u64(input_kind).to_le_bytes());
     state.update(&type_id_u64(output_kind).to_le_bytes());
     state.update(&base.eval.to_le_bytes());
     state.update(&(base.local_num_gates as u64).to_le_bytes());
     state.update(&(base.local_num_constraints as u64).to_le_bytes());
-    state.update(&output_eval.to_le_bytes());
+    state.update(&(output_wires.len() as u64).to_le_bytes());
+    for w in output_wires {
+        state.update(w.to_repr().as_ref());
+    }
     state.update(&(children.len() as u64).to_le_bytes());
     for child in children {
         state.update(&child.to_le_bytes());
     }
-    let hash = state.finalize();
-    u64::from_le_bytes(
-        hash.as_array()[..8]
-            .try_into()
-            .expect("BLAKE2b output is 64 bytes"),
-    )
+    let bytes = state.finalize();
+    let bytes = bytes.as_array();
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ])
 }
 
 impl DeepFingerprint {
-    /// Constructs a [`DeepFingerprint`] from a routine's type ids, evaluation
-    /// scalars, local constraint counts, and child deep hashes.
+    /// Constructs a [`DeepFingerprint`] from a routine's local shape,
+    /// output-wire values, and child deep hashes.
     fn of<F: PrimeField, Ro: Routine<F>>(
         eval: F,
-        output_eval: F,
         local_num_gates: usize,
         local_num_constraints: usize,
+        output_wires: &[F],
         children_deep: &[u64],
     ) -> Self {
         let base = BaseFingerprint {
@@ -217,19 +248,8 @@ impl DeepFingerprint {
             local_num_gates,
             local_num_constraints,
         };
-        let output_eval = ragu_arithmetic::low_u64(&output_eval);
-        let deep = deep_hash(
-            TypeId::of::<Ro::Input>(),
-            TypeId::of::<Ro::Output>(),
-            &base,
-            output_eval,
-            children_deep,
-        );
-        Self {
-            base,
-            output_eval,
-            deep,
-        }
+        let deep = deep_hash::<F, Ro>(&base, output_wires, children_deep);
+        Self { base, deep }
     }
 
     /// Returns the base fingerprint (polynomial equivalence only).
@@ -246,12 +266,6 @@ impl DeepFingerprint {
     #[cfg(test)]
     pub(crate) fn eval(&self) -> u64 {
         self.base.eval
-    }
-
-    /// Returns the output wire evaluation scalar.
-    #[cfg(test)]
-    pub(crate) fn output_eval(&self) -> u64 {
-        self.output_eval
     }
 }
 
@@ -470,13 +484,6 @@ struct Counter<F> {
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
     one: F,
-
-    /// Base for the output fingerprint geometric sequence.
-    ///
-    /// Used to compute `output_eval`: each output wire's evaluation is
-    /// multiplied by a successive power of `z` and summed, capturing which
-    /// wires flow to which output slots.
-    z: F,
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
@@ -495,7 +502,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let y = point(4);
         let one = point(5);
         let x_remap = point(6);
-        let z = point(7);
 
         Self {
             scope: CounterScope {
@@ -522,8 +528,28 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             y,
             one,
             x_remap,
-            z,
         }
+    }
+
+    /// Collect each output-gadget wire's raw geometric-sequence value into
+    /// a freshly-allocated `Vec<F>`. Runs BEFORE the parent-context remap
+    /// in `routine()` so the captured values reflect the child's own
+    /// scope, not the parent's.
+    ///
+    /// `WireEval::One` resolves to the cached `one` field element so that
+    /// output gadgets that reference the `ONE` wire contribute a
+    /// deterministic, PRF-derived value to the deep hash.
+    fn collect_output_wires<'dr, Ro: Routine<F> + 'dr>(
+        &self,
+        output: &Bound<'dr, Self, Ro::Output>,
+    ) -> Result<Vec<F>> {
+        let mut wires = Vec::new();
+        let mut collector = OutputWireCollector {
+            wires: &mut wires,
+            one: self.one,
+        };
+        Ro::Output::map_gadget(output, &mut collector)?;
+        Ok(wires)
     }
 }
 
@@ -631,26 +657,18 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
         let output = routine.execute(self, new_input, aux)?;
 
-        // Compute output_eval: accumulate output wire evaluations to capture
-        // which wires flow to which output slots.
-        let output_eval = {
-            let mut acc = OutputEvaluator {
-                current_z: self.z,
-                z: self.z,
-                result: F::ZERO,
-                one: self.one,
-            };
-            let _ = Ro::Output::map_gadget(&output, &mut acc)?;
-            acc.result
-        };
+        // Collect the raw output-wire values BEFORE parent-context remap
+        // so the deep hash binds their positions relative to the child's
+        // scope, not the parent's.
+        let output_wires = self.collect_output_wires::<Ro>(&output)?;
 
         // Extract fingerprint from the child's Horner accumulator and counts.
         let seg = &self.segments[segment_idx];
         let fingerprint = DeepFingerprint::of::<F, Ro>(
             self.scope.result,
-            output_eval,
             seg.num_gates,
             seg.num_constraints,
+            &output_wires,
             &self.scope.child_deep_hashes,
         );
         self.segments[segment_idx].identity = RoutineIdentity::Routine(fingerprint);
@@ -670,35 +688,28 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     }
 }
 
-/// Evaluates output wire mappings into a single scalar.
+/// [`WireMap`] that streams output-gadget wire values into a `Vec<F>`
+/// without producing real wires in the destination.
 ///
-/// Used to compute the `output_eval` field of [`DeepFingerprint`].
-/// Each output wire's evaluation is multiplied by a successive power of `z`
-/// and summed, capturing which wires flow to which output slots.
-struct OutputEvaluator<F> {
-    /// Running geometric power: $z^{i+1}$ at output slot $i$.
-    current_z: F,
-    /// Base for the geometric sequence.
-    z: F,
-    /// Accumulated result.
-    result: F,
-    /// Evaluation of the `ONE` wire.
+/// Used by [`Counter::collect_output_wires`] to collect each output wire's
+/// raw geometric-sequence evaluation before the parent-context remap so
+/// that the deep hash can bind the output-gadget's positional footprint.
+struct OutputWireCollector<'a, F> {
+    wires: &'a mut Vec<F>,
+    /// Value of the `ONE` wire, in case an output gadget references it.
     one: F,
 }
 
-/// [`WireMap`] extracts output wire evaluations without
-/// producing real wires in the destination.
-impl<F: FromUniformBytes<64>> WireMap<F> for OutputEvaluator<F> {
+impl<F: FromUniformBytes<64>> WireMap<F> for OutputWireCollector<'_, F> {
     type Src = Counter<F>;
     type Dst = core::marker::PhantomData<F>;
 
     fn convert_wire(&mut self, wire: &WireEval<F>) -> Result<()> {
-        let value = match wire {
+        let v = match *wire {
             WireEval::One => self.one,
-            WireEval::Value(v) => *v,
+            WireEval::Value(v) => v,
         };
-        self.result += value * self.current_z;
-        self.current_z *= self.z;
+        self.wires.push(v);
         Ok(())
     }
 }
@@ -815,26 +826,18 @@ pub(crate) mod tests {
         let aux = Emulator::predict(routine, &new_input)?.into_aux();
         let output = routine.execute(&mut counter, new_input, aux)?;
 
-        // Compute output_eval from the routine's output wires.
-        let output_eval = {
-            let mut acc = OutputEvaluator {
-                current_z: counter.z,
-                z: counter.z,
-                result: F::ZERO,
-                one: counter.one,
-            };
-            let _ = Ro::Output::map_gadget(&output, &mut acc)?;
-            acc.result
-        };
+        // Collect output wire values before any parent-context remap
+        // (there is no parent here, but the ordering mirrors Counter::routine).
+        let output_wires = counter.collect_output_wires::<Ro>(&output)?;
 
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.
         let seg = &counter.segments[0];
         Ok(RoutineIdentity::Routine(DeepFingerprint::of::<F, Ro>(
             counter.scope.result,
-            output_eval,
             seg.num_gates,
             seg.num_constraints,
+            &output_wires,
             &counter.scope.child_deep_hashes,
         )))
     }
@@ -902,22 +905,27 @@ pub(crate) mod tests {
         super::eval::<Fp, _>(&SingleAllocCircuit).expect("metrics eval should succeed");
     }
 
-    /// Test-only wrapper exposing the private `deep_hash` function for
-    /// property-based testing in sibling test modules.
+    /// Test-only wrapper exposing the private deep-hash machinery for
+    /// property-based testing in sibling test modules. Each `u64` in
+    /// `output_wire_scalars` is lifted to an `Fp` via `Fp::from(..)` and
+    /// hashed as that wire's field representation, mirroring the
+    /// production path where output-wire values are raw field elements.
     pub(crate) fn deep_hash_wrapper(
         input_kind: TypeId,
         output_kind: TypeId,
         eval: u64,
         num_mul: usize,
         num_lc: usize,
-        output_eval: u64,
+        output_wire_scalars: &[u64],
         children: &[u64],
     ) -> u64 {
-        let routine = BaseFingerprint {
+        let base = BaseFingerprint {
             eval,
             local_num_gates: num_mul,
             local_num_constraints: num_lc,
         };
-        super::deep_hash(input_kind, output_kind, &routine, output_eval, children)
+        let output_wires: alloc::vec::Vec<Fp> =
+            output_wire_scalars.iter().map(|&w| Fp::from(w)).collect();
+        super::deep_hash_with_typeids::<Fp>(input_kind, output_kind, &base, &output_wires, children)
     }
 }

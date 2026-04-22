@@ -2092,7 +2092,7 @@ mod proptest_fingerprint {
         eval: u64,
         num_mul: usize,
         num_lc: usize,
-        output_eval: u64,
+        output_wire_scalars: &[u64],
         children: &[u64],
     ) -> u64 {
         deep_hash_wrapper(
@@ -2101,7 +2101,7 @@ mod proptest_fingerprint {
             eval,
             num_mul,
             num_lc,
-            output_eval,
+            output_wire_scalars,
             children,
         )
     }
@@ -2134,8 +2134,8 @@ mod proptest_fingerprint {
             eval in any::<u64>(), num_mul in 0usize..100, num_lc in 0usize..100,
             output_eval in any::<u64>(), children in prop::collection::vec(any::<u64>(), 0..8),
         ) {
-            let a = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
-            let b = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            let a = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, &[output_eval], &children);
+            let b = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, &[output_eval], &children);
             prop_assert_eq!(a, b);
         }
 
@@ -2147,28 +2147,28 @@ mod proptest_fingerprint {
             alt_eval in any::<u64>(), alt_mul in 0usize..100, alt_lc in 0usize..100,
             alt_oe in any::<u64>(),
         ) {
-            let base = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            let base = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, &[output_eval], &children);
             // input_kind
-            let v = dhw(tid_b(), tid_b(), eval, num_mul, num_lc, output_eval, &children);
+            let v = dhw(tid_b(), tid_b(), eval, num_mul, num_lc, &[output_eval], &children);
             prop_assert_ne!(base, v, "input_kind");
             // output_kind
-            let v = dhw(tid_a(), tid_a(), eval, num_mul, num_lc, output_eval, &children);
+            let v = dhw(tid_a(), tid_a(), eval, num_mul, num_lc, &[output_eval], &children);
             prop_assert_ne!(base, v, "output_kind");
             // eval
             prop_assume!(eval != alt_eval);
-            let v = dhw(tid_a(), tid_b(), alt_eval, num_mul, num_lc, output_eval, &children);
+            let v = dhw(tid_a(), tid_b(), alt_eval, num_mul, num_lc, &[output_eval], &children);
             prop_assert_ne!(base, v, "eval");
             // num_mul
             prop_assume!(num_mul != alt_mul);
-            let v = dhw(tid_a(), tid_b(), eval, alt_mul, num_lc, output_eval, &children);
+            let v = dhw(tid_a(), tid_b(), eval, alt_mul, num_lc, &[output_eval], &children);
             prop_assert_ne!(base, v, "num_mul");
             // num_lc
             prop_assume!(num_lc != alt_lc);
-            let v = dhw(tid_a(), tid_b(), eval, num_mul, alt_lc, output_eval, &children);
+            let v = dhw(tid_a(), tid_b(), eval, num_mul, alt_lc, &[output_eval], &children);
             prop_assert_ne!(base, v, "num_lc");
             // output_eval
             prop_assume!(output_eval != alt_oe);
-            let v = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, alt_oe, &children);
+            let v = dhw(tid_a(), tid_b(), eval, num_mul, num_lc, &[alt_oe], &children);
             prop_assert_ne!(base, v, "output_eval");
         }
 
@@ -2178,8 +2178,8 @@ mod proptest_fingerprint {
             eval in any::<u64>(), output_eval in any::<u64>(),
             base_children in prop::collection::vec(any::<u64>(), 1..8),
         ) {
-            let full = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &base_children);
-            let shorter = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &base_children[..base_children.len() - 1]);
+            let full = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &base_children);
+            let shorter = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &base_children[..base_children.len() - 1]);
             prop_assert_ne!(full, shorter, "different child counts must differ");
         }
 
@@ -2195,8 +2195,8 @@ mod proptest_fingerprint {
             prop_assume!(i != j && children[i] != children[j]);
             let mut swapped = children.clone();
             swapped.swap(i, j);
-            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &children);
-            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &swapped);
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &children);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &swapped);
             prop_assert_ne!(a, b, "swapping children must change hash");
         }
 
@@ -2215,8 +2215,8 @@ mod proptest_fingerprint {
                 children.swap(k, swap_idx);
             }
             prop_assume!(children != original);
-            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &original);
-            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &children);
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &original);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &children);
             prop_assert_ne!(a, b, "permutation must change hash");
         }
 
@@ -2226,8 +2226,8 @@ mod proptest_fingerprint {
             eval in any::<u64>(), output_eval in any::<u64>(),
             x in any::<u64>(),
         ) {
-            let a = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &[0, x]);
-            let b = dhw(tid_a(), tid_b(), eval, 0, 0, output_eval, &[x]);
+            let a = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &[0, x]);
+            let b = dhw(tid_a(), tid_b(), eval, 0, 0, &[output_eval], &[x]);
             prop_assert_ne!(a, b, "length prefix prevents [0,x] vs [x] confusion");
         }
 
@@ -2267,9 +2267,9 @@ mod proptest_fingerprint {
     // 11. TypeId discrimination in deep_hash
     #[test]
     fn typeid_discrimination_in_deep_hash() {
-        let a = dhw(tid_a(), tid_a(), 42, 1, 1, 99, &[]);
-        let b = dhw(tid_b(), tid_a(), 42, 1, 1, 99, &[]);
-        let c = dhw(tid_a(), tid_b(), 42, 1, 1, 99, &[]);
+        let a = dhw(tid_a(), tid_a(), 42, 1, 1, &[99], &[]);
+        let b = dhw(tid_b(), tid_a(), 42, 1, 1, &[99], &[]);
+        let c = dhw(tid_a(), tid_b(), 42, 1, 1, &[99], &[]);
         assert_ne!(
             a, b,
             "different input TypeId must produce different deep hash"
@@ -2284,8 +2284,8 @@ mod proptest_fingerprint {
     // 12. Zero children vs one child with deep hash 0
     #[test]
     fn deep_hash_zero_children_vs_one_zero_child() {
-        let a = dhw(tid_a(), tid_b(), 42, 1, 1, 99, &[]);
-        let b = dhw(tid_a(), tid_b(), 42, 1, 1, 99, &[0]);
+        let a = dhw(tid_a(), tid_b(), 42, 1, 1, &[99], &[]);
+        let b = dhw(tid_a(), tid_b(), 42, 1, 1, &[99], &[0]);
         assert_ne!(a, b, "zero children must differ from one child with hash 0");
     }
 
@@ -2506,16 +2506,18 @@ mod proptest_fingerprint {
     }
 
     /// `[]` and `[AddSelf]` share the same eval, num_mul, and num_lc
-    /// (AddSelf adds no constraints) but differ in `output_eval`
-    /// (the output wire is doubled). Proves `output_eval` is
-    /// load-bearing in the fingerprint.
+    /// (AddSelf adds no constraints) but differ in the output-wire value
+    /// (the output wire is doubled). Proves that the output-gadget wire
+    /// sequence is load-bearing in the deep fingerprint.
     #[test]
-    fn output_eval_is_load_bearing() {
+    fn output_wires_are_load_bearing() {
         let passthrough = fingerprint_elem(&InterpretedRoutine(vec![]));
         let doubled = fingerprint_elem(&InterpretedRoutine(vec![Op::AddSelf]));
         assert_eq!(passthrough.base(), doubled.base());
-        assert_ne!(passthrough.output_eval(), doubled.output_eval());
-        assert_ne!(passthrough, doubled);
+        assert_ne!(
+            passthrough, doubled,
+            "changing the output wire value must flip the deep hash",
+        );
     }
 
     /// Interpreted op sequences reproduce the fingerprints of their
