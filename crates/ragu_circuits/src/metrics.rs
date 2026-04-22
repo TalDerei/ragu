@@ -362,19 +362,64 @@ struct CounterScope<F> {
     /// Running monomial for $d$ wires: $x_3^{i+1}$ at gate $i$.
     current_d: F,
 
-    /// Running value for [`WireMap::convert_wire`] in this scope: each call
-    /// returns the current value and multiplies by `Counter::x_remap`.
-    /// Initialized to `x_remap` on every scope push, so each routine's input
-    /// remap mints the same prefix `x_remap, x_remap^2, …` regardless of
-    /// caller context. This is what makes structurally identical routine
-    /// invocations produce identical fingerprints.
-    remap_current: F,
+    /// Per-scope remap sequence for [`WireMap`]-driven interface wire minting.
+    /// Initialized fresh on every scope push (`cur = base`), so each routine's
+    /// input-gadget wires mint the same `base, base^2, …` prefix regardless
+    /// of caller context.
+    remap: ReinitWires<F>,
 
     /// Horner accumulator for the fingerprint evaluation result.
     result: F,
 
     /// Deep hashes of direct child routines, accumulated during execution.
     child_deep_hashes: Vec<u64>,
+}
+
+/// A [`WireMap`] that mints each source wire as a fresh value from an
+/// independent geometric sequence.
+///
+/// Holds a never-mutated `base` (the geometric ratio) and a running `cur`
+/// that advances by `base` on every [`convert_wire`](ReinitWires::convert_wire)
+/// call. Keeps the base and the running counter co-located so the "base is
+/// only read" invariant is auditable in one place.
+///
+/// Each routine scope owns its own `ReinitWires` and re-initializes it on
+/// entry (`cur = base`), so input-gadget wires observe the same prefix
+/// `base, base^2, …` regardless of caller context — which is what makes
+/// structurally identical routine invocations produce identical fingerprints.
+/// On return to the parent scope, the parent's `ReinitWires` is restored and
+/// continues from where it left off, appending the child's output-gadget
+/// wires to the parent's sequence.
+struct ReinitWires<F> {
+    /// Geometric ratio. Never mutated after construction.
+    base: F,
+    /// Running counter. Each call to [`mint`](Self::mint) returns the current
+    /// value, then multiplies it by `base`.
+    cur: F,
+}
+
+impl<F: Copy + core::ops::MulAssign> ReinitWires<F> {
+    fn new(base: F) -> Self {
+        Self { base, cur: base }
+    }
+
+    fn mint(&mut self) -> F {
+        let v = self.cur;
+        self.cur *= self.base;
+        v
+    }
+}
+
+/// [`WireMap`] for `Counter`→`Counter`: every source wire is replaced by a
+/// fresh value from this `ReinitWires` sequence. No gates are allocated and
+/// no constraint counts change.
+impl<F: FromUniformBytes<64>> WireMap<F> for ReinitWires<F> {
+    type Src = Counter<F>;
+    type Dst = Counter<F>;
+
+    fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
+        Ok(WireEval::Value(self.mint()))
+    }
 }
 
 /// A [`Driver`] that simultaneously counts constraints and computes routine
@@ -408,10 +453,10 @@ struct Counter<F> {
     /// Base for the $d$-wire geometric sequence.
     x3: F,
 
-    /// Base for the remap geometric sequence used by [`WireMap::convert_wire`].
-    /// Independent from `x0..x3` so remap-minted wire values cannot collide
-    /// with allocated wire values. The running counter (`remap_current`) lives
-    /// on [`CounterScope`] and is reset on every scope push.
+    /// Immutable base for the remap geometric sequence used by
+    /// [`ReinitWires`]. Read once when each scope's `remap` is constructed;
+    /// never mutated. Independent from `x0..x3` so remap-minted wire values
+    /// cannot collide with allocated wire values.
     x_remap: F,
 
     /// Multiplier for Horner accumulation, applied per [`enforce_zero`] call.
@@ -435,13 +480,6 @@ struct Counter<F> {
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
-    /// Mints the next fresh wire value from the `x_remap` geometric sequence.
-    fn next_remap(&mut self) -> WireEval<F> {
-        let v = self.scope.remap_current;
-        self.scope.remap_current *= self.x_remap;
-        WireEval::Value(v)
-    }
-
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -466,7 +504,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_b: x1,
                 current_c: x2,
                 current_d: x3,
-                remap_current: x_remap,
+                remap: ReinitWires::new(x_remap),
                 result: F::ZERO,
                 child_deep_hashes: Vec::new(),
             },
@@ -576,7 +614,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_b: self.x1,
                 current_c: self.x2,
                 current_d: self.x3,
-                remap_current: self.x_remap,
+                remap: ReinitWires::new(self.x_remap),
                 result: F::ZERO,
                 child_deep_hashes: Vec::new(),
             },
@@ -587,7 +625,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // structure, not caller context. The remap mints values from
         // `x_remap` and does not advance the geometric sequences or
         // increment any counts.
-        let new_input = Ro::Input::map_gadget(&input, self)?;
+        let new_input = Ro::Input::map_gadget(&input, &mut self.scope.remap)?;
 
         // Predict and execute.
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
@@ -626,23 +664,9 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // start at x0..x3), so child-allocated values overlap systematically
         // with parent-allocated values; the remap re-tokenizes them onto
         // the parent's `x_remap` sequence to keep them distinct.
-        let parent_output = Ro::Output::map_gadget(&output, self)?;
+        let parent_output = Ro::Output::map_gadget(&output, &mut self.scope.remap)?;
 
         Ok(parent_output)
-    }
-}
-
-/// [`WireMap`] for `Counter`→`Counter`: each source wire is replaced by a
-/// fresh value from the dedicated `x_remap` geometric sequence. No gates are
-/// allocated and no constraint counts change — remap-minted wires are purely
-/// distinct field-element tokens used to keep routine fingerprints
-/// independent of caller context.
-impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
-    type Src = Self;
-    type Dst = Self;
-
-    fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
-        Ok(self.next_remap())
     }
 }
 
@@ -749,7 +773,7 @@ pub(crate) mod tests {
         type Dst = Counter<F>;
 
         fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
-            Ok(self.counter.next_remap())
+            Ok(WireEval::Value(self.counter.scope.remap.mint()))
         }
     }
 
