@@ -355,22 +355,36 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.truncate(result_len);
 }
 
-/// Computes the decomposition $(p, q)$ of $a(X) \cdot b(X)$, with $p$ the
-/// reversed lower half of $c = a \cdot b$ and $q$ its upper half zero-padded
-/// to length $n$. The pair satisfies
+/// Decomposes the product $a(X) \cdot b(X)$ into $(p, q)$ whose free
+/// coefficient $p(0)$ equals $\mathrm{revdot}(\mathbf{a}, \mathbf{b})$.
 ///
-/// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x) $$
+/// This is the reduction from a reverse-dot-product query to a pair of
+/// polynomial evaluations; see the
+/// [book](https://tachyon.z.cash/ragu/protocol/prelim/structured_vectors.html#reduction-to-polynomial-queries)
+/// for how the protocol consumes it.
 ///
-/// and in particular $p(0) = \mathrm{revdot}(\mathbf{a}, \mathbf{b})$.
+/// Concretely, with $c = a \cdot b$ of length $2n - 1$: $p$ is the reverse of
+/// the lower $n$ coefficients of $c$ and $q$ is the upper $n - 1$, so
+///
+/// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x). $$
+///
+/// The equal-length precondition is essential: the exponents $n-1$ and $n$
+/// above are only well-defined when $\mathbf{a}$ and $\mathbf{b}$ share a
+/// common length $n$.
+///
+/// # Output lengths
+///
+/// - `p.len() == n`
+/// - `q.len() == n - 1` (empty when $n = 1$; leading zeros of $q$ are trimmed)
 ///
 /// # Panics
 ///
 /// Panics if `a` and `b` have different lengths.
-pub fn decomp_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
+pub fn decomp_product_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
     assert_eq!(
         a.len(),
         b.len(),
-        "decomp_poly requires equal-length vectors"
+        "decomp_product_poly requires equal-length vectors"
     );
 
     if a.is_empty() {
@@ -383,9 +397,12 @@ pub fn decomp_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
     let n = a.len();
     let mut c = Vec::new();
     poly_mul(a, b, &mut c);
-    let mut q = c.split_off(n);
-    q.push(F::ZERO);
+    assert_eq!(c.len(), 2 * n - 1, "poly_mul should produce length 2n-1");
+
+    let q = c.split_off(n);
     c.reverse();
+    // `poly_mul` leaves `c` with capacity `2 * domain_size` (it used the tail
+    // as scratch); shrink so the returned `p` doesn't carry that slack.
     c.shrink_to_fit();
     (c, q)
 }
@@ -558,7 +575,7 @@ mod proptests {
         arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero()))
     }
 
-    /// Checks the [`decomp_poly`] identity
+    /// Checks the [`decomp_product_poly`] identity
     /// $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$ from precomputed
     /// evaluations at $x$. Single source of truth for the exponents so any
     /// future verifier that inlines the check can be asserted against this.
@@ -632,7 +649,7 @@ mod proptests {
         }
 
         #[test]
-        fn decomp_poly_identity(
+        fn decomp_product_poly_identity(
             n in 1usize..=32,
             x in arb_fe_nonzero(),
             seed_a in any::<u64>(),
@@ -641,10 +658,9 @@ mod proptests {
             let a: Vec<F> = (0..n).map(|i| F::from(seed_a.wrapping_add(i as u64 * 13 + 2))).collect();
             let b: Vec<F> = (0..n).map(|i| F::from(seed_b.wrapping_add(i as u64 * 17 + 5))).collect();
 
-            let (p, q) = decomp_poly(&a, &b);
+            let (p, q) = decomp_product_poly(&a, &b);
             prop_assert_eq!(p.len(), n);
-            prop_assert_eq!(q.len(), n);
-            prop_assert_eq!(q[n - 1], F::ZERO, "q's high coefficient is always zero");
+            prop_assert_eq!(q.len(), n - 1);
 
             let x_inv = x.invert().unwrap();
             prop_assert!(check_decomp_identity(
@@ -662,27 +678,27 @@ mod proptests {
     }
 
     #[test]
-    fn decomp_poly_n_eq_1() {
+    fn decomp_product_poly_n_eq_1() {
         let a = vec![F::from(7)];
         let b = vec![F::from(11)];
-        let (p, q) = decomp_poly(&a, &b);
+        let (p, q) = decomp_product_poly(&a, &b);
         assert_eq!(p, vec![F::from(77)]);
-        assert_eq!(q, vec![F::ZERO]);
+        assert!(q.is_empty());
     }
 
     #[test]
-    fn decomp_poly_empty() {
-        let (p, q) = decomp_poly::<F>(&[], &[]);
+    fn decomp_product_poly_empty() {
+        let (p, q) = decomp_product_poly::<F>(&[], &[]);
         assert!(p.is_empty());
         assert!(q.is_empty());
     }
 
     #[test]
-    #[should_panic(expected = "decomp_poly requires equal-length vectors")]
-    fn decomp_poly_length_mismatch() {
+    #[should_panic(expected = "decomp_product_poly requires equal-length vectors")]
+    fn decomp_product_poly_length_mismatch() {
         let a = vec![F::ONE, F::ONE];
         let b = vec![F::ONE];
-        let _ = decomp_poly(&a, &b);
+        let _ = decomp_product_poly(&a, &b);
     }
 
     #[test]
