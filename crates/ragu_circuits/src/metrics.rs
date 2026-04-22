@@ -13,14 +13,14 @@
 //! Routine fingerprints come in two levels, separating polynomial equivalence
 //! from memoization safety:
 //!
-//! - **Routine** ([`RoutineFingerprint`]): the tuple `(eval, num_mul, num_lc)`.
+//! - **Routine** ([`BaseFingerprint`]): the tuple `(eval, num_mul, num_lc)`.
 //!   Captures only the routine's local $s(X,Y)$ contribution — constraint
 //!   counts and the Schwartz–Zippel evaluation scalar. No [`TypeId`] pairs:
 //!   type identity does not affect what a segment contributes to the polynomial.
 //!   Floor planning uses routine fingerprints to group segments with the same
 //!   polynomial shape.
 //!
-//! - **Memo** ([`MemoFingerprint`]): extends the routine fingerprint with
+//! - **Memo** ([`DeepFingerprint`]): extends the routine fingerprint with
 //!   `output_eval` (which wires flow to which output slots) and a recursive
 //!   `deep` hash that folds in [`TypeId`] pairs, all routine fingerprint
 //!   fields, `output_eval`, child count, and each child's deep hash.
@@ -83,7 +83,7 @@ pub enum RoutineIdentity {
     /// The root circuit body (record 0). Cannot be floated or memoized.
     Root,
     /// An actual routine invocation with a deep fingerprint.
-    Routine(MemoFingerprint),
+    Routine(DeepFingerprint),
 }
 
 /// Polynomial-equivalence fingerprint for a single routine invocation.
@@ -108,7 +108,7 @@ pub enum RoutineIdentity {
 ///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RoutineFingerprint {
+pub struct BaseFingerprint {
     eval: u64,
     local_num_gates: usize,
     local_num_constraints: usize,
@@ -116,17 +116,17 @@ pub struct RoutineFingerprint {
 
 /// Full recursive fingerprint for memoization.
 ///
-/// Extends [`RoutineFingerprint`] with `output_eval` (which wires flow to
+/// Extends [`BaseFingerprint`] with `output_eval` (which wires flow to
 /// which output slots) and a recursive `deep` hash that folds in [`TypeId`]
 /// pairs, all routine fingerprint fields, `output_eval`, child count, and
 /// each child's deep hash. Two routines with the same memo fingerprint are
 /// fully equivalent: same constraint structure, same output wire mapping,
 /// same recursive subtree structure, and same Rust type identity.
 ///
-/// The separation from [`RoutineFingerprint`] prevents accidental conflation
+/// The separation from [`BaseFingerprint`] prevents accidental conflation
 /// of polynomial equivalence (floor planning) with memoization safety (cache
-/// keys). The floor planner groups by [`RoutineFingerprint`]; the memo cache
-/// keys by [`MemoFingerprint`].
+/// keys). The floor planner groups by [`BaseFingerprint`]; the memo cache
+/// keys by [`DeepFingerprint`].
 ///
 /// The 64-bit `deep` hash gives ~2^{-64} collision probability per pair,
 /// adequate for memoization equivalence classes. If fingerprints are ever
@@ -135,8 +135,8 @@ pub struct RoutineFingerprint {
 ///
 /// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct MemoFingerprint {
-    routine: RoutineFingerprint,
+pub struct DeepFingerprint {
+    base: BaseFingerprint,
     output_eval: u64,
     deep: u64,
 }
@@ -168,10 +168,10 @@ fn type_id_u64(id: TypeId) -> u64 {
 }
 
 /// Computes the recursive deep hash from [`TypeId`] pairs, all
-/// [`RoutineFingerprint`] fields, `output_eval`, child count, and each
+/// [`BaseFingerprint`] fields, `output_eval`, child count, and each
 /// child's deep hash, producing a single 64-bit BLAKE2b digest.
 ///
-/// [`TypeId`] pairs are included here (not in [`RoutineFingerprint`]) because
+/// [`TypeId`] pairs are included here (not in [`BaseFingerprint`]) because
 /// they are relevant to memoization safety — routines with different types may
 /// have different output wire layouts — but not to polynomial equivalence.
 ///
@@ -179,16 +179,16 @@ fn type_id_u64(id: TypeId) -> u64 {
 fn deep_hash(
     input_kind: TypeId,
     output_kind: TypeId,
-    routine: &RoutineFingerprint,
+    base: &BaseFingerprint,
     output_eval: u64,
     children: &[u64],
 ) -> u64 {
     let mut state = blake2b_simd::Params::new().personal(b"FIXME").to_state();
     state.update(&type_id_u64(input_kind).to_le_bytes());
     state.update(&type_id_u64(output_kind).to_le_bytes());
-    state.update(&routine.eval.to_le_bytes());
-    state.update(&(routine.local_num_gates as u64).to_le_bytes());
-    state.update(&(routine.local_num_constraints as u64).to_le_bytes());
+    state.update(&base.eval.to_le_bytes());
+    state.update(&(base.local_num_gates as u64).to_le_bytes());
+    state.update(&(base.local_num_constraints as u64).to_le_bytes());
     state.update(&output_eval.to_le_bytes());
     state.update(&(children.len() as u64).to_le_bytes());
     for child in children {
@@ -202,8 +202,8 @@ fn deep_hash(
     )
 }
 
-impl MemoFingerprint {
-    /// Constructs a [`MemoFingerprint`] from a routine's type ids, evaluation
+impl DeepFingerprint {
+    /// Constructs a [`DeepFingerprint`] from a routine's type ids, evaluation
     /// scalars, local constraint counts, and child deep hashes.
     fn of<F: PrimeField, Ro: Routine<F>>(
         eval: F,
@@ -212,7 +212,7 @@ impl MemoFingerprint {
         local_num_constraints: usize,
         children_deep: &[u64],
     ) -> Self {
-        let routine = RoutineFingerprint {
+        let base = BaseFingerprint {
             eval: ragu_arithmetic::low_u64(&eval),
             local_num_gates,
             local_num_constraints,
@@ -221,20 +221,20 @@ impl MemoFingerprint {
         let deep = deep_hash(
             TypeId::of::<Ro::Input>(),
             TypeId::of::<Ro::Output>(),
-            &routine,
+            &base,
             output_eval,
             children_deep,
         );
         Self {
-            routine,
+            base,
             output_eval,
             deep,
         }
     }
 
-    /// Returns the routine fingerprint (polynomial equivalence only).
-    pub fn routine(&self) -> &RoutineFingerprint {
-        &self.routine
+    /// Returns the base fingerprint (polynomial equivalence only).
+    pub fn base(&self) -> &BaseFingerprint {
+        &self.base
     }
 
     /// Returns the recursive deep hash.
@@ -245,7 +245,7 @@ impl MemoFingerprint {
     /// Returns the raw constraint evaluation scalar.
     #[cfg(test)]
     pub(crate) fn eval(&self) -> u64 {
-        self.routine.eval
+        self.base.eval
     }
 
     /// Returns the output wire evaluation scalar.
@@ -623,7 +623,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 
         // Extract fingerprint from the child's Horner accumulator and counts.
         let seg = &self.segments[segment_idx];
-        let fingerprint = MemoFingerprint::of::<F, Ro>(
+        let fingerprint = DeepFingerprint::of::<F, Ro>(
             self.scope.result,
             output_eval,
             seg.num_gates,
@@ -663,7 +663,7 @@ impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
 
 /// Evaluates output wire mappings into a single scalar.
 ///
-/// Used to compute the `output_eval` field of [`MemoFingerprint`].
+/// Used to compute the `output_eval` field of [`DeepFingerprint`].
 /// Each output wire's evaluation is multiplied by a successive power of `z`
 /// and summed, capturing which wires flow to which output slots.
 struct OutputEvaluator<F> {
@@ -821,7 +821,7 @@ pub(crate) mod tests {
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.
         let seg = &counter.segments[0];
-        Ok(RoutineIdentity::Routine(MemoFingerprint::of::<F, Ro>(
+        Ok(RoutineIdentity::Routine(DeepFingerprint::of::<F, Ro>(
             counter.scope.result,
             output_eval,
             seg.num_gates,
@@ -904,7 +904,7 @@ pub(crate) mod tests {
         output_eval: u64,
         children: &[u64],
     ) -> u64 {
-        let routine = RoutineFingerprint {
+        let routine = BaseFingerprint {
             eval,
             local_num_gates: num_mul,
             local_num_constraints: num_lc,
