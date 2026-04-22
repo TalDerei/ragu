@@ -319,48 +319,39 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
     sum
 }
 
-/// Returns the coefficient vector for $c(X) = a(X) \cdot b(X)$ via FFT.
+/// Writes $c(X) = a(X) \cdot b(X)$ into `out` via FFT.
 ///
-/// For hot paths, see [`poly_mul_into`] which reuses caller-provided buffers.
-pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
-    let mut out = Vec::new();
-    let mut scratch = Vec::new();
-    poly_mul_into(a, b, &mut out, &mut scratch);
-    out
-}
-
-/// In-place variant of [`poly_mul`] that reuses caller-provided buffers.
-///
-/// Writes $c(X) = a(X) \cdot b(X)$ into `out`; `scratch` holds $b$'s evaluation
-/// form and is left unspecified on return. Both are resized as needed — reusing
-/// them across many calls avoids per-call allocations.
-pub fn poly_mul_into<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>, scratch: &mut Vec<F>) {
+/// `out.len()` becomes `a.len() + b.len() - 1` on return, but capacity is
+/// retained at `2 * next_power_of_two(len)` for reuse; one-shot callers that
+/// care about the slack should `shrink_to_fit` at the handoff.
+pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.clear();
-    scratch.clear();
 
     if a.is_empty() || b.is_empty() {
         return;
     }
 
     let result_len = a.len() + b.len() - 1;
-    let domain_size = result_len.next_power_of_two();
+    let n = result_len.next_power_of_two();
     // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
-    let domain = Domain::new(domain_size.ilog2());
-    let n = domain.n();
+    let domain = Domain::new(n.ilog2());
 
-    out.resize(n, F::ZERO);
+    // Lay out both evaluation forms back-to-back in `out`: lower half carries
+    // FFT(a), upper half carries FFT(b). The `resize` zero-fills, so the
+    // tail of each half is already padded.
+    out.resize(2 * n, F::ZERO);
     out[..a.len()].copy_from_slice(a);
-    domain.fft(out);
+    domain.fft(&mut out[..n]);
 
-    scratch.resize(n, F::ZERO);
-    scratch[..b.len()].copy_from_slice(b);
-    domain.fft(scratch);
+    out[n..n + b.len()].copy_from_slice(b);
+    domain.fft(&mut out[n..]);
 
-    for (lhs, rhs) in out.iter_mut().zip(scratch.iter()) {
-        *lhs *= rhs;
+    let (lo, hi) = out.split_at_mut(n);
+    for (l, h) in lo.iter_mut().zip(hi.iter()) {
+        *l *= h;
     }
 
-    domain.ifft(out);
+    domain.ifft(&mut out[..n]);
     out.truncate(result_len);
 }
 
@@ -390,10 +381,12 @@ pub fn decomp_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
     // and zero-pad to `n`; reverse the remaining lower `n` coefficients in place
     // to form `p`.
     let n = a.len();
-    let mut c = poly_mul(a, b);
+    let mut c = Vec::new();
+    poly_mul(a, b, &mut c);
     let mut q = c.split_off(n);
     q.push(F::ZERO);
     c.reverse();
+    c.shrink_to_fit();
     (c, q)
 }
 
@@ -412,17 +405,16 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     }
 
     let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
-    // Largest FFT domain size used by any `poly_mul_into` call in the tree.
+    // `poly_mul` uses `out` itself as scratch and grows it to `2 * domain`.
     let max_n = (roots.len() + 1).next_power_of_two();
-    let mut out = Vec::with_capacity(max_n);
-    let mut scratch = Vec::with_capacity(max_n);
+    let mut out = Vec::with_capacity(2 * max_n);
 
     while polys.len() > 1 {
         let pairs = polys.len() / 2;
         let has_odd = polys.len() % 2 == 1;
 
         for i in 0..pairs {
-            poly_mul_into(&polys[2 * i], &polys[2 * i + 1], &mut out, &mut scratch);
+            poly_mul(&polys[2 * i], &polys[2 * i + 1], &mut out);
             polys[i].clear();
             polys[i].extend_from_slice(&out);
         }
@@ -626,7 +618,8 @@ mod proptests {
             a in proptest::collection::vec(arb_fe(), 1..32),
             b in proptest::collection::vec(arb_fe(), 1..32),
         ) {
-            let c = poly_mul(&a, &b);
+            let mut c = Vec::new();
+            poly_mul(&a, &b, &mut c);
             prop_assert_eq!(c.len(), a.len() + b.len() - 1);
 
             let mut expected = vec![F::ZERO; a.len() + b.len() - 1];
@@ -694,17 +687,24 @@ mod proptests {
 
     #[test]
     fn poly_mul_empty() {
-        assert!(poly_mul::<F>(&[], &[F::ONE]).is_empty());
-        assert!(poly_mul::<F>(&[F::ONE], &[]).is_empty());
-        assert!(poly_mul::<F>(&[], &[]).is_empty());
+        let mut out = Vec::<F>::new();
+        poly_mul::<F>(&[], &[F::ONE], &mut out);
+        assert!(out.is_empty());
+        poly_mul::<F>(&[F::ONE], &[], &mut out);
+        assert!(out.is_empty());
+        poly_mul::<F>(&[], &[], &mut out);
+        assert!(out.is_empty());
     }
 
     #[test]
     fn poly_mul_by_one() {
         let a = vec![F::from(2), F::from(3), F::from(5)];
         let one = vec![F::ONE];
-        assert_eq!(poly_mul(&a, &one), a);
-        assert_eq!(poly_mul(&one, &a), a);
+        let mut out = Vec::new();
+        poly_mul(&a, &one, &mut out);
+        assert_eq!(out, a);
+        poly_mul(&one, &a, &mut out);
+        assert_eq!(out, a);
     }
 }
 
