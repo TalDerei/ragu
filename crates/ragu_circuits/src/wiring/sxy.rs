@@ -61,23 +61,8 @@ use ragu_core::{
 use super::common::{WireEval, WireEvalSum};
 use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
 
-/// A [`Driver`] that computes the full evaluation $s(x, y)$.
-///
-/// Given fixed evaluation points $x, y \in \mathbb{F}$, this driver interprets
-/// circuit synthesis operations to produce $s(x, y)$ as a single field element
-/// using Horner's rule (see [module documentation][`self`]).
-///
-/// Wires are represented using the running monomial pattern described in the
-/// [`common`] module. Each call to [`Driver::enforce_zero`] applies one Horner
-/// step: `result = result * y + coefficient`.
-///
-/// [`common`]: super::common
-/// [`Driver`]: ragu_core::drivers::Driver
-/// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 /// Per-routine state saved and restored across routine boundaries.
 struct SxyScope<F> {
-    /// Stashed $d$ wire from paired allocation.
-    available_d: Option<WireEval<F>>,
     /// Running monomial for $a$ wires: $x^{2n - 1 - i}$ at gate $i$.
     current_a_x: F,
     /// Running monomial for $b$ wires: $x^{2n + i}$ at gate $i$.
@@ -99,6 +84,19 @@ struct SxyScope<F> {
     sum: F,
 }
 
+/// A [`Driver`] that computes the full evaluation $s(x, y)$.
+///
+/// Given fixed evaluation points $x, y \in \mathbb{F}$, this driver interprets
+/// circuit synthesis operations to produce $s(x, y)$ as a single field element
+/// using Horner's rule (see [module documentation][`self`]).
+///
+/// Wires are represented using the running monomial pattern described in the
+/// [`common`] module. Each call to [`Driver::enforce_zero`] applies one Horner
+/// step: `result = result * y + coefficient`.
+///
+/// [`common`]: super::common
+/// [`Driver`]: ragu_core::drivers::Driver
+/// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 struct Evaluator<'fp, F, R> {
     /// Per-routine scoped state.
     scope: SxyScope<F>,
@@ -131,9 +129,8 @@ struct Evaluator<'fp, F, R> {
     /// Correction factor $(x^{-2n})$ that converts a $b$-wire monomial
     /// $x^{2n+i}$ into the corresponding $d$-wire monomial $x^i$.
     ///
-    /// Only read by [`gate`](DriverTypes::gate), not by [`mul`](Driver::mul),
-    /// so the extra multiplication is skipped when callers don't need the
-    /// $d$ wire.
+    /// Only used by [`assign_extra`](DriverTypes::assign_extra), so the
+    /// multiplication is skipped when callers keep the default $D = 0$.
     b_to_d: F,
 
     /// Floor plan mapping DFS segment index to absolute offsets.
@@ -152,14 +149,41 @@ impl<F: Field, R: Rank> DriverScope<SxyScope<F>> for Evaluator<'_, F, R> {
     }
 }
 
-impl<F: Field, R: Rank> Evaluator<'_, F, R> {
-    /// Advances the gate counter and running monomials, returning the raw
-    /// $(a, b, c)$ monomial evaluations before advancement.
+/// Configures associated types for the [`Evaluator`] driver.
+///
+/// - `MaybeKind = Empty`: No witness values are needed; evaluation uses only
+///   the polynomial structure.
+/// - `LCadd` / `LCenforce`: Use [`WireEvalSum`] to accumulate linear
+///   combinations as immediate field element sums.
+/// - `ImplWire`: [`WireEval`] represents wires as evaluated monomials.
+impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
+    type MaybeKind = Empty;
+    type LCadd = WireEvalSum<F>;
+    type LCenforce = WireEvalSum<F>;
+    type ImplField = F;
+    type ImplWire = WireEval<F>;
+    type Extra = F;
+
+    /// Consumes a gate, returning evaluated monomials for $(a, b, c)$ and the
+    /// raw $b$-wire monomial as [`Extra`](DriverTypes::Extra).
     ///
-    /// This is the shared core of [`gate`](DriverTypes::gate) and
-    /// [`mul`](Driver::mul). The $d$-wire monomial ($b \cdot \text{b\_to\_d}$)
-    /// is only computed by `gate`, saving one field multiplication per `mul` call.
-    fn advance_gate(&mut self) -> Result<(F, F, F)> {
+    /// Returns the current values of the running monomials as [`WireEval::Value`]
+    /// wires, then advances the monomials for the next gate:
+    /// - $a$: multiplied by $x^{-1}$ (decreasing exponent)
+    /// - $b$: multiplied by $x$ (increasing exponent)
+    /// - $c$: multiplied by $x^{-1}$ (decreasing exponent)
+    ///
+    /// The $d$-wire monomial $x^i$ is derived from $b = x^{2n+i}$ via
+    /// `b_to_d` in [`assign_extra`](DriverTypes::assign_extra).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::GateBoundExceeded`] if the gate count reaches
+    /// [`Rank::n()`].
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, F)> {
         let index = self.scope.gates;
         if index == R::n() {
             return Err(Error::GateBoundExceeded { limit: R::n() });
@@ -174,53 +198,22 @@ impl<F: Field, R: Rank> Evaluator<'_, F, R> {
         self.scope.current_b_x *= self.x;
         self.scope.current_c_x *= self.x_inv;
 
-        Ok((a, b, c))
-    }
-}
-
-/// Configures associated types for the [`Evaluator`] driver.
-///
-/// - `MaybeKind = Empty`: No witness values are needed; evaluation uses only
-///   the polynomial structure.
-/// - `LCadd` / `LCenforce`: Use [`WireEvalSum`] to accumulate linear
-///   combinations as immediate field element sums.
-/// - `ImplWire`: [`WireEval`] represents wires as evaluated monomials.
-impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
-    type MaybeKind = Empty;
-    type LCadd = WireEvalSum<F>;
-    type LCenforce = WireEvalSum<F>;
-    type ImplField = F;
-    type ImplWire = WireEval<F>;
-
-    /// Consumes a gate, returning evaluated monomials for $(a, b, c, d)$.
-    ///
-    /// Returns the current values of the running monomials as [`WireEval::Value`]
-    /// wires, then advances the monomials for the next gate:
-    /// - $a$: multiplied by $x^{-1}$ (decreasing exponent)
-    /// - $b$: multiplied by $x$ (increasing exponent)
-    /// - $c$: multiplied by $x^{-1}$ (decreasing exponent)
-    ///
-    /// The $d$-wire monomial $x^i$ is derived from $b = x^{2n+i}$ via
-    /// `b_to_d`. This computation is confined to `gate` and skipped
-    /// by the [`mul`](Driver::mul) override.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::GateBoundExceeded`] if the gate count reaches
-    /// [`Rank::n()`].
-    fn gate(
-        &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
-        let (a, b, c) = self.advance_gate()?;
-        let d = b * self.b_to_d;
-
         Ok((
             WireEval::Value(a),
             WireEval::Value(b),
             WireEval::Value(c),
-            WireEval::Value(d),
+            b,
         ))
+    }
+
+    /// Converts the raw $b$-wire monomial carried by [`Extra`](DriverTypes::Extra)
+    /// into the corresponding $d$-wire monomial by multiplying by `b_to_d`.
+    fn assign_extra(
+        &mut self,
+        b: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<WireEval<F>> {
+        Ok(WireEval::Value(b * self.b_to_d))
     }
 }
 
@@ -229,27 +222,6 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     type Wire = WireEval<F>;
 
     const ONE: Self::Wire = WireEval::One;
-
-    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(monomial) = self.scope.available_d.take() {
-            Ok(monomial)
-        } else {
-            let (_, b, _, d) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(d);
-            Ok(b)
-        }
-    }
-
-    /// Advances the gate counter and returns $(a, b, c)$ without computing the
-    /// $d$-wire monomial.
-    fn mul(
-        &mut self,
-        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        let (a, b, c) = self.advance_gate()?;
-        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
-    }
 
     /// Computes a linear combination of wire evaluations.
     ///
@@ -298,7 +270,6 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
         let init_scope = SxyScope {
-            available_d: None,
             current_a_x: self.base_a_x * self.x_inv.pow_vartime([gate_start as u64]),
             current_b_x: self.base_b_x * self.x.pow_vartime([gate_start as u64]),
             current_c_x: self.base_c_x * self.x_inv.pow_vartime([gate_start as u64]),
@@ -379,7 +350,6 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
 
     let mut evaluator = Evaluator::<F, R> {
         scope: SxyScope {
-            available_d: None,
             current_a_x: base_a_x,
             current_b_x: base_b_x,
             current_c_x: base_c_x,

@@ -31,7 +31,7 @@ const NUM_ENDOSCALING_STEPS: usize = endoscalar::num_steps(NUM_ENDOSCALING_POINT
 
 /// Index of internal nested circuits registered into the registry.
 ///
-/// These correspond to the circuit objects registered in [`register_all`].
+/// These correspond to the wiring objects registered in [`register_all`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InternalCircuitIndex {
     /// `EndoscalingStep` circuit at given step.

@@ -74,11 +74,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             ),
             |dr, witness| {
                 let (preamble_witness, inner_error_terms, y, mu, nu) = witness.cast();
+                let allocator = &mut ();
 
                 let preamble = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::default()
                     .witness(dr, preamble_witness.as_ref().map(|w| *w))?;
 
-                let y = Element::alloc(dr, y)?;
+                let y = Element::alloc(dr, allocator, y)?;
                 let (left_unified_ky, left_unified_bridge_ky) =
                     preamble.left.unified_ky_values(dr, &y)?;
                 let (right_unified_ky, right_unified_bridge_ky) =
@@ -95,8 +96,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     unified_bridge: right_unified_bridge_ky,
                 };
 
-                let mu = Element::alloc(dr, mu)?;
-                let nu = Element::alloc(dr, nu)?;
+                let mu = Element::alloc(dr, allocator, mu)?;
+                let nu = Element::alloc(dr, allocator, nu)?;
 
                 // Build k(y) values in claim order.
                 let ky_source = native::claims::TwoProofKySource::new(
@@ -112,7 +113,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
                 let collapsed = FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {
-                        Element::alloc(dr, inner_error_terms.as_ref().map(|et| et[i][j]))
+                        Element::alloc(dr, allocator, inner_error_terms.as_ref().map(|et| et[i][j]))
                     })?;
                     let ky = FixedVec::from_fn(|_| ky.next().unwrap());
 

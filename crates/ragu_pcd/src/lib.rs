@@ -272,4 +272,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )
         .map(|(pcd, ())| pcd)
     }
+
+    /// Returns a reference to the native [`Registry`].
+    pub fn native_registry(&self) -> &Registry<'_, C::CircuitField, R> {
+        &self.native_registry
+    }
 }

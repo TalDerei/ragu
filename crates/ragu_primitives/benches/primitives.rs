@@ -43,7 +43,7 @@ fn element_fold(
 #[library_benchmark(setup = setup_emu)]
 #[bench::element_is_zero((alloc_elem,))]
 fn element_is_zero((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(elem.is_zero(&mut emu)).unwrap();
+    black_box(elem.is_zero(&mut emu, &mut ())).unwrap();
 }
 
 #[library_benchmark(setup = setup_emu)]
@@ -152,7 +152,7 @@ fn endoscalar_group_scale(
 #[library_benchmark(setup = setup_emu)]
 #[bench::endoscalar_extract((alloc_elem,))]
 fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(Endoscalar::extract(&mut emu, elem)).unwrap();
+    black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
 }
 
 #[library_benchmark(setup = setup_emu)]

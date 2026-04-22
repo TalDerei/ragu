@@ -149,9 +149,6 @@ impl<F: Field> Trace<F> {
 
 /// Per-routine state that is saved and restored by [`DriverScope`].
 struct TraceScope {
-    /// Gate index within the current segment, from paired allocation.
-    available_d: Option<usize>,
-
     /// Index of the segment that receives new gates.
     current_segment: usize,
 
@@ -190,7 +187,6 @@ impl<'scope, 'env, F: Field> Evaluator<'scope, 'env, F> {
             scope,
             tx,
             state: TraceScope {
-                available_d: None,
                 current_segment: 0,
                 routine_counter: 0,
                 dfs_prefix: prefix,
@@ -205,7 +201,6 @@ impl<'scope, 'env, F: Field> Evaluator<'scope, 'env, F> {
             scope,
             deferred: Vec::new(),
             state: TraceScope {
-                available_d: None,
                 current_segment: 0,
                 routine_counter: 0,
                 dfs_prefix: prefix,
@@ -226,19 +221,31 @@ impl<F: Field> DriverTypes for Evaluator<'_, '_, F> {
     type MaybeKind = Always<()>;
     type LCadd = ();
     type LCenforce = ();
+    type Extra = usize;
 
     fn gate(
         &mut self,
-        values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<((), (), (), ())> {
-        let (a, b, c, d) = values()?;
+        values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<((), (), (), usize)> {
+        let (a, b, c) = values()?;
         let seg = &mut self.segments[self.state.current_segment].segment;
+        let index = seg.a.len();
         seg.a.push(a.value());
         seg.b.push(b.value());
         seg.c.push(c.value());
-        seg.d.push(d.value());
+        seg.d.push(F::ZERO);
 
-        Ok(((), (), (), ()))
+        Ok(((), (), (), index))
+    }
+
+    fn assign_extra(
+        &mut self,
+        index: Self::Extra,
+        value: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<()> {
+        let seg = &mut self.segments[self.state.current_segment].segment;
+        seg.d[index] = value()?.value();
+        Ok(())
     }
 }
 
@@ -246,25 +253,6 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
     type F = F;
     type Wire = ();
     const ONE: Self::Wire = ();
-
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        // Packs two allocations into one gate with layout (0, b, 0, d),
-        // which costs less in multiexp than two separate gates.
-        if let Some(index) = self.state.available_d.take() {
-            let seg = &mut self.segments[self.state.current_segment].segment;
-            seg.d[index] = value()?.value();
-            Ok(())
-        } else {
-            let seg = &mut self.segments[self.state.current_segment].segment;
-            let index = seg.a.len();
-            seg.a.push(F::ZERO);
-            seg.b.push(value()?.value());
-            seg.c.push(F::ZERO);
-            seg.d.push(F::ZERO);
-            self.state.available_d = Some(index);
-            Ok(())
-        }
-    }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
 
@@ -340,7 +328,6 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
                 let seg_idx = self.segments.len() - 1;
                 self.with_scope(
                     TraceScope {
-                        available_d: None,
                         current_segment: seg_idx,
                         routine_counter: 0,
                         dfs_prefix: child_prefix,
@@ -430,7 +417,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
 mod tests {
     use ragu_core::gadgets::Kind;
     use ragu_pasta::Fp;
-    use ragu_primitives::Element;
+    use ragu_primitives::{Element, allocator::Standard};
 
     use super::*;
     use crate::tests::SquareCircuit;
@@ -483,7 +470,8 @@ mod tests {
             dr: &mut D,
             instance: ragu_core::drivers::DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let element = Element::alloc(dr, instance)?;
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, instance)?;
             Ok(MulOnWrite { element })
         }
 
@@ -497,7 +485,8 @@ mod tests {
                 ragu_core::drivers::DriverValue<D, Self::Aux<'witness>>,
             >,
         > {
-            let element = Element::alloc(dr, witness)?;
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness)?;
             Ok(WithAux::new(MulOnWrite { element }, D::unit()))
         }
     }

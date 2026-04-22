@@ -437,6 +437,7 @@ mod tests {
     use super::*;
 
     type Simulator = crate::Simulator<Fp>;
+    use crate::allocator::Standard;
 
     #[test]
     fn test_permutation_constraints() -> Result<()> {
@@ -447,14 +448,15 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
+
+            dr.reset();
             sponge.squeeze(dr)?;
 
             Ok(())
         })?;
-
-        assert_eq!(sim.num_allocations(), 1);
         assert_eq!(sim.num_gates(), 288);
 
         Ok(())
@@ -502,7 +504,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             // Squeeze to enter squeeze mode
             sponge.squeeze(dr)?;
@@ -525,7 +528,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             // Save should succeed
             let _state = sponge.save_state(dr).expect("save_state should succeed");
@@ -550,7 +554,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             let squeezed = sponge.squeeze(dr)?;
             normal_output.set(*squeezed.value().take());
@@ -563,7 +568,8 @@ mod tests {
                 dr,
                 Pasta::circuit_poseidon(params),
             );
-            let value = Element::alloc(dr, value)?;
+            let allocator = &mut Standard::new();
+            let value = Element::alloc(dr, allocator, value)?;
             sponge.absorb(dr, &value)?;
             let state = sponge.save_state(dr).expect("save_state should succeed");
             let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
@@ -595,8 +601,9 @@ mod tests {
                 Pasta::circuit_poseidon(params),
             );
             let (v1, v2) = v.cast();
-            let v1 = Element::alloc(dr, v1)?;
-            let v2 = Element::alloc(dr, v2)?;
+            let allocator = &mut Standard::new();
+            let v1 = Element::alloc(dr, allocator, v1)?;
+            let v2 = Element::alloc(dr, allocator, v2)?;
             sponge.absorb(dr, &v1)?;
             sponge.absorb(dr, &v2)?;
             let squeezed = sponge.squeeze(dr)?;
@@ -614,8 +621,9 @@ mod tests {
                 Pasta::circuit_poseidon(params),
             );
             let (v1, v2) = v.cast();
-            let v1 = Element::alloc(dr, v1)?;
-            let v2 = Element::alloc(dr, v2)?;
+            let allocator = &mut Standard::new();
+            let v1 = Element::alloc(dr, allocator, v1)?;
+            let v2 = Element::alloc(dr, allocator, v2)?;
             sponge.absorb(dr, &v1)?;
             let state = sponge.save_state(dr).expect("save_state should succeed");
             let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));

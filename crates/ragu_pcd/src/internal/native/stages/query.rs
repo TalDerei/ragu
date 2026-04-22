@@ -28,7 +28,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::Element;
+use ragu_primitives::{Element, allocator::Allocator};
 
 use crate::{
     Proof,
@@ -93,12 +93,13 @@ pub struct Witness<C: Cycle> {
 
 /// Allocate [`InternalCircuitValues`] of [`Element`]s from pre-computed witness
 /// values.
-pub fn alloc_fixed_registry<'dr, D: Driver<'dr>>(
+pub fn alloc_fixed_registry<'dr, D: Driver<'dr>, A: Allocator<'dr, D>>(
     dr: &mut D,
+    allocator: &mut A,
     witness: DriverValue<D, &InternalCircuitValues<D::F>>,
 ) -> Result<InternalCircuitValues<Element<'dr, D>>> {
     InternalCircuitValues::try_from_fn(|id| {
-        Element::alloc(dr, witness.as_ref().map(|w| *w.get(id)))
+        Element::alloc(dr, allocator, witness.as_ref().map(|w| *w.get(id)))
     })
 }
 
@@ -221,29 +222,33 @@ pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
 
 impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
     /// Allocate child evaluations from pre-computed witness values.
-    pub fn alloc(
+    pub fn alloc<A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         witness: DriverValue<D, &ChildEvaluationsWitness<D::F>>,
     ) -> Result<Self> {
         let rx = RxValues::try_from_fn(|id| {
-            Element::alloc(dr, witness.as_ref().map(|w| *w.rx.get(id)))
+            Element::alloc(dr, allocator, witness.as_ref().map(|w| *w.rx.get(id)))
         })?;
         Ok(ChildEvaluations {
             rx,
-            a_poly_at_xz: Element::alloc(dr, witness.as_ref().map(|w| w.a_poly_at_xz))?,
-            b_poly_at_x: Element::alloc(dr, witness.as_ref().map(|w| w.b_poly_at_x))?,
+            a_poly_at_xz: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.a_poly_at_xz))?,
+            b_poly_at_x: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.b_poly_at_x))?,
             child_registry_xy_at_current_w: Element::alloc(
                 dr,
+                allocator,
                 witness.as_ref().map(|w| w.child_registry_xy_at_current_w),
             )?,
             current_registry_xy_at_child_circuit_id: Element::alloc(
                 dr,
+                allocator,
                 witness
                     .as_ref()
                     .map(|w| w.current_registry_xy_at_child_circuit_id),
             )?,
             current_registry_wy_at_child_x: Element::alloc(
                 dr,
+                allocator,
                 witness.as_ref().map(|w| w.current_registry_wy_at_child_x),
             )?,
         })
@@ -295,10 +300,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
-        let fixed_registry = alloc_fixed_registry(dr, witness.as_ref().map(|w| &w.fixed_registry))?;
-        let registry_wxy = Element::alloc(dr, witness.as_ref().map(|w| w.registry_wxy))?;
-        let left = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.left))?;
-        let right = ChildEvaluations::alloc(dr, witness.as_ref().map(|w| &w.right))?;
+        let allocator = &mut ();
+        let fixed_registry =
+            alloc_fixed_registry(dr, allocator, witness.as_ref().map(|w| &w.fixed_registry))?;
+        let registry_wxy = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.registry_wxy))?;
+        let left = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.left))?;
+        let right = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.right))?;
         Ok(Output {
             fixed_registry,
             registry_wxy,

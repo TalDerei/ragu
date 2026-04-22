@@ -59,3 +59,8 @@ harness = false
 name = "fuse_criterion"
 path = "benches/criterion/fuse.rs"
 harness = false
+
+[[bench]]
+name = "registry_criterion"
+path = "benches/criterion/registry.rs"
+harness = false

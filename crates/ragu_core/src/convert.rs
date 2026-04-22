@@ -295,8 +295,10 @@ mod tests {
         }
 
         let mut dr = Emulator::<Wired<F>>::extractor();
-        let a = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(100))))?;
-        let b = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(200))))?;
+        let (_, a, _) =
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(100)), Coeff::Zero)))?;
+        let (_, b, _) =
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(200)), Coeff::Zero)))?;
         let gadget = TwoWires {
             a,
             b,

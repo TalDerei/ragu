@@ -69,10 +69,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     where
         Self: 'dr,
     {
-        // Allocate nested error terms
+        let allocator = &mut ();
         let error_terms = FixedVec::try_from_fn(|i| {
             FixedVec::try_from_fn(|j| {
-                Element::alloc(dr, witness.as_ref().map(|w| w.error_terms[i][j]))
+                Element::alloc(dr, allocator, witness.as_ref().map(|w| w.error_terms[i][j]))
             })
         })?;
 

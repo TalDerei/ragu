@@ -12,10 +12,10 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
-use ragu_primitives::{Element, Simulator};
+use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 use crate::{
-    Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
+    Circuit, CircuitExt, WiringObject, WithAux, floor_planner, into_wiring_object,
     polynomials::{Rank, TestRank},
 };
 
@@ -35,7 +35,8 @@ impl Circuit<Fp> for SquareCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, instance)
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
     }
 
     fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
@@ -43,7 +44,8 @@ impl Circuit<Fp> for SquareCircuit {
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
-        let mut a = Element::alloc(dr, witness)?;
+        let allocator = &mut Standard::new();
+        let mut a = Element::alloc(dr, allocator, witness)?;
 
         for _ in 0..self.times {
             a = a.square(dr)?;
@@ -53,7 +55,7 @@ impl Circuit<Fp> for SquareCircuit {
     }
 }
 
-fn consistency_checks<R: Rank>(obj: &dyn CircuitObject<Fp, R>) {
+fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
     let x = Fp::random(&mut rand::rng());
     let y = Fp::random(&mut rand::rng());
     let plan = floor_planner::floor_plan(obj.segment_records());
@@ -95,8 +97,9 @@ fn test_simple_circuit() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
-            let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
+            let allocator = &mut Standard::new();
+            let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
+            let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
 
             Ok((c, d))
         }
@@ -107,8 +110,9 @@ fn test_simple_circuit() {
             witness: DriverValue<D, Self::Witness<'witness>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
         {
-            let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
-            let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+            let allocator = &mut Standard::new();
+            let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+            let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
 
             let a2 = a.square(dr)?;
             let a4 = a2.square(dr)?;
@@ -144,7 +148,7 @@ fn test_simple_circuit() {
         .into_output();
     type MyRank = TestRank;
 
-    let obj = into_circuit_object::<_, _, MyRank>(MySimpleCircuit).unwrap();
+    let obj = into_wiring_object::<_, _, MyRank>(MySimpleCircuit).unwrap();
     let plan = floor_planner::floor_plan(obj.segment_records());
 
     let assignment = trace.assemble(&plan, Fp::ZERO).unwrap();
@@ -198,8 +202,9 @@ impl Routine<Fp> for TestRoutine {
         aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         let precomputed_value = aux.take();
-        let element_from_aux = Element::alloc(dr, D::just(|| precomputed_value))?;
-        let other = Element::alloc(dr, D::just(|| Fp::from(5u64)))?;
+        let allocator = &mut Standard::new();
+        let element_from_aux = Element::alloc(dr, allocator, D::just(|| precomputed_value))?;
+        let other = Element::alloc(dr, allocator, D::just(|| Fp::from(5u64)))?;
         let result = element_from_aux.add(dr, &other);
         Ok(result)
     }
@@ -216,8 +221,13 @@ impl Routine<Fp> for TestRoutine {
 #[test]
 fn test_element() {
     let mut simulator = Simulator::<Fp>::new();
-    let input = Element::alloc(&mut simulator, Always::<Fp>::just(|| Fp::from(5u64))).unwrap();
+    let allocator = &mut Standard::new();
+    let input = Element::alloc(
+        &mut simulator,
+        allocator,
+        Always::<Fp>::just(|| Fp::from(5u64)),
+    )
+    .unwrap();
     let result = simulator.routine(TestRoutine, input).unwrap();
     assert_eq!(*result.value().take(), Fp::from(15u64));
-    assert_eq!(simulator.num_allocations(), 3);
 }

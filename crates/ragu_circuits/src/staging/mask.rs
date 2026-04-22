@@ -3,9 +3,87 @@ use ragu_arithmetic::geosum;
 use ragu_core::Result;
 
 use crate::{
-    CircuitObject,
+    WiringObject,
     polynomials::{Rank, sparse},
 };
+
+/// Evaluates the global stage mask polynomial $S\_{\text{global}}(X, Y)$ at
+/// the point $(x, y)$.
+///
+/// The global mask enforces all $4n$ wire slots to zero except the four wires
+/// of the SYSTEM gate (gate 0):
+///
+/// $$S_{\text{global}}(x, y) = \sum_{i=0}^{4n-1} (xy)^i
+///     - \bigl((xy)^{2n} + 1\bigr)\bigl((xy)^{2n-1} + 1\bigr)$$
+///
+/// The polynomial depends only on the product $XY$, so both variables
+/// enter only through $xy = x \cdot y$.
+///
+/// This term is invariant across all [`StageMask`] instances for a given
+/// `(R, F)` — it depends only on `R::n()`. The [`Registry`] computes it once
+/// and scales by the sum of Lagrange coefficients for all masking polynomials,
+/// rather than letting each mask evaluate it redundantly.
+///
+/// Returns [`Field::ZERO`] when `x == 0` or `y == 0` (bonding polynomials
+/// have zero constant term in $Y$).
+///
+/// [`Registry`]: crate::registry::Registry
+pub(crate) fn global_mask<F: Field, R: Rank>(x: F, y: F) -> F {
+    if x == F::ZERO || y == F::ZERO {
+        return F::ZERO;
+    }
+
+    let xy = x * y;
+    let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
+    let xy_inv = xy.invert().expect("xy is not zero");
+
+    geosum(xy, R::n() << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
+}
+
+/// Computes the polynomial restriction $S\_{\text{global}}(p, Y)$ (equivalently
+/// $S\_{\text{global}}(X, p)$ by symmetry) as a sparse univariate polynomial.
+/// Populates `4(n - 1)` wire positions — all except the four wires of the
+/// SYSTEM gate (gate 0).
+///
+/// Used by [`Registry`](crate::registry::Registry) to add the shared global
+/// contribution once, scaled by the sum of masking circuit Lagrange coefficients.
+pub(crate) fn global_project<F: Field, R: Rank>(p: F) -> sparse::Polynomial<F, R> {
+    if p == F::ZERO {
+        return sparse::Polynomial::default();
+    }
+    let n = R::n();
+    let mut view = sparse::View::<F, R, _>::wiring();
+    view.d.resize(n, F::ZERO);
+    view.a.resize(n, F::ZERO);
+    view.b.resize(n, F::ZERO);
+    view.c.resize(n, F::ZERO);
+
+    let mut cur = F::ONE;
+    for j in 0..n {
+        view.d[j] = cur;
+        cur *= p;
+    }
+    for j in (0..n).rev() {
+        view.a[j] = cur;
+        cur *= p;
+    }
+    for j in 0..n {
+        view.b[j] = cur;
+        cur *= p;
+    }
+    for j in (0..n).rev() {
+        view.c[j] = cur;
+        cur *= p;
+    }
+
+    // The SYSTEM gate wires are always zero in the global mask.
+    view.a[0] = F::ZERO;
+    view.b[0] = F::ZERO;
+    view.c[0] = F::ZERO;
+    view.d[0] = F::ZERO;
+
+    view.build()
+}
 
 #[derive(Clone)]
 pub struct StageMask<R: Rank> {
@@ -55,86 +133,71 @@ impl<R: Rank> StageMask<R> {
         })
     }
 
-    /// Projects the bivariate mask polynomial onto a univariate sparse
-    /// polynomial by evaluating one variable at `p`. Used by both
-    /// `sx` ($S(x, Y)$) and `sy` ($S(X, y)$). Unconstrained wires
-    /// (the SYSTEM gate and active-stage gates) are zeroed out.
-    fn project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
+    /// Returns a sparse polynomial containing the negated notch entries for
+    /// the active-stage gate wires at positions `skip_gates..skip_gates + num_gates`.
+    /// The SYSTEM gate is excluded (it is already zero in the global mask).
+    ///
+    /// The result has `4 × num_gates` non-zero entries
+    /// (vs `4(n - 1)` for the full mask projection).
+    fn notch_project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
+        if self.num_gates == 0 || p == F::ZERO {
+            return sparse::Polynomial::default();
+        }
         let n = R::n();
+        let g = self.skip_gates;
+        let m = self.num_gates;
         let mut view = sparse::View::<F, R, _>::wiring();
-        view.d.resize(n, F::ZERO);
-        view.a.resize(n, F::ZERO);
-        view.b.resize(n, F::ZERO);
-        view.c.resize(n, F::ZERO);
+        view.d.resize(g + m, F::ZERO);
+        view.a.resize(g + m, F::ZERO);
+        view.b.resize(g + m, F::ZERO);
+        view.c.resize(g + m, F::ZERO);
 
-        let mut cur = F::ONE;
-        for j in 0..n {
-            view.d[j] = cur;
-            cur *= p;
-        }
-        for j in (0..n).rev() {
-            view.a[j] = cur;
-            cur *= p;
-        }
-        for j in 0..n {
-            view.b[j] = cur;
-            cur *= p;
-        }
-        for j in (0..n).rev() {
-            view.c[j] = cur;
-            cur *= p;
-        }
+        let p_inv = p.invert().expect("p is not zero");
+        let mut d = -p.pow_vartime([g as u64]);
+        let mut a = -p.pow_vartime([(2 * n - 1 - g) as u64]);
+        let mut b = -p.pow_vartime([(2 * n + g) as u64]);
+        let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
 
-        // The wires in the SYSTEM gate are unconstrained.
-        view.a[0] = F::ZERO;
-        view.b[0] = F::ZERO;
-        view.c[0] = F::ZERO;
-        view.d[0] = F::ZERO;
-
-        // The wires active in the stage are not constrained.
-        for i in 0..self.num_gates {
-            let j = self.skip_gates + i;
-            view.a[j] = F::ZERO;
-            view.b[j] = F::ZERO;
-            view.c[j] = F::ZERO;
-            view.d[j] = F::ZERO;
+        for j in g..g + m {
+            view.d[j] = d;
+            view.a[j] = a;
+            view.b[j] = b;
+            view.c[j] = c;
+            d *= p;
+            a *= p_inv;
+            b *= p;
+            c *= p_inv;
         }
 
         view.build()
     }
 }
 
-impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
+impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
+    /// Evaluates the per-instance notch term $-\text{notch}(x, y)$.
+    ///
+    /// The full stage mask is $S\_{\text{global}} - \text{notch}$, but
+    /// the invariant $S\_{\text{global}}$ term is factored out and applied
+    /// once by the [`Registry`](crate::registry::Registry). This method
+    /// returns only $-\text{notch}$, where
+    ///
+    /// $$\text{notch}(x, y) = (1 + (xy)^{2n})\bigl((xy)^g + (xy)^{2n-g-m}\bigr)
+    ///     \cdot \sum_{i=0}^{m-1} (xy)^i$$
+    ///
+    /// with $g = \text{skip\_gates}$ and $m = \text{num\_gates}$.
     fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
         if x == F::ZERO || y == F::ZERO {
-            // If either x or y is zero, the polynomial evaluates to zero
-            // (the constant term of a bonding polynomial is always zero).
             return F::ZERO;
         }
 
-        // Precomputed (ideally):
         let xy = x * y;
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
-        let xy_inv = xy.invert().expect("xy is not zero");
 
-        /// Full wiring polynomial $S(xy)$ over all $4n$ wire slots,
-        /// minus the SYSTEM gate's four unconstrained wires.
-        fn global<F: Field>(xy: F, xy_2n: F, xy_inv: F, n: usize) -> F {
-            geosum(xy, n << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
-        }
+        let gsum = geosum(xy, self.num_gates);
+        let skip = xy.pow_vartime([self.skip_gates as u64]);
+        let tail = xy.pow_vartime([(2 * R::n() - self.skip_gates - self.num_gates) as u64]);
 
-        /// Contribution of the `m` active-stage gates starting at gate `g`.
-        /// Subtracted from [`global`] to zero out unconstrained wires.
-        fn notch<F: Field>(xy: F, xy_2n: F, xy_inv: F, g: usize, m: usize) -> F {
-            let gsum = geosum(xy, m);
-            let xy_g = xy.pow_vartime([g as u64]);
-            let xy_h = xy_2n * xy_inv.pow_vartime([(g + m) as u64]);
-
-            (F::ONE + xy_2n) * (xy_g + xy_h) * gsum
-        }
-
-        global(xy, xy_2n, xy_inv, R::n())
-            - notch(xy, xy_2n, xy_inv, self.skip_gates, self.num_gates)
+        -((F::ONE + xy_2n) * (skip + tail) * gsum)
     }
 
     fn sx(
@@ -142,7 +205,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         x: F,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
-        self.project(x)
+        self.notch_project(x)
     }
 
     fn sy(
@@ -150,7 +213,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         y: F,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
-        self.project(y)
+        self.notch_project(y)
     }
 
     fn constraint_counts(&self) -> (usize, usize) {
@@ -163,6 +226,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
     fn segment_records(&self) -> &[crate::SegmentRecord] {
         &[]
+    }
+
+    fn is_mask(&self) -> bool {
+        true
     }
 }
 
@@ -190,8 +257,7 @@ mod tests {
         StageMask,
     };
     use crate::{
-        CircuitObject, WithAux, floor_planner, into_circuit_object, into_raw_circuit_object,
-        metrics,
+        WiringObject, WithAux, floor_planner, into_raw_wiring_object, into_wiring_object, metrics,
         polynomials::{Rank, sparse},
         raw::GateWires,
         staging::StageBuilder,
@@ -219,7 +285,9 @@ mod tests {
             let mut gates = alloc::vec::Vec::with_capacity(R::n());
             gates.push(system_gate);
             for _ in 1..R::n() {
-                gates.push(GateWires::from(dr.gate(|| unimplemented!())?));
+                let (a, b, c, extra) = dr.gate(|| unimplemented!())?;
+                let d = dr.assign_extra(extra, || unimplemented!())?;
+                gates.push(GateWires { a, b, c, d });
             }
 
             let is_active =
@@ -272,13 +340,13 @@ mod tests {
         }
     }
 
-    /// Creates a [`CircuitObject`] from a [`StageMask`] via its [`RawCircuit`]
+    /// Creates a [`WiringObject`] from a [`StageMask`] via its [`RawCircuit`]
     /// impl.
-    fn mask_circuit_object(
+    fn mask_wiring_object(
         mask: StageMask<R>,
-    ) -> alloc::boxed::Box<dyn CircuitObject<Fp, R> + 'static> {
+    ) -> alloc::boxed::Box<dyn WiringObject<Fp, R> + 'static> {
         let metrics = metrics::eval_raw::<Fp, _>(&mask).unwrap();
-        into_raw_circuit_object::<Fp, _, R>(mask, metrics).unwrap()
+        into_raw_wiring_object::<Fp, _, R>(mask, metrics).unwrap()
     }
 
     impl<R: Rank> StageMask<R> {
@@ -380,8 +448,15 @@ mod tests {
         let z = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
+        // sy() now returns -notch; add global_project to recover the full mask.
+        let full_sy = |circ: &dyn WiringObject<Fp, R>, y| {
+            let mut poly = super::global_project::<Fp, R>(y);
+            poly += &circ.sy(y, &[]);
+            poly
+        };
+
         {
-            let rhs = circ1.sy(y, &[]);
+            let rhs = full_sy(&*circ1, y);
             assert_eq!(rx1_a.revdot(&rhs), Fp::ZERO);
             assert_eq!(rx1_b.revdot(&rhs), Fp::ZERO);
 
@@ -395,10 +470,10 @@ mod tests {
             assert_eq!(combined.revdot(&rhs), Fp::ZERO);
         }
 
-        assert_eq!(rx1_a.revdot(&circ1.sy(y, &[])), Fp::ZERO);
-        assert_eq!(rx2.revdot(&circ2.sy(y, &[])), Fp::ZERO);
-        assert!(rx1_a.revdot(&circ2.sy(y, &[])) != Fp::ZERO);
-        assert!(rx2.revdot(&circ1.sy(y, &[])) != Fp::ZERO);
+        assert_eq!(rx1_a.revdot(&full_sy(&*circ1, y)), Fp::ZERO);
+        assert_eq!(rx2.revdot(&full_sy(&*circ2, y)), Fp::ZERO);
+        assert!(rx1_a.revdot(&full_sy(&*circ2, y)) != Fp::ZERO);
+        assert!(rx2.revdot(&full_sy(&*circ1, y)) != Fp::ZERO);
 
         Ok(())
     }
@@ -410,12 +485,19 @@ mod tests {
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
+        // All three return -notch (the global term is factored out by Registry).
         let sxy = stage_mask.sxy(x, y, &[]);
         let sx = stage_mask.sx(x, &[]);
         let sy = stage_mask.sy(y, &[]);
 
         assert_eq!(sxy, sx.eval(y));
         assert_eq!(sxy, sy.eval(x));
+
+        // Cross-check: global + notch reconstructs the full mask.
+        let global_xy = super::global_mask::<Fp, R>(x, y);
+        let mut full_sx = super::global_project::<Fp, R>(x);
+        full_sx += &sx;
+        assert_eq!(full_sx.eval(y), sxy + global_xy);
     }
 
     #[test]
@@ -425,12 +507,14 @@ mod tests {
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let generic = mask_circuit_object(stage.clone());
+        let generic = mask_wiring_object(stage.clone());
         let plan = floor_planner::floor_plan(generic.segment_records());
         let stripped = crate::staging::bonding::Stripped::new(generic);
         let corrected_sxy = stripped.sxy(x, y, &plan);
 
-        assert_eq!(stage.sxy(x, y, &[]), corrected_sxy);
+        // StageMask returns -notch; add global to get the full mask.
+        let full_sxy = stage.sxy(x, y, &[]) + super::global_mask::<Fp, R>(x, y);
+        assert_eq!(full_sxy, corrected_sxy);
         assert_eq!(corrected_sxy, stripped.sx(x, &plan).eval(y));
         assert_eq!(corrected_sxy, stripped.sy(y, &plan).eval(x));
     }
@@ -441,7 +525,7 @@ mod tests {
         // metrics::eval(), so its num_constraints must be at least 1.
         // This invariant prevents the `- 1` underflow in sy::eval's initial
         // y-power computation.
-        let circuit = into_circuit_object::<_, _, R>(SquareCircuit { times: 0 }).unwrap();
+        let circuit = into_wiring_object::<_, _, R>(SquareCircuit { times: 0 }).unwrap();
         let floor_plan = floor_planner::floor_plan(circuit.segment_records());
         assert!(
             floor_plan[0].num_constraints >= 1,
@@ -467,6 +551,7 @@ mod tests {
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
+        // All three return -notch (the global term is factored out by Registry).
         let sxy = stage.sxy(x, y, &[]);
         let sx = stage.sx(x, &[]);
         let sy = stage.sy(y, &[]);
@@ -500,7 +585,7 @@ mod tests {
 
             let stage_mask = StageMask::<R>::new(skip, num).unwrap();
 
-            let generic = mask_circuit_object(
+            let generic = mask_wiring_object(
                 StageMask::<R>::new(skip, num).unwrap()
             );
             let plan = floor_planner::floor_plan(generic.segment_records());
@@ -515,10 +600,17 @@ mod tests {
                 // Internal consistency of the RawCircuit impl (with correction)
                 prop_assert_eq!(sy_eval, sxy);
                 prop_assert_eq!(sx_eval, sxy);
-                // Match against the hand-written CircuitObject
-                prop_assert_eq!(stage_mask.sxy(x, y, &[]), sxy);
-                prop_assert_eq!(stage_mask.sx(x, &[]).eval(y), sxy);
-                prop_assert_eq!(stage_mask.sy(y, &[]).eval(x), sxy);
+                // StageMask returns -notch from all three methods.
+                let notch_sxy = stage_mask.sxy(x, y, &[]);
+                let global_xy = super::global_mask::<Fp, R>(x, y);
+                prop_assert_eq!(notch_sxy + global_xy, sxy);
+                prop_assert_eq!(stage_mask.sx(x, &[]).eval(y), notch_sxy);
+                prop_assert_eq!(stage_mask.sy(y, &[]).eval(x), notch_sxy);
+
+                // Polynomial decomposition: global_project + notch_project == full project.
+                let mut reconstructed = super::global_project::<Fp, R>(x);
+                reconstructed += &stage_mask.notch_project(x);
+                prop_assert_eq!(reconstructed.eval(y), sxy);
 
                 Ok(())
             };
@@ -530,6 +622,33 @@ mod tests {
             check(x, Fp::ZERO)?;
             check(Fp::ZERO, Fp::ZERO)?;
 
+        }
+
+        /// Two adjacent `StageMask`s that partition gates `1..n` must have
+        /// notch projections that sum to the global projection (negated),
+        /// and notch scalars that sum to the global scalar (negated).
+        #[test]
+        fn test_notch_partition_proptest(split in 1..R::n()) {
+            let mask_a = StageMask::<R>::new(1, split - 1).unwrap();
+            let mask_b = StageMask::<R>::new(split, R::n() - split).unwrap();
+
+            let p = Fp::random(&mut rand::rng());
+            let x = Fp::random(&mut rand::rng());
+            let y = Fp::random(&mut rand::rng());
+
+            // Polynomial-level: (-notch_a(p) + -notch_b(p)).eval(q) == -global_project(p).eval(q)
+            let q = Fp::random(&mut rand::rng());
+            let mut sum_poly = mask_a.notch_project(p);
+            sum_poly += &mask_b.notch_project(p);
+            let mut neg_global = super::global_project::<Fp, R>(p);
+            neg_global.scale(-Fp::ONE);
+            prop_assert_eq!(sum_poly.eval(q), neg_global.eval(q));
+
+            // Scalar-level: -notch_a(x,y) + -notch_b(x,y) == -global_mask(x,y)
+            let sxy_a = mask_a.sxy(x, y, &[]);
+            let sxy_b = mask_b.sxy(x, y, &[]);
+            let global_xy = super::global_mask::<Fp, R>(x, y);
+            prop_assert_eq!(sxy_a + sxy_b, -global_xy);
         }
     }
 
@@ -565,8 +684,8 @@ mod tests {
             let witness_a = witness.as_ref().map(|w| w.0);
             let witness_b = witness.as_ref().map(|w| w.1);
 
-            let a = Element::alloc(dr, witness_a)?;
-            let b = Element::alloc(dr, witness_b)?;
+            let a = Element::alloc(dr, &mut (), witness_a)?;
+            let b = Element::alloc(dr, &mut (), witness_b)?;
 
             dr.enforce_zero(|lc| lc.add(a.wire()).sub(b.wire()))?;
 
@@ -578,7 +697,7 @@ mod tests {
     fn test_enforce_stage_works() {
         let result =
             Emulator::emulate_wireless((Fp::from(42u64), Fp::from(42u64)), |dr, witness| {
-                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr);
+                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr, |_| {});
                 let (guard, builder) = builder.add_stage::<ConstrainedStage>()?;
                 let _gagdet = guard.enforced(builder.finish(), witness)?;
                 Ok(())
@@ -595,9 +714,10 @@ mod tests {
 
         let stage_mask = ConstrainedStage::mask::<'_>().unwrap().into_inner();
 
-        // rx.revdot(&stage_mask) == 0 for well-formed stages
+        // sy() returns -notch; add global_project to recover the full mask.
         let y = Fp::random(&mut rand::rng());
-        let sy = stage_mask.sy(y, &[]);
+        let mut sy = super::global_project::<Fp, R>(y);
+        sy += &stage_mask.sy(y, &[]);
 
         let check = rx.revdot(&sy);
         assert_eq!(
@@ -613,7 +733,7 @@ mod tests {
             for num in 0..(R::n() - skip) {
                 let stage_mask = StageMask::<R>::new(skip, num).unwrap();
                 let (mul_from_method, linear_from_method) =
-                    <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
+                    <StageMask<R> as WiringObject<Fp, R>>::constraint_counts(&stage_mask);
 
                 let metrics = metrics::eval_raw::<Fp, _>(&stage_mask).unwrap();
 
@@ -691,7 +811,7 @@ mod tests {
             }
         }
 
-        let circuit = into_circuit_object::<_, _, R>(TestCircuit).unwrap();
+        let circuit = into_wiring_object::<_, _, R>(TestCircuit).unwrap();
         let floor_plan = floor_planner::floor_plan(circuit.segment_records());
 
         // The child routine (index 1) should have zero constraints.
@@ -757,11 +877,11 @@ mod tests {
         {
             // Allocate each challenge value followed by zero, which
             // ensures challenges land in b-positions, zeros in d-positions.
-            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {
@@ -798,11 +918,11 @@ mod tests {
         where
             Self: 'dr,
         {
-            let a0 = Element::alloc(dr, witness.as_ref().map(|w| w[0]))?;
+            let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
-            let a1 = Element::alloc(dr, witness.as_ref().map(|w| w[1]))?;
+            let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
             let b1 = Element::zero(dr);
-            let a2 = Element::alloc(dr, witness.as_ref().map(|w| w[2]))?;
+            let a2 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[2]))?;
             let b2 = Element::zero(dr);
 
             Ok(ThreeAOnlyElements {

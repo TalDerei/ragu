@@ -240,7 +240,6 @@ let sim = Simulator::simulate(witness, |dr, w| {
 })?;
 
 println!("Gates: {}", sim.num_gates());
-println!("Allocations: {}", sim.num_allocations());
 ```
 
 For `R<7>`, the gate limit is 32.

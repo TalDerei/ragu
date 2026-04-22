@@ -25,7 +25,9 @@ use ragu_core::{
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Point, WithSuffix, consistent::Consistent, io::Write};
+use ragu_primitives::{
+    Element, Point, WithSuffix, allocator::Allocator, consistent::Consistent, io::Write,
+};
 
 use crate::proof::Proof;
 
@@ -63,9 +65,14 @@ macro_rules! unified_instance_type {
 
 /// Creates a `Slot` initializer for a field (works for both Point and Element).
 macro_rules! unified_slot_new {
-    ($field_type:ident, $field:ident, $instance:expr) => {
-        Slot::new($instance.as_ref().map(|i| i.$field), |dr, w| {
-            $field_type::alloc(dr, w)
+    (Point, $field:ident, $instance:expr) => {
+        Slot::new($instance.as_ref().map(|i| i.$field), |dr, _allocator, w| {
+            Point::alloc(dr, w)
+        })
+    };
+    (Element, $field:ident, $instance:expr) => {
+        Slot::new($instance.as_ref().map(|i| i.$field), |dr, allocator, w| {
+            Element::alloc(dr, allocator, w)
         })
     };
 }
@@ -159,14 +166,16 @@ macro_rules! define_unified_instance {
         ///    to build the final output and obtain the updated [`Instance`]
         ///
         /// Any slots not explicitly filled will be allocated during finalization.
-        pub struct OutputBuilder<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> {
+        pub struct OutputBuilder<'dr, D: Driver<'dr>, A, C: Cycle<CircuitField = D::F>> {
             $(
-                pub $field: Slot<'dr, D, unified_output_type!($field_type, 'dr, D, C), unified_instance_type!($field_type, C)>,
+                pub $field: Slot<'dr, D, A, unified_output_type!($field_type, 'dr, D, C), unified_instance_type!($field_type, C)>,
             )+
             instance: DriverValue<D, Instance<C>>,
         }
 
-        impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'dr, D, C> {
+        impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: Cycle<CircuitField = D::F>>
+            OutputBuilder<'dr, D, A, C>
+        {
             /// Creates a new builder with allocation functions for each field.
             ///
             /// The `instance` carries both the protocol values (challenges,
@@ -193,8 +202,9 @@ macro_rules! define_unified_instance {
             pub fn finish_no_suffix(
                 self,
                 dr: &mut D,
+                allocator: &mut A,
             ) -> Result<(Output<'dr, D, C>, DriverValue<D, Instance<C>>)> {
-                $( let $field = self.$field.take(dr)?; )+
+                $( let $field = self.$field.take(dr, allocator)?; )+
                 let output = Output {
                     $( $field: $field.0, )+
                 };
@@ -313,19 +323,19 @@ define_unified_instance! {
 ///
 /// "Covered" means this circuit takes responsibility for constraining the
 /// field's correctness.
-pub struct Slot<'dr, D: Driver<'dr>, T, W: Send> {
+pub struct Slot<'dr, D: Driver<'dr>, A, T, W: Send> {
     value: Option<T>,
     instance: DriverValue<D, W>,
-    alloc: fn(&mut D, DriverValue<D, W>) -> Result<T>,
+    alloc: fn(&mut D, &mut A, DriverValue<D, W>) -> Result<T>,
     was_set: bool,
     _marker: core::marker::PhantomData<&'dr ()>,
 }
 
-impl<'dr, D: Driver<'dr>, T: Clone, W: Copy + Send + Sync> Slot<'dr, D, T, W> {
+impl<'dr, D: Driver<'dr>, A, T: Clone, W: Copy + Send + Sync> Slot<'dr, D, A, T, W> {
     /// Creates a new slot with a pre-extracted instance value and allocation function.
     pub(super) fn new(
         instance: DriverValue<D, W>,
-        alloc: fn(&mut D, DriverValue<D, W>) -> Result<T>,
+        alloc: fn(&mut D, &mut A, DriverValue<D, W>) -> Result<T>,
     ) -> Self {
         Slot {
             value: None,
@@ -347,9 +357,9 @@ impl<'dr, D: Driver<'dr>, T: Clone, W: Copy + Send + Sync> Slot<'dr, D, T, W> {
     ///
     /// Panics if the slot has already been filled (via `read`, `provide`, or
     /// `receive`).
-    pub fn read(&mut self, dr: &mut D) -> Result<T> {
+    pub fn read(&mut self, dr: &mut D, allocator: &mut A) -> Result<T> {
         assert!(self.value.is_none(), "Slot::read: slot already filled");
-        let value = (self.alloc)(dr, self.instance.as_ref().map(|w| *w))?;
+        let value = (self.alloc)(dr, allocator, self.instance.as_ref().map(|w| *w))?;
         self.value = Some(value.clone());
         Ok(value)
     }
@@ -385,9 +395,9 @@ impl<'dr, D: Driver<'dr>, T: Clone, W: Copy + Send + Sync> Slot<'dr, D, T, W> {
     /// # Panics
     ///
     /// Panics if the slot has already been filled.
-    pub fn receive(&mut self, dr: &mut D) -> Result<T> {
+    pub fn receive(&mut self, dr: &mut D, allocator: &mut A) -> Result<T> {
         assert!(self.value.is_none(), "Slot::receive: slot already filled");
-        let value = (self.alloc)(dr, self.instance.as_ref().map(|w| *w))?;
+        let value = (self.alloc)(dr, allocator, self.instance.as_ref().map(|w| *w))?;
         self.value = Some(value.clone());
         self.was_set = true;
         Ok(value)
@@ -397,11 +407,11 @@ impl<'dr, D: Driver<'dr>, T: Clone, W: Copy + Send + Sync> Slot<'dr, D, T, W> {
     /// needed) along with the coverage flag.
     ///
     /// Used during finalization to build the [`Output`] gadget.
-    fn take(self, dr: &mut D) -> Result<(T, bool)> {
+    fn take(self, dr: &mut D, allocator: &mut A) -> Result<(T, bool)> {
         let value = self
             .value
             .map(Result::Ok)
-            .unwrap_or_else(|| (self.alloc)(dr, self.instance.as_ref().map(|w| *w)))?;
+            .unwrap_or_else(|| (self.alloc)(dr, allocator, self.instance.as_ref().map(|w| *w)))?;
         Ok((value, self.was_set))
     }
 }
@@ -413,44 +423,45 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
     /// proof's components and challenges. Useful for testing or when the full
     /// proof structure is available.
     ///
-    /// Note: Field order follows `define_unified_instance!` for consistency.
-    pub fn alloc_from_proof<R: Rank>(
+    /// Field order follows `define_unified_instance!` for consistency.
+    pub fn alloc_from_proof<R: Rank, A: Allocator<'dr, D>>(
         dr: &mut D,
+        allocator: &mut A,
         proof: DriverValue<D, &Proof<C, R>>,
     ) -> Result<Self> {
         let bridge_preamble_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_preamble_commitment()))?;
-        let w = Element::alloc(dr, proof.as_ref().map(|p| p.w()))?;
+        let w = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.w()))?;
         let bridge_s_prime_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_s_prime_commitment()))?;
-        let y = Element::alloc(dr, proof.as_ref().map(|p| p.y()))?;
-        let z = Element::alloc(dr, proof.as_ref().map(|p| p.z()))?;
+        let y = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.y()))?;
+        let z = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.z()))?;
         let bridge_inner_error_commitment = Point::alloc(
             dr,
             proof.as_ref().map(|p| p.bridge_inner_error_commitment()),
         )?;
-        let mu = Element::alloc(dr, proof.as_ref().map(|p| p.mu()))?;
-        let nu = Element::alloc(dr, proof.as_ref().map(|p| p.nu()))?;
+        let mu = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.mu()))?;
+        let nu = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.nu()))?;
         let bridge_outer_error_commitment = Point::alloc(
             dr,
             proof.as_ref().map(|p| p.bridge_outer_error_commitment()),
         )?;
-        let mu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.mu_prime()))?;
-        let nu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.nu_prime()))?;
-        let c = Element::alloc(dr, proof.as_ref().map(|p| p.c()))?;
+        let mu_prime = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.mu_prime()))?;
+        let nu_prime = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.nu_prime()))?;
+        let c = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.c()))?;
         let bridge_ab_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_ab_commitment()))?;
-        let x = Element::alloc(dr, proof.as_ref().map(|p| p.x()))?;
+        let x = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.x()))?;
         let bridge_query_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_query_commitment()))?;
-        let alpha = Element::alloc(dr, proof.as_ref().map(|p| p.alpha()))?;
+        let alpha = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.alpha()))?;
         let bridge_f_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_f_commitment()))?;
-        let u = Element::alloc(dr, proof.as_ref().map(|p| p.u()))?;
+        let u = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.u()))?;
         let bridge_eval_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_eval_commitment()))?;
-        let pre_beta = Element::alloc(dr, proof.as_ref().map(|p| p.pre_beta()))?;
-        let v = Element::alloc(dr, proof.as_ref().map(|p| p.v()))?;
+        let pre_beta = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.pre_beta()))?;
+        let v = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.v()))?;
 
         Ok(Output {
             bridge_preamble_commitment,
@@ -478,7 +489,9 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
     }
 }
 
-impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'dr, D, C> {
+impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: Cycle<CircuitField = D::F>>
+    OutputBuilder<'dr, D, A, C>
+{
     /// Finishes building, wraps the output in [`WithSuffix`], and returns
     /// the updated [`Instance`] (with this circuit's coverage accumulated).
     ///
@@ -490,12 +503,13 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'dr, D, C
     pub fn finish(
         self,
         dr: &mut D,
+        allocator: &mut A,
     ) -> Result<(
         Bound<'dr, D, InternalOutputKind<C>>,
         DriverValue<D, Instance<C>>,
     )> {
         let zero = Element::zero(dr);
-        let (output, instance) = self.finish_no_suffix(dr)?;
+        let (output, instance) = self.finish_no_suffix(dr, allocator)?;
         Ok((WithSuffix::new(output, zero), instance))
     }
 }
@@ -512,9 +526,12 @@ mod tests {
     fn num_wires_constant_is_correct() {
         // Use a wireless emulator with Empty witness - the emulator never reads witness values.
         let mut emulator = Emulator::counter();
-        let output =
-            Output::<'_, _, Pasta>::alloc_from_proof::<ProductionRank>(&mut emulator, Empty)
-                .expect("allocation should succeed");
+        let output = Output::<'_, _, Pasta>::alloc_from_proof::<ProductionRank, _>(
+            &mut emulator,
+            &mut (),
+            Empty,
+        )
+        .expect("allocation should succeed");
 
         assert_eq!(
             output.num_wires().expect("wire counting should succeed"),
@@ -584,7 +601,13 @@ mod tests {
     }
 
     type Dr = Emulator<ragu_core::drivers::emulator::Wireless<Empty, pasta_curves::Fp>>;
-    type Sl = Slot<'static, Dr, Element<'static, Dr>, pasta_curves::Fp>;
+    type Sl = Slot<
+        'static,
+        Dr,
+        ragu_primitives::allocator::Standard<()>,
+        Element<'static, Dr>,
+        pasta_curves::Fp,
+    >;
 
     /// Helper: creates two independent element slots and a fresh emulator.
     fn two_element_slots() -> (Dr, Sl, Sl) {
@@ -598,10 +621,11 @@ mod tests {
     #[test]
     fn slot_read_allocates_without_coverage() {
         let (mut dr, mut a, mut b) = two_element_slots();
-        a.read(&mut dr).expect("read a");
-        b.read(&mut dr).expect("read b");
-        let (_, a_set) = a.take(&mut dr).expect("take a");
-        let (_, b_set) = b.take(&mut dr).expect("take b");
+        let allocator = &mut ragu_primitives::allocator::Standard::new();
+        a.read(&mut dr, allocator).expect("read a");
+        b.read(&mut dr, allocator).expect("read b");
+        let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
+        let (_, b_set) = b.take(&mut dr, allocator).expect("take b");
         assert!(!a_set, "read() must not mark slot a as covered");
         assert!(!b_set, "read() must not mark slot b as covered");
     }
@@ -610,11 +634,12 @@ mod tests {
     #[test]
     fn slot_provide_stores_value_and_marks_covered() {
         let (mut dr, mut a, b) = two_element_slots();
-        let val_a = Element::alloc(&mut dr, Empty).expect("alloc a");
+        let allocator = &mut ragu_primitives::allocator::Standard::new();
+        let val_a = Element::alloc(&mut dr, allocator, Empty).expect("alloc a");
         a.provide(val_a);
         // b left untouched — should remain uncovered.
-        let (_, a_set) = a.take(&mut dr).expect("take a");
-        let (_, b_set) = b.take(&mut dr).expect("take b");
+        let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
+        let (_, b_set) = b.take(&mut dr, allocator).expect("take b");
         assert!(a_set, "provide() must mark slot a as covered");
         assert!(!b_set, "provide() on a must not affect slot b");
     }
@@ -623,11 +648,12 @@ mod tests {
     #[test]
     fn slot_receive_allocates_and_marks_covered() {
         let (mut dr, mut a, mut b) = two_element_slots();
-        let _ = a.receive(&mut dr).expect("receive a");
+        let allocator = &mut ragu_primitives::allocator::Standard::new();
+        let _ = a.receive(&mut dr, allocator).expect("receive a");
         // b only gets `read` — should remain uncovered.
-        b.read(&mut dr).expect("read b");
-        let (_, a_set) = a.take(&mut dr).expect("take a");
-        let (_, b_set) = b.take(&mut dr).expect("take b");
+        b.read(&mut dr, allocator).expect("read b");
+        let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
+        let (_, b_set) = b.take(&mut dr, allocator).expect("take b");
         assert!(a_set, "receive() must mark slot a as covered");
         assert!(!b_set, "receive() on a must not affect slot b");
     }
@@ -636,10 +662,11 @@ mod tests {
     #[test]
     fn slot_take_untouched_allocates_without_coverage() {
         let (mut dr, a, mut b) = two_element_slots();
+        let allocator = &mut ragu_primitives::allocator::Standard::new();
         // a is never touched by the circuit — finish calls take directly.
-        b.receive(&mut dr).expect("receive b");
-        let (_, a_set) = a.take(&mut dr).expect("take a");
-        let (_, b_set) = b.take(&mut dr).expect("take b");
+        b.receive(&mut dr, allocator).expect("receive b");
+        let (_, a_set) = a.take(&mut dr, allocator).expect("take a");
+        let (_, b_set) = b.take(&mut dr, allocator).expect("take b");
         assert!(!a_set, "untouched slot a must not be marked as covered");
         assert!(b_set, "received slot b must be marked as covered");
     }

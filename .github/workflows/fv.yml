@@ -1,0 +1,31 @@
+name: Formal Verification CI
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lean:
+    name: exporter + lean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+        with:
+          cache-suffix: lean-extraction
+
+      - name: Check exported Lean files are up to date
+        run: cargo run --locked -p lean_extraction -- check
+
+      - name: Build Lean project
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          build: true
+          build-args: "--wfail"
+          test: false
+          lint: false
+          lake-package-directory: qa/lean

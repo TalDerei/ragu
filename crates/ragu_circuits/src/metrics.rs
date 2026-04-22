@@ -36,7 +36,7 @@
 //! accidentally including it in equivalence maps.
 //!
 //! The `eval` scalar is the routine's $s(X,Y)$ contribution (see
-//! [`sxy::eval`](super::s::sxy::eval)) evaluated at deterministic
+//! [`sxy::eval`](super::wiring::sxy::eval)) evaluated at deterministic
 //! pseudorandom points derived from a domain-separated BLAKE2b hash: four
 //! independent geometric sequences are assigned to the $a$, $b$, $c$, $d$
 //! wires and constraint values are accumulated via Horner's rule. If two
@@ -65,7 +65,7 @@ use ragu_core::{
 use super::{
     Circuit,
     raw::RawCircuit,
-    s::common::{WireEval, WireEvalSum},
+    wiring::common::{WireEval, WireEvalSum},
 };
 
 /// The structural identity of a routine record.
@@ -347,9 +347,6 @@ pub struct CircuitMetrics {
 /// Contains both the constraint counting record index and the identity
 /// evaluation state (geometric sequence runners and Horner accumulator).
 struct CounterScope<F> {
-    /// Stashed $d$ wire from paired allocation (see [`Driver::alloc`]).
-    available_d: Option<WireEval<F>>,
-
     /// Index into [`Counter::segments`] for the current routine.
     current_segment: usize,
 
@@ -478,7 +475,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
 
         Self {
             scope: CounterScope {
-                available_d: None,
                 current_segment: 0,
                 current_a: x0,
                 current_b: x1,
@@ -514,13 +510,14 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     type ImplWire = WireEval<F>;
     type LCadd = WireEvalSum<F>;
     type LCenforce = WireEvalSum<F>;
+    type Extra = WireEval<F>;
 
-    /// Consumes a gate: increments gate counts and returns
-    /// wire values from four independent geometric sequences, advancing each
-    /// by its base.
+    /// Consumes a gate: increments gate counts and returns wire values from
+    /// four independent geometric sequences, advancing each by its base.
+    /// The $d$-wire monomial is returned as `Extra`.
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
         self.num_gates += 1;
         self.segments[self.scope.current_segment].num_gates += 1;
@@ -542,23 +539,20 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
             WireEval::Value(d),
         ))
     }
+
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<WireEval<F>> {
+        Ok(extra)
+    }
 }
 
 impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type F = F;
     type Wire = WireEval<F>;
     const ONE: Self::Wire = WireEval::One;
-
-    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_d.take() {
-            Ok(wire)
-        } else {
-            let (_, b, _, d) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(d);
-            Ok(b)
-        }
-    }
 
     /// Computes a linear combination of wire evaluations.
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
@@ -592,7 +586,6 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         let saved = core::mem::replace(
             &mut self.scope,
             CounterScope {
-                available_d: None,
                 current_segment: segment_idx,
                 current_a: self.x0,
                 current_b: self.x1,
@@ -751,6 +744,7 @@ pub(crate) mod tests {
         routines::{Prediction, Routine},
     };
     use ragu_pasta::Fp;
+    use ragu_primitives::allocator::Allocator;
 
     use super::*;
     use crate::WithAux;
@@ -836,13 +830,13 @@ pub(crate) mod tests {
         )))
     }
 
-    // A routine that allocates exactly one wire, leaving the "d" slot dangling
-    // in a pair-allocated driver like `Counter`.
-    // This must not panic when processed.
+    // A routine that performs a single allocation via `().alloc`. Verifies
+    // that metrics evaluation succeeds when a routine makes an odd number
+    // of allocator calls.
     #[derive(Clone)]
-    struct DanglingAllocRoutine;
+    struct SingleAllocRoutine;
 
-    impl Routine<Fp> for DanglingAllocRoutine {
+    impl Routine<Fp> for SingleAllocRoutine {
         type Input = ();
         type Output = ();
         type Aux<'dr> = ();
@@ -853,7 +847,7 @@ pub(crate) mod tests {
             _input: Bound<'dr, D, Self::Input>,
             _aux: DriverValue<D, Self::Aux<'dr>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            dr.alloc(|| Ok(Coeff::One))?;
+            ().alloc(dr, || Ok(Coeff::One))?;
             Ok(())
         }
 
@@ -867,9 +861,9 @@ pub(crate) mod tests {
         }
     }
 
-    struct DanglingAllocCircuit;
+    struct SingleAllocCircuit;
 
-    impl Circuit<Fp> for DanglingAllocCircuit {
+    impl Circuit<Fp> for SingleAllocCircuit {
         type Instance<'source> = ();
         type Witness<'source> = ();
         type Output = ();
@@ -889,14 +883,14 @@ pub(crate) mod tests {
             _witness: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         {
-            dr.routine(DanglingAllocRoutine, ())?;
+            dr.routine(SingleAllocRoutine, ())?;
             Ok(WithAux::new((), D::unit()))
         }
     }
 
     #[test]
-    fn dangling_alloc_in_routine() {
-        super::eval::<Fp, _>(&DanglingAllocCircuit).expect("metrics eval should succeed");
+    fn single_alloc_in_routine() {
+        super::eval::<Fp, _>(&SingleAllocCircuit).expect("metrics eval should succeed");
     }
 
     /// Test-only wrapper exposing the private `deep_hash` function for

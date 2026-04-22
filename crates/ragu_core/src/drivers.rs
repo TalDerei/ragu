@@ -116,14 +116,24 @@ pub trait DriverTypes {
     /// `enforce_zero` accepts a closure parameterized over it.
     type LCenforce: LinearExpression<Self::ImplWire, Self::ImplField>;
 
-    /// Allocates the wires $(A, B, C, D)$ with the constraints $A \cdot B = C$
-    /// and $C \cdot D = 0$. The second constraint makes $D$ useless in the
-    /// typical case: whenever $C$ is nonzero, $D$ is forced to zero. But when
-    /// $C$ is guaranteed to be zero, $D$ becomes unconstrained and available
-    /// for use.
+    /// An opaque token for the $D$ wire of a gate. Returned by
+    /// [`gate`](Self::gate) and consumed by
+    /// [`assign_extra`](Self::assign_extra).
+    ///
+    /// Drivers assign $D = 0$ at [`gate`](Self::gate) time. Passing the
+    /// token to [`assign_extra`](Self::assign_extra) overrides that default;
+    /// dropping it keeps $D = 0$.
+    type Extra;
+
+    /// Allocates the wires $(A, B, C)$ with the constraint $A \cdot B = C$
+    /// and returns an [`Extra`](Self::Extra) token for the auxiliary $D$ wire.
+    /// The gate also imposes the constraint $C \cdot D = 0$. The $D$ wire is
+    /// assigned to zero by default, which trivially satisfies this. When $C$
+    /// is guaranteed to be zero, $D$ becomes unconstrained and available for
+    /// use via [`assign_extra`](Self::assign_extra).
     ///
     /// Circuit code should prefer [`Driver::mul`], which delegates to this
-    /// method by default and discards $D$. Only code that needs an
+    /// method by default and discards the `Extra`. Only code that needs an
     /// unconstrained $D$ wire should call `gate` directly.
     ///
     /// The provided closure may be called by the driver if assignments are
@@ -146,14 +156,21 @@ pub trait DriverTypes {
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
-            Coeff<Self::ImplField>,
         )>,
-    ) -> Result<(
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-    )>;
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)>;
+
+    /// Overrides the default $D = 0$ assignment for a gate, consuming the
+    /// [`Extra`](Self::Extra) token returned by [`gate`](Self::gate) and
+    /// returning the $D$ wire.
+    ///
+    /// The provided closure follows the same purity contract as [`gate`](Self::gate):
+    /// it may be called zero or more times, should be side-effect-free, and
+    /// errors propagate to the caller.
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        value: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire>;
 }
 
 /// A context for executing cryptographic algorithms and synthesizing their
@@ -167,9 +184,9 @@ pub trait DriverTypes {
 ///
 /// ## Usage
 ///
-/// * Wires can be created with the [`alloc`](Driver::alloc) and
-///   [`mul`](Driver::mul) methods. The [`add`](Driver::add) method can also
-///   create a virtual wire that is defined as a linear combination of some
+/// * Wires can be created with the [`mul`](Driver::mul) method. The
+///   [`add`](Driver::add) method can create a virtual wire that is defined
+///   as a linear combination of some
 ///   existing wires. The [`constant`](Driver::constant) method is a helper for
 ///   creating a wire with a constant value.
 /// * Wires are assigned values upon their creation; the driver may or may not
@@ -222,29 +239,6 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// Drivers guarantee that a fixed wire is assigned the value $1$.
     const ONE: Self::Wire;
 
-    /// Asks the driver to allocate a new wire.
-    ///
-    /// The provided closure may be called by the driver if an assignment is
-    /// needed. If it is called, any errors are propagated from it, and the
-    /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
-    /// unconditionally.
-    ///
-    /// The default implementation calls [`mul`](Driver::mul), returns the $b$
-    /// wire, and sets $a$ and $c$ to zero to satisfy the gate
-    /// equation—wasting those two wires. Drivers may override this to avoid
-    /// the overhead, e.g. by pairing consecutive allocations into a single
-    /// gate.
-    ///
-    /// # Purity
-    ///
-    /// The `Fn` bound reflects the same purity intent as [`mul`](Driver::mul);
-    /// the default implementation wraps this closure in a call to `mul`, but
-    /// overriding implementations may not invoke it at all.
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        let (_, b, _) = self.mul(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
-        Ok(b)
-    }
-
     /// Returns a virtual wire that has a fixed constant value.
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {
         self.add(|lc| lc.add_term(&Self::ONE, value))
@@ -274,10 +268,7 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        let (a, b, c, _) = self.gate(|| {
-            let (a, b, c) = values()?;
-            Ok((a, b, c, Coeff::Zero))
-        })?;
+        let (a, b, c, _) = self.gate(values)?;
         Ok((a, b, c))
     }
 
