@@ -183,7 +183,7 @@ proptest! {
     fn polynomial_consistency(tree in arb_tree()) {
         let circuit = TreeCircuit(tree);
         // Skip trees that exceed TestRank's multiplication bound.
-        let circuit_obj = match crate::into_circuit_object::<_, _, TestRank>(circuit) {
+        let circuit_obj = match crate::into_wiring_object::<_, _, TestRank>(circuit) {
             Ok(obj) => obj,
             Err(_) => return Ok(()),
         };
