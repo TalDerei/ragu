@@ -18,11 +18,15 @@
 //! - [`CloneWires`], a [`WireMap`] that clones wires unchanged.
 //! - [`StripWires`], a [`WireMap`] that discards wire values for use with
 //!   wireless emulators.
+//! - [`WireExtractor`] and the [`extract_wires`] convenience wrapper, for
+//!   visiting a gadget's wires and collecting a caller-chosen
+//!   field-element projection of each into a `Vec`.
 //!
 //! See also the [book] for a user-oriented introduction to conversion.
 //!
 //! [book]: https://tachyon.z.cash/ragu/guide/gadgets/conversion.html
 
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use ff::Field;
@@ -144,6 +148,89 @@ impl<F: Field, D: DriverTypes<ImplField = F>> WireMap<F> for StripWires<D> {
     fn convert_wire(&mut self, _: &D::ImplWire) -> Result<()> {
         Ok(())
     }
+}
+
+/// A [`WireMap`] that visits every wire in a gadget and appends a
+/// caller-chosen field-element projection of each wire to an internal
+/// `Vec<Src::ImplField>`. The destination has no wires (`ImplWire = ()`),
+/// so mapping a gadget through this extractor produces a unit gadget
+/// while the `wires` buffer accumulates the projected values as a side
+/// effect.
+///
+/// Like [`StripWires`], the destination is a wireless emulator parameterized
+/// by the source driver's `MaybeKind`, which makes the extractor usable in
+/// any context where the source gadget is available.
+///
+/// The projection `Conv: Fn(&Src::ImplWire) -> Src::ImplField` lets the
+/// caller decide how to convert each source wire into the extracted field
+/// element. For drivers whose `ImplWire = ImplField` (e.g.
+/// `Emulator<Wired<F>>`), pass `|w| *w`. For drivers whose wire is an enum
+/// (e.g. `WireEval<F>` in the metrics `Counter`), the projection resolves
+/// variants like `One` to the appropriate field element.
+///
+/// `Src` appears in [`PhantomData`] on the struct, so at the `new()` call
+/// site Rust needs it in scope via a one-type turbofish
+/// (`WireExtractor::<D, _>::new(|w| …)`). For the common one-shot
+/// "walk a gadget and collect wires" pattern, prefer [`extract_wires`],
+/// which drives `Src` through gadget inference so no turbofish is required.
+///
+/// Retrieve the accumulated values via [`WireExtractor::into_wires`] after
+/// the map completes.
+pub struct WireExtractor<Src: DriverTypes, Conv> {
+    wires: Vec<Src::ImplField>,
+    conv: Conv,
+    _src: PhantomData<Src>,
+}
+
+impl<Src, Conv> WireExtractor<Src, Conv>
+where
+    Src: DriverTypes,
+    Conv: Fn(&Src::ImplWire) -> Src::ImplField,
+{
+    /// Constructs a new extractor with the given per-wire projection.
+    pub fn new(conv: Conv) -> Self {
+        Self {
+            wires: Vec::new(),
+            conv,
+            _src: PhantomData,
+        }
+    }
+
+    /// Consumes the extractor and returns the accumulated wire values in
+    /// gadget traversal order.
+    pub fn into_wires(self) -> Vec<Src::ImplField> {
+        self.wires
+    }
+}
+
+impl<Src, Conv> WireMap<Src::ImplField> for WireExtractor<Src, Conv>
+where
+    Src: DriverTypes,
+    Conv: Fn(&Src::ImplWire) -> Src::ImplField,
+{
+    type Src = Src;
+    type Dst = Emulator<Wireless<Src::MaybeKind, Src::ImplField>>;
+
+    fn convert_wire(&mut self, wire: &Src::ImplWire) -> Result<()> {
+        self.wires.push((self.conv)(wire));
+        Ok(())
+    }
+}
+
+/// Convenience wrapper over [`WireExtractor`] for the common one-shot
+/// "walk a gadget and collect projections of its wires" pattern.
+///
+/// The source driver `D` is inferred from the gadget's type binding, so call
+/// sites read as `extract_wires(gadget, |w| …)?` with no turbofish.
+pub fn extract_wires<'dr, D, G, Conv>(gadget: &G, conv: Conv) -> Result<Vec<D::F>>
+where
+    D: Driver<'dr>,
+    G: Gadget<'dr, D>,
+    Conv: Fn(&D::Wire) -> D::F,
+{
+    let mut collector = WireExtractor::<D, _>::new(conv);
+    gadget.map(&mut collector)?;
+    Ok(collector.into_wires())
 }
 
 #[cfg(test)]

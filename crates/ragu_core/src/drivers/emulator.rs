@@ -71,7 +71,7 @@ use crate::{
     Result,
     convert::{StripWires, WireMap},
     drivers::{Coeff, DirectSum, Driver, DriverTypes, DriverValue, LinearExpression},
-    gadgets::{Bound, Gadget, GadgetKind},
+    gadgets::{Bound, Gadget},
     maybe::{Always, Empty, MaybeKind, Perhaps},
     routines::{Prediction, Routine},
 };
@@ -182,24 +182,8 @@ impl<F: Field> Emulator<Wired<F>> {
     /// Extract the wires from a gadget produced using a wired [`Emulator`].
     /// This method returns the actual wire assignments if successful.
     pub fn wires<'dr, G: Gadget<'dr, Self>>(&self, gadget: &G) -> Result<Vec<F>> {
-        /// A conversion utility for extracting wire values.
-        struct WireExtractor<F: Field> {
-            wires: Vec<F>,
-        }
-
-        impl<F: Field> WireMap<F> for WireExtractor<F> {
-            type Src = Emulator<Wired<F>>;
-            type Dst = PhantomData<F>;
-
-            fn convert_wire(&mut self, wire: &F) -> Result<()> {
-                self.wires.push(*wire);
-                Ok(())
-            }
-        }
-
-        let mut collector = WireExtractor { wires: Vec::new() };
-        <G::Kind as GadgetKind<F>>::map_gadget(gadget, &mut collector)?;
-        Ok(collector.wires)
+        // `Wired<F>::Wire = F`, so the projection is just a copy.
+        crate::convert::extract_wires(gadget, |w: &F| *w)
     }
 
     /// Creates a new [`Emulator`] driver in [`Wired`] mode for executing with
