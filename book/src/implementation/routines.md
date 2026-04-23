@@ -17,14 +17,17 @@ To avoid complicated call-stack management, drivers keep only _routine-local_
 state. When circuit code calls [`Driver::routine`], the driver saves its
 scoped state (e.g., running wire monomial evaluations for `sx::Evaluator`,
 constraint counters for `metrics::Counter`), and initializes a fresh scope
-for the child routine. On return, the parent scope is restored and the child's
-contribution is folded into the parent's accumulated result. The `DriverScope`
-trait provides a `with_scope` helper that automates this save-and-restore; some
-drivers use manual `mem::replace` instead when they need to inspect the child
-scope before restoring the parent.
+for the child routine. The parent and child scopes are isolated from each
+other: a child scope runs against _no_ inherited parent state, so its
+execution depends only on its body and inputs. On return, the parent scope
+is restored unchanged, and the child's contribution is folded into
+driver-level output rather than the parent's scope. The `DriverScope` trait
+provides a `with_scope` helper that automates this save-and-restore; some
+drivers use manual `mem::replace` instead when they need to inspect the
+child scope before restoring the parent.
 
 Because driver behavior does not depend on invocation depth, we call them
-_context insensitive_.
+_depth insensitive_.
 
 ## Algebraic Description {#algebraic-description}
 
@@ -64,19 +67,20 @@ starting position ($X^i Y^j$ and $X^{-i} Y^j$) of that particular invocation.
     combinations of $X$ monomials — therefore shares a common factor $X^i Y^j$
     (or $X^{-i}Y^j$). Extracting these factors yields $g_1$ and $g_2$.
 
-The overall contribution of a routine invocation to $s(X, Y)$ is the sum of this
-internal contribution, an **interface contribution** from constraints that
-reference wires created outside the routine (e.g., input gadget wires), and a
-**system contribution** from constraints that reference system wires (i.e.,
-`ONE`) at fixed locations.
+A routine invocation's overall contribution to $s(X, Y)$ decomposes into
+three buckets: the internal contribution above, an **interface
+contribution** from constraints that reference wires created outside the
+routine (e.g., input gadget wires), and a **system contribution** from
+constraints that reference system wires (i.e., `ONE`) at fixed locations.
+We examine the remaining two next.
 
-The interface contribution cannot be factored or memoized the same way:
-the input gadget is allocated by the caller at an unknown position, both
-absolute and relative to the start of the routine, so there are no a priori
-$X^i$ factors to extract. Interface contributions must be computed
-per-invocation.
+Unlike the internal contribution, the interface contribution cannot be
+factored or memoized the same way: the external wires it references are
+allocated by the caller at positions unknown to the routine, both absolute
+and relative to its start, so there are no a priori $X^i$ factors to
+extract. Interface contributions must be computed per-invocation.
 
-A complication arises from nested routines. The context-insensitive design
+A complication arises from nested routines. The depth-insensitive design
 requires that output gadgets of child routines are also treated as interface
 contributions of the parent routine.
 It is always safe to classify them this way and recompute on every invocation
@@ -86,7 +90,8 @@ output gadgets can be remapped to matching positions in the parent's context,
 allowing further constraints on them to be memoized as internal contributions.
 We elaborate on this [below](#memoization).
 
-System contributions are memoizable by similar reasoning:
+The system contribution is memoizable by similar reasoning to the internal
+contribution:
 
 $$
 \sum_{\ell \in T} Y^\ell X^{2n} = X^{2n}Y^j \cdot g_3(Y)
@@ -136,7 +141,8 @@ routine invocations. In particular, circuit sections at the same invocation
 depth are merged into a single segment; wires allocated outside of any routine
 belong to a special **root segment**.[^root-segment] Each routine invocation
 creates a new **base segment** containing only the wires allocated directly
-within it; nested calls produce their own segments in turn. The DFS-ordered
+within its own body, excluding anything its nested sub-routines allocate;
+nested calls produce their own segments in turn. The DFS-ordered
 segments are built as [`SegmentRecord`]s during the [metric pass](#pipeline).
 Because circuit synthesis is deterministic, the ordered sequence is stable
 across all drivers of the same circuit code.
@@ -174,11 +180,26 @@ their **invocations**. Fingerprinting is the process by which a routine
 invocation is succinctly encapsulated so that _matching fingerprints imply
 opportunities for routine memoization_. An invocation can carry multiple
 fingerprints, each indicating a different memoization strategy or level of
-aggressiveness. Ragu produces two: a **base fingerprint** that captures
-_segment-level equivalence_ and enables memoization of only the base segment,
-and a **deep fingerprint** that captures _tree-level equivalence_ and enables
-memoization of the entire routine, recursively including all nested
-sub-routines.
+aggressiveness. Ragu produces two:
+
+- A **base fingerprint** that captures _segment-level distinction_: whether
+  two individual segments impose the same local constraints and could be
+  aligned in the polynomial layout regardless of their subtrees — for
+  example, padding one circuit's segment against another circuit's offset.
+  Matching base fingerprints signal that the base segment is worth aligning,
+  but do not imply that the nested subtrees match.
+
+- A **deep fingerprint** that captures _subtree-level equivalence_: whether
+  entire routine invocations are interchangeable and can be substituted via
+  memoization. This is strictly stronger — a segment can be base-equivalent
+  (same local constraints, worth aligning) but deep-inequivalent (different
+  children, so the cached subtree cannot be reused).
+
+Keeping these as distinct types preserves the semantic separation: the floor
+planner keys on the base fingerprint for alignment decisions; the memo cache
+keys on the deep fingerprint for substitution safety. Consolidating both
+levels into a single identity type loses this distinction and forces the
+floor planner to treat segments as different when only their subtrees differ.
 
 ### Base fingerprint {#base-fingerprint}
 
