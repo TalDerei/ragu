@@ -4,15 +4,13 @@
 //! one, with logical operations implemented as circuit constraints.
 
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
-    convert::WireMap,
     drivers::{Driver, DriverValue, LinearExpression},
-    gadgets::{Bound, Gadget, GadgetKind, Kind},
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
 
@@ -26,95 +24,55 @@ use crate::{
     util::InternalMaybe,
 };
 
+/// Packs boolean equalities into `ceil(N / F::CAPACITY)` constraints using a
+/// fixed linear combination with powers of two, instead of one constraint per
+/// element.
+///
+/// This is the override wired up via `#[ragu(enforce_equal_slice_with)]` on
+/// [`Boolean`].
+fn packed_boolean_equality<'dr, F, D1, D2>(
+    dr: &mut D1,
+    a: &[Boolean<'dr, D2>],
+    b: &[Boolean<'dr, D2>],
+) -> Result<()>
+where
+    F: PrimeField,
+    D1: Driver<'dr, F = F>,
+    D2: Driver<'dr, F = F, Wire = D1::Wire>,
+{
+    assert_eq!(a.len(), b.len());
+    let capacity = F::CAPACITY as usize;
+    for (a_chunk, b_chunk) in a.chunks(capacity).zip(b.chunks(capacity)) {
+        dr.enforce_zero(|mut lc| {
+            for (a_bit, b_bit) in a_chunk.iter().zip(b_chunk.iter()) {
+                lc = lc.add(&a_bit.wire).sub(&b_bit.wire);
+                lc = lc.gain(Coeff::Two);
+            }
+            lc
+        })?;
+    }
+    Ok(())
+}
+
 /// Represents a wire that is constrained to be zero or one, along with its
 /// corresponding [`bool`] value.
+#[derive(Gadget)]
+#[ragu(enforce_equal_slice_with = packed_boolean_equality)]
+#[ragu(impl_where = "D::F: PrimeField")]
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
+    #[ragu(wire)]
     wire: D::Wire,
 
     /// The witness value of this boolean.
+    #[ragu(value)]
     value: DriverValue<D, bool>,
 }
 
-impl<'dr, D: Driver<'dr>> Clone for Boolean<'dr, D> {
-    fn clone(&self) -> Self {
-        Boolean {
-            wire: self.wire.clone(),
-            value: D::just(|| *self.value.as_ref().take()),
-        }
-    }
-}
-
-impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for Boolean<'dr, D>
+impl<'dr, D: Driver<'dr>> Boolean<'dr, D>
 where
     D::F: PrimeField,
 {
-    type Kind = Boolean<'static, PhantomData<D::F>>;
-}
-
-/// Safety: `Boolean` contains a single `D::Wire` and a `DriverValue<D, bool>`.
-/// `DriverValue` is unconditionally `Send`, and `D::Wire: Send` implies
-/// `Boolean<'dr, D>: Send`.
-unsafe impl<F: PrimeField> GadgetKind<F> for Boolean<'static, PhantomData<F>> {
-    type Rebind<'dr, D: Driver<'dr, F = F>> = Boolean<'dr, D>;
-
-    fn map_gadget<
-        'src,
-        'dst,
-        WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
-    >(
-        this: &Bound<'src, WM::Src, Self>,
-        wm: &mut WM,
-    ) -> Result<Bound<'dst, WM::Dst, Self>> {
-        Ok(Boolean {
-            wire: wm.convert_wire(&this.wire)?,
-            value: {
-                use ragu_core::maybe::Maybe;
-                <DriverValue<WM::Dst, bool> as Maybe<bool>>::just(|| *this.value.as_ref().take())
-            },
-        })
-    }
-
-    fn enforce_equal_gadget<
-        'dr,
-        D1: Driver<'dr, F = F>,
-        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
-    >(
-        dr: &mut D1,
-        a: &Bound<'dr, D2, Self>,
-        b: &Bound<'dr, D2, Self>,
-    ) -> Result<()> {
-        dr.enforce_equal(&a.wire, &b.wire)
-    }
-
-    /// Packs boolean equalities into `ceil(N / F::CAPACITY)` constraints using
-    /// a fixed linear combination with powers of two, instead of one constraint
-    /// per element.
-    fn enforce_equal_gadget_slice<
-        'dr,
-        D1: Driver<'dr, F = F>,
-        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
-    >(
-        dr: &mut D1,
-        a: &[Bound<'dr, D2, Self>],
-        b: &[Bound<'dr, D2, Self>],
-    ) -> Result<()> {
-        assert_eq!(a.len(), b.len());
-        let capacity = F::CAPACITY as usize;
-        for (a_chunk, b_chunk) in a.chunks(capacity).zip(b.chunks(capacity)) {
-            dr.enforce_zero(|mut lc| {
-                for (a_bit, b_bit) in a_chunk.iter().zip(b_chunk.iter()) {
-                    lc = lc.add(&a_bit.wire).sub(&b_bit.wire);
-                    lc = lc.gain(Coeff::Two);
-                }
-                lc
-            })?;
-        }
-        Ok(())
-    }
-}
-
-impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Allocates a boolean with the provided witness value.
     ///
     /// This costs one gate and two constraints.

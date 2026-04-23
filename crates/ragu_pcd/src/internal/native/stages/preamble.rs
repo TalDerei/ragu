@@ -5,6 +5,7 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
+use ff::PrimeField;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{horner::Horner, polynomials::Rank, staging};
 use ragu_core::{
@@ -230,6 +231,8 @@ pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEAD
 
 impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEADER_SIZE: usize>
     Output<'dr, D, C, HEADER_SIZE>
+where
+    D::F: PrimeField,
 {
     /// Returns true if both child proofs are trivial proofs.
     pub fn is_base_case(&self, dr: &mut D) -> Result<Boolean<'dr, D>> {
