@@ -13,68 +13,79 @@ use crate::{
     },
 };
 
-/// Finds `#[ragu(name = path)]` among the given attributes and returns the path.
+/// Container-level `#[ragu(...)]` attributes parsed off the `derive` input.
 ///
-/// Returns `Ok(None)` if the attribute is not present. Returns an error if the
-/// attribute is malformed or specified more than once.
-fn extract_ragu_path(attrs: &[Attribute], name: &str) -> Result<Option<syn::Path>> {
-    let mut found: Option<syn::Path> = None;
-    for attr in attrs {
-        if !attr.path().is_ident("ragu") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident(name) {
-                let value = meta.value()?;
-                let path: syn::Path = value.parse()?;
-                if found.is_some() {
-                    return Err(meta.error(format!("duplicate `{name}` attribute")));
-                }
-                found = Some(path);
-            } else if meta.input.peek(syn::Token![=]) {
-                // Consume the value of an unrelated name-value entry so
-                // `parse_nested_meta` can advance past it.
-                let _value = meta.value()?;
-                let _: syn::Expr = _value.parse()?;
-            }
-            Ok(())
-        })?;
-    }
-    Ok(found)
+/// All recognized keys are handled in [`ContainerAttrs::from_attrs`]; unknown
+/// keys produce a compile error at their span (inspired by serde_derive's
+/// `Container::from_ast`).
+#[derive(Default)]
+struct ContainerAttrs {
+    /// `#[ragu(enforce_equal_slice_with = path::to::fn)]` — names a function
+    /// the generated `GadgetKind::enforce_equal_gadget_slice` delegates to.
+    enforce_equal_slice_with: Option<syn::Path>,
+    /// `#[ragu(impl_where = "...")]` — extra where-predicates applied to the
+    /// derived impls only (not the struct).
+    impl_where: Option<syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>,
 }
 
-/// Finds `#[ragu(name = "...")]` among the given attributes and parses the
-/// string as a comma-separated list of where predicates.
-///
-/// Returns `Ok(None)` if the attribute is not present. Returns an error if the
-/// attribute is malformed or specified more than once.
-fn extract_ragu_where_predicates(
-    attrs: &[Attribute],
-    name: &str,
-) -> Result<Option<syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>> {
-    let mut found = None;
-    for attr in attrs {
-        if !attr.path().is_ident("ragu") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident(name) {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                let clause: syn::WhereClause = syn::parse_str(&format!("where {}", lit.value()))
-                    .map_err(|e| meta.error(format!("invalid where predicates: {e}")))?;
-                if found.is_some() {
-                    return Err(meta.error(format!("duplicate `{name}` attribute")));
-                }
-                found = Some(clause.predicates);
-            } else if meta.input.peek(syn::Token![=]) {
-                let _value = meta.value()?;
-                let _: syn::Expr = _value.parse()?;
+impl ContainerAttrs {
+    fn from_attrs(attrs: &[Attribute]) -> Result<Self> {
+        let mut out = Self::default();
+        for attr in attrs {
+            if !attr.path().is_ident("ragu") {
+                continue;
             }
-            Ok(())
-        })?;
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("enforce_equal_slice_with") {
+                    if out.enforce_equal_slice_with.is_some() {
+                        return Err(meta.error("duplicate `enforce_equal_slice_with`"));
+                    }
+                    out.enforce_equal_slice_with = Some(meta.value()?.parse()?);
+                } else if meta.path.is_ident("impl_where") {
+                    if out.impl_where.is_some() {
+                        return Err(meta.error("duplicate `impl_where`"));
+                    }
+                    let lit: syn::LitStr = meta.value()?.parse()?;
+                    let clause: syn::WhereClause =
+                        syn::parse_str(&format!("where {}", lit.value()))
+                            .map_err(|e| meta.error(format!("invalid where predicates: {e}")))?;
+                    out.impl_where = Some(clause.predicates);
+                } else {
+                    let name = meta
+                        .path
+                        .get_ident()
+                        .map(|i| i.to_string())
+                        .unwrap_or_else(|| "<non-ident>".to_string());
+                    return Err(meta.error(format!("unknown ragu attribute `{name}`")));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(out)
     }
-    Ok(found)
+}
+
+/// Merges the struct's `where` clause with any `#[ragu(impl_where)]` predicates,
+/// runs `transform` over each predicate, and emits the rendered clause
+/// (or empty tokens if there are no predicates).
+fn build_where_clause(
+    base: Option<&syn::WhereClause>,
+    extra: Option<&syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>,
+    mut transform: impl FnMut(&mut syn::WherePredicate),
+) -> TokenStream {
+    let mut predicates: syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]> =
+        base.map(|wc| wc.predicates.clone()).unwrap_or_default();
+    if let Some(extra) = extra {
+        predicates.extend(extra.iter().cloned());
+    }
+    for predicate in predicates.iter_mut() {
+        transform(predicate);
+    }
+    if predicates.is_empty() {
+        quote! {}
+    } else {
+        quote! { where #predicates }
+    }
 }
 
 impl GenericDriver {
@@ -131,8 +142,10 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         ..
     } = &input;
 
-    let enforce_equal_slice_override = extract_ragu_path(attrs, "enforce_equal_slice_with")?;
-    let impl_where_predicates = extract_ragu_where_predicates(attrs, "impl_where")?;
+    let ContainerAttrs {
+        enforce_equal_slice_with: enforce_equal_slice_override,
+        impl_where: impl_where_predicates,
+    } = ContainerAttrs::from_attrs(attrs)?;
 
     let driver = &GenericDriver::extract(generics)?;
     let driverfield_ident = format_ident!("DriverField");
@@ -234,26 +247,11 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         quote! { #id: #init }
     });
 
-    // Build a where clause that merges the struct's own where clause with any
-    // `#[ragu(impl_where = "...")]` predicates supplied by the user. These
-    // extra bounds are applied only to the derived impls — not to the struct
-    // definition — so they don't virally propagate to use sites.
-    let impl_where_clause = {
-        let mut predicates: syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]> =
-            where_clause
-                .map(|wc| wc.predicates.clone())
-                .unwrap_or_default();
-        if let Some(extra) = &impl_where_predicates {
-            for p in extra {
-                predicates.push(p.clone());
-            }
-        }
-        if predicates.is_empty() {
-            quote! {}
-        } else {
-            quote! { where #predicates }
-        }
-    };
+    // `#[ragu(impl_where = "...")]` predicates are applied only to the derived
+    // impls — not to the struct definition — so they don't virally propagate
+    // to use sites.
+    let impl_where_clause =
+        build_where_clause(where_clause, impl_where_predicates.as_ref(), |_| {});
 
     let clone_impl = quote! {
         #[automatically_derived]
@@ -375,28 +373,12 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         quote! { #id: #init }
     });
 
-    // Transform the where clause for the GadgetKind impl by replacing D::F
-    // with DriverField. Merges the struct's where clause with any
-    // `#[ragu(impl_where)]` predicates.
-    let kind_where_clause = {
-        let mut predicates: syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]> =
-            where_clause
-                .map(|wc| wc.predicates.clone())
-                .unwrap_or_default();
-        if let Some(extra) = &impl_where_predicates {
-            for p in extra {
-                predicates.push(p.clone());
-            }
-        }
-        for predicate in predicates.iter_mut() {
+    // The GadgetKind impl is parameterized over `DriverField` rather than the
+    // user's driver type, so rewrite any `D::F` occurrences in the predicates.
+    let kind_where_clause =
+        build_where_clause(where_clause, impl_where_predicates.as_ref(), |predicate| {
             replace_driver_field_in_where_predicate(predicate, &driver.ident, &driverfield_ident);
-        }
-        if predicates.is_empty() {
-            quote! {}
-        } else {
-            quote! { where #predicates }
-        }
-    };
+        });
 
     let gadgetkind_impl = {
         let driver_ident = &driver.ident;
@@ -832,5 +814,46 @@ fn test_enforce_equal_slice_without_override() {
     assert!(
         !result_str.contains("fn enforce_equal_gadget_slice"),
         "should not emit slice override without attribute",
+    );
+}
+
+#[test]
+fn test_fail_unknown_ragu_attribute() {
+    let input: DeriveInput = parse_quote! {
+        #[derive(Gadget)]
+        #[ragu(something_we_do_not_recognize = my_fn)]
+        struct Boolean<'dr, #[ragu(driver)] D: ragu_core::Driver<'dr>> {
+            #[ragu(wire)]
+            wire: D::W,
+            #[ragu(value)]
+            value: DriverValue<D, bool>,
+        }
+    };
+
+    let err = derive(input, RaguCorePath::default())
+        .expect_err("unknown container attribute should be rejected");
+    assert!(
+        err.to_string().contains("unknown ragu attribute"),
+        "error should mention unknown ragu attribute, got: {err}",
+    );
+}
+
+#[test]
+fn test_fail_duplicate_impl_where() {
+    let input: DeriveInput = parse_quote! {
+        #[derive(Gadget)]
+        #[ragu(impl_where = "D::F: PrimeField")]
+        #[ragu(impl_where = "D::F: ff::Field")]
+        struct Boolean<'dr, #[ragu(driver)] D: ragu_core::Driver<'dr>> {
+            #[ragu(wire)]
+            wire: D::W,
+            #[ragu(value)]
+            value: DriverValue<D, bool>,
+        }
+    };
+
+    assert!(
+        derive(input, RaguCorePath::default()).is_err(),
+        "duplicate `impl_where` should be rejected",
     );
 }
