@@ -7,10 +7,10 @@
 //!
 //! # Design
 //!
-//! This module uses the same running monomial pattern as [`sx`] (see the
-//! [`common`] module), but differs in how it accumulates results. Where [`sx`]
-//! stores each coefficient $c\_j$ in a vector, this module uses Horner's rule
-//! to accumulate directly into a single field element.
+//! This module uses the same running monomial pattern as [`sx`], but differs
+//! in how it accumulates results. Where [`sx`] stores each coefficient
+//! $c\_j$ in a vector, this module uses Horner's rule to accumulate directly
+//! into a single field element.
 //!
 //! ### Horner's Rule Evaluation
 //!
@@ -44,7 +44,6 @@
 //! [issue #58](https://github.com/tachyon-zcash/ragu/issues/58) for the planned
 //! multi-dimensional memoization strategy.
 //!
-//! [`common`]: super::common
 //! [`sx`]: super::sx
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 
@@ -52,13 +51,12 @@ use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
-    drivers::{Driver, DriverTypes, emulator::Emulator},
+    drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::Bound,
     maybe::Empty,
     routines::Routine,
 };
 
-use super::common::{WireEval, WireEvalSum};
 use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
 
 /// Per-routine state saved and restored across routine boundaries.
@@ -88,13 +86,10 @@ struct SxyScope<F> {
 ///
 /// Given fixed evaluation points $x, y \in \mathbb{F}$, this driver interprets
 /// circuit synthesis operations to produce $s(x, y)$ as a single field element
-/// using Horner's rule (see [module documentation][`self`]).
+/// using Horner's rule (see [module documentation][`self`]). Each call to
+/// [`Driver::enforce_zero`] applies one Horner step:
+/// `result = result * y + coefficient`.
 ///
-/// Wires are represented using the running monomial pattern described in the
-/// [`common`] module. Each call to [`Driver::enforce_zero`] applies one Horner
-/// step: `result = result * y + coefficient`.
-///
-/// [`common`]: super::common
 /// [`Driver`]: ragu_core::drivers::Driver
 /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 struct Evaluator<'fp, F, R> {
@@ -109,12 +104,6 @@ struct Evaluator<'fp, F, R> {
 
     /// The evaluation point $y$, used for Horner accumulation.
     y: F,
-
-    /// Evaluation of the `ONE` wire: $1$ (monomial $x^0$).
-    ///
-    /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
-    /// resolved during linear combination accumulation.
-    one: F,
 
     /// Base monomial $x^{2n}$, used to compute routine starting monomials.
     base_a_x: F,
@@ -153,22 +142,22 @@ impl<F: Field, R: Rank> DriverScope<SxyScope<F>> for Evaluator<'_, F, R> {
 ///
 /// - `MaybeKind = Empty`: No witness values are needed; evaluation uses only
 ///   the polynomial structure.
-/// - `LCadd` / `LCenforce`: Use [`WireEvalSum`] to accumulate linear
-///   combinations as immediate field element sums.
-/// - `ImplWire`: [`WireEval`] represents wires as evaluated monomials.
+/// - `LCadd` / `LCenforce`: Use [`DirectSum`] to accumulate linear combinations
+///   as immediate field element sums.
+/// - `ImplWire`: Wires are represented directly as evaluated monomials in $F$.
 impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     type MaybeKind = Empty;
-    type LCadd = WireEvalSum<F>;
-    type LCenforce = WireEvalSum<F>;
+    type LCadd = DirectSum<F>;
+    type LCenforce = DirectSum<F>;
     type ImplField = F;
-    type ImplWire = WireEval<F>;
+    type ImplWire = F;
     type Extra = F;
 
     /// Consumes a gate, returning evaluated monomials for $(a, b, c)$ and the
     /// raw $a$-wire monomial as [`Extra`](DriverTypes::Extra).
     ///
-    /// Returns the current values of the running monomials as [`WireEval::Value`]
-    /// wires, then advances the monomials for the next gate:
+    /// Returns the current values of the running monomials, then advances the
+    /// monomials for the next gate:
     /// - $a$: multiplied by $x$ (increasing exponent)
     /// - $b$: multiplied by $x^{-1}$ (decreasing exponent)
     /// - $c$: multiplied by $x^{-1}$ (decreasing exponent)
@@ -183,7 +172,7 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, F)> {
+    ) -> Result<(F, F, F, F)> {
         let index = self.scope.gates;
         if index == R::n() {
             return Err(Error::GateBoundExceeded { limit: R::n() });
@@ -198,37 +187,28 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
         self.scope.current_b_x *= self.x_inv;
         self.scope.current_c_x *= self.x_inv;
 
-        Ok((
-            WireEval::Value(a),
-            WireEval::Value(b),
-            WireEval::Value(c),
-            a,
-        ))
+        Ok((a, b, c, a))
     }
 
     /// Converts the raw $a$-wire monomial carried by [`Extra`](DriverTypes::Extra)
     /// into the corresponding $d$-wire monomial by multiplying by `a_to_d`.
-    fn assign_extra(
-        &mut self,
-        a: Self::Extra,
-        _: impl Fn() -> Result<Coeff<F>>,
-    ) -> Result<WireEval<F>> {
-        Ok(WireEval::Value(a * self.a_to_d))
+    fn assign_extra(&mut self, a: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<F> {
+        Ok(a * self.a_to_d)
     }
 }
 
 impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     type F = F;
-    type Wire = WireEval<F>;
+    type Wire = F;
 
-    const ONE: Self::Wire = WireEval::One;
+    const ONE: Self::Wire = F::ONE;
 
     /// Computes a linear combination of wire evaluations.
     ///
-    /// Evaluates the linear combination immediately using [`WireEvalSum`] and
-    /// returns the sum as a [`WireEval::Value`].
+    /// Evaluates the linear combination immediately using [`DirectSum`] and
+    /// returns the sum as a field element.
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
-        WireEval::Value(lc(WireEvalSum::new(self.one)).value)
+        lc(DirectSum::default()).value()
     }
 
     /// Applies one Horner step: `result = result * y + coefficient`.
@@ -252,7 +232,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         self.scope.constraints += 1;
 
         self.scope.result *= self.y;
-        self.scope.result += lc(WireEvalSum::new(self.one)).value;
+        self.scope.result += lc(DirectSum::default()).value();
 
         Ok(())
     }
@@ -326,11 +306,9 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     y: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<F> {
-    let one = F::ONE;
-
     // At x = 0 every monomial other than x^0 vanishes; the d[0] ONE wire
     // (at x^0) still contributes. Set x_inv = 0 so the running monomials
-    // stay zero through synthesis and the ONE sentinel resolves normally.
+    // stay zero through synthesis and the ONE wire still resolves to F::ONE.
     let x_inv = if x == F::ZERO {
         F::ZERO
     } else {
@@ -348,7 +326,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
         // wire coefficient.
-        return Ok(one);
+        return Ok(F::ONE);
     }
 
     let mut evaluator = Evaluator::<F, R> {
@@ -364,7 +342,6 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
         x,
         x_inv,
         y,
-        one,
         base_a_x,
         base_b_x,
         base_c_x,

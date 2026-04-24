@@ -54,7 +54,6 @@
 //! view provides direct access to the $a$, $b$, $c$, and $d$ coefficient regions.
 //! See [`sparse::View`] for details.
 //!
-//! [`common`]: super::common
 //! [`sx`]: super::sx
 //! [`sxy`]: super::sxy
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
@@ -398,15 +397,15 @@ struct Evaluator<'table, 'sy, 'fp, F: Field, R: Rank> {
 ///
 /// # Contrast with [`sxy`]
 ///
-/// In [`sx`] and [`sxy`], [`WireEvalSum`] immediately evaluates linear
-/// combinations to field elements. Here, `TermCollector` builds a symbolic
-/// term list for later resolution, since coefficients of $s(X, y)$ cannot be
-/// computed until all constraints are known.
+/// In [`sx`] and [`sxy`], a [`DirectSum`] accumulator immediately evaluates
+/// linear combinations to field elements. Here, `TermCollector` builds a
+/// symbolic term list for later resolution, since coefficients of $s(X, y)$
+/// cannot be computed until all constraints are known.
 ///
 /// [`Driver::add`]: ragu_core::drivers::Driver::add
 /// [`sx`]: super::sx
 /// [`sxy`]: super::sxy
-/// [`WireEvalSum`]: super::common::WireEvalSum
+/// [`DirectSum`]: ragu_core::drivers::DirectSum
 struct TermCollector<F: Field> {
     /// Accumulated terms: pairs of (wire index, coefficient).
     terms: Vec<(WireIndex, Coeff<F>)>,

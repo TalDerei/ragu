@@ -89,7 +89,6 @@
 //! [`floor_plan`]: crate::floor_planner::floor_plan
 //! [wiring polynomials]: http://TODO
 
-pub(crate) mod common;
 pub mod sx;
 pub mod sxy;
 pub mod sy;

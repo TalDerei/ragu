@@ -1732,7 +1732,7 @@ fn test_vanishing_leading_trivial_via_eval() {
 /// DelegatePadEnforceOutput enforces the remapped child output wire;
 /// DelegateAllocEnforceFirst enforces a subsequent local alloc.  The
 /// output wire carries a value from the parent's `x_remap` sequence,
-/// while the local alloc carries a value from the `x1` (a-wire)
+/// while the local alloc carries a value from the `x0` (a-wire)
 /// sequence — these are independent BLAKE2b bases, so the Horner
 /// scalars differ.
 #[test]
