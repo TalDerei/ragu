@@ -1,18 +1,17 @@
-# Overview
+# Arithmetization
 
 Ragu's arithmetic circuits over $\F$ consist of $n$ **gates** on four wires
 $\v{a}_i, \v{b}_i, \v{c}_i, \v{d}_i \in \F$, with each gate enforcing both
-$\v{a}_i \v{b}_i = \v{c}_i$ and $\v{c}_i \v{d}_i = 0$.[^whydwires]
-In addition, there are $4n$ **constraints**, each requiring a fixed linear form
-on all the wires to equal an **instance** value (either zero, or a **public
+$\v{a}_i \v{b}_i = \v{c}_i$ and $\v{c}_i \v{d}_i = 0$.[^whydwires] In addition,
+there are $4n$ **constraints**, each requiring a fixed linear form on all the
+wires to equal an **instance** value (either zero, or a **public
 input**).[^why4n] A valid **witness** determines an assignment of field values
-to every wire that satisfies all constraints; this assignment is also called the
-**trace** of execution.
+to every wire that satisfies all gates and constraints; this assignment is also
+called the **trace** of execution.
 
-The protocol allows a prover to convince a verifier that the prover knows a
-satisfying trace given a some instance.[^soundness-scope] The trace $\v{a},
-\v{b}, \v{c}, \v{d} \in \F^n$ is encoded as a **trace polynomial** $r(X)$,
-represented in the $4n$-dimensional space of **structured polynomials**.
+For a given instance, the trace $\v{a}, \v{b}, \v{c}, \v{d} \in \F^n$ is encoded
+as a **trace polynomial** $r(X)$, represented in the $4n$-dimensional space of
+**structured polynomials**.
 
 ```admonish info title="Structured polynomials"
 A structured polynomial $p(X)$, of degree $< 4n$, is specified by four vectors
@@ -21,14 +20,14 @@ $\v{a}, \v{b}, \v{c}, \v{d} \in \F^n$:
 $$
 p(X) = \sum_{i=0}^{n-1} \left(
   \v{c}_i\, X^{i} +
-  \v{b}_i\, X^{2n-1-i} +
-  \v{a}_i\, X^{2n+i} +
+  \v{a}_i\, X^{2n-1-i} +
+  \v{b}_i\, X^{2n+i} +
   \v{d}_i\, X^{4n-1-i}
 \right)
 $$
 
 Reading the $4n$ coefficients from lowest to highest degree, the coefficient
-vector is the concatenation $\v{c} \| \rv{b} \| \v{a} \| \rv{d}$, where
+vector is the concatenation $\v{c} \| \rv{a} \| \v{b} \| \rv{d}$, where
 $\rv{x}$ denotes the reversal of $\v{x} \in \F^n$. Reversing the full
 coefficient vector yields another structured polynomial with
 $\v{a} \leftrightarrow \v{b}$ and $\v{c} \leftrightarrow \v{d}$ swapped —
@@ -48,9 +47,9 @@ pairs.
 ```
 
 The trace polynomial $r(X)$ is a structured polynomial whose coefficient vector
-is of this precise form, i.e. $\v{r} = \v{c} \| \rv{b} \| \v{a} \| \rv{d}$. When
-we revdot between the trace $r(X)$ and its dilation $r(zX)$
-for a verifier challenge $z \in \F$, it expands into two weighted sums:
+is of this precise form, i.e. $\v{r} = \v{c} \| \rv{a} \| \v{b} \| \rv{d}$. When
+we revdot between the trace $r(X)$ and its dilation $r(zX)$ for $z \in \F$, it
+expands into two weighted sums:
 
 $$
 \revdot{\v{r}}{\v{r} \circ \v{z^{4n}}}
@@ -65,7 +64,7 @@ $$
 $$
 
 is equivalent to the gate equations, where the correction vector $\v{t}$
-is determined by $z$ such that
+is uniquely determined by $z$ such that
 $\revdot{\v{r}}{\v{t}} = -\sum_i \v{c}_i(z^{2n-1-i} + z^{2n+i})$
 for all $\v{r}$.[^t-def] Expanding gives
 
@@ -76,18 +75,18 @@ $$
 
 Viewed as a polynomial in $z$, the left-hand side has two sums over disjoint
 monomial ranges. Vanishing of this polynomial forces each monomial coefficient
-to zero: the first sum requires $\v{a} \circ \v{b} = \v{c}$, the second
-requires $\v{c} \circ \v{d} = \v{0^n}$. By Schwartz–Zippel, vanishing at a
-single random $z$ implies the polynomial vanishes identically (and hence the
-gate equations hold) with overwhelming probability.[^sz-gate]
+to zero: the first sum requires $\v{a} \circ \v{b} = \v{c}$, the second requires
+$\v{c} \circ \v{d} = \v{0^n}$. By Schwartz–Zippel, if this polynomial is nonzero
+then for uniformly random $z \in \F$ the probability that it vanishes is at most
+$(4n-1)/|\F|$.[^sz-gate]
 
 The constraints can be similarly collapsed into a single revdot check. Given an
 instance vector $\v{k} \in \F^{4n}$, the $j$-th constraint can be written
 $\revdot{\v{r}}{\v{u_j}} = \v{k}_j$, where $\v{u_j} \in \F^{4n}$ encodes the
 $j$-th constraint's wire weights at the revdot complements of the trace
-monomials. Given a verifier challenge $y \in \F$, we can stack all $4n$
-constraints into a structured vector $\v{s} = \sum_{j=0}^{4n-1} y^j \v{u_j}$.
-For a valid trace, linearity of revdot gives:
+monomials. Given $y \in \F$, we can stack all $4n$ constraints into a structured
+vector $\v{s} = \sum_{j=0}^{4n-1} y^j \v{u_j}$. For a valid trace, linearity of
+revdot gives:
 
 $$
 \revdot{\v{r}}{\v{s}}
@@ -97,33 +96,27 @@ $$
 $$
 
 If any constraint is violated, the two sides differ as polynomials in $y$ of
-degree at most $4n-1$, so by Schwartz–Zippel a random $y$ detects the
-violation with overwhelming probability.[^sz-constraint]
+degree at most $4n-1$, so by Schwartz–Zippel a uniformly random $y$ detects the
+violation except with probability at most $(4n-1)/|\F|$.[^sz-constraint]
 
-## Combined Check {#verifiercheck}
+## Combined Check {#combinedcheck}
 
-Ragu combines these checks into a single equation that establishes both with
-high probability for random $y, z \in \F$:
+Ragu combines these checks into a single equation:
 
 $$
 \boxed{\revdot{\v{r}}{\v{r} \circ \v{z^{4n}} + \v{t} + \v{s}} = \dot{\v{k}}{\v{y^{4n}}}}
 $$
 
 Viewed as a polynomial in $z$, the gate check spans every power of $z$ while the
-constraint check is $z$-independent (since $\v{s}$ depends only on the verifier
-challenge $y$). Treated as a polynomial identity in $z$, the $z^{4n-1}$
-coefficient gives $\v{c}_0 \v{d}_0 = 0$ and the $z^0$ coefficient gives $\v{c}_0
-\v{d}_0 + \revdot{\v{r}}{\v{s}} = \dot{\v{k}}{\v{y^{4n}}}$, which together
-recover the constraint check $\revdot{\v{r}}{\v{s}} = \dot{\v{k}}{\v{y^{4n}}}$.
-By Schwartz–Zippel, a single random $(y, z)$ suffices.[^sz-combined]
+constraint check is $z$-independent (since $\v{s}$ depends only on $y$). As a
+polynomial identity in $z$, the $z^{4n-1}$ coefficient gives $\v{c}_0 \v{d}_0 =
+0$ and the $z^0$ coefficient gives $\v{c}_0 \v{d}_0 + \revdot{\v{r}}{\v{s}} =
+\dot{\v{k}}{\v{y^{4n}}}$, which together recover the constraint check
+$\revdot{\v{r}}{\v{s}} = \dot{\v{k}}{\v{y^{4n}}}$.
 
-[^soundness-scope]: This document argues only (standard) soundness: that an
-    accepting verifier implies the gate and constraint equations hold. The
-    concrete protocol also satisfies knowledge soundness, with an extractor that
-    recovers a valid trace from any successful prover; extraction failure is
-    bounded by analogous Schwartz–Zippel reasoning. Completeness is immediate,
-    since an honest prover's trace satisfies the combined equation identically
-    in $y$ and $z$ by construction.
+For uniformly random $(y, z) \in \F^2$, failure of the combined identity to
+expose a violated gate or constraint relation occurs with probability at most
+$(4n-1)/|\F|$.[^sz-combined]
 
 [^sz-gate]: The left-hand side is a polynomial in $z$ whose monomials span
     $z^0, \ldots, z^{4n-1}$, hence it has degree at most $4n-1$. By the
@@ -132,38 +125,47 @@ By Schwartz–Zippel, a single random $(y, z)$ suffices.[^sz-combined]
     $(4n-1)/|\F|$.
 
 [^sz-constraint]: The difference has degree at most $4n-1$ in $y$, so by
-    Schwartz–Zippel the soundness error for $y$ drawn uniformly from $\F$ is
-    at most $(4n-1)/|\F|$.
+    Schwartz–Zippel the probability that it vanishes at uniformly random
+    $y \in \F$ is at most $(4n-1)/|\F|$.
 
-[^sz-combined]: By linearity of revdot, the combined error decomposes additively
-    as $E(y, z) = G(z) + C(y)$, where $G(z) := \revdot{\v{r}}{\v{r} \circ
-    \v{z^{4n}} + \v{t}}$ is the gate error and $C(y) := \revdot{\v{r}}{\v{s}} -
-    \dot{\v{k}}{\v{y^{4n}}}$ is the constraint error, each of degree $\leq 4n-1$
-    in its sole variable. If gates fail, $G \not\equiv 0$ and Schwartz–Zippel on
-    $z$ gives soundness error $\leq (4n-1)/|\F|$ for every $y$; if only
-    constraints fail, symmetric in $y$; if both fail, for each $y$ the bad $z$'s
-    are roots of $G(Z) + C(y)$, still a nonzero polynomial of degree $\leq 4n-1$
-    in $z$. Either way, soundness error is at most $(4n-1)/|\F|$, and this bound
-    is sharp.
+[^sz-combined]: By linearity of revdot, the combined discrepancy decomposes
+    additively as $E(Y, Z) = G(Z) + C(Y)$, where $G(Z) := \revdot{\v{r}}{\v{r}
+    \circ \v{Z^{4n}} + \v{t}}$ is the gate discrepancy and $C(Y) :=
+    \revdot{\v{r}}{\v{s}} - \dot{\v{k}}{\v{Y^{4n}}}$ is the constraint
+    discrepancy, each of degree $\leq 4n-1$ in its own variable. If any gate or
+    constraint fails, $G \not\equiv 0$ or $C \not\equiv 0$, and since $G$ and
+    $C$ live in disjoint variables the sum $E$ is a nonzero bivariate polynomial
+    of total degree $\leq 4n-1$. By Schwartz–Zippel, a uniformly random $(y, z)
+    \in \F^2$ is a root with probability at most $(4n-1)/|\F|$. This bound is
+    achieved, e.g., by a constraint-only failure where $C(Y)$ has $4n-1$
+    distinct roots.
 
 [^whydwires]: The $\v{d}$ wires arise from the revdot product's pairing of
     $\v{a} \leftrightarrow \v{b}$ and $\v{c} \leftrightarrow \v{d}$. The gate
     equation $\v{c}_i \v{d}_i = 0$ forces $\v{d}_i = 0$ whenever $\v{c}_i \ne
     0$, which is typical; at gates where $\v{c}_i = 0$ it is a free wire that
-    can carry additional witness data. The $\v{d}$ wires must appear in the
-    soundness argument regardless of their use; they are unneeded to arithmetize
-    any circuit.
+    can carry additional witness data. Strictly speaking, no circuit requires
+    the $\v{d}$ wires for its arithmetization, but they must appear in the
+    revdot-based reduction regardless, and they _are_ sometimes useful.
 
-[^why4n]: The constraint vectors $\v{u_j}$ are restrictions at $Y = y$ of a
-    bivariate **wiring polynomial** $s(X, Y)$ (see [Wiring
-    Polynomials](wiring.md)) that must itself fit within the structured
-    polynomial space when restricted at $X$, capping the number of constraints
-    at $4n$. Reducing a general R1CS instance to a Ragu circuit takes just over
+[^why4n]: The constraint vectors $\v{u_j}$ are the $Y$-coefficients of a
+    bivariate **wiring polynomial** $s(X, Y) = \sum_j u_j(X) Y^j$ (see [Wiring
+    Polynomials](wiring.md)); the vector $\v{s} = s(X, y)$ above is its
+    restriction at $Y = y$. Since $s(X, Y)$ must fit within the structured
+    polynomial space in each variable, the number of constraints is at most
+    $4n$. Reducing a general R1CS instance to a Ragu circuit takes just over
     $3n$ constraints in the worst case (closer to $2n$ in favorable cases),
     leaving headroom for public inputs.
 
-[^t-def]: This definition uniquely determines $\v{t}$ as a function of $z$
-    alone, independent of $\v{r}$. The structured polynomial $t(X, Z)$ it
-    encodes is a sum of two geometric series, in ratios $XZ$ and (formally)
-    $X/Z$, so $t$ is a polynomial with $t(X, 0) = 0$:
-    $$-t(X, Z) = X^{3n} Z^n \sum_{k=0}^{n-1} (XZ)^k + X^{3n} Z^{3n-1} \sum_{k=0}^{n-1} (X/Z)^k.$$
+[^t-def]: The $\v{d}$-component of $\v{t}$ (which pairs with the trace's
+    $\v{c}$ wires under revdot) is set so that revdot yields
+    $\sum_i -\v{c}_i(z^{2n-1-i} + z^{2n+i})$, the correction that turns the
+    dilation expansion's bare $\v{a}_i\v{b}_i$ products into the
+    $\v{a}_i\v{b}_i - \v{c}_i$ gate residuals. (The other components of
+    $\v{t}$ are $\v{0}^n$.) Explicitly,
+    $$t(X, Z) = -\sum_{i=0}^{n-1} X^{4n-1-i}(Z^{2n-1-i} + Z^{2n+i})$$
+    defines the correction polynomial such that $\v{t}$ is the coefficient
+    vector of the univariate restriction $t(X, z)$.
+    Note that $t(X, 0) = 0$. For $z \neq 0$ the two sums regroup as geometric
+    series in $Xz$ and $X/z$:
+    $$-t(X, z) = X^{3n} z^n \sum_{k=0}^{n-1} (Xz)^k + X^{3n} z^{3n-1} \sum_{k=0}^{n-1} (X/z)^k.$$
