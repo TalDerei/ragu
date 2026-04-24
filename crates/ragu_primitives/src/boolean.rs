@@ -58,7 +58,7 @@ where
 /// corresponding [`bool`] value.
 #[derive(Gadget)]
 #[ragu(enforce_equal_slice_with = packed_boolean_equality)]
-#[ragu(impl_where = "D::F: PrimeField")]
+#[ragu(bound = "D::F: PrimeField")]
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
     #[ragu(wire)]

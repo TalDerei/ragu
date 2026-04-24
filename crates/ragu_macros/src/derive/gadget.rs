@@ -23,9 +23,9 @@ struct ContainerAttrs {
     /// `#[ragu(enforce_equal_slice_with = path::to::fn)]` — names a function
     /// the generated `GadgetKind::enforce_equal_gadget_slice` delegates to.
     enforce_equal_slice_with: Option<syn::Path>,
-    /// `#[ragu(impl_where = "...")]` — extra where-predicates applied to the
-    /// derived impls only (not the struct).
-    impl_where: Option<syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>,
+    /// `#[ragu(bound = "...")]` — extra where-predicates applied to the
+    /// derived impls only (not the struct). Mirrors serde's `#[serde(bound)]`.
+    bound: Option<syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>,
 }
 
 impl ContainerAttrs {
@@ -41,15 +41,15 @@ impl ContainerAttrs {
                         return Err(meta.error("duplicate `enforce_equal_slice_with`"));
                     }
                     out.enforce_equal_slice_with = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("impl_where") {
-                    if out.impl_where.is_some() {
-                        return Err(meta.error("duplicate `impl_where`"));
+                } else if meta.path.is_ident("bound") {
+                    if out.bound.is_some() {
+                        return Err(meta.error("duplicate `bound`"));
                     }
                     let lit: syn::LitStr = meta.value()?.parse()?;
                     let clause: syn::WhereClause =
                         syn::parse_str(&format!("where {}", lit.value()))
-                            .map_err(|e| meta.error(format!("invalid where predicates: {e}")))?;
-                    out.impl_where = Some(clause.predicates);
+                            .map_err(|e| meta.error(format!("invalid bound: {e}")))?;
+                    out.bound = Some(clause.predicates);
                 } else {
                     let name = meta
                         .path
@@ -65,7 +65,7 @@ impl ContainerAttrs {
     }
 }
 
-/// Merges the struct's `where` clause with any `#[ragu(impl_where)]` predicates,
+/// Merges the struct's `where` clause with any `#[ragu(bound)]` predicates,
 /// runs `transform` over each predicate, and emits the rendered clause
 /// (or empty tokens if there are no predicates).
 fn build_where_clause(
@@ -144,7 +144,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
 
     let ContainerAttrs {
         enforce_equal_slice_with: enforce_equal_slice_override,
-        impl_where: impl_where_predicates,
+        bound: impl_where_predicates,
     } = ContainerAttrs::from_attrs(attrs)?;
 
     let driver = &GenericDriver::extract(generics)?;
@@ -247,7 +247,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
         quote! { #id: #init }
     });
 
-    // `#[ragu(impl_where = "...")]` predicates are applied only to the derived
+    // `#[ragu(bound = "...")]` predicates are applied only to the derived
     // impls — not to the struct definition — so they don't virally propagate
     // to use sites.
     let impl_where_clause =
@@ -839,11 +839,11 @@ fn test_fail_unknown_ragu_attribute() {
 }
 
 #[test]
-fn test_fail_duplicate_impl_where() {
+fn test_fail_duplicate_bound() {
     let input: DeriveInput = parse_quote! {
         #[derive(Gadget)]
-        #[ragu(impl_where = "D::F: PrimeField")]
-        #[ragu(impl_where = "D::F: ff::Field")]
+        #[ragu(bound = "D::F: PrimeField")]
+        #[ragu(bound = "D::F: ff::Field")]
         struct Boolean<'dr, #[ragu(driver)] D: ragu_core::Driver<'dr>> {
             #[ragu(wire)]
             wire: D::W,
@@ -854,6 +854,6 @@ fn test_fail_duplicate_impl_where() {
 
     assert!(
         derive(input, RaguCorePath::default()).is_err(),
-        "duplicate `impl_where` should be rejected",
+        "duplicate `bound` should be rejected",
     );
 }
