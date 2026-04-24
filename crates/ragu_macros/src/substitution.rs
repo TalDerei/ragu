@@ -148,7 +148,7 @@ impl Strategy for DriverFieldSubstitution<'_> {
     }
 }
 
-/// Replace $D::F with $DriverField in a generic parameter.
+/// Replaces `$D::F` with `$DriverField` in a generic parameter.
 pub fn replace_driver_field_in_generic_param(
     param: &mut syn::GenericParam,
     driver_id: &syn::Ident,
@@ -172,7 +172,7 @@ pub fn replace_driver_field_in_generic_param(
     }
 }
 
-/// Replace $D::F with $DriverField in a where predicate.
+/// Replaces `$D::F` with `$DriverField` in a where predicate.
 pub fn replace_driver_field_in_where_predicate(
     predicate: &mut WherePredicate,
     driver_id: &syn::Ident,

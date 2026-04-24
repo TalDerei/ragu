@@ -197,7 +197,6 @@ unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
         a: &[Bound<'dr, D2, Self>],
         b: &[Bound<'dr, D2, Self>],
     ) -> Result<()> {
-        // Project through the Demoted wrapper and forward to the inner kind.
         let a_inner: Vec<_> = a.iter().map(|d| d.gadget.clone()).collect();
         let b_inner: Vec<_> = b.iter().map(|d| d.gadget.clone()).collect();
         G::enforce_equal_gadget_slice(dr, &a_inner, &b_inner)

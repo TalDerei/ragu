@@ -23,6 +23,7 @@ struct ContainerAttrs {
     /// `#[ragu(enforce_equal_slice_with = path::to::fn)]` — names a function
     /// the generated `GadgetKind::enforce_equal_gadget_slice` delegates to.
     enforce_equal_slice_with: Option<syn::Path>,
+
     /// `#[ragu(bound = "...")]` — extra where-predicates applied to the
     /// derived impls only (not the struct). Mirrors serde's `#[serde(bound)]`.
     bound: Option<syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>>,

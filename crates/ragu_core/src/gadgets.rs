@@ -252,8 +252,8 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 
     /// Batch-enforces equality across slices of gadgets.
     ///
-    /// The default implementation calls [`enforce_equal_gadget`](Self::enforce_equal_gadget)
-    /// per element. Gadget kinds whose values are bounded (e.g. booleans) can
+    /// The default implementation calls [`Self::enforce_equal_gadget`] per
+    /// element. Gadget kinds whose values are bounded (e.g. booleans) can
     /// override this to pack multiple equalities into fewer constraints.
     ///
     /// Container kinds delegate to this method so that the element kind's
