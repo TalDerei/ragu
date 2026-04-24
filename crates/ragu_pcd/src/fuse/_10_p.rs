@@ -7,29 +7,23 @@
 //! polynomial commitments using additive homomorphism:
 //! $\text{commit}(\sum\_j \beta^j \cdot p\_j) = \sum\_j \beta^j \cdot C\_j$.
 //!
-//! The commitment is computed via [`PointsWitness`] Horner evaluation.
+//! The commitment is computed via
+//! [`PointsWitness`](crate::internal::endoscalar::PointsWitness)
+//! Horner evaluation.
 
 use alloc::vec::Vec;
 use core::ops::AddAssign;
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{
-    CircuitExt,
-    polynomials::{Rank, sparse},
-    staging::{MultiStage, StageExt},
-};
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar, vec::Len};
+use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{
-        endoscalar::{
-            EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
-            PointsWitness,
-        },
         native::{RxComponent, RxIndex},
         nested::NUM_ENDOSCALING_POINTS,
     },
@@ -122,62 +116,26 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             );
         }
 
-        // Construct commitment via PointsWitness Horner evaluation.
-        // Points order: [f.commitment, commitments...] computes β^n·f + β^{n-1}·C₀ + ...
-        let (commitment, endoscalar_rx, points_rx, step_rxs) = {
-            let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
-            points.push(f.commitment);
-            points.extend_from_slice(&commitments);
+        // Build the PointsStage input vector ([f.commitment, commitments..])
+        // and delegate to the shared endoscaling helper, which also
+        // sets `nested_endoscalar_rx`, `nested_points_rx`, and
+        // `nested_endoscaling_step_rxs` on the builder.
+        let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
+        points.push(f.commitment);
+        points.extend_from_slice(&commitments);
 
-            let witness =
-                PointsWitness::<C::HostCurve, NUM_ENDOSCALING_POINTS>::new(beta_endo, &points);
+        let endoscalar_alpha = C::ScalarField::random(&mut *rng);
+        let points_alpha = C::ScalarField::random(&mut *rng);
+        let p_commitment = self.compute_endoscaling(
+            rng,
+            beta_endo,
+            &points,
+            endoscalar_alpha,
+            points_alpha,
+            builder,
+        )?;
 
-            let endoscalar_rx = <EndoscalarStage as StageExt<C::ScalarField, R>>::rx(
-                C::ScalarField::random(&mut *rng),
-                beta_endo,
-            )?;
-            let points_rx = <PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS> as StageExt<
-                C::ScalarField,
-                R,
-            >>::rx(C::ScalarField::random(&mut *rng), &witness)?;
-
-            // Create rx polynomials for each endoscaling step circuit
-            let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
-            let mut step_rxs = Vec::with_capacity(num_steps);
-            for step in 0..num_steps {
-                let step_circuit =
-                    EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
-                let staged = MultiStage::new(step_circuit);
-                let step_trace = staged
-                    .trace(EndoscalingStepWitness {
-                        endoscalar: beta_endo,
-                        points: &witness,
-                    })?
-                    .into_output();
-                let step_rx = self.nested_registry.assemble(
-                    &step_trace,
-                    crate::internal::nested::InternalCircuitIndex::EndoscalingStep(step as u32)
-                        .circuit_index(),
-                    &mut *rng,
-                )?;
-                step_rxs.push(step_rx);
-            }
-
-            (
-                *witness
-                    .interstitials
-                    .last()
-                    .expect("NumStepsLen guarantees at least one interstitial"),
-                endoscalar_rx,
-                points_rx,
-                step_rxs,
-            )
-        };
-
-        builder.set_native_p_poly(poly, commitment);
-        builder.set_nested_endoscaling_step_rxs(step_rxs);
-        builder.set_nested_endoscalar_rx(endoscalar_rx);
-        builder.set_nested_points_rx(points_rx);
+        builder.set_native_p_poly(poly, p_commitment);
 
         Ok(())
     }

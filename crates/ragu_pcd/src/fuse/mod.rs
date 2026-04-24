@@ -213,6 +213,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         builder.set_u(*u.value().take());
         builder.set_pre_beta(*pre_beta.value().take());
 
+        // Store children's stage rx polynomials for copying circuit claims.
+        builder.set_child_left_stage_rx(left.as_child_stage_rx());
+        builder.set_child_right_stage_rx(right.as_child_stage_rx());
+
         self.compute_internal_circuits(
             rng,
             &preamble_witness,

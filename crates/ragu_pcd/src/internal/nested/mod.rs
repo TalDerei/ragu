@@ -1,7 +1,17 @@
-//! Nested field circuits for endoscaling verification.
+//! Nested field circuits for the scalar field.
 //!
-//! These circuits operate over the scalar field and verify that the
-//! commitment accumulation was computed correctly via Horner's rule.
+//! Contains three groups of circuits:
+//!
+//! - **Endoscaling**: verifies that the commitment accumulation
+//!   in `compute_p` was computed correctly via Horner's rule.
+//! - **Loading**: enforces consistency between [`PointsStage`]
+//!   inputs and the bridge stage commitments for the current step.
+//! - **Copying**: enforces that [`ChildWitness`] stash fields in
+//!   `BridgePreamble` match the corresponding child proof's bridge
+//!   stage contents.
+//!
+//! [`ChildWitness`]: stages::preamble::ChildWitness
+//! [`PointsStage`]: crate::internal::endoscalar::PointsStage
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -11,15 +21,19 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
-use crate::internal::endoscalar;
+pub mod circuits {
+    pub mod copying;
+    pub mod loading;
+}
+
+use crate::internal::{Side, endoscalar};
 
 /// Number of curve points accumulated during `compute_p` for nested field
 /// endoscaling verification.
 ///
-/// This is the sum of:
-/// - 2 proofs × 15 commitment components = 30
-/// - 6 stage proof components (registry_wx0, registry_wx1, registry_wy, ab.a, ab.b, registry_xy)
-/// - 1 f.commitment (base polynomial)
+/// This is the sum of per-child commitment components (for both proofs),
+/// current-step stage proof components, and the `f.commitment` base
+/// polynomial. See `_10_p` for the canonical accumulation order.
 ///
 /// The endoscaling circuits process these points across
 /// [`NUM_ENDOSCALING_STEPS`] steps.
@@ -58,12 +72,16 @@ pub enum InternalCircuitIndex {
     BridgeF,
     /// Bridge `eval` stage mask.
     BridgeEval,
+    /// Loading circuit over all nested stages.
+    Loading,
+    /// Copying circuit relating current preamble to a child proof's stages.
+    Copying(Side),
 }
 
 impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`],
     /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 11;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 14;
 
     /// All variants in canonical iteration order.
     ///
@@ -96,6 +114,9 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
+        push(&mut slots, &mut c, Self::Loading);
+        push(&mut slots, &mut c, Self::Copying(Side::Left));
+        push(&mut slots, &mut c, Self::Copying(Side::Right));
         assert!(c == Self::NUM);
         slots
     }
@@ -118,6 +139,40 @@ impl InternalCircuitIndex {
 /// Analogous to [`native::RxIndex`](super::native::RxIndex) for the scalar
 /// field. Each variant maps to a polynomial in
 /// the proof's nested-field polynomial storage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChildBridgeKind {
+    /// Child proof's `BridgeSPrime` rx polynomial.
+    SPrime,
+    /// Child proof's `BridgeInnerError` rx polynomial.
+    InnerError,
+    /// Child proof's `BridgeOuterError` rx polynomial.
+    OuterError,
+    /// Child proof's `BridgeAB` rx polynomial.
+    AB,
+    /// Child proof's `BridgeQuery` rx polynomial.
+    Query,
+    /// Child proof's `BridgeEval` rx polynomial.
+    Eval,
+}
+
+impl ChildBridgeKind {
+    /// All kinds in the canonical slot order.
+    ///
+    /// This constant is the source of truth for the relative order of
+    /// `RxIndex::ChildBridge(kind, side)` entries in [`RxIndex::ALL`]
+    /// (see [`RxIndex::all_slots`]), and is therefore pinned by
+    /// `test_nested_registry_digest` — re-ordering these variants
+    /// changes the nested registry digest.
+    pub const ALL: [Self; 6] = [
+        Self::SPrime,
+        Self::InnerError,
+        Self::OuterError,
+        Self::AB,
+        Self::Query,
+        Self::Eval,
+    ];
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum RxIndex {
     /// EndoscalingStep circuit rx polynomial (indexed by step number).
@@ -142,12 +197,17 @@ pub enum RxIndex {
     BridgeF,
     /// Bridge `eval` rx polynomial.
     BridgeEval,
+    /// Child proof's `PointsStage` rx polynomial (per-side, for copying).
+    ChildPointsStage(Side),
+    /// Child proof's bridge rx polynomial (per-side, for copying),
+    /// keyed by which bridge stage it comes from.
+    ChildBridge(ChildBridgeKind, Side),
 }
 
 impl RxIndex {
     /// The number of rx components in the nested field,
     /// equal to the number of entries in [`RxIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 10;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 24;
 
     /// All variants in canonical order (circuits, then stages).
     ///
@@ -177,6 +237,17 @@ impl RxIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
+        push(&mut slots, &mut c, Self::ChildPointsStage(Side::Left));
+        push(&mut slots, &mut c, Self::ChildPointsStage(Side::Right));
+        {
+            let mut i = 0;
+            while i < ChildBridgeKind::ALL.len() {
+                let kind = ChildBridgeKind::ALL[i];
+                push(&mut slots, &mut c, Self::ChildBridge(kind, Side::Left));
+                push(&mut slots, &mut c, Self::ChildBridge(kind, Side::Right));
+                i += 1;
+            }
+        }
         assert!(c == Self::NUM);
         slots
     }
@@ -245,6 +316,14 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
             BridgeF => registry.register_bonding(stages::f::Stage::<C::HostCurve, R>::mask()?),
             BridgeEval => {
                 registry.register_bonding(stages::eval::Stage::<C::HostCurve, R>::mask()?)
+            }
+            Loading => {
+                let circuit = circuits::loading::Circuit::<C::HostCurve, R>::new();
+                registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
+            }
+            Copying(side) => {
+                let circuit = circuits::copying::Circuit::<C::HostCurve, R>::new(side);
+                registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
             }
         };
     }

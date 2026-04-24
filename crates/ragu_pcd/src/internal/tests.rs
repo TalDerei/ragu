@@ -221,7 +221,7 @@ fn test_nested_registry_digest() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fq!(0x31cda5818b2554cf6064590380712d5d44461fb3bc0628ac8742343eb731d271);
+    let expected = fq!(0x3e8a0fea0d4b85169e888155c4632052de2267f1f845191ad99cbfdb34d98e02);
 
     assert_eq!(
         app.nested_registry.digest(),
