@@ -13,8 +13,7 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_ : Unit)
   let ⟨a, _, _⟩ ← Core.AllocMul.circuit hintReader ()
   return a
 
-def GeneralAssumptions (_hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
+def GeneralAssumptions (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 /-- The output is unconstrained from the verifier's perspective — any value
 can be part of a valid `(a, b, c)` triple with `a · b = c` (e.g. take
@@ -32,7 +31,7 @@ theorem generalSoundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F
   trivial
 
 theorem generalCompleteness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (GeneralAssumptions hintReader) := by
+    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) GeneralAssumptions := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Assumptions
   ]
@@ -40,7 +39,7 @@ theorem generalCompleteness (hintReader : ProverHint (F p) → Core.AllocMul.Row
 def generalCircuit (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit (F p) unit field :=
   { elaborated hintReader with
-    Assumptions := GeneralAssumptions hintReader,
+    Assumptions := GeneralAssumptions,
     Spec := GeneralSpec,
     soundness := generalSoundness hintReader,
     completeness := generalCompleteness hintReader }

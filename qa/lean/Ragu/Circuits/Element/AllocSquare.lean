@@ -19,8 +19,7 @@ def main (hintReader : ProverHint (F p) → F p) (_input : Unit) :
   assertZero (x - y)
   return ⟨x, z⟩
 
-def Assumptions (_hintReader : ProverHint (F p) → F p)
-    (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
+def Assumptions (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 def Spec (_input : Unit) (out : Square (F p)) (_data : ProverData (F p)) :=
   out.a_sq = out.a^2
@@ -45,7 +44,7 @@ theorem soundness (hintReader : ProverHint (F p) → F p) :
 
 theorem completeness (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
-      (Assumptions hintReader) := by
+      Assumptions := by
   circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -59,7 +58,7 @@ theorem completeness (hintReader : ProverHint (F p) → F p) :
 
 theorem completenessSpec (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated hintReader)
-      (Assumptions hintReader) (CompletenessSpec hintReader) := by
+      Assumptions (CompletenessSpec hintReader) := by
   circuit_proof_start [CompletenessSpec]
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -75,7 +74,7 @@ theorem completenessSpec (hintReader : ProverHint (F p) → F p) :
 def generalCircuit (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit (F p) unit Square :=
   { elaborated hintReader with
-    Assumptions := Assumptions hintReader,
+    Assumptions := Assumptions,
     Spec,
     CompletenessSpec := CompletenessSpec hintReader,
     soundness := soundness hintReader,
