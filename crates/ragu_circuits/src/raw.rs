@@ -1,35 +1,35 @@
-//! Internal circuit abstraction with access to the SYSTEM gate wires.
+//! Internal circuit abstraction shared by all evaluation drivers.
 //!
 //! External circuits implement [`Circuit`](crate::Circuit), which hides
 //! the SYSTEM gate (gate 0) behind the framework. Internally, the evaluation
 //! drivers ([`sx`](crate::wiring::sx), [`sy`](crate::wiring::sy),
-//! [`sxy`](crate::wiring::sxy), [`metrics`](crate::metrics),
-//! [`trace`](crate::trace)) need to allocate the SYSTEM gate and then run
-//! the circuit body. This module provides:
+//! [`sxy`](crate::wiring::sxy), [`metrics`](crate::metrics)) need to
+//! allocate the SYSTEM gate and then run the circuit body. This module
+//! provides:
 //!
-//! - [`GateWires`]: a named wrapper for the four wires of a gate allocation.
-//! - [`RawCircuit`]: like [`Circuit`](crate::Circuit) but receives the
-//!   SYSTEM gate wires, allowing implementations to reference them.
-//! - [`CircuitAdapter`]: wraps any `Circuit` into a `RawCircuit` by ignoring
-//!   the SYSTEM gate wires.
+//! - [`RawCircuit`]: like [`Circuit`](crate::Circuit) but called from inside
+//!   [`orchestrate`], after the SYSTEM gate has already been allocated.
+//! - [`CircuitAdapter`]: wraps any `Circuit` into a `RawCircuit`.
 //! - [`orchestrate`]: the shared synthesis sequence that every driver executes.
 //!
 //! # Orchestration
 //!
 //! Every driver performs the same sequence around the circuit body:
 //!
-//! 1. **SYSTEM gate** — Allocate the SYSTEM gate (gate 0). Its $d$ wire
-//!    carries the constant $1$ (the `Driver::ONE` wire) and its $a$ wire
-//!    carries the blinding factor $\alpha$. The $b$ and $c$ wires are zero.
-//! 2. **Witness** — Run the circuit's [`witness`](RawCircuit::witness) method,
-//!    passing the SYSTEM gate wires so that internal implementations (e.g.
-//!    [`StageMask`](crate::staging::mask::StageMask)) can reference them.
+//! 1. **SYSTEM gate** — Allocate gate 0 with zero placeholder values. The
+//!    actual SYSTEM-gate wire values ($d_0 = 1$ as the [`Driver::ONE`] wire,
+//!    $a_0 = \alpha$ as the blinding factor) are filled in later by
+//!    [`Trace::assemble`](crate::Trace::assemble); evaluator drivers don't
+//!    need them filled to compute their results.
+//! 2. **Witness** — Run the circuit's [`witness`](RawCircuit::witness) method.
 //! 3. **Public outputs** — Write the output gadget to collect
 //!    [`Element`](ragu_primitives::Element) wires, then enforce each against
 //!    the corresponding coefficient of the instance polynomial $k(Y)$.
-//! 4. **ONE constraint** — Enforce that `Driver::ONE` equals the constant
+//! 4. **ONE constraint** — Enforce that [`Driver::ONE`] equals the constant
 //!    term of $k(Y)$. This is the final constraint emitted by synthesis and
 //!    occupies the $Y^0$ position.
+//!
+//! [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
 
 use alloc::vec::Vec;
 
@@ -44,31 +44,13 @@ use ragu_primitives::{GadgetExt as _, io::Write};
 
 use crate::WithAux;
 
-/// The four wires of a single gate allocation.
-///
-/// Wraps the $(A, B, C)$ wires returned by
-/// [`DriverTypes::gate`](ragu_core::drivers::DriverTypes::gate) together with
-/// the $D$ wire obtained via
-/// [`DriverTypes::assign_extra`](ragu_core::drivers::DriverTypes::assign_extra).
-#[allow(dead_code)] // Fields read only in tests (via RawCircuit plumbing).
-pub(crate) struct GateWires<W> {
-    /// The $a$ wire (left input).
-    pub a: W,
-    /// The $b$ wire (right input).
-    pub b: W,
-    /// The $c$ wire (output, constrained by $a \cdot b = c$).
-    pub c: W,
-    /// The $d$ wire (auxiliary, constrained by $c \cdot d = 0$).
-    pub d: W,
-}
-
-/// Internal circuit trait that receives the SYSTEM gate wires.
+/// Internal circuit trait used by the shared [`orchestrate`] flow.
 ///
 /// Unlike [`Circuit`](crate::Circuit), which is the public API for circuit
-/// authors, `RawCircuit` is used internally by the evaluation drivers.
-/// It receives the four SYSTEM gate (gate 0) wires so that implementations
-/// can directly reference them in constraints — something the public
-/// `Circuit` API deliberately hides.
+/// authors, `RawCircuit` is an internal seam between [`orchestrate`] and the
+/// circuit body. It exists to let test-only synthesis logic (e.g.
+/// [`StageMask`](crate::staging::mask::StageMask)) share the same SYSTEM-gate
+/// allocation and ONE-constraint enforcement steps as production circuits.
 pub(crate) trait RawCircuit<F: Field>: Sized + Send + Sync {
     /// The type of data that is needed to compute a satisfying witness.
     type Witness<'source>: Send;
@@ -80,19 +62,17 @@ pub(crate) trait RawCircuit<F: Field>: Sized + Send + Sync {
     /// Auxiliary data produced during witness computation.
     type Aux<'source>: Send;
 
-    /// Synthesize the circuit body with access to the SYSTEM gate wires.
+    /// Synthesize the circuit body.
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        system_gate: GateWires<D::Wire>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
         Self: 'dr;
 }
 
-/// Adapts a [`Circuit`](crate::Circuit) into a [`RawCircuit`] by discarding
-/// the SYSTEM gate wires.
+/// Adapts a [`Circuit`](crate::Circuit) into a [`RawCircuit`].
 ///
 /// Owns the circuit. Used by [`into_wiring_object`](crate::into_wiring_object)
 /// to store the circuit inside a [`WiringObject`](crate::WiringObject).
@@ -106,7 +86,6 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapter<C> {
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        _system_gate: GateWires<D::Wire>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
@@ -116,8 +95,7 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapter<C> {
     }
 }
 
-/// Borrows a [`Circuit`](crate::Circuit) and adapts it into a [`RawCircuit`]
-/// by discarding the SYSTEM gate wires.
+/// Borrows a [`Circuit`](crate::Circuit) and adapts it into a [`RawCircuit`].
 ///
 /// Used by [`metrics::eval`](crate::metrics::eval) where the circuit is
 /// borrowed.
@@ -131,7 +109,6 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapterRef<'_, C> 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
-        _system_gate: GateWires<D::Wire>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
     where
@@ -145,17 +122,17 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapterRef<'_, C> 
 /// circuit body.
 ///
 /// This function allocates the SYSTEM gate (gate 0), runs the circuit's
-/// witness method (passing the SYSTEM gate wires), writes public outputs,
-/// enforces them against the $k(Y)$ instance polynomial, and enforces the
-/// ONE constraint.
+/// witness method, writes public outputs, enforces them against the $k(Y)$
+/// instance polynomial, and enforces the ONE constraint.
 ///
 /// # SYSTEM gate
 ///
-/// The SYSTEM gate is allocated with zero-valued coefficients. For drivers with
-/// `MaybeKind = Empty` (polynomial evaluators, metrics), the gate closure is
-/// never called. For the trace driver (`MaybeKind = Always`), the zeros serve
-/// as placeholders that [`Trace::assemble`](crate::Trace::assemble) later
-/// overwrites with $d_0 = 1$ and $a_0 = \alpha$.
+/// Gate 0 is allocated with zero-valued coefficients so that the driver's
+/// internal counters and view buffers stay aligned with the canonical layout
+/// (e.g. the trace driver populates `view.d[0]` as a placeholder that
+/// [`Trace::assemble`](crate::Trace::assemble) later overwrites with $d_0 =
+/// 1$ and $a_0 = \alpha$). For evaluator drivers (`MaybeKind = Empty`), the
+/// gate closure is never called and the placeholder values are inert.
 ///
 /// # Public output enforcement
 ///
@@ -165,10 +142,12 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapterRef<'_, C> 
 ///
 /// # ONE constraint
 ///
-/// The final constraint enforces `Driver::ONE` (the $d$ wire of the SYSTEM gate, which
-/// evaluates to $1$) against the constant term of $k(Y)$. This ensures
-/// that $k(0) = 1$ for well-formed circuits. The result of [`orchestrate`]: the
-/// degree of $k(Y)$.
+/// The final constraint enforces [`Driver::ONE`] (the $d$ wire of the SYSTEM
+/// gate, which evaluates to $1$) against the constant term of $k(Y)$. This
+/// ensures that $k(0) = 1$ for well-formed circuits. The result of
+/// [`orchestrate`]: the degree of $k(Y)$.
+///
+/// [`Driver::ONE`]: ragu_core::drivers::Driver::ONE
 pub(crate) struct Orchestrated {
     /// The number of public output elements (degree of $k(Y)$).
     pub degree_ky: usize,
@@ -186,13 +165,14 @@ where
     D: Driver<'dr, F = F>,
     RC: RawCircuit<F> + 'dr,
 {
-    // 1. Allocate the SYSTEM gate (gate 0).
-    let (a, b, c, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-    let d = dr.assign_extra(extra, || Ok(Coeff::Zero))?;
-    let system_gate = GateWires { a, b, c, d };
+    // 1. Allocate the SYSTEM gate (gate 0). The wires are discarded —
+    //    `Driver::ONE` references gate 0's d-wire by convention, and circuit
+    //    bodies never need direct handles to the other SYSTEM-gate wires.
+    let (_, _, _, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+    let _ = dr.assign_extra(extra, || Ok(Coeff::Zero))?;
 
-    // 2. Run the circuit body with the SYSTEM gate wires.
-    let output = raw_circuit.witness(dr, system_gate, witness)?.into_output();
+    // 2. Run the circuit body.
+    let output = raw_circuit.witness(dr, witness)?.into_output();
 
     // 3. Write outputs and enforce public bindings.
     let mut outputs: Vec<ragu_primitives::Element<'dr, D>> = Vec::new();

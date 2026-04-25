@@ -259,10 +259,19 @@ mod tests {
     use crate::{
         WiringObject, WithAux, floor_planner, into_raw_wiring_object, into_wiring_object, metrics,
         polynomials::{Rank, sparse},
-        raw::GateWires,
         staging::StageBuilder,
         tests::SquareCircuit,
     };
+
+    /// Local wrapper that names the four wire handles of one gate. Used by
+    /// the [`StageMask`] test impl below to make the four-block iterator
+    /// chain readable (`&g.a`, `&g.b`, ...).
+    struct Gate<W> {
+        a: W,
+        b: W,
+        c: W,
+        d: W,
+    }
 
     impl<F: Field, R: Rank> crate::raw::RawCircuit<F> for StageMask<R> {
         type Witness<'source> = ();
@@ -272,7 +281,6 @@ mod tests {
         fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
             &self,
             dr: &mut D,
-            system_gate: GateWires<D::Wire>,
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         where
@@ -280,14 +288,15 @@ mod tests {
         {
             assert!(self.skip_gates + self.num_gates <= R::n());
 
-            // Collect all n gates. The SYSTEM gate comes from the
-            // orchestration function; gates 1..n are allocated here.
-            let mut gates = alloc::vec::Vec::with_capacity(R::n());
-            gates.push(system_gate);
+            // Allocate gates 1..n locally; gate 0 (the SYSTEM gate) is
+            // allocated by `orchestrate` and is not referenced here. Vec
+            // offset `i` corresponds to actual gate index `i + 1`.
+            let mut gates: alloc::vec::Vec<Gate<D::Wire>> =
+                alloc::vec::Vec::with_capacity(R::n() - 1);
             for _ in 1..R::n() {
                 let (a, b, c, extra) = dr.gate(|| unimplemented!())?;
                 let d = dr.assign_extra(extra, || unimplemented!())?;
-                gates.push(GateWires { a, b, c, d });
+                gates.push(Gate { a, b, c, d });
             }
 
             let is_active =
@@ -295,39 +304,44 @@ mod tests {
 
             // Issue 4n-2 enforce_zero in decreasing degree order so that the
             // driver assigns y^k to the constraint at degree k. Dummy (empty
-            // LC) constraints fill gaps for active gates. SYSTEM gate wires
-            // are directly accessible via gates[0].
+            // LC) constraints fill gaps for active gates.
             //
             // c[j] at degree 4n-1-j (j=1..n-1), a[j] at degree 2n+j (j=n-1 down to 0),
             // b[j] at degree 2n-1-j (j=0..n-1), d[j] at degree j (j=n-1 down to 1).
             // d[0] at degree 0 is the ONE wire slot, not issued here (handled
             // by orchestrate + Stripped for bonding polynomials).
             // c[0] is the registry key slot at degree 4n-1 — not emitted here.
+            //
+            // The a[j=0] and b[j=0] slots are dummy constraints (the SYSTEM
+            // gate is always "active" so its wires are not masked); we
+            // reproduce those slots with `iter::once(None)` since gate 0 is
+            // not in `gates`.
             let wires = gates
                 .iter()
                 .enumerate()
-                .skip(1)
-                .map(|(j, g)| (!is_active(j)).then_some(&g.c))
+                .map(|(i, g)| (!is_active(i + 1)).then_some(&g.c))
                 .chain(
                     gates
                         .iter()
                         .enumerate()
                         .rev()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.a)),
+                        .map(|(i, g)| (!is_active(i + 1)).then_some(&g.a))
+                        .chain(core::iter::once(None)),
+                )
+                .chain(
+                    core::iter::once(None).chain(
+                        gates
+                            .iter()
+                            .enumerate()
+                            .map(|(i, g)| (!is_active(i + 1)).then_some(&g.b)),
+                    ),
                 )
                 .chain(
                     gates
                         .iter()
                         .enumerate()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.b)),
-                )
-                .chain(
-                    gates
-                        .iter()
-                        .enumerate()
-                        .skip(1)
                         .rev()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.d)),
+                        .map(|(i, g)| (!is_active(i + 1)).then_some(&g.d)),
                 );
 
             for wire in wires {
