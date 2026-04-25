@@ -4,14 +4,14 @@ import Ragu.Circuits.Core.AllocMul
 namespace Ragu.Circuits.Element.Alloc
 variable {p : ℕ} [Fact p.Prime]
 
-/-- Under the `()` allocator, `Element::alloc` calls `dr.mul(|| (Zero, value,
-Zero))` and returns the middle wire — emitting a full 3-wire mul gate with
-two wires discarded. The returned wire is unconstrained (there always exist
-`a = 0`, `c = 0` satisfying `a · b = c` for any `b`). -/
+/-- Under the `()` allocator, `Element::alloc` calls `Allocator::alloc`,
+which emits a full 3-wire gate but returns the first wire — the other
+two are discarded. The returned wire is unconstrained (there always
+exist `b`, `c` satisfying `a · b = c` for any `a`, e.g. `b = c = 0`). -/
 def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_ : Unit)
     : Circuit (F p) (Expression (F p)) := do
-  let ⟨_, b, _⟩ ← Core.AllocMul.circuit hintReader ()
-  return b
+  let ⟨a, _, _⟩ ← Core.AllocMul.circuit hintReader ()
+  return a
 
 def GeneralAssumptions (_hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True

@@ -21,7 +21,7 @@ def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operat
 set_option linter.unusedVariables false in
 @[reducible]
 def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Expression (F p)) outputLen := #v[
-  (var ⟨1⟩)
+  (var ⟨0⟩)
 ]
 
 end Ragu.Instances.Autogen.Element.Alloc
