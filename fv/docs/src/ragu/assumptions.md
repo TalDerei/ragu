@@ -38,7 +38,7 @@ Anything other than the verified circuit is out of scope. Everything in the Rust
 
 The completeness theorem in the Ragu Formal Verification does not guarantee that the honest prover implementation does produce a proof that passes the verification. The Ragu Formal Verification does not prove any theorems about the Rust implementation of anything. The completeness results in Ragu Formal Verification just talk about the `witness` operations in the Lean code. The Lean `witness` operations are not compared against extractions from Rust.
 
-If values in the circuit are copied somewhere else, the soundness theorems of the Ragu Formal Verification results doesn't tell the verifier anything about the copied values.
+If values in the circuit are copied somewhere else, the soundness theorems of the Ragu Formal Verification results don't tell the verifier anything about the copied values.
 
 The Ragu Formal Verification might not be applicable because of missing constraints on the inputs and the outputs of the circuit. The verifier needs to be sure of the Lean assumptions of the circuit soundness without relying on the circuit. The prover needs to be sure of the Lean assumptions of the circuit completeness without relying on the circuit.
 
