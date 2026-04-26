@@ -32,7 +32,7 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
 
   -- λ₁ = (y₂ - y₁) / (x₂ - x₁)
   let tmp1 := x2 - x1
-  let lambda_1 ← Element.DivNonzero.generalCircuit hintReader1 ⟨y2 - y1, tmp1⟩
+  let lambda_1 ← Element.DivNonzero.circuit hintReader1 ⟨y2 - y1, tmp1⟩
 
   -- x_r = λ₁² - x₁ - x₂
   let lambda_1_sq ← subcircuit Element.Square.circuit lambda_1
@@ -40,7 +40,7 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
 
   -- λ₂ = 2y₁ / (x₁ - x_r) - λ₁
   let tmp2 := x1 - x_r
-  let lambda_2_half ← Element.DivNonzero.generalCircuit hintReader2 ⟨y1 + y1, tmp2⟩
+  let lambda_2_half ← Element.DivNonzero.circuit hintReader2 ⟨y1 + y1, tmp2⟩
   let lambda_2 := lambda_2_half - lambda_1
 
   -- x_s = λ₂² - x_r - x₁
@@ -68,9 +68,9 @@ def Assumptions (_curveParams : Spec.CurveParams p)
   let x_r := ((input.P2.y - input.P1.y) / (input.P2.x - input.P1.x))^2
     - input.P1.x - input.P2.x
   input.P1.x ≠ input.P2.x ∧
-  Element.DivNonzero.GeneralAssumptions hintReader1
+  Element.DivNonzero.Assumptions hintReader1
     ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint ∧
-  Element.DivNonzero.GeneralAssumptions hintReader2
+  Element.DivNonzero.Assumptions hintReader2
     ⟨input.P1.y + input.P1.y, input.P1.x - x_r⟩ data hint
 
 /-- The output is `2·P1 + P2` under the curve-membership preconditions and
@@ -105,7 +105,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralSpec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4, c5⟩ := h_holds
@@ -313,10 +313,10 @@ theorem completeness (curveParams : Spec.CurveParams p)
         (Assumptions curveParams hintReader1 hintReader2) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralAssumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
-  simp only [Element.DivNonzero.GeneralSpec] at h_env
+  simp only [Element.DivNonzero.Spec] at h_env
   simp only [sub_eq_add_neg] at h_assumptions
   obtain ⟨h_xne, h_a1, h_a2⟩ := h_assumptions
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
