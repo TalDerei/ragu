@@ -27,7 +27,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Spec (_input : Unit) (output : F p) := output = 0 ∨ output = 1
 
   reimplementation :=
-    Circuits.Boolean.Alloc.generalCircuit (fun _ => ⟨0, 1, 0⟩)
+    Circuits.Boolean.Alloc.circuit (fun _ => ⟨0, 1, 0⟩)
 
   same_constraints := by
     intro input
@@ -35,7 +35,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Operations.toFlat, circuit_norm,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Boolean.Alloc.generalCircuit,
+      Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.elaborated,
       Circuits.Boolean.Alloc.main]
     repeat (constructor; rfl)
@@ -45,13 +45,13 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [circuit_norm,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
-      Circuits.Boolean.Alloc.generalCircuit,
+      Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.elaborated,
       Circuits.Boolean.Alloc.main]
   same_spec := by
     intro input output
-    dsimp only [Circuits.Boolean.Alloc.generalCircuit,
-      Circuits.Boolean.Alloc.GeneralSpec]
+    dsimp only [Circuits.Boolean.Alloc.circuit,
+      Circuits.Boolean.Alloc.Spec]
     aesop
 
 end Ragu.Instances.Boolean.Alloc

@@ -26,13 +26,13 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_ : Unit)
 `r.x + r.y = 1` (so the linear constraint holds) and `r.x * r.y = 0`
 (so the gate constraint reduces to `c = 0`). Over a field these
 together force `r.x, r.y ∈ {0, 1}`. -/
-def GeneralAssumptions (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+def Assumptions (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (_input : Unit) (_data : ProverData (F p)) (hint : ProverHint (F p)) :=
   let r := hintReader hint
   r.x + r.y = 1 ∧ r.x * r.y = 0
 
 /-- The verifier learns the output wire is boolean-valued. -/
-def GeneralSpec (_input : Unit) (out : F p) (_data : ProverData (F p)) :=
+def Spec (_input : Unit) (out : F p) (_data : ProverData (F p)) :=
   out = 0 ∨ out = 1
 
 instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
@@ -40,8 +40,8 @@ instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
   main := main hintReader
   localLength _ := 3
 
-theorem generalSoundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) GeneralSpec := by
+theorem soundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+    : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
   -- h_mul : a * b - c = 0, h_c : c = 0, h_lin : 1 - a - b = 0
@@ -51,10 +51,9 @@ theorem generalSoundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F
   · exact Or.inl ha
   · exact Or.inr (by linear_combination -h_lin - hb)
 
-theorem generalCompleteness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (GeneralAssumptions hintReader) := by
+theorem completeness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions hintReader) := by
   circuit_proof_start
-  simp only [GeneralAssumptions] at h_assumptions
   obtain ⟨h_sum, h_prod⟩ := h_assumptions
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -67,12 +66,12 @@ theorem generalCompleteness (hintReader : ProverHint (F p) → Core.AllocMul.Row
   · rw [show i₀ + 1 + 1 = i₀ + 2 from by omega, h2]; exact h_prod
   · rw [h0, h1]; linear_combination -h_sum
 
-def generalCircuit (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+def circuit (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit (F p) unit field :=
   { elaborated hintReader with
-    Assumptions := GeneralAssumptions hintReader,
-    Spec := GeneralSpec,
-    soundness := generalSoundness hintReader,
-    completeness := generalCompleteness hintReader }
+    Assumptions := Assumptions hintReader,
+    Spec := Spec,
+    soundness := soundness hintReader,
+    completeness := completeness hintReader }
 
 end Ragu.Circuits.Boolean.Alloc

@@ -19,8 +19,6 @@ import Ragu.Instances.Element.IsEqual
 import Ragu.Instances.Element.IsZero
 import Ragu.Instances.Core.AllocMul
 import Ragu.Instances.Boolean.Alloc
-import Ragu.Instances.Boolean.Not
 import Ragu.Instances.Boolean.And
 import Ragu.Instances.Boolean.ConditionalSelect
 import Ragu.Instances.Boolean.ConditionalEnforceEqual
-import Ragu.Instances.Boolean.Multipack

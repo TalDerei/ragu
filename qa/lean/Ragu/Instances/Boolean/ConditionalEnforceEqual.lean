@@ -31,7 +31,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := Circuits.Boolean.ConditionalEnforceEqual.generalCircuit
+  reimplementation := Circuits.Boolean.ConditionalEnforceEqual.circuit
 
   same_constraints := by
     intro input
@@ -39,7 +39,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Operations.toFlat, circuit_norm,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Boolean.ConditionalEnforceEqual.generalCircuit,
+      Circuits.Boolean.ConditionalEnforceEqual.circuit,
       Circuits.Boolean.ConditionalEnforceEqual.elaborated,
       Circuits.Boolean.ConditionalEnforceEqual.main]
     repeat (constructor; rfl)
@@ -49,8 +49,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     rfl
   same_spec := by
     intro input output
-    dsimp only [Circuits.Boolean.ConditionalEnforceEqual.generalCircuit,
-      Circuits.Boolean.ConditionalEnforceEqual.GeneralSpec]
+    dsimp only [Circuits.Boolean.ConditionalEnforceEqual.circuit,
+      Circuits.Boolean.ConditionalEnforceEqual.Spec]
     aesop
 
 end Ragu.Instances.Boolean.ConditionalEnforceEqual

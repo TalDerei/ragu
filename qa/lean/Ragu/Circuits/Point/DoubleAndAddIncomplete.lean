@@ -35,7 +35,7 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
   let lambda_1 ← Element.DivNonzero.circuit hintReader1 ⟨y2 - y1, tmp1⟩
 
   -- x_r = λ₁² - x₁ - x₂
-  let lambda_1_sq ← subcircuit Element.Square.circuit lambda_1
+  let lambda_1_sq ← Element.Square.circuit lambda_1
   let x_r := lambda_1_sq - x1 - x2
 
   -- λ₂ = 2y₁ / (x₁ - x_r) - λ₁
@@ -44,11 +44,11 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
   let lambda_2 := lambda_2_half - lambda_1
 
   -- x_s = λ₂² - x_r - x₁
-  let lambda_2_sq ← subcircuit Element.Square.circuit lambda_2
+  let lambda_2_sq ← Element.Square.circuit lambda_2
   let x_s := lambda_2_sq - x_r - x1
 
   -- y_s = λ₂ (x₁ - x_s) - y₁
-  let lambda_2_x_diff ← subcircuit Element.Mul.circuit ⟨lambda_2, x1 - x_s⟩
+  let lambda_2_x_diff ← Element.Mul.circuit ⟨lambda_2, x1 - x_s⟩
   let y_s := lambda_2_x_diff - y1
 
   return ⟨x_s, y_s⟩

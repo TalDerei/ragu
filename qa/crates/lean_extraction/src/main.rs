@@ -19,8 +19,6 @@ use crate::instances::{
     boolean_and::BooleanAndInstance,
     boolean_conditional_enforce_equal::BooleanConditionalEnforceEqualInstance,
     boolean_conditional_select::BooleanConditionalSelectInstance,
-    boolean_multipack::BooleanMultipackInstance,
-    boolean_not::BooleanNotInstance,
     core_alloc_mul::CoreAllocMulInstance,
     element_alloc::ElementAllocInstance,
     element_alloc_square::ElementAllocSquareInstance,
@@ -156,11 +154,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         generated_file: generated_file_instance::<BooleanAllocInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.Not",
-        export: export_instance::<BooleanNotInstance>,
-        generated_file: generated_file_instance::<BooleanNotInstance>,
-    },
-    ExportTarget {
         name: "Ragu.Instances.Autogen.Boolean.And",
         export: export_instance::<BooleanAndInstance>,
         generated_file: generated_file_instance::<BooleanAndInstance>,
@@ -174,11 +167,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Boolean.ConditionalEnforceEqual",
         export: export_instance::<BooleanConditionalEnforceEqualInstance>,
         generated_file: generated_file_instance::<BooleanConditionalEnforceEqualInstance>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.Multipack",
-        export: export_instance::<BooleanMultipackInstance>,
-        generated_file: generated_file_instance::<BooleanMultipackInstance>,
     },
 ];
 

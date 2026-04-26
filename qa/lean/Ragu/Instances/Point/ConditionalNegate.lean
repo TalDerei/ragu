@@ -39,22 +39,28 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.ConditionalNegate.circuit,
       Circuits.Point.ConditionalNegate.elaborated,
-      Circuits.Point.ConditionalNegate.main]
+      Circuits.Point.ConditionalNegate.main,
+      Circuits.Boolean.ConditionalSelect.circuit,
+      Circuits.Boolean.ConditionalSelect.elaborated,
+      Circuits.Boolean.ConditionalSelect.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.ConditionalNegate.circuit,
       Circuits.Point.ConditionalNegate.elaborated,
-      Circuits.Point.ConditionalNegate.main]
+      Circuits.Point.ConditionalNegate.main,
+      Circuits.Boolean.ConditionalSelect.circuit,
+      Circuits.Boolean.ConditionalSelect.elaborated,
+      Circuits.Boolean.ConditionalSelect.main]
   same_spec := by
     intro input output
     dsimp only [FormalCircuit.isGeneralFormalCircuit,
