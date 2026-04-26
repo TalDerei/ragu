@@ -450,19 +450,6 @@ struct Counter<F> {
     ///
     /// [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
     y: F,
-
-    /// Initial value of the Horner accumulator for each routine scope.
-    ///
-    /// A nonzero seed derived from the same BLAKE2b PRF ensures that leading
-    /// `enforce_zero` calls with zero-valued linear combinations still shift
-    /// the accumulator (via `result = h * y + lc_value`), preventing
-    /// degenerate collisions. Without this, a routine whose first linear
-    /// combination evaluates to zero (`lc_value = 0`) would produce
-    /// `0 * y^{n-1} + c_2 * y^{n-2} + …`, colliding with a shorter routine
-    /// that starts at `c_2`. The nonzero seed lifts the accumulator to
-    /// `h * y^n + c_1 * y^{n-1} + …`, making the leading power of `y`
-    /// always visible.
-    h: F,
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
@@ -479,8 +466,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let x2 = point(2);
         let x3 = point(3);
         let y = point(4);
-        let h = point(5);
-        let x_remap = point(6);
+        let x_remap = point(5);
 
         Self {
             scope: CounterScope {
@@ -490,7 +476,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_c: x2,
                 current_d: x3,
                 remap: ReinitWires::new(x_remap),
-                result: h,
+                result: F::ZERO,
                 child_deep_hashes: Vec::new(),
             },
             num_constraints: 0,
@@ -505,7 +491,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             x2,
             x3,
             y,
-            h,
             x_remap,
         }
     }
@@ -590,7 +575,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_c: self.x2,
                 current_d: self.x3,
                 remap: ReinitWires::new(self.x_remap),
-                result: self.h,
+                result: F::ZERO,
                 child_deep_hashes: Vec::new(),
             },
         );
