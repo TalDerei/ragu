@@ -30,6 +30,8 @@ Lean and other proof assistants that are based on intuitionistic and classical l
 
 Because of explosivity, approximations do not work well with Lean and other proof assistants. Just because a situation looks close to satisfy the hypotheses of a theorem, that doesn't mean that the situation is close to satisfy the conclusion of the theorem. The logic behind Lean and other proof assistants does not have the notion of degree of falsehood so any tiny gap between the reality and the formalization can be used to prove things that are utterly wrong. If a situation doesn't satisfy all hypotheses of a Lean theorem, the Lean theorem doesn't apply to the situation.
 
+Lean theorems mean that any model of Lean type theory that satisfies all the assumptions, arguments and hypotheses of the theorem also satisfies the conclusion of the theorem. When you use Lean theorems to reason about the real world, you need to use the real world as a model of Lean type theory and prove (outside of Lean) that the real world as a model of Lean type theory satisfies all the assumptions, arguments and hypotheses of the theorem.
+
 It is difficult to list all potential gaps between the reality and the formalization. The same holds for potential gaps between the expectations (yours or others', documented or undocumented, conscious or unconscious) and the formalization. The potential gaps listed are just some typical examples and not to be taken as exhaustive.
 
 Future changes might introduce new gaps.
