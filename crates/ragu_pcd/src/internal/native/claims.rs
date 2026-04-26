@@ -221,17 +221,19 @@ where
             PreambleStage => {
                 processor.bonding_claim(id, source.rx(Rx(Preamble)))?;
             }
-            InnerErrorStage => {
-                processor.bonding_claim(id, source.rx(Rx(InnerError)))?;
+            OuterInnerErrorGroup => {
+                let groups = source
+                    .rx(Rx(OuterError))
+                    .zip(source.rx(Rx(InnerError)))
+                    .map(|(oe, ie)| [oe, ie].into_iter());
+                processor.grouped_bonding_claim(id, groups)?;
             }
-            OuterErrorStage => {
-                processor.bonding_claim(id, source.rx(Rx(OuterError)))?;
-            }
-            QueryStage => {
-                processor.bonding_claim(id, source.rx(Rx(Query)))?;
-            }
-            EvalStage => {
-                processor.bonding_claim(id, source.rx(Rx(Eval)))?;
+            QueryEvalGroup => {
+                let groups = source
+                    .rx(Rx(Query))
+                    .zip(source.rx(Rx(Eval)))
+                    .map(|(q, e)| [q, e].into_iter());
+                processor.grouped_bonding_claim(id, groups)?;
             }
 
             // Final stage bonding claims

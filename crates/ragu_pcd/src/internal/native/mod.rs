@@ -4,7 +4,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
-    staging::StageExt,
+    staging::{Stage, StageExt, bundle_stage_masks},
 };
 use ragu_core::Result;
 use ragu_primitives::vec::ConstLen;
@@ -16,7 +16,7 @@ use crate::{internal::fold_revdot::Parameters, step};
 pub struct RevdotParameters;
 
 impl Parameters for RevdotParameters {
-    type NumGroups = ConstLen<19>;
+    type NumGroups = ConstLen<16>;
     type GroupSize = ConstLen<7>;
 }
 
@@ -49,10 +49,8 @@ pub enum InternalCircuitIndex {
     ComputeVCircuit,
     // Native stages
     PreambleStage,
-    InnerErrorStage,
-    OuterErrorStage,
-    QueryStage,
-    EvalStage,
+    OuterInnerErrorGroup,
+    QueryEvalGroup,
     // Final stage masks
     InnerErrorFinalStaged,
     OuterErrorFinalStaged,
@@ -71,7 +69,7 @@ pub const fn total_circuit_counts(num_application_steps: usize) -> (usize, u32) 
 impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`],
     /// equal to the number of variants in [`InternalCircuitIndex`].
-    pub const NUM: usize = 13;
+    pub const NUM: usize = 11;
 
     /// All variants in canonical iteration order.
     ///
@@ -92,10 +90,8 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::OuterCollapseCircuit);
         push(&mut slots, &mut c, Self::ComputeVCircuit);
         push(&mut slots, &mut c, Self::PreambleStage);
-        push(&mut slots, &mut c, Self::InnerErrorStage);
-        push(&mut slots, &mut c, Self::OuterErrorStage);
-        push(&mut slots, &mut c, Self::QueryStage);
-        push(&mut slots, &mut c, Self::EvalStage);
+        push(&mut slots, &mut c, Self::OuterInnerErrorGroup);
+        push(&mut slots, &mut c, Self::QueryEvalGroup);
         push(&mut slots, &mut c, Self::InnerErrorFinalStaged);
         push(&mut slots, &mut c, Self::OuterErrorFinalStaged);
         push(&mut slots, &mut c, Self::EvalFinalStaged);
@@ -126,10 +122,8 @@ pub struct InternalCircuitValues<T> {
     pub outer_collapse_circuit: T,
     pub compute_v_circuit: T,
     pub preamble_stage: T,
-    pub inner_error_stage: T,
-    pub outer_error_stage: T,
-    pub query_stage: T,
-    pub eval_stage: T,
+    pub outer_inner_error_group: T,
+    pub query_eval_group: T,
     pub inner_error_final_staged: T,
     pub outer_error_final_staged: T,
     pub eval_final_staged: T,
@@ -146,10 +140,8 @@ impl<T> InternalCircuitValues<T> {
             OuterCollapseCircuit => &self.outer_collapse_circuit,
             ComputeVCircuit => &self.compute_v_circuit,
             PreambleStage => &self.preamble_stage,
-            InnerErrorStage => &self.inner_error_stage,
-            OuterErrorStage => &self.outer_error_stage,
-            QueryStage => &self.query_stage,
-            EvalStage => &self.eval_stage,
+            OuterInnerErrorGroup => &self.outer_inner_error_group,
+            QueryEvalGroup => &self.query_eval_group,
             InnerErrorFinalStaged => &self.inner_error_final_staged,
             OuterErrorFinalStaged => &self.outer_error_final_staged,
             EvalFinalStaged => &self.eval_final_staged,
@@ -179,10 +171,8 @@ impl<T> InternalCircuitValues<T> {
             outer_collapse_circuit: f(OuterCollapseCircuit)?,
             compute_v_circuit: f(ComputeVCircuit)?,
             preamble_stage: f(PreambleStage)?,
-            inner_error_stage: f(InnerErrorStage)?,
-            outer_error_stage: f(OuterErrorStage)?,
-            query_stage: f(QueryStage)?,
-            eval_stage: f(EvalStage)?,
+            outer_inner_error_group: f(OuterInnerErrorGroup)?,
+            query_eval_group: f(QueryEvalGroup)?,
             inner_error_final_staged: f(InnerErrorFinalStaged)?,
             outer_error_final_staged: f(OuterErrorFinalStaged)?,
             eval_final_staged: f(EvalFinalStaged)?,
@@ -339,23 +329,35 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
             PreambleStage => {
                 registry.register_bonding(stages::preamble::Stage::<C, R, HEADER_SIZE>::mask()?)
             }
-            InnerErrorStage => registry.register_bonding(stages::inner_error::Stage::<
-                C,
-                R,
-                HEADER_SIZE,
-                RevdotParameters,
-            >::mask()?),
-            OuterErrorStage => registry.register_bonding(stages::outer_error::Stage::<
-                C,
-                R,
-                HEADER_SIZE,
-                RevdotParameters,
-            >::mask()?),
-            QueryStage => {
-                registry.register_bonding(stages::query::Stage::<C, R, HEADER_SIZE>::mask()?)
+            OuterInnerErrorGroup => {
+                type OE<C, R, const H: usize> = stages::outer_error::Stage<C, R, H, RevdotParameters>;
+                type IE<C, R, const H: usize> = stages::inner_error::Stage<C, R, H, RevdotParameters>;
+                let notches = [
+                    (
+                        <OE<C, R, HEADER_SIZE>>::skip_gates(),
+                        <OE<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <IE<C, R, HEADER_SIZE>>::skip_gates(),
+                        <IE<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+                    ),
+                ];
+                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R>(notches)?)
             }
-            EvalStage => {
-                registry.register_bonding(stages::eval::Stage::<C, R, HEADER_SIZE>::mask()?)
+            QueryEvalGroup => {
+                type Q<C, R, const H: usize> = stages::query::Stage<C, R, H>;
+                type Ev<C, R, const H: usize> = stages::eval::Stage<C, R, H>;
+                let notches = [
+                    (
+                        <Q<C, R, HEADER_SIZE>>::skip_gates(),
+                        <Q<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <Ev<C, R, HEADER_SIZE>>::skip_gates(),
+                        <Ev<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+                    ),
+                ];
+                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R>(notches)?)
             }
             InnerErrorFinalStaged => registry.register_bonding(stages::inner_error::Stage::<
                 C,
