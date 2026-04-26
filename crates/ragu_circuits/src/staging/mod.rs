@@ -434,3 +434,20 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
 }
 
 impl<F: Field, R: Rank, S: Stage<F, R>> StageExt<F, R> for S {}
+
+/// Bundles multiple stage windows into a single bonding polynomial that
+/// occupies one registry slot. Each `(skip_gates, num_gates)` entry
+/// corresponds to one bundled stage; the resulting polynomial is the sum
+/// of the per-stage notches plus the shared global term added once by the
+/// [`Registry`](crate::registry::Registry).
+pub fn bundle_stage_masks<'a, F: Field, R: Rank>(
+    notches: impl IntoIterator<Item = (usize, usize)>,
+) -> Result<BondingObject<'a, F, R>> {
+    let mut iter = notches.into_iter();
+    let (skip, num) = iter.next().expect("at least one notch is required");
+    let mut mask = mask::StageMask::<R>::new(skip, num)?;
+    for (skip, num) in iter {
+        mask = mask.with_notch(skip, num)?;
+    }
+    Ok(BondingObject::new(Box::new(mask)))
+}
