@@ -138,10 +138,10 @@ impl<F: Field> Trace<F> {
         }
 
         // Overwrite segment 0's zeroed SYSTEM gate placeholder:
-        // a[0] = c[0] = 0 (already zero), b[0] = 1 (ONE wire),
-        // d[0] = alpha (prevents point-at-infinity commitments).
-        view.b[0] = F::ONE;
-        view.d[0] = alpha;
+        // b[0] = c[0] = 0 (already zero), d[0] = 1 (ONE wire),
+        // a[0] = alpha (prevents point-at-infinity commitments).
+        view.a[0] = alpha;
+        view.d[0] = F::ONE;
 
         Ok(view.build())
     }

@@ -46,8 +46,8 @@
     - [Public Inputs](protocol/recursion/public_inputs.md) <!-- todo -->
   - [Analysis](protocol/analysis.md) <!-- todo -->
   - [Local (Sean's Corner!)]()
-    - [Overview](protocol/local/overview.md)
-    - [Wiring Polynomials](protocol/local/wiring.md)
+    - [Arithmetization](protocol/local/arithmetization.md)
+    - [Wiring and Instance Polynomials](protocol/local/wiring.md)
 - [Part III: Implementation]()
   - [Architecture Overview](implementation/arch.md) <!-- todo -->
   - [Circuits](implementation/circuits.md) <!-- todo -->

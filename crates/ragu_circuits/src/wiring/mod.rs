@@ -13,8 +13,8 @@
 //!
 //! $$
 //! s(X, Y) = \sum_{j = 0}^{q - 1} Y^j \left(\sum_{i = 0}^{n - 1} (
-//!   \mathbf{a}\_{i,j} X^{2n - 1 - i} +
-//!   \mathbf{b}\_{i,j} X^{2n + i} +
+//!   \mathbf{a}\_{i,j} X^{2n + i} +
+//!   \mathbf{b}\_{i,j} X^{2n - 1 - i} +
 //!   \mathbf{c}\_{i,j} X^{4n - 1 - i} +
 //!   \mathbf{d}\_{i,j} X^{i}
 //! )\right)
@@ -89,7 +89,6 @@
 //! [`floor_plan`]: crate::floor_planner::floor_plan
 //! [wiring polynomials]: http://TODO
 
-pub(crate) mod common;
 pub mod sx;
 pub mod sxy;
 pub mod sy;

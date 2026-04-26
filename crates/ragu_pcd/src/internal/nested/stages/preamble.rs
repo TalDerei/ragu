@@ -14,15 +14,25 @@ use ragu_core::{
 };
 use ragu_primitives::{Point, io::Write};
 
-use crate::Proof;
+use crate::{
+    Proof,
+    internal::{endoscalar::PointsStage, native::RxIndex, nested::NUM_ENDOSCALING_POINTS},
+};
 
 /// Number of curve points in this stage.
-pub const NUM_POINTS: usize = 13;
+pub const NUM_POINTS: usize = 31;
 
 /// Witness data for a single child proof in the preamble bridge stage.
 ///
-/// Contains commitments from the child proof's circuits component.
+/// The initial fields (application through compute_v) are the primary
+/// introduction of child circuit commitments into the nested transcript.
+/// The remaining `stashed_*` fields are copies of values that already
+/// exist in the child's unified instance or bridge stages, placed here
+/// so that loading can enforce them against [`PointsStage`] and copying
+/// can verify them against the child's bridge stage content.
+#[derive(Clone)]
 pub struct ChildWitness<C: CurveAffine> {
+    // Field order matches the `_10_p` accumulation order.
     /// Commitment from the child's application circuit.
     pub application: C,
     /// Commitment from the child's first hashes circuit.
@@ -35,12 +45,31 @@ pub struct ChildWitness<C: CurveAffine> {
     pub outer_collapse: C,
     /// Commitment from the child's compute_v circuit.
     pub compute_v: C,
+
+    /// Stashed commitment from the child's preamble bridge stage.
+    pub stashed_preamble: C,
+    /// Stashed commitment from the child's inner error bridge stage.
+    pub stashed_inner_error: C,
+    /// Stashed commitment from the child's outer error bridge stage.
+    pub stashed_outer_error: C,
+    /// Stashed commitment from the child's query bridge stage.
+    pub stashed_query: C,
+    /// Stashed commitment from the child's eval bridge stage.
+    pub stashed_eval: C,
+    /// Stashed `a` commitment from the child's AB bridge stage.
+    pub stashed_ab_a: C,
+    /// Stashed `b` commitment from the child's AB bridge stage.
+    pub stashed_ab_b: C,
+    /// Stashed registry XY commitment from the child.
+    pub stashed_registry_xy: C,
+    /// Stashed accumulated P commitment from the child.
+    pub stashed_p: C,
 }
 
 impl<C: CurveAffine> ChildWitness<C> {
     /// Construct from a child proof's commitments.
     pub fn from_proof<CC: Cycle<HostCurve = C>, R: Rank>(proof: &Proof<CC, R>) -> Self {
-        use crate::internal::native::RxIndex;
+        use crate::internal::native::RxComponent;
         Self {
             application: proof.native_rx_commitment(RxIndex::Application),
             hashes_1: proof.native_rx_commitment(RxIndex::Hashes1),
@@ -48,6 +77,15 @@ impl<C: CurveAffine> ChildWitness<C> {
             inner_collapse: proof.native_rx_commitment(RxIndex::InnerCollapse),
             outer_collapse: proof.native_rx_commitment(RxIndex::OuterCollapse),
             compute_v: proof.native_rx_commitment(RxIndex::ComputeV),
+            stashed_preamble: proof.native_rx_commitment(RxIndex::Preamble),
+            stashed_inner_error: proof.native_rx_commitment(RxIndex::InnerError),
+            stashed_outer_error: proof.native_rx_commitment(RxIndex::OuterError),
+            stashed_query: proof.native_rx_commitment(RxIndex::Query),
+            stashed_eval: proof.native_rx_commitment(RxIndex::Eval),
+            stashed_ab_a: proof.native_commitment(RxComponent::AbA),
+            stashed_ab_b: proof.native_commitment(RxComponent::AbB),
+            stashed_registry_xy: proof.native_registry_xy_commitment(),
+            stashed_p: proof.native_p_commitment(),
         }
     }
 }
@@ -65,6 +103,7 @@ pub struct Witness<C: CurveAffine> {
 /// Output gadget for a single child proof in the preamble bridge stage.
 #[derive(Gadget, Write)]
 pub struct ChildOutput<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+    // Field order matches `_10_p` accumulation order.
     /// Point commitment from the child's application circuit.
     #[ragu(gadget)]
     pub application: Point<'dr, D, C>,
@@ -83,6 +122,57 @@ pub struct ChildOutput<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     /// Point commitment from the child's compute_v circuit.
     #[ragu(gadget)]
     pub compute_v: Point<'dr, D, C>,
+
+    /// Stashed commitment from the child's preamble bridge stage.
+    #[ragu(gadget)]
+    pub stashed_preamble: Point<'dr, D, C>,
+    /// Stashed commitment from the child's inner error bridge stage.
+    #[ragu(gadget)]
+    pub stashed_inner_error: Point<'dr, D, C>,
+    /// Stashed commitment from the child's outer error bridge stage.
+    #[ragu(gadget)]
+    pub stashed_outer_error: Point<'dr, D, C>,
+    /// Stashed commitment from the child's query bridge stage.
+    #[ragu(gadget)]
+    pub stashed_query: Point<'dr, D, C>,
+    /// Stashed commitment from the child's eval bridge stage.
+    #[ragu(gadget)]
+    pub stashed_eval: Point<'dr, D, C>,
+    /// Stashed `a` commitment from the child's AB bridge stage.
+    #[ragu(gadget)]
+    pub stashed_ab_a: Point<'dr, D, C>,
+    /// Stashed `b` commitment from the child's AB bridge stage.
+    #[ragu(gadget)]
+    pub stashed_ab_b: Point<'dr, D, C>,
+    /// Stashed registry XY commitment from the child.
+    #[ragu(gadget)]
+    pub stashed_registry_xy: Point<'dr, D, C>,
+    /// Stashed accumulated P commitment from the child.
+    #[ragu(gadget)]
+    pub stashed_p: Point<'dr, D, C>,
+}
+
+impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> core::ops::Index<RxIndex>
+    for ChildOutput<'dr, D, C>
+{
+    type Output = Point<'dr, D, C>;
+
+    fn index(&self, idx: RxIndex) -> &Point<'dr, D, C> {
+        use RxIndex::*;
+        match idx {
+            Application => &self.application,
+            Hashes1 => &self.hashes_1,
+            Hashes2 => &self.hashes_2,
+            InnerCollapse => &self.inner_collapse,
+            OuterCollapse => &self.outer_collapse,
+            ComputeV => &self.compute_v,
+            Preamble => &self.stashed_preamble,
+            InnerError => &self.stashed_inner_error,
+            OuterError => &self.stashed_outer_error,
+            Query => &self.stashed_query,
+            Eval => &self.stashed_eval,
+        }
+    }
 }
 
 impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildOutput<'dr, D, C> {
@@ -94,6 +184,15 @@ impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildOutput<'dr, D, C> {
             inner_collapse: Point::alloc(dr, witness.as_ref().map(|w| w.inner_collapse))?,
             outer_collapse: Point::alloc(dr, witness.as_ref().map(|w| w.outer_collapse))?,
             compute_v: Point::alloc(dr, witness.as_ref().map(|w| w.compute_v))?,
+            stashed_preamble: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_preamble))?,
+            stashed_inner_error: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_inner_error))?,
+            stashed_outer_error: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_outer_error))?,
+            stashed_query: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_query))?,
+            stashed_eval: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_eval))?,
+            stashed_ab_a: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_ab_a))?,
+            stashed_ab_b: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_ab_b))?,
+            stashed_registry_xy: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_registry_xy))?,
+            stashed_p: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_p))?,
         })
     }
 }
@@ -120,7 +219,7 @@ pub struct Stage<C: CurveAffine, R> {
 }
 
 impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
-    type Parent = ();
+    type Parent = PointsStage<C, NUM_ENDOSCALING_POINTS>;
     type Witness<'source> = &'source Witness<C>;
     type OutputKind = Kind![C::Base; Output<'_, _, C>];
 

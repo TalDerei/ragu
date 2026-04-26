@@ -50,17 +50,13 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     convert::{WireMap, extract_wires},
-    drivers::{Driver, DriverTypes, emulator::Emulator},
+    drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind as _},
     maybe::Empty,
     routines::Routine,
 };
 
-use super::{
-    Circuit,
-    raw::RawCircuit,
-    wiring::common::{WireEval, WireEvalSum},
-};
+use super::{Circuit, raw::RawCircuit};
 
 /// The structural identity of a routine record.
 ///
@@ -407,8 +403,8 @@ impl<F: FromUniformBytes<64>> WireMap<F> for ReinitWires<F> {
     type Src = Counter<F>;
     type Dst = Counter<F>;
 
-    fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
-        Ok(WireEval::Value(self.mint()))
+    fn convert_wire(&mut self, _: &F) -> Result<F> {
+        Ok(self.mint())
     }
 }
 
@@ -455,12 +451,18 @@ struct Counter<F> {
     /// [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
     y: F,
 
-    /// Evaluation of the `ONE` wire, derived from an independent BLAKE2b
-    /// point so it cannot collide with any geometric-sequence wire value.
+    /// Initial value of the Horner accumulator for each routine scope.
     ///
-    /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
-    /// resolved during linear combination accumulation.
-    one: F,
+    /// A nonzero seed derived from the same BLAKE2b PRF ensures that leading
+    /// `enforce_zero` calls with zero-valued linear combinations still shift
+    /// the accumulator (via `result = h * y + lc_value`), preventing
+    /// degenerate collisions. Without this, a routine whose first linear
+    /// combination evaluates to zero (`lc_value = 0`) would produce
+    /// `0 * y^{n-1} + c_2 * y^{n-2} + …`, colliding with a shorter routine
+    /// that starts at `c_2`. The nonzero seed lifts the accumulator to
+    /// `h * y^n + c_1 * y^{n-1} + …`, making the leading power of `y`
+    /// always visible.
+    h: F,
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
@@ -477,7 +479,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let x2 = point(2);
         let x3 = point(3);
         let y = point(4);
-        let one = point(5);
+        let h = point(5);
         let x_remap = point(6);
 
         Self {
@@ -488,7 +490,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_c: x2,
                 current_d: x3,
                 remap: ReinitWires::new(x_remap),
-                result: F::ZERO,
+                result: h,
                 child_deep_hashes: Vec::new(),
             },
             num_constraints: 0,
@@ -503,7 +505,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             x2,
             x3,
             y,
-            one,
+            h,
             x_remap,
         }
     }
@@ -512,10 +514,10 @@ impl<F: FromUniformBytes<64>> Counter<F> {
 impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     type MaybeKind = Empty;
     type ImplField = F;
-    type ImplWire = WireEval<F>;
-    type LCadd = WireEvalSum<F>;
-    type LCenforce = WireEvalSum<F>;
-    type Extra = WireEval<F>;
+    type ImplWire = F;
+    type LCadd = DirectSum<F>;
+    type LCenforce = DirectSum<F>;
+    type Extra = F;
 
     /// Consumes a gate: increments gate counts and returns wire values from
     /// four independent geometric sequences, advancing each by its base.
@@ -523,7 +525,7 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     fn gate(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
+    ) -> Result<(F, F, F, F)> {
         self.num_gates += 1;
         self.segments[self.scope.current_segment].num_gates += 1;
 
@@ -537,31 +539,22 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
         self.scope.current_c *= self.x2;
         self.scope.current_d *= self.x3;
 
-        Ok((
-            WireEval::Value(a),
-            WireEval::Value(b),
-            WireEval::Value(c),
-            WireEval::Value(d),
-        ))
+        Ok((a, b, c, d))
     }
 
-    fn assign_extra(
-        &mut self,
-        extra: Self::Extra,
-        _: impl Fn() -> Result<Coeff<F>>,
-    ) -> Result<WireEval<F>> {
+    fn assign_extra(&mut self, extra: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<F> {
         Ok(extra)
     }
 }
 
 impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type F = F;
-    type Wire = WireEval<F>;
-    const ONE: Self::Wire = WireEval::One;
+    type Wire = F;
+    const ONE: Self::Wire = F::ONE;
 
     /// Computes a linear combination of wire evaluations.
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
-        WireEval::Value(lc(WireEvalSum::new(self.one)).value)
+        lc(DirectSum::default()).value()
     }
 
     /// Increments constraint count and applies one Horner step:
@@ -570,7 +563,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         self.num_constraints += 1;
         self.segments[self.scope.current_segment].num_constraints += 1;
         self.scope.result *= self.y;
-        self.scope.result += lc(WireEvalSum::new(self.one)).value;
+        self.scope.result += lc(DirectSum::default()).value();
         Ok(())
     }
 
@@ -597,7 +590,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_c: self.x2,
                 current_d: self.x3,
                 remap: ReinitWires::new(self.x_remap),
-                result: F::ZERO,
+                result: self.h,
                 child_deep_hashes: Vec::new(),
             },
         );
@@ -616,11 +609,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Collect the raw output-wire values BEFORE parent-context remap
         // so the deep hash binds their positions relative to the child's
         // scope, not the parent's.
-        let one = self.one;
-        let output_wires = extract_wires(&output, move |w: &WireEval<F>| match *w {
-            WireEval::One => one,
-            WireEval::Value(v) => v,
-        })?;
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
         // Build the fingerprint from the child's Horner accumulator,
         // segment counts, collected output wires, and accumulated child
@@ -717,8 +706,8 @@ pub(crate) mod tests {
         type Src = Src;
         type Dst = Counter<F>;
 
-        fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<WireEval<F>> {
-            Ok(WireEval::Value(self.counter.scope.remap.mint()))
+        fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<F> {
+            Ok(self.counter.scope.remap.mint())
         }
     }
 
@@ -762,11 +751,7 @@ pub(crate) mod tests {
 
         // Collect output wire values before any parent-context remap
         // (there is no parent here, but the ordering mirrors Counter::routine).
-        let one = counter.one;
-        let output_wires = extract_wires(&output, move |w: &WireEval<F>| match *w {
-            WireEval::One => one,
-            WireEval::Value(v) => v,
-        })?;
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.

@@ -6,7 +6,7 @@
 //! wires, so this module introduces allocation as a separate concern.
 //!
 //! A gate's four wires $(A, B, C, D)$ are constrained by $A \cdot B = C$ and
-//! $C \cdot D = 0$. When $A$ and $C$ are both zero the remaining wires $B$
+//! $C \cdot D = 0$. When $B$ and $C$ are both zero the remaining wires $A$
 //! and $D$ are unconstrained, so up to two independent values can be packed
 //! into one gate. An [`Allocator`] manages this: it decides whether to
 //! allocate a fresh gate or repurpose a leftover wire from a previous one.
@@ -34,7 +34,7 @@ use ragu_core::{Result, drivers::Driver};
 ///
 /// Implementations decide how to turn a witness-producing closure into a
 /// driver wire. The simplest implementation (see the impl for `()`)
-/// allocates a full multiplication gate with zeroed $a$ and $c$ wires.
+/// allocates a full multiplication gate with zeroed $b$ and $c$ wires.
 /// [`Standard`] pairs consecutive allocations into a single gate by
 /// stashing the [`Extra`](ragu_core::drivers::DriverTypes::Extra) token
 /// that the `()` allocator discards, and also accepts donated tokens.
@@ -57,12 +57,12 @@ pub trait Allocator<'dr, D: Driver<'dr>> {
 
 /// Stateless allocator that uses one gate per allocation.
 ///
-/// Each call produces a multiplication gate $0 \cdot b = 0$ and returns
-/// the $b$ wire, wasting the $a$ and $c$ wires.
+/// Each call produces a multiplication gate $a \cdot 0 = 0$ and returns
+/// the $a$ wire, wasting the $b$ and $c$ wires.
 impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
     fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
-        let (_, b, _) = dr.mul(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
-        Ok(b)
+        let (a, _, _) = dr.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+        Ok(a)
     }
 }
 
@@ -105,9 +105,9 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for Standard<D::Extra> {
         if let Some(extra) = self.pool.pop() {
             dr.assign_extra(extra, value)
         } else {
-            let (_, b, _, extra) = dr.gate(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
+            let (a, _, _, extra) = dr.gate(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
             self.pool.push(extra);
-            Ok(b)
+            Ok(a)
         }
     }
 

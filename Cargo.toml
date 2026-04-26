@@ -69,7 +69,7 @@ repository = "https://github.com/tachyon-zcash/ragu"
 [workspace.dependencies]
 ff = { version = "0.14.0-pre.0", default-features = false }
 group = { version = "0.14.0-pre.0", default-features = false }
-pasta_curves = "0.5.1"
+pasta_curves = { version = "0.5.1", features = ["deferred"] }
 rand = "0.10"
 lazy_static = "1.5.0"
 proptest = "1.7.0"
@@ -102,4 +102,7 @@ group = { git = "https://github.com/ebfull/group", branch = "release-0.14.0-with
 # https://github.com/zcash/pasta_curves/pull/86
 # that updates `pasta_curves` to use `ff`/`group` `0.14.0-pre.0`
 # then bumps to `rand 0.9`.
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", branch = "ff-0.14-with-rand-0.10" }
+#
+# We then merge in deferred reduction support from `zcash/pasta_curves`
+# into `ff-0.14-with-rand-0.10-and-deferred`.
+pasta_curves = { git = "https://github.com/ebfull/pasta_curves", branch = "ff-0.14-with-rand-0.10-and-deferred" }

@@ -37,6 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &nested::stages::s_prime::Witness {
                 registry_wx0: native.registry_wx0_commitment,
                 registry_wx1: native.registry_wx1_commitment,
+                stashed_preamble: builder.native_preamble_commitment(),
             },
         )?;
         let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));

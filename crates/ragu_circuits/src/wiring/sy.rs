@@ -54,7 +54,6 @@
 //! view provides direct access to the $a$, $b$, $c$, and $d$ coefficient regions.
 //! See [`sparse::View`] for details.
 //!
-//! [`common`]: super::common
 //! [`sx`]: super::sx
 //! [`sxy`]: super::sxy
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
@@ -123,7 +122,7 @@ enum WireIndex {
 ///
 /// # The `ONE` Wire
 ///
-/// The constant [`Driver::ONE`] is the $b$ wire of the SYSTEM gate. Since `const`
+/// The constant [`Driver::ONE`] is the $d$ wire of the SYSTEM gate. Since `const`
 /// items cannot hold references, `ONE` uses `table: None`. This is safe because
 /// the ONE wire is allocated (not virtual) and needs no reference counting.
 ///
@@ -398,15 +397,15 @@ struct Evaluator<'table, 'sy, 'fp, F: Field, R: Rank> {
 ///
 /// # Contrast with [`sxy`]
 ///
-/// In [`sx`] and [`sxy`], [`WireEvalSum`] immediately evaluates linear
-/// combinations to field elements. Here, `TermCollector` builds a symbolic
-/// term list for later resolution, since coefficients of $s(X, y)$ cannot be
-/// computed until all constraints are known.
+/// In [`sx`] and [`sxy`], a [`DirectSum`] accumulator immediately evaluates
+/// linear combinations to field elements. Here, `TermCollector` builds a
+/// symbolic term list for later resolution, since coefficients of $s(X, y)$
+/// cannot be computed until all constraints are known.
 ///
 /// [`Driver::add`]: ragu_core::drivers::Driver::add
 /// [`sx`]: super::sx
 /// [`sxy`]: super::sxy
-/// [`WireEvalSum`]: super::common::WireEvalSum
+/// [`DirectSum`]: ragu_core::drivers::DirectSum
 struct TermCollector<F: Field> {
     /// Accumulated terms: pairs of (wire index, coefficient).
     terms: Vec<(WireIndex, Coeff<F>)>,
@@ -543,7 +542,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
     type Wire = Wire<'table, 'sy, F, R>;
 
     const ONE: Self::Wire = Wire {
-        index: WireIndex::B(0),
+        index: WireIndex::D(0),
         table: None,
     };
 
@@ -661,8 +660,8 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
-        // wire coefficient.
-        view.b.push(F::ONE);
+        // wire coefficient (d[0] at monomial x^0).
+        view.d.push(F::ONE);
         return Ok(view.build());
     }
 

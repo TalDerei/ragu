@@ -12,9 +12,9 @@ variable {p : ℕ} [Fact p.Prime]
 def main (curveParams : Spec.CurveParams p)
     (xReader yReader : ProverHint (F p) → F p)
     (_input : Unit) : Circuit (F p) (Var Spec.Point (F p)) := do
-  let ⟨x, x_sq⟩ ← Element.AllocSquare.generalCircuit xReader ()
+  let ⟨x, x_sq⟩ ← Element.AllocSquare.circuit xReader ()
   let x3 ← Element.Mul.circuit ⟨x, x_sq⟩
-  let ⟨y, y_sq⟩ ← Element.AllocSquare.generalCircuit yReader ()
+  let ⟨y, y_sq⟩ ← Element.AllocSquare.circuit yReader ()
   assertZero ((x3 + (curveParams.b * 1)) - y_sq)
   return ⟨x, y⟩
 
@@ -38,7 +38,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
     (xReader yReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.Soundness (F p) (elaborated curveParams xReader yReader) (Spec curveParams) := by
   circuit_proof_start [
-    Element.AllocSquare.generalCircuit, Element.AllocSquare.Assumptions,
+    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
     Element.AllocSquare.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
@@ -53,7 +53,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     GeneralFormalCircuit.Completeness (F p) (elaborated curveParams xReader yReader)
       (Assumptions curveParams xReader yReader) := by
   circuit_proof_start [
-    Element.AllocSquare.generalCircuit, Element.AllocSquare.Assumptions,
+    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
     Element.AllocSquare.Spec, Element.AllocSquare.CompletenessSpec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]

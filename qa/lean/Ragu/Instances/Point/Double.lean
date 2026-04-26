@@ -46,7 +46,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, exportedOperations,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
-      Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Element.DivNonzero.circuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor; rfl)
@@ -57,7 +57,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, serializeOutput,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
-      Circuits.Element.DivNonzero.generalCircuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
+      Circuits.Element.DivNonzero.circuit, Circuits.Element.DivNonzero.elaborated, Circuits.Element.DivNonzero.main,
       Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     constructor <;> rfl

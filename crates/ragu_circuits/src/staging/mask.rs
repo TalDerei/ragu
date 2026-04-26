@@ -64,11 +64,11 @@ pub(crate) fn global_project<F: Field, R: Rank>(p: F) -> sparse::Polynomial<F, R
         cur *= p;
     }
     for j in (0..n).rev() {
-        view.a[j] = cur;
+        view.b[j] = cur;
         cur *= p;
     }
     for j in 0..n {
-        view.b[j] = cur;
+        view.a[j] = cur;
         cur *= p;
     }
     for j in (0..n).rev() {
@@ -98,8 +98,8 @@ impl<R: Rank> StageMask<R> {
     /// the SYSTEM gate (gate 0) and must be at least 1. Gate wires are
     /// enforced to zero for gates `1..skip_gates` and
     /// `(skip_gates + num_gates)..n`. The SYSTEM gate is not constrained
-    /// here because `d[0]` carries the alpha blinding factor and
-    /// `b[0]` may or may not be set to 1; `a[0]` and `c[0]` are
+    /// here because `a[0]` carries the alpha blinding factor and
+    /// `d[0]` may or may not be set to 1; `b[0]` and `c[0]` are
     /// zero in all cases.
     pub fn new(skip_gates: usize, num_gates: usize) -> Result<Self> {
         assert!(skip_gates > 0, "skip_gates must include the SYSTEM gate");
@@ -154,8 +154,8 @@ impl<R: Rank> StageMask<R> {
 
         let p_inv = p.invert().expect("p is not zero");
         let mut d = -p.pow_vartime([g as u64]);
-        let mut a = -p.pow_vartime([(2 * n - 1 - g) as u64]);
-        let mut b = -p.pow_vartime([(2 * n + g) as u64]);
+        let mut a = -p.pow_vartime([(2 * n + g) as u64]);
+        let mut b = -p.pow_vartime([(2 * n - 1 - g) as u64]);
         let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
 
         for j in g..g + m {
@@ -164,8 +164,8 @@ impl<R: Rank> StageMask<R> {
             view.b[j] = b;
             view.c[j] = c;
             d *= p;
-            a *= p_inv;
-            b *= p;
+            a *= p;
+            b *= p_inv;
             c *= p_inv;
         }
 
@@ -259,10 +259,19 @@ mod tests {
     use crate::{
         WiringObject, WithAux, floor_planner, into_raw_wiring_object, into_wiring_object, metrics,
         polynomials::{Rank, sparse},
-        raw::GateWires,
         staging::StageBuilder,
         tests::SquareCircuit,
     };
+
+    /// Local wrapper that names the four wire handles of one gate. Used by
+    /// the [`StageMask`] test impl below to make the four-block iterator
+    /// chain readable (`&g.a`, `&g.b`, ...).
+    struct Gate<W> {
+        a: W,
+        b: W,
+        c: W,
+        d: W,
+    }
 
     impl<F: Field, R: Rank> crate::raw::RawCircuit<F> for StageMask<R> {
         type Witness<'source> = ();
@@ -272,7 +281,6 @@ mod tests {
         fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
             &self,
             dr: &mut D,
-            system_gate: GateWires<D::Wire>,
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         where
@@ -280,14 +288,15 @@ mod tests {
         {
             assert!(self.skip_gates + self.num_gates <= R::n());
 
-            // Collect all n gates. The SYSTEM gate comes from the
-            // orchestration function; gates 1..n are allocated here.
-            let mut gates = alloc::vec::Vec::with_capacity(R::n());
-            gates.push(system_gate);
+            // Allocate gates 1..n locally; gate 0 (the SYSTEM gate) is
+            // allocated by `orchestrate` and is not referenced here. Vec
+            // offset `i` corresponds to actual gate index `i + 1`.
+            let mut gates: alloc::vec::Vec<Gate<D::Wire>> =
+                alloc::vec::Vec::with_capacity(R::n() - 1);
             for _ in 1..R::n() {
                 let (a, b, c, extra) = dr.gate(|| unimplemented!())?;
                 let d = dr.assign_extra(extra, || unimplemented!())?;
-                gates.push(GateWires { a, b, c, d });
+                gates.push(Gate { a, b, c, d });
             }
 
             let is_active =
@@ -295,38 +304,44 @@ mod tests {
 
             // Issue 4n-2 enforce_zero in decreasing degree order so that the
             // driver assigns y^k to the constraint at degree k. Dummy (empty
-            // LC) constraints fill gaps for active gates. SYSTEM gate wires
-            // are directly accessible via gates[0].
+            // LC) constraints fill gaps for active gates.
             //
-            // c[j] at degree 4n-1-j (j=1..n-1), b[j] at degree 2n+j (j=n-1..0),
-            // a[j] at degree 2n-1-j (j=0..n-1), d[j] at degree j (j=n-1..1).
-            // d[0] at degree 0 is not issued (unconstrained blinding factor).
+            // c[j] at degree 4n-1-j (j=1..n-1), a[j] at degree 2n+j (j=n-1 down to 0),
+            // b[j] at degree 2n-1-j (j=0..n-1), d[j] at degree j (j=n-1 down to 1).
+            // d[0] at degree 0 is the ONE wire slot, not issued here (handled
+            // by orchestrate + Stripped for bonding polynomials).
             // c[0] is the registry key slot at degree 4n-1 — not emitted here.
+            //
+            // The a[j=0] and b[j=0] slots are dummy constraints (the SYSTEM
+            // gate is always "active" so its wires are not masked); we
+            // reproduce those slots with `iter::once(None)` since gate 0 is
+            // not in `gates`.
             let wires = gates
                 .iter()
                 .enumerate()
-                .skip(1)
-                .map(|(j, g)| (!is_active(j)).then_some(&g.c))
+                .map(|(i, g)| (!is_active(i + 1)).then_some(&g.c))
                 .chain(
                     gates
                         .iter()
                         .enumerate()
                         .rev()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.b)),
+                        .map(|(i, g)| (!is_active(i + 1)).then_some(&g.a))
+                        .chain(core::iter::once(None)),
+                )
+                .chain(
+                    core::iter::once(None).chain(
+                        gates
+                            .iter()
+                            .enumerate()
+                            .map(|(i, g)| (!is_active(i + 1)).then_some(&g.b)),
+                    ),
                 )
                 .chain(
                     gates
                         .iter()
                         .enumerate()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.a)),
-                )
-                .chain(
-                    gates
-                        .iter()
-                        .enumerate()
-                        .skip(1)
                         .rev()
-                        .map(|(j, g)| (!is_active(j)).then_some(&g.d)),
+                        .map(|(i, g)| (!is_active(i + 1)).then_some(&g.d)),
                 );
 
             for wire in wires {
@@ -350,14 +365,14 @@ mod tests {
     }
 
     impl<R: Rank> StageMask<R> {
-        /// Returns the generator point for the `coefficient_index`-th $b$-wire
+        /// Returns the generator point for the `coefficient_index`-th $a$-wire
         /// coefficient of this stage.
         ///
-        /// The $b$-wire at gate $j$ occupies degree $2n - 1 - j$ in the
+        /// The $a$-wire at gate $j$ occupies degree $2n - 1 - j$ in the
         /// witness polynomial. The SYSTEM gate is included in `skip_gates`, so the
         /// first active gate is at index `skip_gates` and the formula
         /// becomes $2n - 1 - \text{skip\_gates} - \text{coefficient\_index}$.
-        fn generator_for_b_coefficient<C: CurveAffine>(
+        fn generator_for_a_coefficient<C: CurveAffine>(
             &self,
             generators: &impl FixedGenerators<C>,
             coefficient_index: usize,
@@ -832,9 +847,9 @@ mod tests {
         assert_eq!(sxy, sy.eval(x));
     }
 
-    /// A stage that allocates values only in b-positions (d = 0) for challenge smuggling.
+    /// A stage that allocates values only in a-positions (d = 0) for challenge smuggling.
     ///
-    /// Each value is paired with a zero to ensure it lands in a b-coefficient position
+    /// Each value is paired with a zero to ensure it lands in an a-coefficient position
     /// when the polynomial is built. This mimics the pattern used for smuggling challenges.
     #[derive(Default)]
     struct ParentAOnlyStage;
@@ -876,7 +891,7 @@ mod tests {
             Self: 'dr,
         {
             // Allocate each challenge value followed by zero, which
-            // ensures challenges land in b-positions, zeros in d-positions.
+            // ensures challenges land in a-positions, zeros in d-positions.
             let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
             let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
@@ -936,10 +951,10 @@ mod tests {
         }
     }
 
-    /// Tests that `StageMask::generator_for_b_coefficient` returns the generator
-    /// at the index computed by `StageExt::generator_index_for_b`.
+    /// Tests that `StageMask::generator_for_a_coefficient` returns the generator
+    /// at the index computed by `StageExt::generator_index_for_a`.
     #[test]
-    fn test_generator_for_b_coefficient() {
+    fn test_generator_for_a_coefficient() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -951,9 +966,9 @@ mod tests {
         .unwrap();
 
         for i in 0..3 {
-            let gen_idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
+            let gen_idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let expected_gen = generators.g()[gen_idx];
-            let actual_gen = parent_mask.generator_for_b_coefficient(generators, i);
+            let actual_gen = parent_mask.generator_for_a_coefficient(generators, i);
             assert_eq!(actual_gen, expected_gen);
         }
 
@@ -964,9 +979,9 @@ mod tests {
         .unwrap();
 
         for i in 0..3 {
-            let gen_idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
+            let gen_idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let expected_gen = generators.g()[gen_idx];
-            let actual_gen = child_mask.generator_for_b_coefficient(generators, i);
+            let actual_gen = child_mask.generator_for_a_coefficient(generators, i);
             assert_eq!(actual_gen, expected_gen);
         }
     }
@@ -976,27 +991,27 @@ mod tests {
     #[test]
     fn test_generator_index_edge_cases() {
         assert_eq!(
-            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(0),
+            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(0),
             2 * R::n() - 2
         );
         assert_eq!(
-            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(2),
+            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(2),
             2 * R::n() - 4
         );
         assert_eq!(
-            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(0),
+            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(0),
             2 * R::n() - 5
         );
         assert_eq!(
-            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(2),
+            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(2),
             2 * R::n() - 7
         );
     }
 
-    /// Tests that committing to an rx polynomial with values only in b-positions
-    /// matches a manual MSM using generators from `generator_index_for_b`.
+    /// Tests that committing to an rx polynomial with values only in a-positions
+    /// matches a manual MSM using generators from `generator_index_for_a`.
     #[test]
-    fn test_b_wire_commitment_for_challenge_smuggling() {
+    fn test_a_wire_commitment_for_challenge_smuggling() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -1008,21 +1023,21 @@ mod tests {
 
         let mut manual_commitment = EqAffine::identity();
         for (i, &challenge) in challenges.iter().enumerate() {
-            let idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
-            let b_gen = generators.g()[idx];
-            let contrib = b_gen * challenge;
+            let idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
+            let a_gen = generators.g()[idx];
+            let contrib = a_gen * challenge;
             manual_commitment = (manual_commitment.to_curve() + contrib).to_affine();
         }
 
         assert_eq!(
             poly_commitment, manual_commitment,
-            "B-wire commitment should match manual computation"
+            "A-wire commitment should match manual computation"
         );
     }
 
     /// Same as above but for a root stage (no parent, zero skip).
     #[test]
-    fn test_b_wire_commitment_via_staging_mechanism() {
+    fn test_a_wire_commitment_via_staging_mechanism() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -1031,12 +1046,12 @@ mod tests {
         let rx: sparse::Polynomial<Fp, R> = ParentAOnlyStage::rx(Fp::ZERO, challenges).unwrap();
         let poly_commitment: EqAffine = rx.commit_to_affine(generators);
 
-        // Manually compute expected commitment using StageExt::generator_index_for_b.
+        // Manually compute expected commitment using StageExt::generator_index_for_a.
         let mut manual_commitment = EqAffine::identity();
         for (i, &challenge) in challenges.iter().enumerate() {
-            let idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
-            let b_gen = generators.g()[idx];
-            manual_commitment = (manual_commitment.to_curve() + b_gen * challenge).to_affine();
+            let idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
+            let a_gen = generators.g()[idx];
+            manual_commitment = (manual_commitment.to_curve() + a_gen * challenge).to_affine();
         }
 
         assert_eq!(

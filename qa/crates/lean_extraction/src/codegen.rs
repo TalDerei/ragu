@@ -22,9 +22,11 @@ impl FieldExporter for Fq {
 
 fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
     match c {
-        Coeff::Zero => "0".to_owned(),
-        Coeff::One => "1".to_owned(),
-        Coeff::Two => "2".to_owned(),
+        // Type-annotated so that `0`/`1`/`2`-prefixed expressions like `1 + ...`
+        // parse without Lean defaulting the literal to `ℕ`.
+        Coeff::Zero => "((0 : F p) : Expression (F p))".to_owned(),
+        Coeff::One => "((1 : F p) : Expression (F p))".to_owned(),
+        Coeff::Two => "((2 : F p) : Expression (F p))".to_owned(),
         // TODO: make this work without the extra coercion to `F p` by making circuit_norm normalize negated expressions consistently
         Coeff::NegativeOne => "((-1 : F p) : Expression (F p))".to_owned(),
         Coeff::Arbitrary(f) => format!("({f:?} : Expression (F p))"),
