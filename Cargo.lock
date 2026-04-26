@@ -845,6 +845,7 @@ dependencies = [
  "group",
  "gungraun",
  "maybe-rayon",
+ "pasta_curves",
  "proptest",
  "ragu_arithmetic",
  "ragu_core",

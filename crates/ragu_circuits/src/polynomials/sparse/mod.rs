@@ -50,7 +50,7 @@ use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 
 use ff::Field;
-use ragu_arithmetic::CurveAffine;
+use ragu_arithmetic::{CurveAffine, DeferredField};
 use rand::CryptoRng;
 
 use super::Rank;
@@ -397,10 +397,15 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Computes $\sum\_{k} \text{self}\[k\] \cdot \text{other}\[4n - 1 - k\]$.
     ///
     /// Uses a two-pointer merge over both block lists for $O(\text{nnz})$
-    /// time.
-    pub fn revdot(&self, other: &Self) -> F {
+    /// time. Products are accumulated unreduced via
+    /// [`DeferredField::mul_accumulate`] and a single Montgomery reduction is
+    /// performed at the end.
+    pub fn revdot(&self, other: &Self) -> F
+    where
+        F: DeferredField,
+    {
         let max_deg = R::num_coeffs() - 1;
-        let mut result = F::ZERO;
+        let mut acc = F::Accumulator::default();
 
         let mut a_iter = self.blocks.iter().peekable();
         // Iterating other's blocks in reverse yields ascending reversed-index
@@ -432,7 +437,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
                 let b_slice = &b_data[b_idx_lo..=b_idx_hi];
 
                 for (a_val, b_val) in a_slice.iter().zip(b_slice.iter().rev()) {
-                    result += *a_val * *b_val;
+                    F::mul_accumulate(&mut acc, a_val, b_val);
                 }
             }
 
@@ -444,7 +449,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             }
         }
 
-        result
+        F::reduce(acc)
     }
 
     /// Computes a commitment to this polynomial in projective form. Use
