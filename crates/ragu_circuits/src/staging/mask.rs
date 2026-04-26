@@ -1,3 +1,5 @@
+use alloc::{vec, vec::Vec};
+
 use ff::Field;
 use ragu_arithmetic::geosum;
 use ragu_core::Result;
@@ -85,10 +87,14 @@ pub(crate) fn global_project<F: Field, R: Rank>(p: F) -> sparse::Polynomial<F, R
     view.build()
 }
 
+/// Bonding polynomial that masks the data wires outside one or more
+/// stage windows. A single-stage mask is constructed via [`new`](Self::new);
+/// multiple stages can be bundled into one registry slot by chaining
+/// [`with_notch`](Self::with_notch).
 #[derive(Clone)]
 pub struct StageMask<R: Rank> {
-    skip_gates: usize,
-    num_gates: usize,
+    /// One `(skip_gates, num_gates)` per masked stage window.
+    notches: Vec<(usize, usize)>,
     _marker: core::marker::PhantomData<R>,
 }
 
@@ -102,13 +108,9 @@ impl<R: Rank> StageMask<R> {
     /// `d[0]` may or may not be set to 1; `b[0]` and `c[0]` are
     /// zero in all cases.
     pub fn new(skip_gates: usize, num_gates: usize) -> Result<Self> {
-        assert!(skip_gates > 0, "skip_gates must include the SYSTEM gate");
-        if skip_gates + num_gates > R::n() {
-            return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
-        }
+        Self::check_notch(skip_gates, num_gates)?;
         Ok(Self {
-            skip_gates,
-            num_gates,
+            notches: vec![(skip_gates, num_gates)],
             _marker: core::marker::PhantomData,
         })
     }
@@ -123,50 +125,77 @@ impl<R: Rank> StageMask<R> {
         if skip_gates > R::n() {
             return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
         }
-
         let num_gates = R::n() - skip_gates;
-
         Ok(Self {
-            skip_gates,
-            num_gates,
+            notches: vec![(skip_gates, num_gates)],
             _marker: core::marker::PhantomData,
         })
     }
 
+    /// Bundles an additional stage window into this mask, occupying the
+    /// same registry slot as the original. Caller must ensure the
+    /// bundled stages occupy disjoint gate windows.
+    #[allow(dead_code, reason = "exposed for future stage-grouping migrations")]
+    pub fn with_notch(mut self, skip_gates: usize, num_gates: usize) -> Result<Self> {
+        Self::check_notch(skip_gates, num_gates)?;
+        self.notches.push((skip_gates, num_gates));
+        Ok(self)
+    }
+
+    fn check_notch(skip_gates: usize, num_gates: usize) -> Result<()> {
+        assert!(skip_gates > 0, "skip_gates must include the SYSTEM gate");
+        if skip_gates + num_gates > R::n() {
+            return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
+        }
+        Ok(())
+    }
+
     /// Returns a sparse polynomial containing the negated notch entries for
-    /// the active-stage gate wires at positions `skip_gates..skip_gates + num_gates`.
-    /// The SYSTEM gate is excluded (it is already zero in the global mask).
+    /// the active-stage gate wires at positions `skip_gates..skip_gates + num_gates`,
+    /// summed across every notch in the mask. The SYSTEM gate is excluded
+    /// (it is already zero in the global mask).
     ///
-    /// The result has `4 × num_gates` non-zero entries
-    /// (vs `4(n - 1)` for the full mask projection).
+    /// For a single-stage mask the result has `4 × num_gates` non-zero
+    /// entries; bundled masks accumulate per-notch contributions into the
+    /// same view (notches are expected to occupy disjoint windows, so no
+    /// real accumulation occurs in well-formed cases).
     fn notch_project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
-        if self.num_gates == 0 || p == F::ZERO {
+        if p == F::ZERO {
             return sparse::Polynomial::default();
         }
+
+        let max_extent = self.notches.iter().map(|(g, m)| g + m).max().unwrap_or(0);
+        if max_extent == 0 {
+            return sparse::Polynomial::default();
+        }
+
         let n = R::n();
-        let g = self.skip_gates;
-        let m = self.num_gates;
         let mut view = sparse::View::<F, R, _>::wiring();
-        view.d.resize(g + m, F::ZERO);
-        view.a.resize(g + m, F::ZERO);
-        view.b.resize(g + m, F::ZERO);
-        view.c.resize(g + m, F::ZERO);
+        view.d.resize(max_extent, F::ZERO);
+        view.a.resize(max_extent, F::ZERO);
+        view.b.resize(max_extent, F::ZERO);
+        view.c.resize(max_extent, F::ZERO);
 
         let p_inv = p.invert().expect("p is not zero");
-        let mut d = -p.pow_vartime([g as u64]);
-        let mut a = -p.pow_vartime([(2 * n + g) as u64]);
-        let mut b = -p.pow_vartime([(2 * n - 1 - g) as u64]);
-        let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
+        for &(g, m) in &self.notches {
+            if m == 0 {
+                continue;
+            }
+            let mut d = -p.pow_vartime([g as u64]);
+            let mut a = -p.pow_vartime([(2 * n + g) as u64]);
+            let mut b = -p.pow_vartime([(2 * n - 1 - g) as u64]);
+            let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
 
-        for j in g..g + m {
-            view.d[j] = d;
-            view.a[j] = a;
-            view.b[j] = b;
-            view.c[j] = c;
-            d *= p;
-            a *= p;
-            b *= p_inv;
-            c *= p_inv;
+            for j in g..g + m {
+                view.d[j] += d;
+                view.a[j] += a;
+                view.b[j] += b;
+                view.c[j] += c;
+                d *= p;
+                a *= p;
+                b *= p_inv;
+                c *= p_inv;
+            }
         }
 
         view.build()
@@ -174,17 +203,19 @@ impl<R: Rank> StageMask<R> {
 }
 
 impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
-    /// Evaluates the per-instance notch term $-\text{notch}(x, y)$.
+    /// Evaluates the per-instance notch term $-\text{notch}(x, y)$,
+    /// summed across every notch in the mask.
     ///
     /// The full stage mask is $S\_{\text{global}} - \text{notch}$, but
     /// the invariant $S\_{\text{global}}$ term is factored out and applied
-    /// once by the [`Registry`](crate::registry::Registry). This method
-    /// returns only $-\text{notch}$, where
+    /// once by the [`Registry`](crate::registry::Registry). For each
+    /// `(skip_gates, num_gates)` pair this method contributes
     ///
     /// $$\text{notch}(x, y) = (1 + (xy)^{2n})\bigl((xy)^g + (xy)^{2n-g-m}\bigr)
     ///     \cdot \sum_{i=0}^{m-1} (xy)^i$$
     ///
-    /// with $g = \text{skip\_gates}$ and $m = \text{num\_gates}$.
+    /// with $g = \text{skip\_gates}$ and $m = \text{num\_gates}$. The
+    /// $(1 + (xy)^{2n})$ factor is shared across notches and applied once.
     fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
         if x == F::ZERO || y == F::ZERO {
             return F::ZERO;
@@ -193,11 +224,18 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         let xy = x * y;
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
 
-        let gsum = geosum(xy, self.num_gates);
-        let skip = xy.pow_vartime([self.skip_gates as u64]);
-        let tail = xy.pow_vartime([(2 * R::n() - self.skip_gates - self.num_gates) as u64]);
+        let mut inner = F::ZERO;
+        for &(skip_gates, num_gates) in &self.notches {
+            if num_gates == 0 {
+                continue;
+            }
+            let gsum = geosum(xy, num_gates);
+            let skip = xy.pow_vartime([skip_gates as u64]);
+            let tail = xy.pow_vartime([(2 * R::n() - skip_gates - num_gates) as u64]);
+            inner += (skip + tail) * gsum;
+        }
 
-        -((F::ONE + xy_2n) * (skip + tail) * gsum)
+        -(F::ONE + xy_2n) * inner
     }
 
     fn sx(
@@ -286,7 +324,13 @@ mod tests {
         where
             Self: 'dr,
         {
-            assert!(self.skip_gates + self.num_gates <= R::n());
+            assert_eq!(
+                self.notches.len(),
+                1,
+                "RawCircuit impl is single-notch only"
+            );
+            let (skip_gates, num_gates) = self.notches[0];
+            assert!(skip_gates + num_gates <= R::n());
 
             // Allocate gates 1..n locally; gate 0 (the SYSTEM gate) is
             // allocated by `orchestrate` and is not referenced here. Vec
@@ -299,8 +343,7 @@ mod tests {
                 gates.push(Gate { a, b, c, d });
             }
 
-            let is_active =
-                |j: usize| j == 0 || (j >= self.skip_gates && j < self.skip_gates + self.num_gates);
+            let is_active = |j: usize| j == 0 || (j >= skip_gates && j < skip_gates + num_gates);
 
             // Issue 4n-2 enforce_zero in decreasing degree order so that the
             // driver assigns y^k to the constraint at degree k. Dummy (empty
@@ -377,14 +420,20 @@ mod tests {
             generators: &impl FixedGenerators<C>,
             coefficient_index: usize,
         ) -> C {
+            assert_eq!(
+                self.notches.len(),
+                1,
+                "generator_for_a_coefficient is single-notch only"
+            );
+            let (skip_gates, num_gates) = self.notches[0];
             assert!(
-                coefficient_index < self.num_gates,
+                coefficient_index < num_gates,
                 "coefficient_index {} exceeds num_gates {}",
                 coefficient_index,
-                self.num_gates
+                num_gates
             );
 
-            let idx = 2 * R::n() - 1 - self.skip_gates - coefficient_index;
+            let idx = 2 * R::n() - 1 - skip_gates - coefficient_index;
             generators.g()[idx]
         }
     }
@@ -664,6 +713,33 @@ mod tests {
             let sxy_b = mask_b.sxy(x, y, &[]);
             let global_xy = super::global_mask::<Fp, R>(x, y);
             prop_assert_eq!(sxy_a + sxy_b, -global_xy);
+        }
+
+        /// A multi-notch `StageMask` (built via `with_notch`) produces
+        /// the same notch projection and `sxy` value as summing two
+        /// single-notch masks over the same windows.
+        #[test]
+        fn test_with_notch_matches_sum(split in 1..R::n()) {
+            let mask_a = StageMask::<R>::new(1, split - 1).unwrap();
+            let mask_b = StageMask::<R>::new(split, R::n() - split).unwrap();
+            let combined = StageMask::<R>::new(1, split - 1)
+                .unwrap()
+                .with_notch(split, R::n() - split)
+                .unwrap();
+
+            let p = Fp::random(&mut rand::rng());
+            let x = Fp::random(&mut rand::rng());
+            let y = Fp::random(&mut rand::rng());
+            let q = Fp::random(&mut rand::rng());
+
+            let mut sum_poly = mask_a.notch_project(p);
+            sum_poly += &mask_b.notch_project(p);
+            prop_assert_eq!(sum_poly.eval(q), combined.notch_project(p).eval(q));
+
+            prop_assert_eq!(
+                mask_a.sxy(x, y, &[]) + mask_b.sxy(x, y, &[]),
+                combined.sxy(x, y, &[]),
+            );
         }
     }
 
