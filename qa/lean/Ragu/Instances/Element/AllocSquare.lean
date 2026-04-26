@@ -36,7 +36,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, exportedOperations,
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
-      Circuits.Element.AllocSquare.main]
+      Circuits.Element.AllocSquare.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -46,7 +49,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, serializeOutput,
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
-      Circuits.Element.AllocSquare.main]
+      Circuits.Element.AllocSquare.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
   same_spec := by
     intro input output
     dsimp only [Circuits.Element.AllocSquare.circuit,

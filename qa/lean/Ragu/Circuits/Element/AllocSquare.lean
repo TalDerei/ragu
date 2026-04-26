@@ -11,11 +11,10 @@ deriving ProvableStruct
 
 def main (hintReader : ProverHint (F p) → F p) (_input : Unit) :
     Circuit (F p) (Var Square (F p)) := do
-  let ⟨x, y, z⟩ ← (witness fun env =>
-    let a := hintReader env.hint
-    (⟨a, a, a * a⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
-  assertZero (x * y - z)
+  let ⟨x, y, z⟩ ← Core.AllocMul.circuit
+    (fun hint =>
+      let a := hintReader hint
+      ⟨a, a, a * a⟩) ()
   assertZero (x - y)
   return ⟨x, z⟩
 
@@ -36,40 +35,35 @@ instance elaborated (hintReader : ProverHint (F p) → F p) :
 
 theorem soundness (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
-  circuit_proof_start
-  obtain ⟨c1, c2⟩ := h_holds
-  rw [add_neg_eq_zero] at c1 c2
-  rw [←c1, c2]
-  ring
+  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  obtain ⟨h_mul, h_eq⟩ := h_holds
+  -- h_mul : x * y = z, h_eq : x - y = 0
+  rw [add_neg_eq_zero] at h_eq
+  -- Goal: z = x^2
+  rw [← h_mul, h_eq]; ring
 
 theorem completeness (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
       Assumptions := by
-  circuit_proof_start
-  have h0 := h_env (0 : Fin 3)
-  have h1 := h_env (1 : Fin 3)
-  have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
-  simp at h0 h1 h2
-  rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
-  rw [h0, h1, h2]
-  refine ⟨?_, ?_⟩ <;> ring
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions,
+    Core.AllocMul.CompletenessSpec
+  ]
+  obtain ⟨_, hx, hy, _⟩ := h_env
+  -- hx : x = a, hy : y = a → x - y = 0
+  rw [hx, hy]; ring
 
 theorem completenessSpec (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated hintReader)
       Assumptions (CompletenessSpec hintReader) := by
-  circuit_proof_start [CompletenessSpec]
-  have h0 := h_env (0 : Fin 3)
-  have h1 := h_env (1 : Fin 3)
-  have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
-  simp only [List.foldr_cons, List.foldr_nil, Nat.add_zero, Nat.reduceAdd, Vector.getElem_mk,
-    List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ] at h0 h1 h2
-  rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
-  refine ⟨h0, ?_⟩
-  rw [h2]; ring
+  circuit_proof_start [CompletenessSpec,
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions,
+    Core.AllocMul.CompletenessSpec
+  ]
+  obtain ⟨_, hx, _, hz⟩ := h_env
+  -- hx : x = a, hz : z = a * a
+  refine ⟨hx, ?_⟩
+  rw [hz]; ring
 
 def circuit (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit (F p) unit Square :=
