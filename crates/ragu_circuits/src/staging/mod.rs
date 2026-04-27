@@ -443,7 +443,7 @@ impl<F: Field, R: Rank, S: Stage<F, R>> StageExt<F, R> for S {}
 ///
 /// Soundness depends on stage rxs living only in the `(a, 0, 0, d)` wire
 /// pattern — currently provided by
-/// [`Standard`](ragu_primitives::allocator::Standard). Cross-stage
+/// [`ragu_primitives::allocator::Standard`]. Cross-stage
 /// `revdot(rx_i, mask_j)` terms vanish for `i != j` only when rxs are
 /// zero in the `b` and `c` blocks; an allocator that placed data there
 /// would silently break this bundling identity.
