@@ -140,10 +140,7 @@ impl<R: Rank> StageMask<R> {
         Self::check_notch(skip_gates, num_gates)?;
         if num_gates > 0 {
             let new_end = skip_gates + num_gates;
-            for &(s, n) in &self.notches {
-                if n == 0 {
-                    continue;
-                }
+            for (s, n) in self.active_notches() {
                 let existing_end = s + n;
                 let disjoint = new_end <= s || existing_end <= skip_gates;
                 assert!(
@@ -164,6 +161,13 @@ impl<R: Rank> StageMask<R> {
         Ok(())
     }
 
+    /// Iterates over notches that contribute to the mask. Notches with
+    /// `num_gates == 0` are absorbing identities for the bonding sum and
+    /// are skipped.
+    fn active_notches(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.notches.iter().copied().filter(|&(_, m)| m != 0)
+    }
+
     /// Returns a sparse polynomial containing the negated notch entries for
     /// the active-stage gate wires at positions `skip_gates..skip_gates + num_gates`,
     /// summed across every notch in the mask. The SYSTEM gate is excluded
@@ -178,7 +182,7 @@ impl<R: Rank> StageMask<R> {
             return sparse::Polynomial::default();
         }
 
-        let max_extent = self.notches.iter().map(|(g, m)| g + m).max().unwrap_or(0);
+        let max_extent = self.active_notches().map(|(g, m)| g + m).max().unwrap_or(0);
         if max_extent == 0 {
             return sparse::Polynomial::default();
         }
@@ -191,10 +195,7 @@ impl<R: Rank> StageMask<R> {
         view.c.resize(max_extent, F::ZERO);
 
         let p_inv = p.invert().expect("p is not zero");
-        for &(g, m) in &self.notches {
-            if m == 0 {
-                continue;
-            }
+        for (g, m) in self.active_notches() {
             let mut d = -p.pow_vartime([g as u64]);
             let mut a = -p.pow_vartime([(2 * n + g) as u64]);
             let mut b = -p.pow_vartime([(2 * n - 1 - g) as u64]);
@@ -239,10 +240,7 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
 
         let mut inner = F::ZERO;
-        for &(skip_gates, num_gates) in &self.notches {
-            if num_gates == 0 {
-                continue;
-            }
+        for (skip_gates, num_gates) in self.active_notches() {
             let gsum = geosum(xy, num_gates);
             let skip = xy.pow_vartime([skip_gates as u64]);
             let tail = xy.pow_vartime([(2 * R::n() - skip_gates - num_gates) as u64]);

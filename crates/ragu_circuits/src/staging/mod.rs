@@ -447,11 +447,12 @@ impl<F: Field, R: Rank, S: Stage<F, R>> StageExt<F, R> for S {}
 /// `revdot(rx_i, mask_j)` terms vanish for `i != j` only when rxs are
 /// zero in the `b` and `c` blocks; an allocator that placed data there
 /// would silently break this bundling identity.
-pub fn bundle_stage_masks<'a, F: Field, R: Rank>(
-    notches: impl IntoIterator<Item = (usize, usize)>,
+pub fn bundle_stage_masks<'a, F: Field, R: Rank, const N: usize>(
+    notches: [(usize, usize); N],
 ) -> Result<BondingObject<'a, F, R>> {
+    const { assert!(N > 0, "bundle_stage_masks requires at least one notch") };
     let mut iter = notches.into_iter();
-    let (skip, num) = iter.next().expect("at least one notch is required");
+    let (skip, num) = iter.next().expect("N > 0 by const assertion");
     let mut mask = mask::StageMask::<R>::new(skip, num)?;
     for (skip, num) in iter {
         mask = mask.with_notch(skip, num)?;

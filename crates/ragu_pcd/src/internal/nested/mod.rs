@@ -319,7 +319,7 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
                         <BE<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
                     ),
                 ];
-                registry.register_bonding(bundle_stage_masks::<C::ScalarField, R>(notches)?)
+                registry.register_bonding(bundle_stage_masks::<C::ScalarField, R, _>(notches)?)
             }
             Loading => {
                 let circuit = circuits::loading::Circuit::<C::HostCurve, R>::new();
