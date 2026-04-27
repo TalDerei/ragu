@@ -133,10 +133,25 @@ impl<R: Rank> StageMask<R> {
     }
 
     /// Bundles an additional stage window into this mask, occupying the
-    /// same registry slot as the original. Caller must ensure the
-    /// bundled stages occupy disjoint gate windows.
+    /// same registry slot as the original. Panics if the new window
+    /// overlaps any existing notch — disjointness is required for the
+    /// bundled bonding identity to remain sound.
     pub fn with_notch(mut self, skip_gates: usize, num_gates: usize) -> Result<Self> {
         Self::check_notch(skip_gates, num_gates)?;
+        if num_gates > 0 {
+            let new_end = skip_gates + num_gates;
+            for &(s, n) in &self.notches {
+                if n == 0 {
+                    continue;
+                }
+                let existing_end = s + n;
+                let disjoint = new_end <= s || existing_end <= skip_gates;
+                assert!(
+                    disjoint,
+                    "notch ({skip_gates}, {num_gates}) overlaps existing notch ({s}, {n})",
+                );
+            }
+        }
         self.notches.push((skip_gates, num_gates));
         Ok(self)
     }
@@ -617,6 +632,16 @@ mod tests {
             "root segment must have at least 1 constraint (ONE), got {}",
             floor_plan[0].num_constraints,
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "overlaps existing notch")]
+    fn test_with_notch_rejects_overlap() {
+        // Two notches sharing gate 10 must panic.
+        let _ = StageMask::<R>::new(1, 15)
+            .unwrap()
+            .with_notch(10, 5)
+            .unwrap();
     }
 
     #[test]
