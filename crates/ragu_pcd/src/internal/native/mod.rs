@@ -344,7 +344,7 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
                         <IE<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
                     ),
                 ];
-                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R>(notches)?)
+                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R, _>(notches)?)
             }
             QueryEvalGroup => {
                 type Q<C, R, const H: usize> = stages::query::Stage<C, R, H>;
@@ -359,7 +359,7 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
                         <Ev<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
                     ),
                 ];
-                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R>(notches)?)
+                registry.register_bonding(bundle_stage_masks::<C::CircuitField, R, _>(notches)?)
             }
             InnerErrorFinalStaged => registry.register_bonding(stages::inner_error::Stage::<
                 C,
