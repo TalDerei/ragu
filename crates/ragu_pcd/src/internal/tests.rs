@@ -95,6 +95,45 @@ fn test_internal_circuit_constraint_counts() {
     check_constraints!(ComputeVCircuit,        mul = 1108, lin = 1721);
 }
 
+#[test]
+fn test_nested_internal_circuit_constraint_counts() {
+    use crate::internal::{Side, nested::InternalCircuitIndex as NestedIdx};
+
+    let pasta = Pasta::baked();
+
+    let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
+        .register_dummy_circuits(NUM_APP_STEPS)
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+
+    let check = |variant: NestedIdx, mul: usize, lin: usize| {
+        let circuit_index = variant.circuit_index();
+        let (actual_gates, actual_constraints) =
+            app.nested_registry.constraint_counts(circuit_index);
+        assert_eq!(actual_gates, mul, "{:?}: gates", variant);
+        assert_eq!(actual_constraints, lin, "{:?}: constraints", variant);
+    };
+
+    // All endoscaling steps share the same shape.
+    for variant in NestedIdx::ALL {
+        if let NestedIdx::EndoscalingStep(_) = variant {
+            check(variant, 1948, 3677);
+        }
+    }
+
+    // Stage masks are capped by the StageMask formula (4n-1 constraints, n gates).
+    // BridgeGroup bundles 8 stages into one slot — this is the headline change in PR #688.
+    check(NestedIdx::EndoscalarStage, 2048, 8191);
+    check(NestedIdx::PointsStage, 2048, 8191);
+    check(NestedIdx::PointsFinalStaged, 2048, 8191);
+    check(NestedIdx::BridgeGroup, 2048, 8191);
+
+    check(NestedIdx::Loading, 154, 76);
+    check(NestedIdx::Copying(Side::Left), 154, 18);
+    check(NestedIdx::Copying(Side::Right), 154, 18);
+}
+
 #[rustfmt::skip]
 #[test]
 fn test_internal_stage_parameters() {
@@ -150,6 +189,35 @@ fn print_internal_circuit_constraint_counts() {
             format!("{},", name),
             mul,
             lin
+        );
+    }
+}
+
+/// Helper test to print current nested constraint counts in copy-pasteable format.
+/// Run with: `cargo test -p ragu_pcd --release print_nested_internal_circuit -- --nocapture`
+#[test]
+fn print_nested_internal_circuit_constraint_counts() {
+    use alloc::format;
+    use std::println;
+
+    use crate::internal::nested::InternalCircuitIndex as NestedIdx;
+
+    let pasta = Pasta::baked();
+
+    let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
+        .register_dummy_circuits(NUM_APP_STEPS)
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+
+    println!("\n// Copy-paste the following into test_nested_internal_circuit_constraint_counts:");
+    for variant in NestedIdx::ALL {
+        let circuit_index = variant.circuit_index();
+        let (mul, lin) = app.nested_registry.constraint_counts(circuit_index);
+        let label = format!("NestedIdx::{:?},", variant);
+        println!(
+            "    check_constraints!({:<36} mul = {:<5}, lin = {});",
+            label, mul, lin
         );
     }
 }
