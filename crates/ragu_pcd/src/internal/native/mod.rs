@@ -330,8 +330,10 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
                 registry.register_bonding(stages::preamble::Stage::<C, R, HEADER_SIZE>::mask()?)
             }
             OuterInnerErrorGroup => {
-                type OE<C, R, const H: usize> = stages::outer_error::Stage<C, R, H, RevdotParameters>;
-                type IE<C, R, const H: usize> = stages::inner_error::Stage<C, R, H, RevdotParameters>;
+                type OE<C, R, const H: usize> =
+                    stages::outer_error::Stage<C, R, H, RevdotParameters>;
+                type IE<C, R, const H: usize> =
+                    stages::inner_error::Stage<C, R, H, RevdotParameters>;
                 let notches = [
                     (
                         <OE<C, R, HEADER_SIZE>>::skip_gates(),

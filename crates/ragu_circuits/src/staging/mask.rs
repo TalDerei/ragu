@@ -135,7 +135,6 @@ impl<R: Rank> StageMask<R> {
     /// Bundles an additional stage window into this mask, occupying the
     /// same registry slot as the original. Caller must ensure the
     /// bundled stages occupy disjoint gate windows.
-    #[allow(dead_code, reason = "exposed for future stage-grouping migrations")]
     pub fn with_notch(mut self, skip_gates: usize, num_gates: usize) -> Result<Self> {
         Self::check_notch(skip_gates, num_gates)?;
         self.notches.push((skip_gates, num_gates));
