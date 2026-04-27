@@ -115,29 +115,20 @@ where
                     .flat_map(|step| source.rx(RxIndex::EndoscalingStep(step as u32)));
                 processor.bonding_claim(id, final_rxs)?;
             }
-            BridgePreamble => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgePreamble))?;
-            }
-            BridgeSPrime => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeSPrime))?;
-            }
-            BridgeInnerError => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeInnerError))?;
-            }
-            BridgeOuterError => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeOuterError))?;
-            }
-            BridgeAB => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeAB))?;
-            }
-            BridgeQuery => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeQuery))?;
-            }
-            BridgeF => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeF))?;
-            }
-            BridgeEval => {
-                processor.bonding_claim(id, source.rx(RxIndex::BridgeEval))?;
+            BridgeGroup => {
+                let groups = source
+                    .rx(RxIndex::BridgePreamble)
+                    .zip(source.rx(RxIndex::BridgeSPrime))
+                    .zip(source.rx(RxIndex::BridgeInnerError))
+                    .zip(source.rx(RxIndex::BridgeOuterError))
+                    .zip(source.rx(RxIndex::BridgeAB))
+                    .zip(source.rx(RxIndex::BridgeQuery))
+                    .zip(source.rx(RxIndex::BridgeF))
+                    .zip(source.rx(RxIndex::BridgeEval))
+                    .map(|(((((((bp, bs), bi), bo), ba), bq), bf), be)| {
+                        [bp, bs, bi, bo, ba, bq, bf, be].into_iter()
+                    });
+                processor.grouped_bonding_claim(id, groups)?;
             }
             Loading => {
                 let groups = source

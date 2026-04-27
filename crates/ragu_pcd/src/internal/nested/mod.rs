@@ -17,7 +17,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
-    staging::{MultiStage, StageExt},
+    staging::{MultiStage, Stage, StageExt, bundle_stage_masks},
 };
 use ragu_core::Result;
 
@@ -56,22 +56,8 @@ pub enum InternalCircuitIndex {
     PointsStage,
     /// `PointsStage` final staged mask.
     PointsFinalStaged,
-    /// Bridge `preamble` stage mask.
-    BridgePreamble,
-    /// Bridge `s_prime` stage mask.
-    BridgeSPrime,
-    /// Bridge `inner_error` stage mask.
-    BridgeInnerError,
-    /// Bridge `outer_error` stage mask.
-    BridgeOuterError,
-    /// Bridge `ab` stage mask.
-    BridgeAB,
-    /// Bridge `query` stage mask.
-    BridgeQuery,
-    /// Bridge `f` stage mask.
-    BridgeF,
-    /// Bridge `eval` stage mask.
-    BridgeEval,
+    /// Bundled mask covering all 8 bridge stages (preamble through eval).
+    BridgeGroup,
     /// Loading circuit over all nested stages.
     Loading,
     /// Copying circuit relating current preamble to a child proof's stages.
@@ -81,7 +67,7 @@ pub enum InternalCircuitIndex {
 impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`],
     /// equal to the number of entries in [`InternalCircuitIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 14;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 7;
 
     /// All variants in canonical iteration order.
     ///
@@ -106,14 +92,7 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::EndoscalarStage);
         push(&mut slots, &mut c, Self::PointsStage);
         push(&mut slots, &mut c, Self::PointsFinalStaged);
-        push(&mut slots, &mut c, Self::BridgePreamble);
-        push(&mut slots, &mut c, Self::BridgeSPrime);
-        push(&mut slots, &mut c, Self::BridgeInnerError);
-        push(&mut slots, &mut c, Self::BridgeOuterError);
-        push(&mut slots, &mut c, Self::BridgeAB);
-        push(&mut slots, &mut c, Self::BridgeQuery);
-        push(&mut slots, &mut c, Self::BridgeF);
-        push(&mut slots, &mut c, Self::BridgeEval);
+        push(&mut slots, &mut c, Self::BridgeGroup);
         push(&mut slots, &mut c, Self::Loading);
         push(&mut slots, &mut c, Self::Copying(Side::Left));
         push(&mut slots, &mut c, Self::Copying(Side::Right));
@@ -297,25 +276,50 @@ pub fn register_all<'params, C: Cycle, R: Rank>(
                 C::HostCurve,
                 NUM_ENDOSCALING_POINTS,
             >::final_mask()?),
-            BridgePreamble => {
-                registry.register_bonding(stages::preamble::Stage::<C::HostCurve, R>::mask()?)
-            }
-            BridgeSPrime => {
-                registry.register_bonding(stages::s_prime::Stage::<C::HostCurve, R>::mask()?)
-            }
-            BridgeInnerError => {
-                registry.register_bonding(stages::inner_error::Stage::<C::HostCurve, R>::mask()?)
-            }
-            BridgeOuterError => {
-                registry.register_bonding(stages::outer_error::Stage::<C::HostCurve, R>::mask()?)
-            }
-            BridgeAB => registry.register_bonding(stages::ab::Stage::<C::HostCurve, R>::mask()?),
-            BridgeQuery => {
-                registry.register_bonding(stages::query::Stage::<C::HostCurve, R>::mask()?)
-            }
-            BridgeF => registry.register_bonding(stages::f::Stage::<C::HostCurve, R>::mask()?),
-            BridgeEval => {
-                registry.register_bonding(stages::eval::Stage::<C::HostCurve, R>::mask()?)
+            BridgeGroup => {
+                type BP<C, R> = stages::preamble::Stage<C, R>;
+                type BS<C, R> = stages::s_prime::Stage<C, R>;
+                type BI<C, R> = stages::inner_error::Stage<C, R>;
+                type BO<C, R> = stages::outer_error::Stage<C, R>;
+                type BA<C, R> = stages::ab::Stage<C, R>;
+                type BQ<C, R> = stages::query::Stage<C, R>;
+                type BF<C, R> = stages::f::Stage<C, R>;
+                type BE<C, R> = stages::eval::Stage<C, R>;
+                let notches = [
+                    (
+                        <BP<C::HostCurve, R>>::skip_gates(),
+                        <BP<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BS<C::HostCurve, R>>::skip_gates(),
+                        <BS<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BI<C::HostCurve, R>>::skip_gates(),
+                        <BI<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BO<C::HostCurve, R>>::skip_gates(),
+                        <BO<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BA<C::HostCurve, R>>::skip_gates(),
+                        <BA<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BQ<C::HostCurve, R>>::skip_gates(),
+                        <BQ<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BF<C::HostCurve, R>>::skip_gates(),
+                        <BF<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                    (
+                        <BE<C::HostCurve, R>>::skip_gates(),
+                        <BE<C::HostCurve, R> as StageExt<_, _>>::num_gates(),
+                    ),
+                ];
+                registry.register_bonding(bundle_stage_masks::<C::ScalarField, R>(notches)?)
             }
             Loading => {
                 let circuit = circuits::loading::Circuit::<C::HostCurve, R>::new();
