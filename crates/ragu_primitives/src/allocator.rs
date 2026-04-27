@@ -83,6 +83,11 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
 ///
 /// Dropping a `Standard` with tokens still in the pool is safe:
 /// the driver already assigned $D = 0$ for those gates.
+///
+/// Per-gate this produces the `(a, 0, 0, d)` trace pattern. This
+/// pattern is load-bearing for stage-mask grouping in `ragu_circuits`:
+/// changing it (e.g., placing data in `b` or `c`) would silently
+/// break the bundled bonding-claim identity.
 pub struct Standard<E> {
     pool: Vec<E>,
 }
