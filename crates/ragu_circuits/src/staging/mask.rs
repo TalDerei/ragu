@@ -223,16 +223,38 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         let xy = x * y;
         let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
 
-        let mut inner = F::ZERO;
-        for &(skip_gates, num_gates) in &self.notches {
-            if num_gates == 0 {
-                continue;
+        // If every active notch shares the same `num_gates`, factor
+        // `geosum(xy, m)` out of the sum and apply it once to the sum of
+        // offsets. Otherwise, evaluate `geosum` per notch.
+        let Some(first_m) = self.notches.iter().find_map(|&(_, m)| (m > 0).then_some(m)) else {
+            return F::ZERO;
+        };
+        let uniform = self.notches.iter().all(|&(_, m)| m == 0 || m == first_m);
+
+        let inner = if uniform {
+            let gsum = geosum(xy, first_m);
+            let mut offset_sum = F::ZERO;
+            for &(g, m) in &self.notches {
+                if m == 0 {
+                    continue;
+                }
+                offset_sum += xy.pow_vartime([g as u64])
+                    + xy.pow_vartime([(2 * R::n() - g - first_m) as u64]);
             }
-            let gsum = geosum(xy, num_gates);
-            let skip = xy.pow_vartime([skip_gates as u64]);
-            let tail = xy.pow_vartime([(2 * R::n() - skip_gates - num_gates) as u64]);
-            inner += (skip + tail) * gsum;
-        }
+            gsum * offset_sum
+        } else {
+            let mut acc = F::ZERO;
+            for &(g, m) in &self.notches {
+                if m == 0 {
+                    continue;
+                }
+                let gsum = geosum(xy, m);
+                let skip = xy.pow_vartime([g as u64]);
+                let tail = xy.pow_vartime([(2 * R::n() - g - m) as u64]);
+                acc += (skip + tail) * gsum;
+            }
+            acc
+        };
 
         -(F::ONE + xy_2n) * inner
     }
