@@ -622,6 +622,33 @@ mod tests {
             .unwrap();
     }
 
+    /// A bundled mask must reject an rx with a nonzero entry outside the
+    /// union of its notch windows. Verifies the bundled bonding check is
+    /// actively soundness-enforcing, not vacuous.
+    #[test]
+    fn test_with_notch_catches_planted_rx_outside_union() {
+        let mask = StageMask::<R>::new(1, 100)
+            .unwrap()
+            .with_notch(200, 100)
+            .unwrap();
+
+        let y = Fp::random(&mut rand::rng());
+
+        let n = R::n();
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[2 * n - 1 - 150] = Fp::from(42u64);
+        let rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+
+        let mut full_sy = super::global_project::<Fp, R>(y);
+        full_sy += &mask.notch_project(y);
+
+        assert_ne!(
+            rx.revdot(&full_sy),
+            Fp::ZERO,
+            "bundled mask should reject rx with planted entry outside notch union",
+        );
+    }
+
     #[test]
     fn test_stage_mask_exact_boundary() {
         let result = StageMask::<R>::new(R::n() - 1, 1);
