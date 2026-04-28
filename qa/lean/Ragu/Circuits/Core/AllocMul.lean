@@ -9,61 +9,50 @@ structure Row (F : Type) where
   z : F
 deriving ProvableStruct
 
-def main (hintReader : ProverHint (F p) → Row (F p)) (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
-  let ⟨x, y, z⟩ ← (witness fun env =>
-    let r := hintReader env.hint
-    (⟨r.x, r.y, r.x * r.y⟩ : Row (F p))
-    : Circuit (F p) (Var Row (F p)))
-  assertZero (x * y - z)
-  return ⟨x, y, z⟩
-
-def Assumptions (_input : Unit) (_data : ProverData (F p)) := True
-
-def ProverAssumptions (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
+def main (hint : ProverEnvironment (F p) → Row (F p)) : Circuit (F p) (Var Row (F p)) := do
+  let row : Var Row (F p) ← witness fun env =>
+    let ⟨ x, y, _ ⟩ := hint env
+    ⟨ x, y, x * y⟩
+  assertZero (row.x * row.y - row.z)
+  return row
 
 def Spec (_input : Unit) (out : Row (F p)) (_data : ProverData (F p)) :=
   out.x * out.y = out.z
 
 /-- The output row equals `hintReader` applied to the runtime hint. -/
-def ProverSpec (hintReader : ProverHint (F p) → Row (F p))
-    (_input : Unit) (out : Row (F p)) (hint : ProverHint (F p)) :=
-  let r := hintReader hint
-  out.x = r.x ∧ out.y = r.y ∧ out.z = r.x * r.y
+def ProverSpec (input : Row (F p)) (out : Row (F p)) (_ : ProverHint (F p)) :=
+  let ⟨ x, y, _ ⟩ := input
+  out.x = x ∧ out.y = y ∧ out.z = x * y
 
-instance elaborated (hintReader : ProverHint (F p) → Row (F p)) : ElaboratedCircuit (F p) unit Row where
-  main := main hintReader
+instance elaborated : ElaboratedCircuit (F p) (Unconstrained (Row (F p))) Row where
+  main
   localLength _ := 3
 
-theorem soundness (hintReader : ProverHint (F p) → Row (F p)) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Assumptions Spec := by
-  circuit_proof_start
-  rw [add_neg_eq_zero] at h_holds
+theorem soundness :
+    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+  circuit_proof_start [Spec]
+  simp only [add_neg_eq_zero] at h_holds
   exact h_holds
 
-theorem completeness (hintReader : ProverHint (F p) → Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
-      ProverAssumptions (ProverSpec hintReader) := by
-  circuit_proof_start
+theorem completeness :
+    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated (fun _ _ _ => True) ProverSpec := by
+  circuit_proof_start [ProverSpec]
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
   have h2 := h_env (2 : Fin 3)
   simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
   simp at h0 h1 h2
-  rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
   constructor
   · rw [h0, h1, h2]
-    ring
+    ring_nf
   · exact ⟨h0, h1, h2⟩
 
-def circuit (hintReader : ProverHint (F p) → Row (F p)) : GeneralFormalCircuit (F p) unit Row :=
-  { elaborated hintReader with
-    Assumptions := Assumptions,
-    Spec,
-    ProverAssumptions := ProverAssumptions,
-    ProverSpec := ProverSpec hintReader,
-    soundness := soundness hintReader,
-    completeness := completeness hintReader }
+def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (Row (F p))) Row where
+  elaborated
+  Spec
+  ProverSpec
+  soundness
+  completeness
 
 end Circuits.Core.AllocMul
 export Circuits.Core.AllocMul (Row)
