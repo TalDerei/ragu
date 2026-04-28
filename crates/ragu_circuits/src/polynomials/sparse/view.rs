@@ -9,15 +9,15 @@
 //! Here $n$ = `R::n()` is the maximum number of multiplication gates.
 //!
 //! - **[`Trace`]**: the standard perspective for trace polynomials $r(X)$.
-//!   - `a[i]` maps to degree $2n + i$
-//!   - `b[i]` maps to degree $2n - 1 - i$
+//!   - `a[i]` maps to degree $2n - 1 - i$
+//!   - `b[i]` maps to degree $2n + i$
 //!   - `c[i]` maps to degree $i$
 //!   - `d[i]` maps to degree $4n - 1 - i$
 //!
 //! - **[`Wiring`]**: the reversed perspective for wiring polynomials
 //!   $s(X, y)$. Swaps `a` with `b` and `c` with `d` in the degree mapping.
-//!   - `a[i]` maps to degree $2n - 1 - i$
-//!   - `b[i]` maps to degree $2n + i$
+//!   - `a[i]` maps to degree $2n + i$
+//!   - `b[i]` maps to degree $2n - 1 - i$
 //!   - `c[i]` maps to degree $4n - 1 - i$
 //!   - `d[i]` maps to degree $i$
 //!
@@ -67,8 +67,8 @@ pub trait Perspective: private::Sealed {
     ) -> Vec<(usize, Vec<T>)>;
 }
 
-/// Trace perspective: `a[i]` maps to degree $2n + i$, `b[i]` to
-/// $2n - 1 - i$, `c[i]` to $i$, and `d[i]` to $4n - 1 - i$.
+/// Trace perspective: `a[i]` maps to degree $2n - 1 - i$, `b[i]` to
+/// $2n + i$, `c[i]` to $i$, and `d[i]` to $4n - 1 - i$.
 pub struct Trace;
 
 /// Wiring perspective: swaps `a` with `b` and `c` with `d` relative to
@@ -78,28 +78,28 @@ pub struct Wiring;
 
 impl Perspective for Trace {
     fn map_to_blocks<T>(
-        a: Vec<T>,
-        mut b: Vec<T>,
+        mut a: Vec<T>,
+        b: Vec<T>,
         c: Vec<T>,
         mut d: Vec<T>,
         n: usize,
     ) -> Vec<(usize, Vec<T>)> {
         // c[i] -> degree i             (range [0, c.len()))
-        // b[i] -> degree 2*n-1-i       (reversed, range [2*n-b.len(), 2*n))
-        // a[i] -> degree 2*n+i         (range [2*n, 2*n+a.len()))
+        // a[i] -> degree 2*n-1-i       (reversed, range [2*n-a.len(), 2*n))
+        // b[i] -> degree 2*n+i         (range [2*n, 2*n+b.len()))
         // d[i] -> degree 4*n-1-i       (reversed, range [4*n-d.len(), 4*n))
-        b.reverse();
+        a.reverse();
         d.reverse();
 
         let mut blocks = Vec::new();
         if !c.is_empty() {
             blocks.push((0, c));
         }
-        if !b.is_empty() {
-            blocks.push((2 * n - b.len(), b));
-        }
         if !a.is_empty() {
-            blocks.push((2 * n, a));
+            blocks.push((2 * n - a.len(), a));
+        }
+        if !b.is_empty() {
+            blocks.push((2 * n, b));
         }
         if !d.is_empty() {
             blocks.push((4 * n - d.len(), d));
@@ -117,10 +117,10 @@ impl Perspective for Wiring {
         n: usize,
     ) -> Vec<(usize, Vec<T>)> {
         // Wiring swaps a<->b and c<->d relative to Trace:
-        //   a[i] -> degree 2*n-1-i   (b's trace mapping)
-        //   b[i] -> degree 2*n+i     (a's trace mapping)
-        //   c[i] -> degree 4*n-1-i   (d's trace mapping)
-        //   d[i] -> degree i         (c's trace mapping)
+        //   a[i] -> degree 2*n+i
+        //   b[i] -> degree 2*n-1-i
+        //   c[i] -> degree 4*n-1-i
+        //   d[i] -> degree i
         Trace::map_to_blocks(b, a, d, c, n)
     }
 }

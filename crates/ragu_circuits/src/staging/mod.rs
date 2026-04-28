@@ -118,18 +118,24 @@
 pub(crate) mod bonding;
 mod builder;
 pub(crate) mod mask;
+mod rx_driver;
 
 use alloc::boxed::Box;
 
 pub use builder::{StageBuilder, StageGuard};
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
     maybe::{Always, MaybeKind},
 };
-use ragu_primitives::io::Write;
+use ragu_primitives::{
+    allocator::{Allocator, Standard},
+    io::Write,
+};
+use rx_driver::RxDriver;
 
 use crate::{
     BondingObject, Circuit, WithAux,
@@ -328,11 +334,11 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
 
     /// Compute the (partial) $r(X)$ polynomial for this stage.
     ///
-    /// `alpha` is placed at `d[0]` of the resulting polynomial. Stage
-    /// traces can be all-zero without it, and linear combinations of
-    /// polynomials with predictable `d[0]` values could cancel to zero in
-    /// derived polynomials — either case produces a point-at-infinity
-    /// commitment. A random alpha prevents this.
+    /// `alpha` is placed at `a[0]` of the resulting polynomial. Stages
+    /// have no ONE wire, so without alpha a stage trace could be all-zero;
+    /// and any predictable wire slot can cancel in linear combinations of
+    /// stage polynomials — either case produces a point-at-infinity
+    /// commitment. A random alpha at `a[0]` prevents both.
     ///
     /// Pass a random field element in production; `F::ZERO` is acceptable
     /// in tests.
@@ -353,42 +359,27 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             });
         }
 
-        assert!(values.len() <= Self::values());
+        let mut dr = RxDriver::<F, R>::with_capacity(Self::skip_gates() + Self::num_gates());
+        let mut allocator = Standard::default();
 
-        let mut values = values.into_iter();
-        let mut view = sparse::View::trace();
+        // SYSTEM gate: alpha at a[0], 0 at d[0].
+        allocator.alloc(&mut dr, || Ok(Coeff::Arbitrary(alpha)))?;
+        allocator.alloc(&mut dr, || Ok(Coeff::Zero))?;
 
-        let len = Self::skip_gates() + Self::num_gates();
-        view.a.reserve_exact(len);
-        view.b.reserve_exact(len);
-        view.c.reserve_exact(len);
-        view.d.reserve_exact(len);
-
-        // SYSTEM gate: d[0] receives alpha (degree 4n-1) to prevent
-        // point-at-infinity commitments.
-        view.a.push(F::ZERO);
-        view.b.push(F::ZERO);
-        view.c.push(F::ZERO);
-        view.d.push(alpha);
-
-        for _ in 0..(Self::skip_gates() - 1) {
-            view.a.push(F::ZERO);
-            view.b.push(F::ZERO);
-            view.c.push(F::ZERO);
-            view.d.push(F::ZERO);
+        // Skip gates 1..skip_gates: two zero allocs each.
+        for _ in 0..(2 * (Self::skip_gates() - 1)) {
+            allocator.alloc(&mut dr, || Ok(Coeff::Zero))?;
         }
 
-        // Layout: (0, b, 0, d) per gate.
-        for _ in 0..Self::num_gates() {
-            let b = values.next().unwrap_or(F::ZERO);
-            let d = values.next().unwrap_or(F::ZERO);
-            view.a.push(F::ZERO);
-            view.b.push(b);
-            view.c.push(F::ZERO);
-            view.d.push(d);
+        // Data values, padded with zeros to fill all stage slots.
+        for value in &values {
+            allocator.alloc(&mut dr, || Ok(Coeff::Arbitrary(*value)))?;
+        }
+        for _ in values.len()..Self::values() {
+            allocator.alloc(&mut dr, || Ok(Coeff::Zero))?;
         }
 
-        Ok(view.build())
+        Ok(dr.build())
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage, using a
@@ -405,9 +396,9 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// this stage's partial trace.
     ///
     /// Staging circuits do not behave like normal circuits because their
-    /// `ONE` gate carries only an alpha value in `d[0]` (no `b[0] = 1` ONE
-    /// wire) and they are used solely for partial trace commitments. As a
-    /// result, their mask must be computed differently.
+    /// SYSTEM gate carries only an alpha value in `a[0]` (no `d[0] = 1`
+    /// ONE wire) and they are used solely for partial trace commitments.
+    /// As a result, their mask must be computed differently.
     fn mask<'a>() -> Result<BondingObject<'a, F, R>> {
         Ok(BondingObject::new(Box::new(mask::StageMask::new(
             Self::skip_gates(),
@@ -427,9 +418,10 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// Returns the generator index for the i-th first-value coefficient of
     /// this stage's alloc gates.
     ///
-    /// With the `(0, b, 0, d)` gate layout, the first allocated value occupies
-    /// the B-wire position at degree `2n - 1 - skip_gates - i`.
-    fn generator_index_for_b(coefficient_index: usize) -> usize {
+    /// With the `(a, 0, 0, d)` gate layout, the first allocated value occupies
+    /// the $a$-wire position at degree
+    /// $2n - 1 - \text{skip\_gates} - \text{coefficient\_index}$.
+    fn generator_index_for_a(coefficient_index: usize) -> usize {
         assert!(
             coefficient_index < Self::num_gates(),
             "coefficient_index {} exceeds num_gates {}",

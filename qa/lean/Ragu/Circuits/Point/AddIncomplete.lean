@@ -26,16 +26,16 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
 
   -- delta = (y2 - y1) / (x2 - x1)
   let tmp := x2 - x1
-  let nonzero_out ← subcircuit Element.Mul.circuit ⟨nonzero, tmp⟩
+  let nonzero_out ← Element.Mul.circuit ⟨nonzero, tmp⟩
 
-  let delta ← Element.DivNonzero.generalCircuit hintReader ⟨y2 - y1, tmp⟩
+  let delta ← Element.DivNonzero.circuit hintReader ⟨y2 - y1, tmp⟩
 
   -- x3 = delta^2 - x1 - x2
-  let delta2 ← subcircuit Element.Square.circuit delta
+  let delta2 ← Element.Square.circuit delta
   let x3 := delta2 - x1 - x2
 
   -- y3 = delta * (x1 - x3) - y1
-  let delta_mul_x_diff ← subcircuit Element.Mul.circuit ⟨delta, x1 - x3⟩
+  let delta_mul_x_diff ← Element.Mul.circuit ⟨delta, x1 - x3⟩
   let y3 := delta_mul_x_diff - y1
 
   return {
@@ -47,7 +47,7 @@ def Assumptions (curveParams : Spec.CurveParams p)
     (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.P1.isOnCurve curveParams ∧ input.P2.isOnCurve curveParams ∧
-  Element.DivNonzero.GeneralAssumptions hintReader ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
+  Element.DivNonzero.Assumptions hintReader ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Outputs (F p)) (_data : ProverData (F p)) :=
   input.P1.isOnCurve curveParams →
@@ -88,7 +88,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralSpec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
 
@@ -125,7 +125,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions curveParams hintReader) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralAssumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [sub_eq_add_neg] at h_assumptions

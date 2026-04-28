@@ -104,7 +104,7 @@ pub struct TestRegistry<'p, F: PrimeField, R: Rank> {
 impl<F: PrimeField, R: Rank> TestRegistry<'_, F, R> {
     /// Assembles a [`Trace`] into a polynomial for the entry identified
     /// by `handle`, using the registry's key and floor plan. `alpha` is
-    /// written to `d[0]` of the resulting polynomial; pass a random field
+    /// written to `a[0]` of the resulting polynomial; pass a random field
     /// element in production or `F::ZERO` in tests.
     pub fn assemble(
         &self,

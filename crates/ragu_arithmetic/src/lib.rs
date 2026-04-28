@@ -83,7 +83,10 @@ pub use coeff::Coeff;
 pub use domain::Domain;
 use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 pub use fft::{Ring, bitreverse};
-pub use pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
+pub use pasta_curves::{
+    arithmetic::{Coordinates, CurveAffine, CurveExt},
+    deferred::DeferredField,
+};
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`
 /// representation that e.g. [`Fp::from_raw`](pasta_curves::Fp::from_raw) or
 /// [`Fp::pow`](pasta_curves::Fp::pow) need as input. This makes constants
@@ -113,10 +116,10 @@ pub use util::{
 pub trait Cycle: Copy + Clone + Default + Send + Sync + 'static {
     /// The field that circuit developers will primarily work with, and the
     /// scalar field of the [`HostCurve`](Cycle::HostCurve).
-    type CircuitField: WithSmallOrderMulGroup<3> + FromUniformBytes<64>;
+    type CircuitField: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + DeferredField;
 
     /// The scalar field of the [`NestedCurve`](Cycle::NestedCurve).
-    type ScalarField: WithSmallOrderMulGroup<3> + FromUniformBytes<64>;
+    type ScalarField: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + DeferredField;
 
     /// The nested curve that applications typically use for asymmetric keys,
     /// signatures, and other cryptographic primitives. (This is the Pallas

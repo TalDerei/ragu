@@ -15,18 +15,18 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (input : Va
 
   -- delta = 3x^2 / 2y
   let double_y := y + y
-  let x2 ← subcircuit Element.Square.circuit x
+  let x2 ← Element.Square.circuit x
   let x2_scaled := (3 : F p) * x2
-  let delta ← Element.DivNonzero.generalCircuit hintReader ⟨x2_scaled, double_y⟩
+  let delta ← Element.DivNonzero.circuit hintReader ⟨x2_scaled, double_y⟩
 
   -- x3 = delta^2 - 2x
   let double_x := x + x
-  let delta2 ← subcircuit Element.Square.circuit delta
+  let delta2 ← Element.Square.circuit delta
   let x3 := delta2 - double_x
 
   -- y3 = delta * (x - x3) - y
   let x_sub_x3 := x - x3
-  let delta_x_sub_3 ← subcircuit Element.Mul.circuit ⟨delta, x_sub_x3⟩
+  let delta_x_sub_3 ← Element.Mul.circuit ⟨delta, x_sub_x3⟩
   let y3 := delta_x_sub_3 - y
 
   return ⟨x3, y3⟩
@@ -36,7 +36,7 @@ def Assumptions (curveParams : Spec.CurveParams p)
     (input : Spec.Point (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.isOnCurve curveParams ∧
   curveParams.noOrderTwoPoints ∧
-  Element.DivNonzero.GeneralAssumptions hintReader ⟨(3 : F p) * input.x^2, input.y + input.y⟩ data hint
+  Element.DivNonzero.Assumptions hintReader ⟨(3 : F p) * input.x^2, input.y + input.y⟩ data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
   input.isOnCurve curveParams →
@@ -58,7 +58,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralSpec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
@@ -93,7 +93,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions curveParams hintReader) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralAssumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   obtain ⟨h_sq, _⟩ := h_env

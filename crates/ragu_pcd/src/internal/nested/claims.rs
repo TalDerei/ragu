@@ -15,7 +15,7 @@ use ff::PrimeField;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::Result;
 
-use super::{InternalCircuitIndex, RxIndex};
+use super::{ChildBridgeKind, InternalCircuitIndex, RxIndex};
 use crate::internal::claims::{Builder, Source, sum_polynomials};
 
 /// Trait for processing nested claim values into accumulated outputs.
@@ -138,6 +138,35 @@ where
             }
             BridgeEval => {
                 processor.bonding_claim(id, source.rx(RxIndex::BridgeEval))?;
+            }
+            Loading => {
+                let groups = source
+                    .rx(RxIndex::PointsStage)
+                    .zip(source.rx(RxIndex::BridgePreamble))
+                    .zip(source.rx(RxIndex::BridgeSPrime))
+                    .zip(source.rx(RxIndex::BridgeInnerError))
+                    .zip(source.rx(RxIndex::BridgeAB))
+                    .zip(source.rx(RxIndex::BridgeQuery))
+                    .zip(source.rx(RxIndex::BridgeF))
+                    .map(|((((((ps, bp), bs), bi), ba), bq), bf)| {
+                        [ps, bp, bs, bi, ba, bq, bf].into_iter()
+                    });
+                processor.grouped_bonding_claim(id, groups)?;
+            }
+            Copying(side) => {
+                let groups = source
+                    .rx(RxIndex::ChildPointsStage(side))
+                    .zip(source.rx(RxIndex::BridgePreamble))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::SPrime, side)))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::InnerError, side)))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::OuterError, side)))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::AB, side)))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::Query, side)))
+                    .zip(source.rx(RxIndex::ChildBridge(ChildBridgeKind::Eval, side)))
+                    .map(|(((((((cp, bp), cs), ci), co), ca), cq), ce)| {
+                        [cp, bp, cs, ci, co, ca, cq, ce].into_iter()
+                    });
+                processor.grouped_bonding_claim(id, groups)?;
             }
         }
     }

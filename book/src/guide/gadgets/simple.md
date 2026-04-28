@@ -25,7 +25,7 @@ serialization using the [`Write`][write-trait] trait.
 
 [`Element::alloc`](ragu_primitives::Element::alloc) can be used to create an
 `Element` which has an assignment based on witness data. It delegates to
-an [`Allocator`](ragu_primitives::Allocator) to obtain the underlying wire.
+an [allocator](../primitives/allocation.md) to obtain the underlying wire.
 
 ### Constant Elements
 

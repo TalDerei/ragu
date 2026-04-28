@@ -7,24 +7,27 @@ provide the concrete gadgets and utilities that most circuit code
 depends on:
 
 * **Core gadgets** — [`Element`], [`Boolean`], and [`Point`] provide
-  in-circuit representations of field elements, boolean values, and elliptic
-  curve points respectively.
+  in-circuit representations of field elements, boolean values, and
+  elliptic curve points respectively.
 * **Cryptographic primitives** — the [Poseidon] sponge hash and
-  [`Endoscalar`] challenge gadget for efficient curve arithmetic using
-  endomorphisms.
+  [`Endoscalar`] challenge gadget for efficient curve arithmetic
+  using endomorphisms.
 * **Serialization** — the [`Write`][write-trait] trait and [`Buffer`]
   interface standardize how gadgets are serialized to field elements.
 * **Containers** — [`FixedVec`] provides a length-typed vector that
-  satisfies the `Gadget` trait, ensuring circuit structure is determined by
-  types rather than runtime values.
-* **Development tooling** — the [`Simulator`] driver executes circuit code
-  in-memory for testing and debugging without generating proofs.
-* **Gadget utilities** — [demotion and promotion][promotion] for stripping
-  and recovering witness data, [consistency enforcement][consistent] for
-  enforcing gadget constraints, and thread-safe wrappers via [`Sendable`].
+  satisfies the `Gadget` trait, ensuring circuit structure is
+  determined by types rather than runtime values.
+* **Development tooling** — the [`Simulator`] driver executes circuit
+  code in-memory for testing and debugging without generating proofs.
+* **Gadget utilities** — [demotion and promotion][promotion] for
+  stripping and recovering witness data, [consistency
+  enforcement][consistent] for enforcing gadget constraints, and
+  thread-safe wrappers via [`Sendable`].
 
-Most Ragu applications will depend on `ragu_primitives` directly, and the
-user guide covers its gadgets extensively in the chapters that follow.
+The chapters that follow cover individual primitives in detail:
+
+* [**Allocation**](allocation.md) — how gadgets obtain standalone
+  wires via the `Allocator` trait.
 
 [`ragu_primitives`]: https://docs.rs/ragu_primitives
 [`Element`]: ragu_primitives::Element

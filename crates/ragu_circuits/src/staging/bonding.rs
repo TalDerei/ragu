@@ -212,8 +212,8 @@ impl<'a, F: Field, R: Rank> Stripped<'a, F, R> {
 
 impl<F: Field, R: Rank> WiringObject<F, R> for Stripped<'_, F, R> {
     fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
-        // Remove the ONE wire contribution: x^(2n) at y^0.
-        self.0.sxy(x, y, floor_plan) - x.pow_vartime([(2 * R::n()) as u64])
+        // Remove the ONE wire contribution: 1 at y^0 (d[0] maps to degree 0).
+        self.0.sxy(x, y, floor_plan) - F::ONE
     }
 
     fn sx(&self, x: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
@@ -229,10 +229,10 @@ impl<F: Field, R: Rank> WiringObject<F, R> for Stripped<'_, F, R> {
 
     fn sy(&self, y: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
         let mut poly = self.0.sy(y, floor_plan);
-        // The SYSTEM gate's b-wire holds the ONE wire; remove its y^0 contribution.
-        // In the wiring perspective, b[0] maps to degree 2n.
+        // The SYSTEM gate's d-wire holds the ONE wire; remove its y^0 contribution.
+        // In the wiring perspective, d[0] maps to degree 0.
         let mut correction = sparse::View::<_, R, _>::wiring();
-        correction.b.push(F::ONE);
+        correction.d.push(F::ONE);
         poly.sub_assign(&correction.build());
         poly
     }
@@ -598,7 +598,7 @@ mod tests {
         assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
     }
 
-    /// Build a trace with the SYSTEM gate zeroed and gates 1..n from (b, d)
+    /// Build a trace with the SYSTEM gate zeroed and gates 1..n from (a, d)
     /// pairs.
     fn build_trace(gate_values: &[(Fp, Fp)]) -> sparse::Polynomial<Fp, R> {
         let mut view = sparse::View::<_, R, _>::trace();
@@ -607,10 +607,10 @@ mod tests {
         view.b.push(Fp::ZERO);
         view.c.push(Fp::ZERO);
         view.d.push(Fp::ZERO);
-        // Layout: (0, b, 0, d) per gate.
-        for &(b, d) in gate_values {
-            view.a.push(Fp::ZERO);
-            view.b.push(b);
+        // Mirrors `Standard::alloc`'s layout — update in lockstep.
+        for &(a, d) in gate_values {
+            view.a.push(a);
+            view.b.push(Fp::ZERO);
             view.c.push(Fp::ZERO);
             view.d.push(d);
         }

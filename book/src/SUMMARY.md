@@ -18,7 +18,8 @@
     - [The Kind! Macro](guide/gadgets/kind.md)
     - [Conversion](guide/gadgets/conversion.md)
   - [Routines](guide/routines.md)
-  - [The Primitives Standard Library](guide/standard_library.md) <!-- todo -->
+  - [Primitives](guide/primitives/index.md) <!-- todo -->
+    - [Allocation](guide/primitives/allocation.md) <!-- todo -->
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
 - [Part II: Protocol Design]()
@@ -45,8 +46,8 @@
     - [Public Inputs](protocol/recursion/public_inputs.md) <!-- todo -->
   - [Analysis](protocol/analysis.md) <!-- todo -->
   - [Local (Sean's Corner!)]()
-    - [Overview](protocol/local/overview.md)
-    - [Wiring Polynomials](protocol/local/wiring.md)
+    - [Arithmetization](protocol/local/arithmetization.md)
+    - [Wiring and Instance Polynomials](protocol/local/wiring.md)
 - [Part III: Implementation]()
   - [Architecture Overview](implementation/arch.md) <!-- todo -->
   - [Circuits](implementation/circuits.md) <!-- todo -->

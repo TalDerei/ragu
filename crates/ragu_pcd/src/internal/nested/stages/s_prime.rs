@@ -13,12 +13,20 @@ use ragu_core::{
 use ragu_primitives::{Point, io::Write};
 
 /// Number of curve points in this stage.
-const NUM: usize = 2;
+const NUM: usize = 3;
 
 /// Witness data for this bridge stage.
 pub struct Witness<C: CurveAffine> {
     pub registry_wx0: C,
     pub registry_wx1: C,
+    /// Stashed copy of the current step's native preamble commitment.
+    ///
+    /// The copying circuit loads a fresh trace of the child's stages
+    /// and cannot access `BridgePreamble.native_preamble` at a
+    /// different wire position from its own `BridgePreamble`. Stashing
+    /// the value here lets a parent's copying circuit read it from
+    /// `BridgeSPrime` instead.
+    pub stashed_preamble: C,
 }
 
 /// Prover-internal output gadget for this bridge stage.
@@ -31,6 +39,8 @@ pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     pub registry_wx0: Point<'dr, D, C>,
     #[ragu(gadget)]
     pub registry_wx1: Point<'dr, D, C>,
+    #[ragu(gadget)]
+    pub stashed_preamble: Point<'dr, D, C>,
 }
 
 #[derive(Default)]
@@ -58,6 +68,7 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
         Ok(Output {
             registry_wx0: Point::alloc(dr, witness.as_ref().map(|w| w.registry_wx0))?,
             registry_wx1: Point::alloc(dr, witness.as_ref().map(|w| w.registry_wx1))?,
+            stashed_preamble: Point::alloc(dr, witness.as_ref().map(|w| w.stashed_preamble))?,
         })
     }
 }

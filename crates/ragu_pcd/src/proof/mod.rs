@@ -12,20 +12,26 @@ use alloc::{vec, vec::Vec};
 
 pub(crate) use builder::ProofBuilder;
 use ff::Field;
-use ragu_arithmetic::Cycle;
+use ragu_arithmetic::{Cycle, Uendo};
 use ragu_circuits::{
+    CircuitExt,
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
+    staging::{MultiStage, StageExt},
 };
-use ragu_primitives::vec::Len;
+use ragu_core::Result;
+use ragu_primitives::{extract_endoscalar, vec::Len};
 
 use crate::{
     header::Header,
     internal::{
-        endoscalar::NumStepsLen,
+        endoscalar::{
+            EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
+            PointsWitness,
+        },
         native::{RxComponent, RxIndex},
         nested,
-        nested::NUM_ENDOSCALING_POINTS,
+        nested::{ChildBridgeKind, NUM_ENDOSCALING_POINTS},
     },
 };
 
@@ -67,6 +73,53 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Clone for Pcd<C, R, H> {
         Pcd {
             proof: self.proof.clone(),
             data: self.data.clone(),
+        }
+    }
+}
+
+/// Stage rx polynomials from a child proof, stored so the verifier can
+/// check copying circuit claims.
+#[derive(Clone)]
+pub(crate) struct ChildStageRx<F: ff::PrimeField, R: Rank> {
+    pub points_stage: sparse::Polynomial<F, R>,
+    pub bridge_s_prime: sparse::Polynomial<F, R>,
+    pub bridge_inner_error: sparse::Polynomial<F, R>,
+    pub bridge_outer_error: sparse::Polynomial<F, R>,
+    pub bridge_ab: sparse::Polynomial<F, R>,
+    pub bridge_query: sparse::Polynomial<F, R>,
+    pub bridge_eval: sparse::Polynomial<F, R>,
+}
+
+impl<F: ff::PrimeField, R: Rank> ChildStageRx<F, R> {
+    /// Dispatch to the bridge-stage rx polynomial named by `kind`.
+    pub(crate) fn bridge_at(&self, kind: ChildBridgeKind) -> &sparse::Polynomial<F, R> {
+        match kind {
+            ChildBridgeKind::SPrime => &self.bridge_s_prime,
+            ChildBridgeKind::InnerError => &self.bridge_inner_error,
+            ChildBridgeKind::OuterError => &self.bridge_outer_error,
+            ChildBridgeKind::AB => &self.bridge_ab,
+            ChildBridgeKind::Query => &self.bridge_query,
+            ChildBridgeKind::Eval => &self.bridge_eval,
+        }
+    }
+}
+
+impl<C: Cycle, R: Rank> Proof<C, R> {
+    /// Extract stage rx polynomials from this proof for storage as child
+    /// data in a parent proof.
+    //
+    // TODO: wrap each child polynomial in `Arc` so this extraction can
+    // share ownership instead of cloning every rx polynomial.
+    pub(crate) fn as_child_stage_rx(&self) -> ChildStageRx<C::ScalarField, R> {
+        ChildStageRx {
+            points_stage: self.nested_points_rx.clone(),
+            bridge_s_prime: self.bridge_s_prime_rx.clone(),
+            bridge_inner_error: self.bridge_inner_error_rx.clone(),
+            // .0 = polynomial (these are (poly, commitment) tuples from cached_bridge!)
+            bridge_outer_error: self.bridge_outer_error_rx.0.clone(),
+            bridge_ab: self.bridge_ab_rx.0.clone(),
+            bridge_query: self.bridge_query_rx.0.clone(),
+            bridge_eval: self.bridge_eval_rx.0.clone(),
         }
     }
 }
@@ -167,6 +220,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     bridge_ab_commitment: Cached<C::NestedCurve>,
     bridge_query_commitment: Cached<C::NestedCurve>,
     bridge_eval_commitment: Cached<C::NestedCurve>,
+
+    // Children's stage rx polynomials (for copying circuit claims)
+    pub(crate) child_left_stage_rx: ChildStageRx<C::ScalarField, R>,
+    pub(crate) child_right_stage_rx: ChildStageRx<C::ScalarField, R>,
 }
 
 impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
@@ -216,11 +273,20 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
             BridgeQuery => &self.bridge_query_rx.0,
             BridgeF => &self.bridge_f_rx,
             BridgeEval => &self.bridge_eval_rx.0,
+            ChildPointsStage(side) => &self.child_stage_rx(side).points_stage,
+            ChildBridge(kind, side) => self.child_stage_rx(side).bridge_at(kind),
         }
     }
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
+    fn child_stage_rx(&self, side: crate::internal::Side) -> &ChildStageRx<C::ScalarField, R> {
+        match side {
+            crate::internal::Side::Left => &self.child_left_stage_rx,
+            crate::internal::Side::Right => &self.child_right_stage_rx,
+        }
+    }
+
     /// Augment a recursive proof with some data, described by a [`Header`].
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data) -> Pcd<C, R, H> {
         Pcd { proof: self, data }
@@ -381,6 +447,66 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, HEADER_SIZE> {
+    /// Runs endoscaling over the host-curve commitments that feed
+    /// `PointsStage`, in the order `compute_p` (`_10_p.rs`)
+    /// accumulates them. Writes `nested_endoscalar_rx`,
+    /// `nested_points_rx`, and `nested_endoscaling_step_rxs` onto
+    /// `builder`, and returns the accumulated `p` commitment (last
+    /// `PointsStage` interstitial).
+    ///
+    /// Shared by `compute_p` (in `fuse/_10_p.rs`) and by
+    /// [`trivial_proof`](Self::trivial_proof), so the nested
+    /// endoscaling setup lives in one place.
+    pub(crate) fn compute_endoscaling<RNG: rand::CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        beta_endo: Uendo,
+        points: &[C::HostCurve],
+        endoscalar_alpha: C::ScalarField,
+        points_alpha: C::ScalarField,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<C::HostCurve> {
+        assert_eq!(points.len(), NUM_ENDOSCALING_POINTS);
+
+        let witness = PointsWitness::<C::HostCurve, NUM_ENDOSCALING_POINTS>::new(beta_endo, points);
+
+        let endoscalar_rx =
+            <EndoscalarStage as StageExt<C::ScalarField, R>>::rx(endoscalar_alpha, beta_endo)?;
+        let points_rx = <PointsStage<C::HostCurve, NUM_ENDOSCALING_POINTS> as StageExt<
+            C::ScalarField,
+            R,
+        >>::rx(points_alpha, &witness)?;
+
+        let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
+        let mut step_rxs = Vec::with_capacity(num_steps);
+        for step in 0..num_steps {
+            let step_circuit =
+                EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
+            let staged = MultiStage::new(step_circuit);
+            let step_trace = staged
+                .trace(EndoscalingStepWitness {
+                    endoscalar: beta_endo,
+                    points: &witness,
+                })?
+                .into_output();
+            let step_rx = self.nested_registry.assemble(
+                &step_trace,
+                nested::InternalCircuitIndex::EndoscalingStep(step as u32).circuit_index(),
+                rng,
+            )?;
+            step_rxs.push(step_rx);
+        }
+
+        builder.set_nested_endoscaling_step_rxs(step_rxs);
+        builder.set_nested_endoscalar_rx(endoscalar_rx);
+        builder.set_nested_points_rx(points_rx);
+
+        Ok(*witness
+            .interstitials
+            .last()
+            .expect("NUM_ENDOSCALING_POINTS guarantees at least one interstitial"))
+    }
+
     pub(crate) fn trivial_pcd(&self) -> Pcd<C, R, ()> {
         self.trivial_proof().carry(())
     }
@@ -394,17 +520,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             view.d.push(C::CircuitField::ONE);
             view.build()
         };
-        let ones_nested = {
-            let mut view = sparse::View::<_, R, _>::trace();
-            view.a.push(C::ScalarField::ONE);
-            view.b.push(C::ScalarField::ONE);
-            view.c.push(C::ScalarField::ONE);
-            view.d.push(C::ScalarField::ONE);
-            view.build()
-        };
-
         let host_commitment = ones_host.commit_to_affine(C::host_generators(self.params));
-        let bridge_commitment = ones_nested.commit_to_affine(C::nested_generators(self.params));
 
         // registry_xy must be the actual registry evaluation (fuse cross-checks it).
         let registry_xy_poly = self
@@ -427,27 +543,168 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         builder.set_native_query_rx(ones_host.clone());
         builder.set_native_registry_xy_poly(registry_xy_poly);
         builder.set_native_eval_rx(ones_host.clone());
-        builder.set_native_p_poly(ones_host.clone(), host_commitment);
+        // native_p_poly: deferred until after endoscaling computation,
+        // since the real p commitment is the PointsStage last interstitial.
         builder.set_native_hashes_1_rx(ones_host.clone());
         builder.set_native_hashes_2_rx(ones_host.clone());
         builder.set_native_inner_collapse_rx(ones_host.clone());
         builder.set_native_outer_collapse_rx(ones_host.clone());
-        builder.set_native_compute_v_rx(ones_host);
+        builder.set_native_compute_v_rx(ones_host.clone());
 
-        // Non-cached bridge polynomials (trivial)
-        builder.set_bridge_preamble_rx(ones_nested.clone(), bridge_commitment);
-        builder.set_bridge_s_prime_rx(ones_nested.clone(), bridge_commitment);
-        builder.set_bridge_inner_error_rx(ones_nested.clone(), bridge_commitment);
-        builder.set_bridge_f_rx(ones_nested.clone(), bridge_commitment);
-        // Cached bridges (outer_error, ab, query, eval) are computed lazily by the builder.
+        // Bridge polynomials: compute via Stage::rx() with trivial witnesses
+        // so that traces are valid for their witnesses (not just ones).
+        // Cached bridges (outer_error, ab, query, eval) are already computed
+        // lazily by the builder via cached_bridge! with proper witnesses.
+        //
+        // Order: s_prime, inner_error, f first (independent of p_commitment),
+        // then endoscaling (computes p_commitment), then preamble (needs
+        // p_commitment for ChildWitness.p), then native_p_poly.
+        let nested_gen = C::nested_generators(self.params);
+        {
+            let rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::s_prime::Witness {
+                    registry_wx0: host_commitment,
+                    registry_wx1: host_commitment,
+                    stashed_preamble: host_commitment,
+                },
+            )
+            .expect("trivial s_prime rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_s_prime_rx(rx, commitment);
+        }
+        {
+            let rx = nested::stages::inner_error::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::inner_error::Witness {
+                    native_inner_error: host_commitment,
+                    registry_wy: host_commitment,
+                },
+            )
+            .expect("trivial inner_error rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_inner_error_rx(rx, commitment);
+        }
+        {
+            let rx = nested::stages::f::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::f::Witness {
+                    native_f: host_commitment,
+                },
+            )
+            .expect("trivial f rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_f_rx(rx, commitment);
+        }
 
-        // Nested endoscaling
-        builder.set_nested_endoscaling_step_rxs(vec![
-            ones_nested.clone();
-            NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()
-        ]);
-        builder.set_nested_endoscalar_rx(ones_nested.clone());
-        builder.set_nested_points_rx(ones_nested);
+        // Build dummy PointsStage inputs in `_10_p` accumulation order
+        // and delegate to `compute_endoscaling` so this trivial setup
+        // cannot silently drift from the real prover path.
+        let beta_endo = extract_endoscalar(C::CircuitField::ONE);
+        let p_commitment = {
+            let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
+
+            // Initial: native_f commitment.
+            points.push(host_commitment);
+
+            let registry_xy_commitment = builder.native_registry_xy_commitment();
+
+            // Per-child block: all per-child commitments are
+            // `host_commitment` (ones_host), except registry_xy which
+            // has its own commitment.
+            for _ in 0..2 {
+                for _ in &RxIndex::ALL {
+                    points.push(host_commitment);
+                }
+                points.push(host_commitment); // AbA
+                points.push(host_commitment); // AbB
+                points.push(registry_xy_commitment); // RegistryXY
+                points.push(host_commitment); // P placeholder
+            }
+
+            // Current-step bridge inputs.
+            points.push(host_commitment); // registry_wx0
+            points.push(host_commitment); // registry_wx1
+            points.push(host_commitment); // registry_wy
+            points.push(host_commitment); // a
+            points.push(host_commitment); // b
+            points.push(registry_xy_commitment); // native_registry_xy
+
+            let mut trivial_rng = <rand::rngs::StdRng as rand::SeedableRng>::from_seed([0u8; 32]);
+            self.compute_endoscaling(
+                &mut trivial_rng,
+                beta_endo,
+                &points,
+                C::ScalarField::ONE,
+                C::ScalarField::ONE,
+                &mut builder,
+            )
+            .expect("trivial endoscaling")
+        };
+
+        // Set native_p_poly with the real accumulated commitment.
+        builder.set_native_p_poly(ones_host, p_commitment);
+
+        // Preamble bridge: computed last because ChildWitness.p needs
+        // the real p_commitment from endoscaling.
+        {
+            let registry_xy_commitment = builder.native_registry_xy_commitment();
+            let trivial_child_witness = nested::stages::preamble::ChildWitness {
+                application: host_commitment,
+                hashes_1: host_commitment,
+                hashes_2: host_commitment,
+                inner_collapse: host_commitment,
+                outer_collapse: host_commitment,
+                compute_v: host_commitment,
+                stashed_preamble: host_commitment,
+                stashed_inner_error: host_commitment,
+                stashed_outer_error: host_commitment,
+                stashed_query: host_commitment,
+                stashed_eval: host_commitment,
+                stashed_ab_a: host_commitment,
+                stashed_ab_b: host_commitment,
+                stashed_registry_xy: registry_xy_commitment,
+                stashed_p: p_commitment,
+            };
+            let rx = nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::preamble::Witness {
+                    native_preamble: host_commitment,
+                    left: trivial_child_witness.clone(),
+                    right: trivial_child_witness,
+                },
+            )
+            .expect("trivial preamble rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_preamble_rx(rx, commitment);
+        }
+
+        // Children's stage rx: a trivial proof is its own "child", so
+        // child rx must match the proof's own rx. Force lazy evaluation of
+        // cached bridges first so we can clone them.
+        let trivial_child = ChildStageRx {
+            points_stage: builder.nested_points_rx().clone(),
+            bridge_s_prime: builder.bridge_s_prime_rx().clone(),
+            bridge_inner_error: builder.bridge_inner_error_rx().clone(),
+            bridge_outer_error: builder
+                .bridge_outer_error_rx()
+                .expect("trivial bridge_outer_error_rx")
+                .clone(),
+            bridge_ab: builder
+                .bridge_ab_rx()
+                .expect("trivial bridge_ab_rx")
+                .clone(),
+            bridge_query: builder
+                .bridge_query_rx()
+                .expect("trivial bridge_query_rx")
+                .clone(),
+            bridge_eval: builder
+                .bridge_eval_rx()
+                .expect("trivial bridge_eval_rx")
+                .clone(),
+        };
+        builder.set_child_left_stage_rx(trivial_child.clone());
+        builder.set_child_right_stage_rx(trivial_child);
 
         // Challenges (all ones for trivial)
         builder.set_w(C::CircuitField::ONE);

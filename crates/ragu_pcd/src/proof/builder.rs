@@ -299,6 +299,10 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     bridge_ab_commitment: OnceCell<C::NestedCurve>,
     bridge_query_commitment: OnceCell<C::NestedCurve>,
     bridge_eval_commitment: OnceCell<C::NestedCurve>,
+
+    // Children's stage rx (for copying circuit claims)
+    child_left_stage_rx: Option<super::ChildStageRx<C::ScalarField, R>>,
+    child_right_stage_rx: Option<super::ChildStageRx<C::ScalarField, R>>,
 }
 
 impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
@@ -374,6 +378,8 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             bridge_ab_commitment: OnceCell::new(),
             bridge_query_commitment: OnceCell::new(),
             bridge_eval_commitment: OnceCell::new(),
+            child_left_stage_rx: None,
+            child_right_stage_rx: None,
         }
     }
 
@@ -410,6 +416,9 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     ref_getter!(native_b_poly, native_b_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_registry_xy_poly, native_registry_xy_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_p_poly, native_p_poly, sparse::Polynomial<C::CircuitField, R>);
+    ref_getter!(nested_points_rx, nested_points_rx, sparse::Polynomial<C::ScalarField, R>);
+    ref_getter!(bridge_s_prime_rx, bridge_s_prime_rx, sparse::Polynomial<C::ScalarField, R>);
+    ref_getter!(bridge_inner_error_rx, bridge_inner_error_rx, sparse::Polynomial<C::ScalarField, R>);
 
     lazy_commitment!(
         native,
@@ -605,6 +614,17 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     setter!(set_u, u, C::CircuitField);
     setter!(set_pre_beta, pre_beta, C::CircuitField);
 
+    setter!(
+        set_child_left_stage_rx,
+        child_left_stage_rx,
+        super::ChildStageRx<C::ScalarField, R>
+    );
+    setter!(
+        set_child_right_stage_rx,
+        child_right_stage_rx,
+        super::ChildStageRx<C::ScalarField, R>
+    );
+
     getter!(w, w, C::CircuitField);
     getter!(y, y, C::CircuitField);
     getter!(z, z, C::CircuitField);
@@ -755,6 +775,9 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             native_inner_collapse_commitment: cached!(native_inner_collapse_commitment),
             native_outer_collapse_commitment: cached!(native_outer_collapse_commitment),
             native_compute_v_commitment: cached!(native_compute_v_commitment),
+
+            child_left_stage_rx: take!(child_left_stage_rx),
+            child_right_stage_rx: take!(child_right_stage_rx),
         })
     }
 }

@@ -17,8 +17,7 @@ def main (hintReader : ProverHint (F p) → Row (F p)) (_input : Unit) : Circuit
   assertZero (x * y - z)
   return ⟨x, y, z⟩
 
-def Assumptions (_hintReader : ProverHint (F p) → Row (F p))
-    (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
+def Assumptions (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 def Spec (_input : Unit) (out : Row (F p)) (_data : ProverData (F p)) :=
   out.x * out.y = out.z
@@ -40,7 +39,7 @@ theorem soundness (hintReader : ProverHint (F p) → Row (F p)) :
   exact h_holds
 
 theorem completeness (hintReader : ProverHint (F p) → Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions hintReader) := by
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) Assumptions := by
   circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -54,7 +53,7 @@ theorem completeness (hintReader : ProverHint (F p) → Row (F p)) :
 
 theorem completenessSpec (hintReader : ProverHint (F p) → Row (F p)) :
     GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated hintReader)
-      (Assumptions hintReader) (CompletenessSpec hintReader) := by
+      Assumptions (CompletenessSpec hintReader) := by
   circuit_proof_start [CompletenessSpec]
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -67,7 +66,7 @@ theorem completenessSpec (hintReader : ProverHint (F p) → Row (F p)) :
 
 def circuit (hintReader : ProverHint (F p) → Row (F p)) : GeneralFormalCircuit (F p) unit Row :=
   { elaborated hintReader with
-    Assumptions := Assumptions hintReader,
+    Assumptions := Assumptions,
     Spec,
     CompletenessSpec := CompletenessSpec hintReader,
     soundness := soundness hintReader,

@@ -160,12 +160,12 @@ proptest! {
         for (i, val) in c.iter().enumerate() {
             prop_assert_eq!(dense[i], *val);
         }
-        // b[i] -> degree 2*n - 1 - i
-        for (i, val) in b.iter().enumerate() {
+        // a[i] -> degree 2*n - 1 - i
+        for (i, val) in a.iter().enumerate() {
             prop_assert_eq!(dense[2 * n - 1 - i], *val);
         }
-        // a[i] -> degree 2*n + i
-        for (i, val) in a.iter().enumerate() {
+        // b[i] -> degree 2*n + i
+        for (i, val) in b.iter().enumerate() {
             prop_assert_eq!(dense[2 * n + i], *val);
         }
         // d[i] -> degree 4*n - 1 - i
@@ -193,10 +193,10 @@ proptest! {
         for (i, val) in c.iter().enumerate() {
             prop_assert_eq!(dense[i], *val);
         }
-        for (i, val) in b.iter().enumerate() {
+        for (i, val) in a.iter().enumerate() {
             prop_assert_eq!(dense[2 * n - 1 - i], *val);
         }
-        for (i, val) in a.iter().enumerate() {
+        for (i, val) in b.iter().enumerate() {
             prop_assert_eq!(dense[2 * n + i], *val);
         }
         for (i, val) in d.iter().enumerate() {
@@ -548,9 +548,12 @@ fn only_a_wire_data() {
     view.a = a_vals.clone();
     let poly = view.build();
 
-    // a[i] -> degree 2*n+i, so non-zero coeffs at [2*n, 3*n).
+    // a[i] -> degree 2*n-1-i (reversed); with a full n-element buffer,
+    // non-zero coeffs occupy [n, 2*n).
     let mut expected = alloc::vec![Fp::ZERO; R::num_coeffs()];
-    expected[2 * n..3 * n].copy_from_slice(&a_vals);
+    for (i, val) in a_vals.iter().enumerate() {
+        expected[2 * n - 1 - i] = *val;
+    }
     let x = Fp::random(&mut rand::rng());
     assert_eq!(poly.eval(x), ragu_arithmetic::eval(&expected, x));
 }

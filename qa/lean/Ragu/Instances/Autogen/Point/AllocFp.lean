@@ -24,7 +24,7 @@ def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operat
   Operation.witness 3 (fun _env => default),
   Operation.assert ((((var ⟨6⟩) * (var ⟨7⟩)) + (((-1 : F p) : Expression (F p)) * (var ⟨8⟩)))),
   Operation.assert (((var ⟨6⟩) + (((-1 : F p) : Expression (F p)) * (var ⟨7⟩)))),
-  Operation.assert ((((var ⟨5⟩) + ((0x0000000000000000000000000000000000000000000000000000000000000005 : Expression (F p)) * 1)) + (((-1 : F p) : Expression (F p)) * (var ⟨8⟩)))),
+  Operation.assert ((((var ⟨5⟩) + ((0x0000000000000000000000000000000000000000000000000000000000000005 : Expression (F p)) * ((1 : F p) : Expression (F p)))) + (((-1 : F p) : Expression (F p)) * (var ⟨8⟩)))),
 ]
 
 set_option linter.unusedVariables false in

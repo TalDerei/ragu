@@ -1,8 +1,11 @@
-//! Evaluation of the $t(X, Z)$ polynomial.
+//! In-circuit evaluation of the gate polynomial
+//! $$t(x, z) = -\sum_{i=0}^{n - 1} x^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})$$
+//! as a [`Routine`].
 
 use core::marker::PhantomData;
 
 use ff::Field;
+use ragu_arithmetic::geosum;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
@@ -14,7 +17,12 @@ use ragu_primitives::Element;
 
 use super::Rank;
 
-/// Routine for evaluating the TXZ polynomial, t(x, z).
+/// [`Routine`] evaluating $t(x, z)$ at rank `R`.
+///
+/// Requires $x, z \neq 0$. The auxiliary witness carries the inversions
+/// $(x^{-1}, z^{-1})$ from [`Routine::predict`] into [`Routine::execute`], so
+/// those witnesses are produced once rather than re-derived at circuit
+/// allocation time.
 #[derive(Clone)]
 pub struct Evaluate<R> {
     _marker: PhantomData<R>,
@@ -27,7 +35,7 @@ impl<R: Rank> Default for Evaluate<R> {
 }
 
 impl<R: Rank> Evaluate<R> {
-    /// Creates a new evaluator for the given rank.
+    /// Creates the routine.
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,
@@ -61,11 +69,6 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
         }
         let z2n = zn.square(dr)?;
 
-        // Use precomputed inversions from aux to avoid redundant computation.
-        //
-        // Preconditions:
-        // - x != 0 and z != 0 (inversion will fail otherwise)
-        // - aux must contain (x^{-1}, z^{-1}), typically from predict()
         let (x_inv_val, z_inv_val) = aux.cast();
         let x_inv = x.invert_with(dr, x_inv_val)?;
         let z_inv = z.invert_with(dr, z_inv_val)?;
@@ -95,7 +98,6 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         let n = 1u64 << R::log2_n();
 
-        // Compute inversions once and store as aux data to accelerate execution
         let aux = D::try_just(|| {
             let x = *input.0.value().take();
             let z = *input.1.value().take();
@@ -112,7 +114,6 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
             Ok((x_inv, z_inv))
         })?;
 
-        // Compute output using the precomputed inversions
         let output = Element::alloc(
             dr,
             &mut (),
@@ -121,18 +122,12 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
                 let z = *input.1.value().take();
                 let (x_inv, z_inv) = *aux.snag();
 
-                let mut xz_step = x_inv * z;
-                let mut xz_inv_step = x_inv * z_inv;
-                let mut l = x.pow([4 * n - 1]) * z.pow([2 * n]);
-                let mut r = l;
-
-                // This is computed efficiently as a geometric series.
-                for _ in 0..R::log2_n() {
-                    l += l * xz_step;
-                    r += r * xz_inv_step;
-                    xz_step = xz_step.square();
-                    xz_inv_step = xz_inv_step.square();
-                }
+                // Splitting $(z^{2n - 1 - i} + z^{2n + i})$ gives two geometric
+                // sums sharing the prefactor $l_0 = x^{4n - 1} z^{2n}$; the
+                // first picks up an extra $z^{-1}$, applied below.
+                let l0 = x.pow([4 * n - 1]) * z.pow([2 * n]);
+                let l = l0 * geosum(x_inv * z, n as usize);
+                let r = l0 * geosum(x_inv * z_inv, n as usize);
 
                 Ok(-(l + r * z_inv))
             })?,
