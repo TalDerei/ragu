@@ -13,8 +13,6 @@ def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -27,7 +25,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Spec input output := output = input.x * input.y
 
   reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Element.Mul.Input field
+    FormalCircuit.isGeneralFormalCircuit
       Circuits.Element.Mul.circuit
 
   same_constraints := by
@@ -35,7 +33,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     repeat (constructor; rfl)
@@ -44,7 +43,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
   same_spec := by

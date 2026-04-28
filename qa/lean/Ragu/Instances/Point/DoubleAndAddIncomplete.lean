@@ -17,8 +17,6 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p))
 set_option maxHeartbeats 800000 in
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -49,7 +47,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_constraints := by
     intro input
     simp [Operations.toFlat, circuit_norm, exportedOperations,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       FormalCircuit.toSubcircuit,
       deserializeInput,
       Circuits.Point.DoubleAndAddIncomplete.circuit,
@@ -72,7 +71,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     simp [circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.DoubleAndAddIncomplete.circuit,

@@ -13,8 +13,6 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Exp
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -23,15 +21,13 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec (input : Circuits.Point.ConditionalNegate.Input (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
-    IsBool input.cond →
-      (output.x = input.x
-        ∧ output.y = if input.cond = 1 then -input.y else input.y)
+    output.x = input.x ∧ output.y = if input.cond = 1 then -input.y else input.y
 
   deserializeInput
   serializeOutput
 
   reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Point.ConditionalNegate.Input Circuits.Point.Spec.Point
+    FormalCircuit.isGeneralFormalCircuit
       Circuits.Point.ConditionalNegate.circuit
 
   same_constraints := by
@@ -39,7 +35,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.ConditionalNegate.circuit,
       Circuits.Point.ConditionalNegate.elaborated,
@@ -53,7 +50,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.ConditionalNegate.circuit,
       Circuits.Point.ConditionalNegate.elaborated,

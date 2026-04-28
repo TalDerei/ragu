@@ -13,8 +13,6 @@ def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -22,14 +20,13 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Output := field
 
   Spec (input : Circuits.Boolean.And.Input (F p)) (output : F p) :=
-    IsBool input.a ∧ IsBool input.b
-      → output.val = input.a.val &&& input.b.val ∧ IsBool output
+    output.val = input.a.val &&& input.b.val ∧ IsBool output
 
   deserializeInput
   serializeOutput
 
   reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Boolean.And.Input field
+    FormalCircuit.isGeneralFormalCircuit
       Circuits.Boolean.And.circuit
 
   same_constraints := by
@@ -38,7 +35,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
       FormalCircuit.toSubcircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.And.circuit,
       Circuits.Boolean.And.elaborated,
@@ -53,7 +51,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
       FormalCircuit.toSubcircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Boolean.And.circuit,
       Circuits.Boolean.And.elaborated,

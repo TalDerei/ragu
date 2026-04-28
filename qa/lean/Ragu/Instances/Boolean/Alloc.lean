@@ -16,8 +16,6 @@ def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
 set_option maxHeartbeats 400000 in
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -36,7 +34,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp only [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.main,
@@ -47,7 +46,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     simp only [
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.main,

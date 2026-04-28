@@ -13,8 +13,6 @@ def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -28,7 +26,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   serializeOutput
 
   reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Element.IsEqual.Input field
+    FormalCircuit.isGeneralFormalCircuit
       Circuits.Element.IsEqual.circuit
 
   same_constraints := by
@@ -36,7 +34,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.IsEqual.circuit,
       Circuits.Element.IsEqual.elaborated,
@@ -50,7 +49,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.IsEqual.circuit,
       Circuits.Element.IsEqual.elaborated,

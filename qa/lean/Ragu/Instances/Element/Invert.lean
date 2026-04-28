@@ -13,8 +13,6 @@ def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -33,7 +31,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.Invert.circuit,
       Circuits.Element.Invert.elaborated,
@@ -49,7 +48,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     simp [circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.Invert.circuit,
       Circuits.Element.Invert.elaborated,

@@ -13,8 +13,6 @@ def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -36,7 +34,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.ConditionalEnforceEqual.circuit,
       Circuits.Boolean.ConditionalEnforceEqual.elaborated,

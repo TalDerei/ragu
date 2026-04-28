@@ -35,7 +35,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
@@ -46,7 +47,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     constructor
   same_output := by
     intro input;
-    simp [circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+    simp [circuit_norm, GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.AddIncomplete.circuit, Circuits.Point.AddIncomplete.elaborated, Circuits.Point.AddIncomplete.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,

@@ -13,8 +13,6 @@ def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
 
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
 
@@ -28,10 +26,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   -- input)` (not `input^4`) to avoid HPow resolution issues on `field (F p)`.
   Spec (input : F p) (_output : Unit) :=
     input * input * (input * input) = 1
-      → input * input * (input * input) = 1
 
   reimplementation :=
-    FormalAssertion.isGeneralFormalCircuit (F p) field
+    FormalAssertion.isGeneralFormalCircuit
       Circuits.Element.EnforceRootOfUnity.circuit
 
   same_constraints := by
@@ -39,7 +36,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalAssertion.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.EnforceRootOfUnity.circuit,
       Circuits.Element.EnforceRootOfUnity.elaborated,
