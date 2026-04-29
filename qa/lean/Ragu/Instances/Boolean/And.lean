@@ -28,30 +28,24 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      FormalCircuit.toSubcircuit,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.And.circuit,
       Circuits.Boolean.And.elaborated,
       Circuits.Boolean.And.main,
-      Circuits.Element.Mul.circuit,
-      Circuits.Element.Mul.elaborated,
-      Circuits.Element.Mul.main]
+      Circuits.Core.Mul.main]
+    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      FormalCircuit.toSubcircuit,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Boolean.And.circuit,
       Circuits.Boolean.And.elaborated,
-      Circuits.Boolean.And.main,
-      Circuits.Element.Mul.circuit,
-      Circuits.Element.Mul.elaborated,
-      Circuits.Element.Mul.main]
+      Circuits.Boolean.And.main]
 
 end Ragu.Instances.Boolean.And

@@ -1,11 +1,11 @@
 ---
 name: fv-docs
-description: Explicitly invoked only. Authoritative reference for the Ragu formal-verification project — Clean DSL semantics (Circuit monad, Expression, Operation, ProvableType, FormalCircuit) and Ragu-side concepts (extraction driver, FormalInstance, input/output serialization, assumptions, CI). Routes to the live in-tree FV docs; the docs are the spec, not opinion. Pair with /fv-review for opinion / pattern-matching guidance. Invoke when the user types `/fv-docs` or asks for the canonical definition of a Clean / Ragu-FV concept.
+description: Explicitly invoked only. Authoritative reference for the Ragu formal-verification project — Clean DSL semantics (Circuit monad, Expression, Operation, ProvableType, FormalCircuit) and Ragu-side concepts (extraction driver, formal instances, input/output serialization, assumptions, CI). Routes to the live in-tree FV docs; the docs are the spec, not opinion. Pair with /fv-review for opinion / pattern-matching guidance. Invoke when the user types `/fv-docs` or asks for the canonical definition of a Clean / Ragu-FV concept.
 ---
 
 # fv-docs: Ragu Formal Verification reference
 
-The FV documentation lives in the repo. This skill is a routing layer: pick the right doc and `Read` it from the live source — don't paraphrase. The docs are authoritative; they define what `FormalCircuit`, `FormalInstance`, `ExtractionDriver`, etc. *mean*.
+The FV documentation lives in the repo. This skill is a routing layer: pick the right doc and `Read` it from the live source — don't paraphrase. The docs are authoritative; they define what `FormalCircuit`, formal instances, `ExtractionDriver`, etc. *mean*.
 
 **Pairing.** For *definitions* → fv-docs (this skill). For *opinion / pitfalls / pattern-matching* (e.g., "should I use `FormalCircuit` or `GeneralFormalCircuit`?", "what's a clean spec style?") → `/fv-review`. Don't compete on the same question.
 
@@ -32,7 +32,7 @@ Treat `<docs>` below as whichever of the two exists in the current checkout. If 
 - `<docs>/clean/core/parameters.md` — compile-time parameters as ordinary Lean function arguments; partial-application instantiation.
 
 **Ragu FV pipeline:**
-- `<docs>/ragu/introduction.md` — the two-approach analysis (high-level export vs. low-level trace); why Ragu chose the low-level export with a Lean reimplementation; the `FormalInstance` interface and its fields.
+- `<docs>/ragu/introduction.md` — the two-approach analysis (high-level export vs. low-level trace); why Ragu chose the low-level export with a Lean reimplementation; the formal instance interface and its fields.
 - `<docs>/ragu/extraction.md` — `ExtractionDriver`, `MaybeKind = Empty`, `ImplWire = Expr<F>`; how `alloc` / `mul` / `add` / `enforce_zero` / `constant` map to operations.
 - `<docs>/ragu/input-outputs-serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
 - `<docs>/ragu/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
@@ -50,7 +50,7 @@ The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading or
 | `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/core/provable.md` |
 | `FormalCircuit`, `Assumptions`, `Spec`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
 | Compile-time parameters, partial-application instantiation | `clean/core/parameters.md` |
-| `FormalInstance`, `reimplementation`, `same_circuit`, `same_output`, `same_spec`, `same_assumptions`, `inputLen`, `outputLen`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
+| `GeneralFormalInstance`, `GeneralFormalWithHintInstance`, `reimplementation`, `same_constraints`, `same_output`, `same_spec`, `inputLen`, `outputLen`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
 | `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `ragu/extraction.md` |
 | `input_var.get`, `alloc_input_wires`, `serializeOutput`, `deserializeInput` | `ragu/input-outputs-serialization.md` |
 | Trust assumptions, axiom dependencies | `ragu/assumptions.md` |

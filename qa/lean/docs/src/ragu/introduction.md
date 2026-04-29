@@ -75,11 +75,12 @@ The reimplementation also does not need to mimic the Rust code line by line.
 It only needs to produce the same operations and outputs.
 Because of that, it is a good candidate for partial automation, including LLM-assisted generation, as long as the equality proofs are then completed in Lean.
 
-## The `FormalInstance` interface
+## The formal instance interface
 
-The `FormalInstance` object packages a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
+The `GeneralFormalInstance` and `GeneralFormalWithHintInstance` objects package a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
+Use the hint-aware variant when the structured Lean input contains `CircuitType` hints such as `Unconstrained` or `UnconstrainedDep`.
 
-Intuitively, the definition of a `FormalInstance` will provide:
+Intuitively, the definition of a formal instance will provide:
 
 - the concrete exported circuit interface,
 - the structured Lean interpretation of that interface,
@@ -96,11 +97,10 @@ At a high level, its fields have the following roles:
 - `Input` and `Output` are the structured Lean input/output types used for reasoning.
 - `deserializeInput` interprets the flat exported input vector as a structured `Input`.
 - `serializeOutput` maps a structured `Output` back to the flat exported output vector.
-- `Assumptions` and `Spec` are the assumptions and intended property stated for this concrete instance.
-- `reimplementation` is the structured `Clean` `FormalCircuit` used for the actual proofs.
-- `same_circuit` proves that the reimplementation emits exactly the exported operations.
+- `Spec` is the intended property stated for this concrete instance; by default it delegates to the reimplementation's spec.
+- `reimplementation` is the structured `Clean` `GeneralFormalCircuit` or `GeneralFormalCircuit.WithHint` used for the actual proofs.
+- `same_constraints` proves that the reimplementation emits exactly the exported operations, after erasing witness-generation functions.
 - `same_output` proves that the reimplementation returns exactly the exported outputs, after serialization.
 - `same_spec` proves that the instance specification agrees with the specification of the reimplementation.
-- `same_assumptions` proves that the instance assumptions agree with the assumptions of the reimplementation.
 
 > TODO: adjust later for completeness
