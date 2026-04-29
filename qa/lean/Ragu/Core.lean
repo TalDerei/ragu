@@ -128,6 +128,12 @@ instance {F : Type} [Field F] : HMul (Value field F) F F where
 instance {F : Type} [Field F] : HMul (Value field F) (field F) F where
   hMul (x : F) (y : F) := x * y
 
+instance {F : Type} [Field F] : HDiv (Value field F) (Value field F) F where
+  hDiv (x : F) (y : F) := x / y
+
+instance {F : Type} [Field F] : OfNat (Value field F) 0 where
+  ofNat := (0 : F)
+
 instance {F : Type} [Field F] : OfNat (Value field F) 1 where
   ofNat := (1 : F)
 

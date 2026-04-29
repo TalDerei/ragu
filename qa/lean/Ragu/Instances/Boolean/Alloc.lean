@@ -13,9 +13,6 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) :
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
 
--- The `same_spec` field's `intro` step exceeds the default 200k heartbeat
--- budget while reducing the subcircuit-composition goal type to whnf.
-set_option maxHeartbeats 400000 in
 def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   p
   exportedOperations
