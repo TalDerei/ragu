@@ -19,7 +19,7 @@ def serializeOutput (outputs : Var Circuits.Point.AddIncomplete.Outputs (F p)) :
     outputs.nonzero
   ]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput

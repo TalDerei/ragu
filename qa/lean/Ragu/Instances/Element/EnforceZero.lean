@@ -11,7 +11,7 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var field (F
 def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
   #v[]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput

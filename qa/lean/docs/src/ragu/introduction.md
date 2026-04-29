@@ -77,7 +77,7 @@ Because of that, it is a good candidate for partial automation, including LLM-as
 
 ## The formal instance interface
 
-The `GeneralFormalInstance` object packages a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
+The `FormalInstance` object packages a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
 Its reimplementation field uses `GeneralFormalCircuit.WithHint` (clean's most general circuit interface), so ordinary `GeneralFormalCircuit`s are embedded with `.toWithHint`.
 
 Intuitively, the definition of a formal instance will provide:

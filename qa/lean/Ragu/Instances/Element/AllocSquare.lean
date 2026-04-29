@@ -13,7 +13,7 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) :
 def serializeOutput (output : Var Circuits.Element.AllocSquare.Square (F p)) : Vector (Expression (F p)) 2 :=
   #v[output.a, output.a_sq]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput

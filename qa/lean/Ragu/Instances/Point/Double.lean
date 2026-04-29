@@ -12,7 +12,7 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Exp
   #v[ output.x, output.y ]
 
 set_option maxHeartbeats 800000 in
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput

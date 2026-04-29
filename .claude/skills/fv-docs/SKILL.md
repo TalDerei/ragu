@@ -50,7 +50,7 @@ The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading or
 | `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/core/provable.md` |
 | `FormalCircuit`, `Assumptions`, `Spec`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
 | Compile-time parameters, partial-application instantiation | `clean/core/parameters.md` |
-| `GeneralFormalInstance`, `reimplementation`, `same_constraints`, `same_output`, `same_spec`, `inputLen`, `outputLen`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
+| `FormalInstance`, `reimplementation`, `same_constraints`, `same_output`, `same_spec`, `inputLen`, `outputLen`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
 | `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `ragu/extraction.md` |
 | `input_var.get`, `alloc_input_wires`, `serializeOutput`, `deserializeInput` | `ragu/input-outputs-serialization.md` |
 | Trust assumptions, axiom dependencies | `ragu/assumptions.md` |

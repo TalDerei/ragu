@@ -146,7 +146,7 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 | `qa/crates/lean_extraction/src/instances/<gadget>.rs` | trusted | Rust `CircuitInstance` impl: thin wrapper that calls Ragu types / gadgets through `ExtractionDriver`. |
 | `qa/lean/Ragu/Instances/Autogen/<Module>/<Gadget>.lean` | mechanical (CI-checked) | Extractor-produced flat op trace. Regenerated via `cargo run -p lean_extraction -- export`; `check` enforces byte-equality. |
 | `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` | reimpl untrusted; `Inputs` / `Outputs` / `Spec` / `Assumptions` trusted | The reimpl: `main`, `Spec`, `Assumptions`, `elaborated`, `soundness`, `completeness`. |
-| `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | untrusted | `GeneralFormalInstance` packaging: proves reimpl ≡ autogen, exposes the spec. |
+| `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | untrusted | `FormalInstance` packaging: proves reimpl ≡ autogen, exposes the spec. |
 | circuit input types containing `Unconstrained` / `UnconstrainedDep` | trusted | The hint shape exposed to callers; should mirror the Rust API and avoid leaking internal rows. |
 
 **Sub-gadget carve-out — the scaling lesson.** Gadgets used only as subcircuits inside other gadgets can live **only as Lean reimpls + soundness / completeness**. Their correctness reaches the top via composition: the parent reimpl's proof uses the child's `Spec`. Top-level gadgets — the ones a Ragu consumer composes with — get the full pipeline. Some core gates such as `Core.mul` still have extractor instances because they are useful as direct equivalence anchors, but that should be an intentional choice rather than the default for every helper.

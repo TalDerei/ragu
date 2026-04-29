@@ -41,7 +41,7 @@ def FlatOperation.eraseCompute {F : Type} [Field F] :
   | .witness m _ => .witness m (fun _ => default)
   | op => op
 
-structure GeneralFormalInstance where
+structure FormalInstance where
   p : ℕ
   [pPrime : Fact p.Prime]
 

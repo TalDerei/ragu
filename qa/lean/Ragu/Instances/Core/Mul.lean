@@ -12,7 +12,7 @@ def deserializeInput (_ : Vector (Expression (F p)) inputLen) :
 def serializeOutput (output : Var Circuits.Row (F p)) : Vector (Expression (F p)) 3 :=
   #v[output.x, output.y, output.z]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput
