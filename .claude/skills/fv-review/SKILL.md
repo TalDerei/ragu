@@ -195,6 +195,8 @@ Without these in the list, the proof state stalls on un-unfolded subcircuit term
 
 **Heuristic.** Before writing a soundness or completeness proof for a composed gadget, enumerate every gadget you call as a subcircuit. For each, add `<Sub>.circuit`, `<Sub>.Assumptions`, `<Sub>.Spec` to the `circuit_proof_start` argument list. If your proof later stalls on a goal mentioning `(<Sub>.circuit input).output ...` or unfolded `Sub.Spec`, you missed a triple — add it.
 
+**What NOT to pass.** Clean's prover-proof expansion auto-unfolds `ProverAssumptions` everywhere — both your gadget's own *and* every subcircuit's. Same for the current gadget's own `ProverSpec`. Don't include any of these in `circuit_proof_start [..]`, `circuit_proof_all [..]`, or follow-up `simp [..]` lists; doing so is redundant noise. **Subcircuit `ProverSpec`** is the exception — completeness proofs that need to peek through what a child's completeness promised may still need it (e.g., `circuit_proof_all [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec]` in `DivNonzero.completeness`). Commit `31c70dc0` ("Use clean prover proof expansion") removed the redundant inclusions across the codebase.
+
 ## Length polymorphism is supported
 
 Clean has plenty of length-polymorphic circuits. Don't claim "Clean can't express this" as a reason to specialize.
