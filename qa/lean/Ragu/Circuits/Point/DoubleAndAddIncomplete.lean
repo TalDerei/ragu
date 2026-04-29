@@ -65,21 +65,17 @@ x-coordinate). -/
 def ProverAssumptions (curveParams : Spec.CurveParams p)
     (input : Inputs (F p)) (data : ProverData (F p)) (_hint : ProverHint (F p)) :=
   Assumptions curveParams input data ∧
-  (match input.P1.add_incomplete input.P2 with
-   | none => False
-   | some r => r.x ≠ input.P1.x)
+  ∃ r, input.P1.add_incomplete input.P2 = some r ∧ r.x ≠ input.P1.x
 
 /-- The output is `2·P1 + P2` under the curve-membership preconditions and
 the two non-degeneracy assumptions. Stated via `add_incomplete` twice:
 `r = P1 + P2`, then `s = r + P1 = 2P1 + P2`. -/
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p))
     (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
-  (match input.P1.add_incomplete input.P2 with
-   | none => False
-   | some r =>
-     match r.add_incomplete input.P1 with
-     | none => True
-     | some s => output = s ∧ output.isOnCurve curveParams)
+  ∃ r, input.P1.add_incomplete input.P2 = some r ∧
+    (r.add_incomplete input.P1 = none ∨
+      r.add_incomplete input.P1 = some output ∧
+      output.isOnCurve curveParams)
 
 instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
   main
@@ -103,15 +99,20 @@ theorem soundness (curveParams : Spec.CurveParams p)
   specialize c1 (Or.inl h_xne')
   -- Rewrite Sq₁ via c1, c2: eval(Sq₁) = ((y2-y1)/(x2-x1))^2.
   rw [c1] at c2
-  -- At this point `P1.add_incomplete P2` still shows up in the goal. Unfold
-  -- it using h_xne.
-  simp only [Spec.Point.add_incomplete, if_neg h_xne]
+  let rOpt := (⟨input_P1_x, input_P1_y⟩ : Spec.Point (F p)).add_incomplete ⟨input_P2_x, input_P2_y⟩
+  rcases h_rOpt : rOpt with _ | r
+  · simp [rOpt, Spec.Point.add_incomplete, h_xne] at h_rOpt
+  refine ⟨r, h_rOpt, ?_⟩
+  simp only [rOpt, Spec.Point.add_incomplete, if_neg h_xne, Option.some.injEq] at h_rOpt
+  subst r
   by_cases h_rx_ne :
       ((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2 -
           input_P1_x - input_P2_x ≠ input_P1_x
   swap
-  · simp only [if_pos (not_not.mp h_rx_ne)]
-  simp only [if_neg h_rx_ne]
+  · left
+    simp only [Spec.Point.add_incomplete, if_pos (not_not.mp h_rx_ne)]
+  right
+  simp only [Spec.Point.add_incomplete, if_neg h_rx_ne, Option.some.injEq]
   -- The remaining branch is the non-degenerate second add.
   -- c3's premise: `x₁ - r.x ≠ 0 ∨ 2y₁ ≠ 0`. We discharge the disjunction
   -- with the left disjunct, deriving `x₁ - r.x ≠ 0` from h_rx_ne (plus the
@@ -204,9 +205,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
     ring
   refine ⟨?_, ?_⟩
   · -- Output point = s
-    show Spec.Point.mk _ _ = s
     rw [show s = ⟨s.x, s.y⟩ from rfl]
-    exact Spec.Point.mk.injEq _ _ _ _ |>.mpr ⟨h_x, h_y⟩
+    exact (Spec.Point.mk.injEq _ _ _ _ |>.mpr ⟨h_x, h_y⟩).symm
   · -- Output.isOnCurve
     show Spec.Point.isOnCurve ⟨_, _⟩ curveParams
     simp only [Spec.Point.isOnCurve]
@@ -225,8 +225,9 @@ theorem completeness (curveParams : Spec.CurveParams p)
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [Element.DivNonzero.Spec] at h_env
-  obtain ⟨⟨_, _, h_xne⟩, h_a2⟩ := h_assumptions
-  simp only [Spec.Point.add_incomplete, if_neg h_xne, sub_eq_add_neg] at h_a2
+  obtain ⟨⟨_, _, h_xne⟩, r, h_add, h_a2⟩ := h_assumptions
+  simp only [Spec.Point.add_incomplete, if_neg h_xne, Option.some.injEq, sub_eq_add_neg] at h_add
+  subst r
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
   have h_a1 : input_P2_x + -input_P1_x ≠ 0 := by
     intro h
@@ -246,13 +247,13 @@ theorem completeness (curveParams : Spec.CurveParams p)
     rw [add_neg_eq_zero] at h
     exact h_a2 h.symm⟩
 
-def circuit (curveParams : Spec.CurveParams p)
-    : GeneralFormalCircuit (F p) Inputs Spec.Point :=
-  { elaborated with
-    Assumptions := Assumptions curveParams,
-    Spec := Spec curveParams,
-    ProverAssumptions := ProverAssumptions curveParams,
-    soundness := soundness curveParams,
-    completeness := completeness curveParams }
+def circuit (curveParams : Spec.CurveParams p) :
+    GeneralFormalCircuit (F p) Inputs Spec.Point where
+  elaborated
+  Assumptions := Assumptions curveParams
+  Spec := Spec curveParams
+  ProverAssumptions := ProverAssumptions curveParams
+  soundness := soundness curveParams
+  completeness := completeness curveParams
 
 end Ragu.Circuits.Point.DoubleAndAddIncomplete

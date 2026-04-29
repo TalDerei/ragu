@@ -57,26 +57,18 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Out
   (
     -- If the x coordinates of P1 and P2 are different, then we can conclude that the
     -- addition output is affine and is the correct result of the addition
-    input.P1.x ≠ input.P2.x -> (
-      (
-        match input.P1.add_incomplete input.P2  with
-        | none => False -- this case never happens
-        | some res => output.P3 = res
-      )
-      ∧ output.P3.isOnCurve curveParams
-    )
+    input.P1.x ≠ input.P2.x →
+      input.P1.add_incomplete input.P2 = some output.P3 ∧
+      output.P3.isOnCurve curveParams
   ) ∧
   (
     -- if the x coordinates of P1 and P2 are equal, then output nonzero is 0
     -- regardless of the input nonzero
-    (input.P1.x = input.P2.x -> output.nonzero = 0) ∧
+    (input.P1.x = input.P2.x → output.nonzero = 0) ∧
 
     -- if the x coordinates of P1 and P2 are not equal, then output nonzero preserves
     -- non-zero-ness from input nonzero
-    (input.P1.x ≠ input.P2.x ->
-      (input.nonzero = 0 -> output.nonzero = 0) ∧
-      (input.nonzero ≠ 0 -> output.nonzero ≠ 0)
-    )
+    (input.P1.x ≠ input.P2.x → (input.nonzero = 0 ↔ output.nonzero = 0))
   )
 
 instance elaborated :
@@ -113,13 +105,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     specialize h_lemma h_P1_mem h_P2_mem
     ring_nf at ⊢ h_lemma
     simp_all only [id_eq, inv_pow, and_self]
-
-  · simp_all only [id_eq, add_neg_cancel, mul_zero, implies_true, zero_mul, mul_eq_zero, false_or,
-    true_and]
-    rw [add_neg_eq_zero]
-    intro h1 _
-    apply Ne.symm
-    exact h1
+  · grind
 
 theorem completeness (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.Completeness (F p) elaborated
@@ -132,15 +118,12 @@ theorem completeness (curveParams : Spec.CurveParams p) :
   simp only [sub_eq_add_neg] at h_assumptions
   exact h_assumptions.2.2
 
-def circuit (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit (F p) Inputs Outputs :=
-  {
-    elaborated with
-    Assumptions := Assumptions curveParams,
-    Spec := Spec curveParams,
-    ProverAssumptions := ProverAssumptions curveParams,
-    soundness := soundness curveParams,
-    completeness := completeness curveParams
-  }
+def circuit (curveParams : Spec.CurveParams p) : GeneralFormalCircuit (F p) Inputs Outputs where
+  elaborated
+  Assumptions := Assumptions curveParams
+  Spec := Spec curveParams
+  ProverAssumptions := ProverAssumptions curveParams
+  soundness := soundness curveParams
+  completeness := completeness curveParams
 
 end Ragu.Circuits.Point.AddIncomplete

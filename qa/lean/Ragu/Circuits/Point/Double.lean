@@ -36,10 +36,7 @@ def Assumptions (curveParams : Spec.CurveParams p)
   curveParams.noOrderTwoPoints
 
 def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output : Spec.Point (F p)) :=
-  (match input.double with
-  | none => False -- this case never happens
-  | some double => output = double)
-  ∧
+  input.double = some output ∧
   output.isOnCurve curveParams
 
 instance elaborated :
@@ -70,7 +67,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
 
   -- Substitute simplified subcircuit outputs into goal
   constructor
-  · simp only [Spec.Point.mk.injEq]
+  · simp only [Option.some.injEq, Spec.Point.mk.injEq]
     rw [c3, c4]
     constructor <;> ring_nf
   · have h_d := Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_membership h_order
@@ -91,14 +88,11 @@ theorem completeness (curveParams : Spec.CurveParams p) :
   exact mul_ne_zero (NeZero.ne 2)
     (h_assumptions.2 ⟨input_x, input_y⟩ h_assumptions.1)
 
-def circuit (curveParams : Spec.CurveParams p) :
-    FormalCircuit (F p) Spec.Point Spec.Point :=
-  {
-    elaborated with
-    Assumptions := Assumptions curveParams,
-    Spec := Spec curveParams,
-    soundness := soundness curveParams,
-    completeness := completeness curveParams
-  }
+def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Spec.Point Spec.Point where
+  elaborated
+  Assumptions := Assumptions curveParams
+  Spec := Spec curveParams
+  soundness := soundness curveParams
+  completeness := completeness curveParams
 
 end Ragu.Circuits.Point.Double
