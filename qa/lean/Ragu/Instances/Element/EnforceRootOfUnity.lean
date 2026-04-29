@@ -35,7 +35,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.EnforceRootOfUnity.elaborated,
       Circuits.Element.EnforceRootOfUnity.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input

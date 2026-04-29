@@ -29,11 +29,17 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
-      GeneralFormalCircuit.WithHint.toSubcircuit,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main]
+      Circuits.Boolean.ConditionalSelect.main,
+      Circuits.Element.Mul.circuit,
+      Circuits.Element.Mul.elaborated,
+      Circuits.Element.Mul.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -41,10 +47,16 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
-      GeneralFormalCircuit.WithHint.toSubcircuit,
+      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main]
+      Circuits.Boolean.ConditionalSelect.main,
+      Circuits.Element.Mul.circuit,
+      Circuits.Element.Mul.elaborated,
+      Circuits.Element.Mul.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
 
 end Ragu.Instances.Boolean.ConditionalSelect

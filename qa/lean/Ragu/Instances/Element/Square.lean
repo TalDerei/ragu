@@ -33,7 +33,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, exportedOperations,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input

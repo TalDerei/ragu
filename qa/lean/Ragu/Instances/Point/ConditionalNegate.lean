@@ -36,7 +36,13 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.ConditionalNegate.main,
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main]
+      Circuits.Boolean.ConditionalSelect.main,
+      Circuits.Element.Mul.circuit,
+      Circuits.Element.Mul.elaborated,
+      Circuits.Element.Mul.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -51,6 +57,12 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.ConditionalNegate.main,
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main]
+      Circuits.Boolean.ConditionalSelect.main,
+      Circuits.Element.Mul.circuit,
+      Circuits.Element.Mul.elaborated,
+      Circuits.Element.Mul.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
 
 end Ragu.Instances.Point.ConditionalNegate

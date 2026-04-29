@@ -13,18 +13,14 @@ variable {p : ℕ} [Fact p.Prime]
 
 Together these pin down `is_zero = if x = 0 then 1 else 0`. -/
 def main (input : Expression (F p)) : Circuit (F p) (Expression (F p)) := do
-  let ⟨x1, iz, zp⟩ ← (witness fun env =>
+  let ⟨x1, iz, zp⟩ ← Core.AllocMul.circuit fun env =>
     let xv := Expression.eval env input
-    (⟨xv, (if xv = 0 then (1 : F p) else 0), 0⟩ : Row (F p))
-    : Circuit (F p) (Var Row (F p)))
-  assertZero (x1 * iz - zp)
+    ⟨xv, (if xv = 0 then (1 : F p) else 0), 0⟩
   assertZero (x1 - input)
   assertZero zp
-  let ⟨x2, inv, inz⟩ ← (witness fun env =>
+  let ⟨x2, _, inz⟩ ← Core.AllocMul.circuit fun env =>
     let xv := Expression.eval env input
-    (⟨xv, xv⁻¹, (if xv = 0 then (0 : F p) else 1)⟩ : Row (F p))
-    : Circuit (F p) (Var Row (F p)))
-  assertZero (x2 * inv - inz)
+    ⟨xv, xv⁻¹, (if xv = 0 then (0 : F p) else 1)⟩
   assertZero (x2 - input)
   assertZero (inz - 1 + iz)
   return iz
@@ -40,9 +36,9 @@ instance elaborated : ElaboratedCircuit (F p) field field where
   localLength _ := 6
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
+  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
   obtain ⟨c1, c2, c3, c4, c5, c6⟩ := h_holds
-  rw [add_neg_eq_zero] at c1 c2 c4 c5
+  rw [add_neg_eq_zero] at c2 c5
   -- c1 : x1 * iz = zp        c4 : x2 * inv = inz
   -- c2 : x1 = input           c5 : x2 = input
   -- c3 : zp = 0               c6 : inz - 1 + iz = 0
@@ -59,40 +55,19 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
     · exact hiz
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
-  circuit_proof_start
-  obtain ⟨h_env1, h_env2⟩ := h_env
-  have h0 := h_env1 (0 : Fin 3)
-  have h1 := h_env1 (1 : Fin 3)
-  have h2 := h_env1 (2 : Fin 3)
-  have h3 := h_env2 (0 : Fin 3)
-  have h4 := h_env2 (1 : Fin 3)
-  have h5 := h_env2 (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum]
-    at h0 h1 h2 h3 h4 h5
-  norm_num at h0 h1 h2 h3 h4 h5
-  simp at h0 h1 h2 h3 h4 h5
-  -- Normalize `[1,1,1].sum` to `3` in the goal.
-  simp only [show ([1, 1, 1] : List ℕ).sum = 3 from rfl]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
-  · -- gate 1 : x1 * iz - zp = 0
-    rw [h0, h1, h2]
+  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.ProverSpec]
+  obtain ⟨⟨_, h0, h1, h2⟩, ⟨_, h3, h4, h5⟩⟩ := h_env
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [h0]; ring
+  · rw [h2]
     split_ifs with hx
     · rw [hx]; ring
     · ring
-  · -- x1 - input = 0
-    rw [h0]; ring
-  · -- zp = 0
-    rw [h2]
-  · -- gate 2 : x2 * inv - inz = 0
-    rw [show i₀ + 3 + 1 + 1 = i₀ + 3 + 2 from by omega, h3, h4, h5]
+  · rw [h3]; ring
+  · rw [h5, h1]
     split_ifs with hx
     · rw [hx]; simp
     · rw [mul_inv_cancel₀ hx]; ring
-  · -- x2 - input = 0
-    rw [h3]; ring
-  · -- inz - 1 + iz = 0
-    rw [show i₀ + 3 + 1 + 1 = i₀ + 3 + 2 from by omega, h5, h1]
-    split_ifs with hx <;> ring
 
 def circuit : FormalCircuit (F p) field field :=
   { elaborated with Assumptions, Spec, soundness, completeness }

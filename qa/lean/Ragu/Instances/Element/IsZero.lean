@@ -33,7 +33,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, exportedOperations,
       Circuits.Element.IsZero.circuit,
       Circuits.Element.IsZero.elaborated,
-      Circuits.Element.IsZero.main]
+      Circuits.Element.IsZero.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -45,6 +48,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, serializeOutput,
       Circuits.Element.IsZero.circuit,
       Circuits.Element.IsZero.elaborated,
-      Circuits.Element.IsZero.main]
+      Circuits.Element.IsZero.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.elaborated,
+      Circuits.Core.AllocMul.main]
 
 end Ragu.Instances.Element.IsZero
