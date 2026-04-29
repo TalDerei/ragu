@@ -72,6 +72,37 @@ The high-level form is what callers reason against. The constraint-level form is
 
 Reusable building blocks: `IsBool x` (from `Clean.Gadgets.Boolean`) for "0 or 1"; `&&&` / `|||` for bitwise ops on `.val`; `if … then … else …` for conditional outputs; `IsBool.and_eq_val_and` / `IsBool.and_is_bool` to bridge field multiplication to boolean operations in soundness proofs.
 
+## Specs are unconditional; caller obligations live in `Assumptions`
+
+A close cousin of the previous lesson, but distinct: a spec should be an **unconditional** fact about the input/output relation. Premises the *caller* must establish belong in `Assumptions`, not as antecedents inside `Spec`.
+
+**Anti-pattern (pre-PR-#690 `Point.Double.Spec`):**
+
+```lean
+def Spec (curveParams) (input) (output) :=
+  input.isOnCurve curveParams →                       ← caller obligation
+  curveParams.noOrderTwoPoints →                      ← caller obligation
+  (match input.double with | some d => output = d | none => False) ∧ ...
+```
+
+**After (post-PR-#690):**
+
+```lean
+def Assumptions (curveParams) (input) :=
+  input.isOnCurve curveParams ∧ curveParams.noOrderTwoPoints
+
+def Spec (curveParams) (input) (output) :=
+  input.double = some output ∧ output.isOnCurve curveParams
+```
+
+Same logical content; preconditions now live where they belong.
+
+**Why this matters for downstream proofs.** A `Spec` with antecedents forces every caller — including the parent gadget's soundness proof — to discharge those premises *at every call site* before the child's spec yields useful information. You see this in old code as constructions like `have h_d := c2 (by simp [h2y_ne])` — manually feeding the precondition into the child's `Spec` to peel off an antecedent. Migrating preconditions to `Assumptions` lets the framework discharge them once, at the bundle's `Soundness` boundary, and downstream subcircuit-spec uses become clean rewrites.
+
+**Heuristic.** Test each antecedent: is it a **static caller obligation** (something the caller must establish before invocation, independent of the gadget's behavior — `isOnCurve`, `IsBool`, `y ≠ 0`)? → move to `Assumptions`. Or is it **input-dependent behavior** (the gadget genuinely does different things at different input values — `cond = 1 → a = b` for `ConditionalEnforceEqual`)? → keep in `Spec`. The pre-PR `GeneralFormalCircuit` design *forced* obligations into `Spec` antecedents (soundness had no `Assumptions` slot, see "How preconditions split" above); after the Clean bump, the obligation/behavior split has a proper home.
+
+**Commits.** `b04b6f08` ("Clean up point circuit assumptions"), `fd3dd437` ("Simplify point circuit specs"), `6e29e465` ("Correct double-and-add spec cleanup").
+
 ## Assumptions encode preconditions, not constraints
 
 `Assumptions` is the *contract the caller must satisfy*. Like `Spec`, it should be a high-level statement, not a math identity from the constraint system.
