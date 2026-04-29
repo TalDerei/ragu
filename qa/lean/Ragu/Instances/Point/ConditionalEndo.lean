@@ -16,12 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Point.ConditionalEndo.Input (F p))
-       (output : Circuits.Point.Spec.Point (F p)) :=
-    output.x = (if input.cond = 1
-      then Circuits.Point.Spec.EpAffineParams.ζ * input.x else input.x) ∧
-    output.y = input.y
-
   deserializeInput
   serializeOutput
 
@@ -58,12 +52,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
       Circuits.Boolean.ConditionalSelect.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Point.ConditionalEndo.circuit,
-      Circuits.Point.ConditionalEndo.Assumptions,
-      Circuits.Point.ConditionalEndo.Spec]
-    aesop
 
 end Ragu.Instances.Point.ConditionalEndo

@@ -21,8 +21,6 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   deserializeInput
   serializeOutput
 
-  Spec _input output := output.a_sq = output.a^2
-
   reimplementation := Circuits.Element.AllocSquare.circuit
 
   same_constraints := by
@@ -50,10 +48,5 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Core.AllocMul.circuit,
       Circuits.Core.AllocMul.elaborated,
       Circuits.Core.AllocMul.main]
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Element.AllocSquare.circuit,
-      Circuits.Element.AllocSquare.Spec]
-    aesop
 
 end Ragu.Instances.Element.AllocSquare

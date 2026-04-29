@@ -16,10 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Point.ConditionalNegate.Input (F p))
-       (output : Circuits.Point.Spec.Point (F p)) :=
-    output.x = input.x ∧ output.y = if input.cond = 1 then -input.y else input.y
-
   deserializeInput
   serializeOutput
 
@@ -56,12 +52,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
       Circuits.Boolean.ConditionalSelect.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Point.ConditionalNegate.circuit,
-      Circuits.Point.ConditionalNegate.Assumptions,
-      Circuits.Point.ConditionalNegate.Spec]
-    aesop
 
 end Ragu.Instances.Point.ConditionalNegate

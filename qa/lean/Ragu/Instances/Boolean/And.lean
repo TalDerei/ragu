@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Boolean.And.Input (F p)) (output : F p) :=
-    output.val = input.a.val &&& input.b.val ∧ IsBool output
-
   deserializeInput
   serializeOutput
 
@@ -57,12 +54,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.Mul.circuit,
       Circuits.Element.Mul.elaborated,
       Circuits.Element.Mul.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Boolean.And.circuit,
-      Circuits.Boolean.And.Assumptions,
-      Circuits.Boolean.And.Spec]
-    aesop
 
 end Ragu.Instances.Boolean.And

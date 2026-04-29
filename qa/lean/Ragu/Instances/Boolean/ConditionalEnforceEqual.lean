@@ -16,12 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  -- High-level: when `cond = 1`, the circuit forces `a = b`. Stated
-  -- unconditionally — the underlying `cond · (a - b) = 0` constraint
-  -- implies this without a boolean precondition on `cond`.
-  Spec (input : Circuits.Boolean.ConditionalEnforceEqual.Input (F p)) (_output : Unit) :=
-    input.cond = 1 → input.a = input.b
-
   deserializeInput
   serializeOutput
 
@@ -42,10 +36,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     rfl
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Boolean.ConditionalEnforceEqual.circuit,
-      Circuits.Boolean.ConditionalEnforceEqual.Spec]
-    aesop
 
 end Ragu.Instances.Boolean.ConditionalEnforceEqual

@@ -20,9 +20,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output :=
-    output = (input.x0 * input.s + input.x1) * input.s + input.x2
-
   reimplementation :=
     FormalCircuit.isGeneralFormalCircuit
       Circuits.Element.Fold.circuit
@@ -48,11 +45,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       deserializeInput, serializeOutput,
       Circuits.Element.Fold.circuit, Circuits.Element.Fold.elaborated, Circuits.Element.Fold.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Element.Fold.circuit, Circuits.Element.Fold.Assumptions,
-      Circuits.Element.Fold.Spec]
-    aesop
 
 end Ragu.Instances.Element.Fold

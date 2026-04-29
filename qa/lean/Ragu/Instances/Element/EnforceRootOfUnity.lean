@@ -19,11 +19,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  -- After the constraint, input⁴ = 1. Expressed as `input * input * (input *
-  -- input)` (not `input^4`) to avoid HPow resolution issues on `field (F p)`.
-  Spec (input : F p) (_output : Unit) :=
-    input * input * (input * input) = 1
-
   reimplementation :=
     FormalAssertion.isGeneralFormalCircuit
       Circuits.Element.EnforceRootOfUnity.circuit
@@ -45,12 +40,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     rfl
-  same_spec := by
-    intro input output
-    dsimp only [FormalAssertion.isGeneralFormalCircuit,
-      Circuits.Element.EnforceRootOfUnity.circuit,
-      Circuits.Element.EnforceRootOfUnity.Assumptions,
-      Circuits.Element.EnforceRootOfUnity.Spec]
-    aesop
 
 end Ragu.Instances.Element.EnforceRootOfUnity

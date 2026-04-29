@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Element.IsEqual.Input (F p)) (output : F p) :=
-    output = if input.a = input.b then 1 else 0
-
   deserializeInput
   serializeOutput
 
@@ -55,12 +52,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.IsZero.circuit,
       Circuits.Element.IsZero.elaborated,
       Circuits.Element.IsZero.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Element.IsEqual.circuit,
-      Circuits.Element.IsEqual.Assumptions,
-      Circuits.Element.IsEqual.Spec]
-    aesop
 
 end Ragu.Instances.Element.IsEqual

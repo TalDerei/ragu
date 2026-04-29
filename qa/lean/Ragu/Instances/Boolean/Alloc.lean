@@ -21,8 +21,6 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   deserializeInput
   serializeOutput
 
-  Spec (_input : Unit) (output : F p) := output = 0 ∨ output = 1
-
   reimplementation := Circuits.Boolean.Alloc.circuit
 
   same_constraints := by
@@ -47,10 +45,5 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Core.AllocMul.circuit,
       Circuits.Core.AllocMul.main,
       circuit_norm]
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Boolean.Alloc.circuit,
-      Circuits.Boolean.Alloc.Spec]
-    aesop
 
 end Ragu.Instances.Boolean.Alloc

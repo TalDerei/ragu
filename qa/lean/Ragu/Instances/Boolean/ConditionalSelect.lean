@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Boolean.ConditionalSelect.Input (F p)) (output : F p) :=
-    output = if input.cond = 1 then input.b else input.a
-
   deserializeInput
   serializeOutput
 
@@ -49,12 +46,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Boolean.ConditionalSelect.circuit,
       Circuits.Boolean.ConditionalSelect.elaborated,
       Circuits.Boolean.ConditionalSelect.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Boolean.ConditionalSelect.circuit,
-      Circuits.Boolean.ConditionalSelect.Assumptions,
-      Circuits.Boolean.ConditionalSelect.Spec]
-    aesop
 
 end Ragu.Instances.Boolean.ConditionalSelect

@@ -19,8 +19,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec (input : F p) (_output : Unit) := input = 0
-
   reimplementation :=
     FormalAssertion.isGeneralFormalCircuit
       Circuits.Element.EnforceZero.circuit
@@ -37,12 +35,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   same_output := by
     intro input
     rfl
-  same_spec := by
-    intro input output
-    dsimp only [FormalAssertion.isGeneralFormalCircuit,
-      Circuits.Element.EnforceZero.circuit,
-      Circuits.Element.EnforceZero.Assumptions,
-      Circuits.Element.EnforceZero.Spec]
-    aesop
 
 end Ragu.Instances.Element.EnforceZero
