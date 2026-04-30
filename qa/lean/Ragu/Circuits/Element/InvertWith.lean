@@ -10,12 +10,6 @@ structure Input (F : Type) where
   inverse : UnconstrainedDep field F
 deriving CircuitType
 
-@[circuit_norm] lemma eval_verifier {F : Type} [Field F] (env : Environment F) (input : Var Input F) :
-  eval env input = CircuitType.evalVerifier env input := CircuitType.eval_verifier env input
-
-@[circuit_norm] lemma eval_prover {F : Type} [Field F] (env : ProverEnvironment F) (input : Var Input F) :
-  eval env input = CircuitType.evalProver env input := CircuitType.eval_prover env input
-
 /-- `invert_with` allocates a mul gate `(a, b, c)` with `a·b = c`, then
 enforces `a = input` and `c = 1`, returning `b` as the inverse wire. -/
 def main (input : Var Input (F p))
@@ -53,7 +47,6 @@ theorem soundness :
   obtain ⟨h_mul, h_a, h_c⟩ := h_holds
   rw [add_neg_eq_zero] at h_a h_c
   rw [h_a, h_c] at h_mul
-  rw [← h_input]
   exact h_mul
 
 theorem completeness :
