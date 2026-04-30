@@ -206,6 +206,26 @@ pub struct CircuitMetrics {
     pub(crate) segments: Vec<SegmentRecord>,
 }
 
+impl CircuitMetrics {
+    /// Returns the total number of multiplication gates synthesized by the
+    /// circuit.
+    pub fn num_gates(&self) -> usize {
+        self.num_gates
+    }
+
+    /// Returns the total number of `enforce_zero` constraints synthesized by
+    /// the circuit, including system constraints such as the root
+    /// `enforce_one` call.
+    pub fn num_constraints(&self) -> usize {
+        self.num_constraints
+    }
+
+    /// Returns per-segment constraint records in DFS synthesis order.
+    pub fn segment_records(&self) -> &[SegmentRecord] {
+        &self.segments
+    }
+}
+
 /// Per-routine state that is saved and restored across routine boundaries.
 ///
 /// Contains both the constraint counting record index and the identity

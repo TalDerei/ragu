@@ -2,7 +2,10 @@ use native::{
     InternalCircuitIndex, InternalCircuitValues, RevdotParameters, RxIndex, RxValues,
     stages::{eval, inner_error, outer_error, preamble, query},
 };
-use ragu_circuits::staging::{Stage, StageExt};
+use ragu_circuits::{
+    CircuitExt,
+    staging::{Stage, StageExt},
+};
 use ragu_pasta::{Pasta, fp, fq};
 
 use super::*;
@@ -43,8 +46,9 @@ where
 pub const HEADER_SIZE: usize = 105;
 
 // Number of dummy application circuits to register before testing internal
-// circuits. This ensures the tests work correctly even when application
-// steps are present.
+// circuits. Internal circuit construction depends on the resulting registry
+// domain size, and other tests still build an application with this many
+// placeholder steps.
 const NUM_APP_STEPS: usize = 6000;
 
 type Preamble = preamble::Stage<Pasta, R, HEADER_SIZE>;
@@ -53,22 +57,60 @@ type InnerError = inner_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
 type Query = query::Stage<Pasta, R, HEADER_SIZE>;
 type Eval = eval::Stage<Pasta, R, HEADER_SIZE>;
 
+fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
+    let pasta = Pasta::baked();
+    let (_, log2_circuits) = native::total_circuit_counts(NUM_APP_STEPS);
+
+    let metrics = match variant {
+        InternalCircuitIndex::Hashes1Circuit => {
+            native::circuits::hashes_1::Circuit::<Pasta, R, HEADER_SIZE, RevdotParameters>::new(
+                pasta,
+                log2_circuits,
+            )
+            .metrics()
+            .unwrap()
+        }
+        InternalCircuitIndex::Hashes2Circuit => {
+            native::circuits::hashes_2::Circuit::<Pasta, R, HEADER_SIZE, RevdotParameters>::new(
+                pasta,
+            )
+            .metrics()
+            .unwrap()
+        }
+        InternalCircuitIndex::InnerCollapseCircuit => native::circuits::inner_collapse::Circuit::<
+            Pasta,
+            R,
+            HEADER_SIZE,
+            RevdotParameters,
+        >::new()
+        .metrics()
+        .unwrap(),
+        InternalCircuitIndex::OuterCollapseCircuit => native::circuits::outer_collapse::Circuit::<
+            Pasta,
+            R,
+            HEADER_SIZE,
+            RevdotParameters,
+        >::new()
+        .metrics()
+        .unwrap(),
+        InternalCircuitIndex::ComputeVCircuit => {
+            native::circuits::compute_v::Circuit::<Pasta, R, HEADER_SIZE>::new()
+                .metrics()
+                .unwrap()
+        }
+        _ => panic!("constraint counts only apply to internal circuits"),
+    };
+
+    (metrics.num_gates(), metrics.num_constraints())
+}
+
 #[rustfmt::skip]
 #[test]
 fn test_internal_circuit_constraint_counts() {
-    let pasta = Pasta::baked();
-
-    let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
-        .register_dummy_circuits(NUM_APP_STEPS)
-        .unwrap()
-        .finalize(pasta)
-        .unwrap();
-
     macro_rules! check_constraints {
         ($variant:ident, mul = $mul:expr, lin = $lin:expr) => {{
-            let circuit_index = InternalCircuitIndex::$variant.circuit_index();
             let (actual_gates, actual_constraints) =
-                app.native_registry.constraint_counts(circuit_index);
+                internal_circuit_counts(InternalCircuitIndex::$variant);
             assert_eq!(
                 actual_gates,
                 $mul,
@@ -119,14 +161,6 @@ fn print_internal_circuit_constraint_counts() {
     use alloc::format;
     use std::println;
 
-    let pasta = Pasta::baked();
-
-    let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
-        .register_dummy_circuits(NUM_APP_STEPS)
-        .unwrap()
-        .finalize(pasta)
-        .unwrap();
-
     let variants = [
         ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),
         ("Hashes2Circuit", InternalCircuitIndex::Hashes2Circuit),
@@ -143,8 +177,7 @@ fn print_internal_circuit_constraint_counts() {
 
     println!("\n// Copy-paste the following into test_internal_circuit_constraint_counts:");
     for (name, variant) in variants {
-        let circuit_index = variant.circuit_index();
-        let (mul, lin) = app.native_registry.constraint_counts(circuit_index);
+        let (mul, lin) = internal_circuit_counts(variant);
         println!(
             "        check_constraints!({:<24} mul = {:<4}, lin = {});",
             format!("{},", name),

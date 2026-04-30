@@ -32,7 +32,7 @@ mod trace;
 mod trivial;
 mod wiring;
 
-pub use metrics::{RoutineFingerprint, RoutineIdentity, SegmentRecord};
+pub use metrics::{CircuitMetrics, RoutineFingerprint, RoutineIdentity, SegmentRecord};
 pub use trace::Trace;
 
 #[cfg(test)]
@@ -173,6 +173,18 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     fn ky(&self, instance: Self::Instance<'_>, y: F) -> Result<F> {
         ky::eval(self, instance, y)
     }
+
+    /// Computes synthesis metrics for this circuit using the same analysis
+    /// driver used during registry compilation.
+    ///
+    /// The returned counts describe raw circuit synthesis, including system
+    /// constraints such as the root `enforce_one` call.
+    fn metrics(&self) -> Result<CircuitMetrics>
+    where
+        F: FromUniformBytes<64>,
+    {
+        metrics::eval(self)
+    }
 }
 
 impl<F: Field, C: Circuit<F>> CircuitExt<F> for C {}
@@ -196,11 +208,6 @@ pub(crate) trait WiringObject<F: Field, R: Rank>: Send + Sync {
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
     fn sy(&self, y: F, floor_plan: &[floor_planner::ConstraintSegment])
     -> sparse::Polynomial<F, R>;
-
-    /// Returns constraint counts as `(gates, constraints)`, where gates is
-    /// the number of multiplication gates and constraints is the number of
-    /// [`enforce_zero`](ragu_core::drivers::Driver::enforce_zero) calls.
-    fn constraint_counts(&self) -> (usize, usize);
 
     /// Returns per-segment constraint records in DFS synthesis order.
     ///
@@ -281,9 +288,6 @@ where
         ) -> sparse::Polynomial<F, R> {
             wiring::sy::eval(&self.circuit, y, floor_plan)
                 .expect("should succeed if metrics succeeded")
-        }
-        fn constraint_counts(&self) -> (usize, usize) {
-            (self.metrics.num_gates, self.metrics.num_constraints)
         }
         fn segment_records(&self) -> &[SegmentRecord] {
             &self.metrics.segments
