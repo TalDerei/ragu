@@ -83,6 +83,8 @@ structure MyInputs (F : Type) where
 deriving ProvableStruct
 ```
 
+**Prover-hint inputs.** Some circuits accept prover-only auxiliary data via `Unconstrained T` (a free `T` value the prover supplies, with no constraint linking it to a wire) or `UnconstrainedDep T` (the same, but allowed to depend on already-computed wires through an `eval` closure). These are useful for parameterizing witness generation — the prover supplies a hint, the gadget body uses it inside `Operation.witness` closures. Verifier reasoning never sees these values.
+
 ### FormalCircuit
 
 A `FormalCircuit` bundles a circuit with its correctness proofs:
@@ -98,6 +100,8 @@ structure FormalCircuit (F : Type) (Input Output : TypeMap) where
 
 **Soundness**: For any witness assignment satisfying constraints, the spec holds.
 **Completeness**: Given assumptions, there exists a witness satisfying constraints.
+
+**`GeneralFormalCircuit` and `FormalAssertion`.** Two siblings of `FormalCircuit` exist for cases where the basic shape doesn't fit. `FormalAssertion` is for assertion-shaped gadgets where the constraints intentionally narrow inputs (`Assumptions ↔ Spec`). `GeneralFormalCircuit` adds two extra prover-side fields, `ProverAssumptions` (preconditions visible only to completeness) and `ProverSpec` (extra prover-side conclusions), for circuits where the prover and verifier need different precondition/conclusion bodies.
 
 ### Subcircuits
 

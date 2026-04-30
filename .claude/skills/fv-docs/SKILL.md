@@ -27,7 +27,7 @@ Treat `<docs>` below as whichever of the two exists in the current checkout. If 
 - `<docs>/clean/core/provable.md` — `TypeMap`, `ProvableType`, `ProvableStruct`; structured values vs symbolic forms; `field`, `Var`.
 - `<docs>/clean/core/expression.md` — `Variable`, `Expression`, `ProverEnvironment`; how symbolic circuits are evaluated.
 - `<docs>/clean/core/operations.md` — `FlatOperation` vs `Operation`; witness / assert / lookup; why operations are the ground truth.
-- `<docs>/clean/core/formal.md` — `FormalCircuit`: structure, `main` / `Assumptions` / `Spec` / `soundness` / `completeness` fields; the formal definitions of soundness and completeness.
+- `<docs>/clean/core/formal.md` — the formal-circuit bundle family (`FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`); the prover/verifier precondition split (`Assumptions`, `ProverAssumptions`, `ProverSpec`, `ProverData`, `ProverHint`); structure of `main` / `Assumptions` / `Spec` / `soundness` / `completeness` fields; the formal definitions of soundness and completeness.
 - `<docs>/clean/core/example.md` — full worked example tying circuit + provable + expression + formal together (`DivNonzero`).
 - `<docs>/clean/core/parameters.md` — compile-time parameters as ordinary Lean function arguments; partial-application instantiation.
 
@@ -48,7 +48,7 @@ The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading or
 | `Variable`, `Expression`, `ProverEnvironment` | `clean/core/expression.md` |
 | `Operation`, `FlatOperation`, `witness`, `assert`, `lookup` | `clean/core/operations.md` |
 | `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/core/provable.md` |
-| `FormalCircuit`, `Assumptions`, `Spec`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
+| `FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`, `.toWithHint`, `Assumptions`, `ProverAssumptions`, `Spec`, `ProverSpec`, `ProverData`, `ProverHint`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
 | Compile-time parameters, partial-application instantiation | `clean/core/parameters.md` |
 | `FormalInstance`, `reimplementation`, `same_constraints`, `same_output`, `same_spec`, `inputLen`, `outputLen`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
 | `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `ragu/extraction.md` |
