@@ -7,39 +7,38 @@ import Ragu.Circuits.Point.Spec
 namespace Ragu.Circuits.Point.Alloc
 variable {p : ℕ} [Fact p.Prime]
 
-/-- Alloc reads two field elements from the hint — one for the x-coordinate,
-    one for y. Callers supply the two readers. -/
 def main (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p)
-    (_input : Unit) : Circuit (F p) (Var Spec.Point (F p)) := do
-  let ⟨x, x_sq⟩ ← Element.AllocSquare.circuit xReader ()
+    (input : Var (UnconstrainedDep Spec.Point) (F p)) :
+    Circuit (F p) (Var Spec.Point (F p)) := do
+  let ⟨x, x_sq⟩ ← Element.AllocSquare.circuit fun env => (input env).x
   let x3 ← Element.Mul.circuit ⟨x, x_sq⟩
-  let ⟨y, y_sq⟩ ← Element.AllocSquare.circuit yReader ()
+  let ⟨y, y_sq⟩ ← Element.AllocSquare.circuit fun env => (input env).y
   assertZero ((x3 + (curveParams.b * 1)) - y_sq)
   return ⟨x, y⟩
 
-def Assumptions (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p)
-    (_input : Unit) (_data : ProverData (F p)) (hint : ProverHint (F p)) :=
-  let hx := xReader hint
-  let hy := yReader hint
-  hx ^ 3 + curveParams.b = hy ^ 2
+def Assumptions (_input : Unit) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (curveParams : Spec.CurveParams p)
+    (input : Spec.Point (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
+  input.isOnCurve curveParams
 
 def Spec (curveParams : Spec.CurveParams p) (_input : Unit) (out : Spec.Point (F p)) (_data : ProverData (F p)) :=
   out.isOnCurve curveParams
 
-instance elaborated (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p) :
-    ElaboratedCircuit (F p) unit Spec.Point where
-  main := main curveParams xReader yReader
+def ProverSpec (input : Spec.Point (F p))
+    (out : Spec.Point (F p)) (_hint : ProverHint (F p)) :=
+  out = input
+
+instance elaborated (curveParams : Spec.CurveParams p) :
+    ElaboratedCircuit (F p) (UnconstrainedDep Spec.Point) Spec.Point where
+  main := main curveParams
   localLength _ := 9
 
-theorem soundness (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated curveParams xReader yReader) (Spec curveParams) := by
+theorem soundness (curveParams : Spec.CurveParams p) :
+    GeneralFormalCircuit.WithHint.Soundness (F p) (elaborated curveParams)
+      Assumptions (Spec curveParams) := by
   circuit_proof_start [
-    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
-    Element.AllocSquare.Spec,
+    Element.AllocSquare.circuit, Element.AllocSquare.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
   simp only [Spec.Point.isOnCurve]
@@ -49,30 +48,30 @@ theorem soundness (curveParams : Spec.CurveParams p)
   ring
 
 theorem completeness (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated curveParams xReader yReader)
-      (Assumptions curveParams xReader yReader) := by
+    : GeneralFormalCircuit.WithHint.Completeness (F p) (elaborated curveParams)
+      (ProverAssumptions curveParams) ProverSpec := by
   circuit_proof_start [
-    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
-    Element.AllocSquare.Spec, Element.AllocSquare.CompletenessSpec,
+    Element.AllocSquare.circuit,
+    Element.AllocSquare.Spec,
+    Element.AllocSquare.ProverSpec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
-  obtain ⟨⟨_, h_x, h_xsq⟩, h_mul, ⟨_, _, h_ysq⟩⟩ := h_env
-  rw [h_mul, h_x, h_xsq, h_ysq, mul_one, add_neg_eq_zero]
-  set hx := xReader env.hint
-  set hy := yReader env.hint
-  rw [show hx * hx ^ 2 = hx ^ 3 from by ring]
-  exact h_assumptions
+  obtain ⟨⟨_, h_x, h_xsq⟩, h_mul, ⟨_, h_y, h_ysq⟩⟩ := h_env
+  constructor
+  · rw [h_mul, h_x, h_xsq, h_ysq, mul_one, add_neg_eq_zero]
+    rw [show input.x * input.x ^ 2 = input.x ^ 3 from by ring]
+    rw [← h_assumptions]
+  · cases input
+    simp_all
 
-def circuit (curveParams : Spec.CurveParams p)
-    (xReader yReader : ProverHint (F p) → F p) :
-    GeneralFormalCircuit (F p) unit Spec.Point :=
-  {
-    (elaborated curveParams xReader yReader) with
-    Assumptions := Assumptions curveParams xReader yReader,
-    Spec := (Spec curveParams),
-    soundness := soundness curveParams xReader yReader,
-    completeness := completeness curveParams xReader yReader
-  }
+def circuit (curveParams : Spec.CurveParams p) :
+    GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Spec.Point) Spec.Point where
+  elaborated := elaborated curveParams
+  Assumptions := Assumptions
+  Spec := Spec curveParams
+  ProverAssumptions := ProverAssumptions curveParams
+  ProverSpec := ProverSpec
+  soundness := soundness curveParams
+  completeness := completeness curveParams
 
 end Ragu.Circuits.Point.Alloc

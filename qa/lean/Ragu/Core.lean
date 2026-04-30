@@ -41,39 +41,67 @@ def FlatOperation.eraseCompute {F : Type} [Field F] :
   | .witness m _ => .witness m (fun _ => default)
   | op => op
 
-structure GeneralFormalInstance where
+structure FormalInstance where
   p : ℕ
-  pPrime : Fact p.Prime := by infer_instance
+  [pPrime : Fact p.Prime]
 
-  inputLen : ℕ
-  outputLen : ℕ
+  {Input : TypeMap}
+  [InputCircuit : CircuitType Input]
+  [InputValueProvable : ProvableType (Value Input)]
 
-  exportedOperations : Vector (Expression (F p)) inputLen → Operations (F p)
-  exportedOutput : Vector (Expression (F p)) inputLen → Vector (Expression (F p)) outputLen
+  {Output : TypeMap}
+  [OutputProvable : ProvableType Output]
 
-  Input : TypeMap
-  InputProvable : ProvableType Input := by infer_instance
+  exportedOperations : Vector (Expression (F p)) (size (Value Input)) → Operations (F p)
+  exportedOutput : Vector (Expression (F p)) (size (Value Input)) → Vector (Expression (F p)) (size Output)
 
-  Output : TypeMap
-  OutputProvable : ProvableType Output := by infer_instance
+  deserializeInput : Vector (Expression (F p)) (size (Value Input)) → Var Input (F p)
+  serializeOutput : Var Output (F p) → Vector (Expression (F p)) (size Output)
 
-  deserializeInput : Vector (Expression (F p)) inputLen → Var Input (F p)
-  serializeOutput : Var Output (F p) → Vector (Expression (F p)) outputLen
+  reimplementation : GeneralFormalCircuit.WithHint (F p) Input Output
 
-  Spec : Input (F p) → Output (F p) → Prop
-
-  reimplementation : GeneralFormalCircuit (F p) Input Output
-
-  -- Compare circuit constraints, ignoring witness generation
-  same_constraints : ∀ (input : Vector (Expression (F p)) inputLen),
+  -- Compare circuit constraints, ignoring witness generation.
+  same_constraints : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
     (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
     = (exportedOperations input).toFlat.map FlatOperation.eraseCompute
 
-  same_output : ∀ (input : Vector (Expression (F p)) inputLen),
+  same_output : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
     (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
 
-  -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
-  same_spec : ∀ input : Input (F p), ∀ output : Output (F p),
-    (Spec input output) ↔ (reimplementation.Spec input output (fun _ _ => #[]))
+end Statements
 
-end Ragu.Core.Statements
+-- this seems generally useful: whenever we allow `eval` to be rewritten to a concrete `CircuitType` instance,
+-- we can immediately unfold it with `circuit_norm`!
+attribute [circuit_norm] CircuitType.evalVerifier CircuitType.evalProver
+
+instance {Hint : TypeMap} {F : Type} [Inhabited (Hint F)] :
+    Inhabited (Var (UnconstrainedDep Hint) F) where
+  default := fun _ => default
+
+-- missing arithmetic instances
+
+instance {F : Type} [Field F] : HMul (Value field F) F F where
+  hMul (x : F) y := x * y
+
+instance {F : Type} [Field F] : HMul (Value field F) (field F) F where
+  hMul (x : F) (y : F) := x * y
+
+instance {F : Type} [Field F] : HMul (ProverValue field F) F F where
+  hMul (x : F) (y : F) := x * y
+
+instance {F : Type} [Field F] : HDiv (Value field F) (Value field F) F where
+  hDiv (x : F) (y : F) := x / y
+
+instance {F : Type} [Field F] : OfNat (Value field F) 0 where
+  ofNat := (0 : F)
+
+instance {F : Type} [Field F] : OfNat (Value field F) 1 where
+  ofNat := (1 : F)
+
+instance {F : Type} [Field F] : OfNat (ProverValue field F) 0 where
+  ofNat := (0 : F)
+
+instance {F : Type} [Field F] : OfNat (ProverValue field F) 1 where
+  ofNat := (1 : F)
+
+end Ragu.Core

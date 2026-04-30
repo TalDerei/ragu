@@ -19,7 +19,7 @@ use crate::instances::{
     boolean_and::BooleanAndInstance,
     boolean_conditional_enforce_equal::BooleanConditionalEnforceEqualInstance,
     boolean_conditional_select::BooleanConditionalSelectInstance,
-    core_alloc_mul::CoreAllocMulInstance,
+    core_mul::CoreMulInstance,
     element_alloc::ElementAllocInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
@@ -144,9 +144,9 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         generated_file: generated_file_instance::<ElementIsZeroInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Core.AllocMul",
-        export: export_instance::<CoreAllocMulInstance>,
-        generated_file: generated_file_instance::<CoreAllocMulInstance>,
+        name: "Ragu.Instances.Autogen.Core.Mul",
+        export: export_instance::<CoreMulInstance>,
+        generated_file: generated_file_instance::<CoreMulInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Boolean.Alloc",

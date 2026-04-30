@@ -1,16 +1,16 @@
-import Ragu.Circuits.Element.Alloc
-import Ragu.Instances.Autogen.Element.Alloc
+import Ragu.Circuits.Core.Mul
+import Ragu.Instances.Autogen.Core.Mul
 import Ragu.Core
 
-namespace Ragu.Instances.Element.Alloc
-open Ragu.Instances.Autogen.Element.Alloc
+namespace Ragu.Instances.Core.Mul
+open Ragu.Instances.Autogen.Core.Mul
 
 def deserializeInput (_ : Vector (Expression (F p)) inputLen) :
-    Var (UnconstrainedDep field) (F p) :=
-  fun _ => 0
+    Var (UnconstrainedDep Circuits.Row) (F p) :=
+  default
 
-def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
-  #v[output]
+def serializeOutput (output : Var Circuits.Row (F p)) : Vector (Expression (F p)) 3 :=
+  #v[output.x, output.y, output.z]
 
 def formal_instance : Core.Statements.FormalInstance where
   p
@@ -20,7 +20,7 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := Circuits.Element.Alloc.circuit
+  reimplementation := Circuits.Core.mul
 
   same_constraints := by
     intro input
@@ -28,9 +28,6 @@ def formal_instance : Core.Statements.FormalInstance where
       Operations.toFlat, circuit_norm,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Element.Alloc.circuit,
-      Circuits.Element.Alloc.elaborated,
-      Circuits.Element.Alloc.main,
       Circuits.Core.Mul.main]
     rfl
   same_output := by
@@ -38,9 +35,6 @@ def formal_instance : Core.Statements.FormalInstance where
     simp [circuit_norm,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
-      Circuits.Element.Alloc.circuit,
-      Circuits.Element.Alloc.elaborated,
-      Circuits.Element.Alloc.main,
       Circuits.Core.Mul.main]
 
-end Ragu.Instances.Element.Alloc
+end Ragu.Instances.Core.Mul

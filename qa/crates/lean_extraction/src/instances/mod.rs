@@ -2,7 +2,7 @@ pub mod boolean_alloc;
 pub mod boolean_and;
 pub mod boolean_conditional_enforce_equal;
 pub mod boolean_conditional_select;
-pub mod core_alloc_mul;
+pub mod core_mul;
 pub mod element_alloc;
 pub mod element_alloc_square;
 pub mod element_div_nonzero;

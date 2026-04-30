@@ -1,6 +1,6 @@
 import Clean.Circuit
 import Clean.Gadgets.Boolean
-import Ragu.Circuits.Element.Mul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Boolean.And
 variable {p : ℕ} [Fact p.Prime]
@@ -10,11 +10,14 @@ structure Input (F : Type) where
   b : F
 deriving ProvableStruct
 
-/-- `Boolean::and` delegates the `a · b = z` gate (and the two
-`enforce_equal`s binding the gate's input wires to `a` and `b`) to
-`Element.Mul`, returning the gate's `z` wire as the output. -/
+/-- `Boolean::and` emits one mul gate (`a · b = c`) and two `enforce_equal`s
+binding the gate's `a`/`b` wires to the inputs, returning the gate's `c` wire. -/
 def main (input : Var Input (F p)) : Circuit (F p) (Expression (F p)) := do
-  Element.Mul.circuit { x := input.a, y := input.b }
+  let ⟨a, b, c⟩ ← Core.mul fun env =>
+    ⟨env input.a, env input.b, env input.a * env input.b⟩
+  assertZero (a - input.a)
+  assertZero (b - input.b)
+  return c
 
 /-- Caller must promise the inputs are boolean. -/
 def Assumptions (input : Input (F p)) :=
@@ -31,15 +34,17 @@ instance elaborated : ElaboratedCircuit (F p) Input field where
   localLength _ := 3
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  circuit_proof_start
+  obtain ⟨h_mul, h_a, h_b⟩ := h_holds
+  rw [add_neg_eq_zero] at h_a h_b
   obtain ⟨ha, hb⟩ := h_assumptions
-  -- h_holds : out = input_a * input_b (from Element.Mul.Spec)
   refine ⟨?_, ?_⟩
-  · rw [h_holds]; exact IsBool.and_eq_val_and ha hb
-  · rw [h_holds]; exact IsBool.and_is_bool ha hb
+  · rw [← h_mul, h_a, h_b]; exact IsBool.and_eq_val_and ha hb
+  · rw [← h_mul, h_a, h_b]; exact IsBool.and_is_bool ha hb
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
-  circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions]
+  circuit_proof_start
+  grind
 
 def circuit : FormalCircuit (F p) Input field :=
   { elaborated with Assumptions, Spec, soundness, completeness }

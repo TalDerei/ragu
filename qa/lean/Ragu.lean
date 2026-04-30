@@ -17,7 +17,7 @@ import Ragu.Instances.Element.Invert
 import Ragu.Instances.Element.InvertWith
 import Ragu.Instances.Element.IsEqual
 import Ragu.Instances.Element.IsZero
-import Ragu.Instances.Core.AllocMul
+import Ragu.Instances.Core.Mul
 import Ragu.Instances.Boolean.Alloc
 import Ragu.Instances.Boolean.And
 import Ragu.Instances.Boolean.ConditionalSelect

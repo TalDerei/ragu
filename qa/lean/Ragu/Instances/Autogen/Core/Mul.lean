@@ -1,6 +1,6 @@
 import Ragu.Core
 
-namespace Ragu.Instances.Autogen.Core.AllocMul
+namespace Ragu.Instances.Autogen.Core.Mul
 open Core.Primes
 
 @[reducible]
@@ -26,4 +26,4 @@ def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Ex
   (var ⟨2⟩)
 ]
 
-end Ragu.Instances.Autogen.Core.AllocMul
+end Ragu.Instances.Autogen.Core.Mul

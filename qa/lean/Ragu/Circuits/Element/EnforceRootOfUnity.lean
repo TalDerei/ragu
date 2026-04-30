@@ -13,18 +13,14 @@ TODO: generalize to a `k`-polymorphic reimpl that mirrors the Rust
 gadget's full generality (parameterize on `k : ℕ`, recurse on `k`).
 
 Modeled as a `FormalAssertion`: the gadget is constraint-only (no
-output), `Assumptions` and `Spec` carry the same predicate, and
-the constraints are an exact reformulation of that predicate. -/
+output), `Spec` acts as both assumption for completeness and conclusion for soundness,
+and the constraints are an exact reformulation of the spec. -/
 def main (input : Expression (F p)) : Circuit (F p) (Var unit (F p)) := do
   let square1 ← Mul.circuit ⟨input, input⟩
   let square2 ← Mul.circuit ⟨square1, square1⟩
   assertZero (square2 - 1)
 
-/-- Caller must promise `input^4 = 1` for the honest prover to satisfy
-the `assertZero` constraint. Expressed as `input * input * (input * input) = 1`
-to avoid HPow resolution issues on `field (F p)`. -/
-def Assumptions (input : F p) :=
-  input * input * (input * input) = 1
+def Assumptions (_ : F p) := True
 
 /-- The verifier learns `input^4 = 1`. -/
 def Spec (input : F p) :=
@@ -48,7 +44,7 @@ theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions
   obtain ⟨h_sq1, h_sq2⟩ := h_env
   rw [add_neg_eq_zero]
   rw [h_sq2, h_sq1]
-  exact h_assumptions
+  exact h_spec
 
 def circuit : FormalAssertion (F p) field :=
   { elaborated with Assumptions, Spec, soundness, completeness }

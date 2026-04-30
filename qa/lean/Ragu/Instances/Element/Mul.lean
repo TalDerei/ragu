@@ -11,47 +11,33 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var Circuits
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
-
-  Input := Circuits.Element.Mul.Input
-  Output := field
 
   deserializeInput
   serializeOutput
 
-  Spec input output := output = input.x * input.y
-
-  reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Element.Mul.Input field
-      Circuits.Element.Mul.circuit
+  reimplementation := Circuits.Element.Mul.circuit.isGeneralFormalCircuit.toWithHint
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input
     simp [circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-  same_spec := by
-    intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Element.Mul.circuit, Circuits.Element.Mul.Assumptions,
-      Circuits.Element.Mul.Spec]
-    aesop
 
 end Ragu.Instances.Element.Mul

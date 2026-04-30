@@ -14,6 +14,7 @@ def Spec (input : F p) (out : F p) :=
 
 instance elaborated : ElaboratedCircuit (F p) field field where
   main
+  output _ offset := varFromOffset field (offset + 2)
   localLength _ := 3
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by

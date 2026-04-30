@@ -15,10 +15,10 @@ the clean reimplementation and formal instance can be black-boxed and LLM-genera
 
 **Artifact map.** Spelling out trusted/untrusted by artifact:
 - *Trusted (must be manually inspected):* Rust circuit instance (`CircuitInstance`), extractor / extraction driver, serialization impl, and — on the Lean side — `Inputs` / `Outputs` struct definitions, `Spec`, `Assumptions`.
-- *Untrusted (can be LLM-generated):* Lean reimpl body (`main`), soundness / completeness theorems, `FormalInstance` equivalence proofs. The autogen Lean file (flat op trace) is mechanically extractor-produced, not human-written.
+- *Untrusted (can be LLM-generated):* Lean reimpl body (`main`), soundness / completeness theorems, formal-instance equivalence proofs. The autogen Lean file (flat op trace) is mechanically extractor-produced, not human-written.
 
 **Subtlety: input/output *struct shape* is part of the trusted spec; wire *order* is not.**
-- Wire ordering is checked by the equivalence proof — constraints are tied to specific wires, and both Ragu and Clean derivers map struct fields to wires in field-definition order. Reorder the wires on either side and `FormalInstance` fails.
+- Wire ordering is checked by the equivalence proof — constraints are tied to specific wires, and both Ragu and Clean derivers map struct fields to wires in field-definition order. Reorder the wires on either side and the formal instance fails.
 - The *meaning* assigned to those wires (which wire is `x` vs `y`, which input is "first") is trusted. Extraction operates on raw wires; the high-level struct shape is not preserved through it. A Rust bug — say, `assertLt(x, y)` accidentally checking `x > y` — can be **shadowed** by an inverse Lean bug: define `Inputs := { y, x }` and prove `x < y`. Variable names line up, equivalence still holds, the spec reads exactly like the intended behavior. **Reviewer obligation:** verify both that the spec captures the gadget's *intended* behavior *and* that input/output naming matches what callers actually pass.
 
 **Mitigation: composition surfaces bad specs.** A wrong spec or wrong input order on a leaf gadget tends to surface when that gadget is used as a subcircuit in a parent — the child spec won't compose to the statement the parent needs. A second reason (beyond the proof-composability argument in "Mirror Rust delegation") to lean on subcircuit composition: it catches bugs, not just enables proofs.
@@ -29,17 +29,44 @@ A Rust "circuit" that only builds expressions (e.g., `negate`, `add`, `sub`, `do
 
 **Rule:** before writing a Lean reimpl, check whether the Rust function actually emits operations (witnesses, lookups, asserts). If not, skip it. Don't reflexively mirror every Rust helper as a trivial Lean circuit.
 
+## Circuit Statements: `Assumptions`, `Spec`, `ProverAssumptions`, `ProverSpec`
+
+`GeneralFormalCircuit` and `GeneralFormalCircuit.WithHint` have to most flexible statement shape, essentially allowing independent statements for soundness and completeness. Apart from the constraints/witness hypotheses and goals, we have:
+
+- `GeneralFormalCircuit.Soundness`: `Assumptions → Spec`
+- `GeneralFormalCircuit.Completeness`: `ProverAssumptions → ProverSpec`
+
+In the simpler `FormalCircuit` and `FormalAssertion` flavors, these are collapsed:
+
+- Neither has a `ProverSpec`. Completeness only proves that the constraints hold.
+- In `FormalCircuit`, prover assumptions are just `Assumptions`.
+- In `FormalAssertion`, prover assumptions are `Assumptions ∧ Spec` because the honest prover must satisfy both the caller precondition and the asserted input predicate.
+
+To summarize the statements of `GeneralFormalCircuit` as a table:
+
+| Field | Visible to | Role |
+|---|---|---|
+| `Assumptions` | soundness only | Verifier-side precondition: the contract every caller must satisfy. |
+| `Spec` | soundness only | The contract the gadget promises to callers. |
+| `ProverAssumptions` | completeness only | Prover-side precondition needed to satisfy the constraints. |
+| `ProverSpec` | completeness only | Extra prover-side conclusion completeness establishes. |
+
+When a circuit is used as a subcircuit, Clean packages the verifier-side fact `Assumptions → Spec` into the subcircuit payload. Parent soundness and completeness proofs can therefore use child `Assumptions` and `Spec` facts, even though top-level completeness itself is stated in terms of `ProverAssumptions` and `ProverSpec`.
+
+`FormalCircuit` and `FormalAssertion` keep a simpler picture: a single `Assumptions` field shared by both halves (no separate prover side).
+
 ## Pick the right circuit type
 
 Three flavors, in order of specificity:
 
 | Type | Use when | Pitfall |
 |---|---|---|
-| `FormalCircuit` | Function-like: completeness and soundness share the same assumptions ("constraints work for all valid inputs"). | Default for input → output gadgets. **Both soundness and completeness see `Assumptions`** — so if your spec needs `IsBool input` to make sense, this is the type to reach for. |
-| `FormalAssertion` | Assertion-like: constraints intentionally narrow the allowed input (e.g., `enforce_root_of_unity`, `enforce_zero`). | If you reach for `GeneralFormalCircuit` and find yourself with `Assumptions = Spec`, this is what you actually want. |
-| `GeneralFormalCircuit` | Most flexible — different completeness vs. soundness assumptions. | Causes duplication when the generality isn't needed. **`Assumptions` is only consulted by completeness, not soundness** — so a spec referring to "boolean inputs" must either bake the bool constraints into the gadget body or downgrade to `FormalCircuit`. Last resort. |
+| `FormalCircuit` | Function-like: prover and verifier share one precondition body. | Default for input → output gadgets. Single `Assumptions` field, seen by both halves. |
+| `FormalAssertion` | Assertion-like: constraints intentionally narrow the allowed input (e.g., `enforce_root_of_unity`, `enforce_zero`). | When `Assumptions ∧ Spec` are enough to satisfy the prover preconditions, and there is no circuit output, this is what you actually want.  `Boolean.ConditionalEnforceEqual` (commit `feda3096`) is the worked example: dropping one prover assumption made `ProverAssumptions = Spec`, enabling the downgrade. |
+| `GeneralFormalCircuit` | Most flexible — `ProverAssumptions ≠ Assumptions`, or you need `ProverSpec`. | Reach for this only when the prover genuinely needs preconditions or conclusions the verifier doesn't. If the prover side is the same as the verifier side and `ProverSpec` is degenerate, use `FormalCircuit`. |
+| `GeneralFormalCircuit.WithHint` | Like `GeneralFormalCircuit` but also enables prover hint inputs (`Unconstrained` or `UnconstrainedDep`). |
 
-**Heuristic:** `Assumptions = Spec` → `FormalAssertion`. "Function of inputs (under preconditions)" → `FormalCircuit`. Different soundness vs. completeness preconditions → `GeneralFormalCircuit`.
+**Heuristic:** `ProverAssumptions ↔ Spec` and no output → `FormalAssertion`. Single precondition body, no prover/verifier asymmetry → `FormalCircuit`. Distinct `ProverAssumptions` or non-degenerate `ProverSpec` needed → `GeneralFormalCircuit`.
 
 ## Specs lift to high-level operations, not low-level constraints
 
@@ -50,13 +77,44 @@ Three flavors, in order of specificity:
 | Gadget | ❌ Constraint-level spec | ✓ Operation-level spec |
 |---|---|---|
 | `Boolean.And` | `out = a * b ∧ (out = 0 ∨ out = 1)` | `out.val = a.val &&& b.val ∧ IsBool out` |
-| `Boolean.ConditionalEnforceEqual` | `cond * (a - b) = 0` | `cond = 1 → a = b` |
+| `Boolean.ConditionalEnforceEqual` | `cond * (a - b) = 0` | `cond ≠ 0 → a = b` |
 | `Boolean.ConditionalSelect` | `out = a + cond * (b - a)` | `out = if cond = 1 then b else a` |
 | `Multipack` | raw `field = sum of weighted bits` | `output.val` equals the bit-decomposition encoded by `input` |
 
 The high-level form is what callers reason against. The constraint-level form is what soundness *proves* — internally, not externally.
 
 Reusable building blocks: `IsBool x` (from `Clean.Gadgets.Boolean`) for "0 or 1"; `&&&` / `|||` for bitwise ops on `.val`; `if … then … else …` for conditional outputs; `IsBool.and_eq_val_and` / `IsBool.and_is_bool` to bridge field multiplication to boolean operations in soundness proofs.
+
+**Partial operations.** When a `Spec` involves a possibly-failing operation (point doubling, inversion), prefer `lhs = some output` over `match lhs with | none => False | some o => output = o`. Logically equivalent; the equality form composes cleanly with `simp` and `rw`, the `match` form leaves goals stuck on case analysis. Commits `fd3dd437`, `6e29e465`.
+
+## Specs are unconditional; caller obligations live in `Assumptions`
+
+A close cousin of the previous lesson, but distinct: a spec should be an **unconditional** fact about the input/output relation. Premises the *caller* must establish belong in `Assumptions`, not as antecedents inside `Spec`.
+
+**Anti-pattern (pre-PR-#690 `Point.Double.Spec`):**
+
+```lean
+def Spec (curveParams) (input) (output) :=
+  input.isOnCurve curveParams →                       ← caller obligation
+  curveParams.noOrderTwoPoints →                      ← caller obligation
+  (match input.double with | some d => output = d | none => False) ∧ ...
+```
+
+**Better (post-PR-#690):**
+
+```lean
+def Assumptions (curveParams) (input) :=
+  input.isOnCurve curveParams ∧ curveParams.noOrderTwoPoints
+
+def Spec (curveParams) (input) (output) :=
+  input.double = some output ∧ output.isOnCurve curveParams
+```
+
+Same logical content; preconditions now live where they belong.
+
+**Why this matters for downstream proofs.** A `Spec` with antecedents forces every caller — including the parent gadget's soundness proof — to discharge those premises *at every call site* before the child's spec yields useful information. You see this in old code as constructions like `have h_d := c2 (by simp [h2y_ne])` — manually feeding the precondition into the child's `Spec` to peel off an antecedent. Migrating preconditions to `Assumptions` lets the framework discharge them once, at the bundle's `Soundness` boundary, and downstream subcircuit-spec uses become clean rewrites.
+
+**Heuristic.** Test each antecedent: is it a **static caller obligation** (something the caller must establish before invocation, independent of the gadget's behavior — `isOnCurve`, `IsBool`, `y ≠ 0`)? → move to `Assumptions`. Or is it **input-dependent behavior** (the gadget genuinely does different things at different input values — `cond ≠ 0 → a = b` for `ConditionalEnforceEqual`)? → keep in `Spec`.
 
 ## Assumptions encode preconditions, not constraints
 
@@ -70,31 +128,35 @@ Reusable building blocks: `IsBool x` (from `Clean.Gadgets.Boolean`) for "0 or 1"
 
 ## Hint types mirror the Rust interface
 
-If `Rust::alloc` takes `bool`, the Lean reimpl's `hintReader` is `ProverHint → Bool` — *not* `ProverHint → AllocMul.Row` or any other internal sub-gadget shape.
+If `Rust::alloc` takes `bool`, the Lean reimpl should expose that as the circuit input hint shape — *not* `Row` or any other internal sub-gadget shape.
+In current Clean code this usually means an input field such as `Unconstrained Bool` or `UnconstrainedDep SomeType`.
 
 ```lean
--- Wrong: leaks the internal AllocMul row to every caller
-def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_ : Unit) ...
+-- Wrong: leaks the internal multiplication row to every caller
+structure Input (F : Type) where
+  row : UnconstrainedDep Row F
 
 -- Right: matches Rust's `value: DriverValue<D, bool>` parameter
-def main (hintReader : ProverHint (F p) → Bool) (_ : Unit) ...
+structure Input (F : Type) where
+  value : Unconstrained Bool F
 ```
 
 If a sub-gadget needs a row, *compute it inside the gadget body* from the higher-level hint:
 
 ```lean
-let ⟨a, b, c⟩ ← Core.AllocMul.circuit
-  (fun hint =>
-    let v : F p := if hintReader hint then 1 else 0
-    ⟨v, 1 - v, 0⟩) ()
+let ⟨a, b, c⟩ ← Core.mul fun env =>
+  let v : F p := if input.value env then 1 else 0
+  ⟨v, 1 - v, 0⟩
 ```
 
 This keeps the public interface aligned with Rust and prevents Assumption inflation (see previous section).
 
+**Calling convention.** `Core.mul` (and Clean's other hint-aware primitives) take a closure of shape `(eval : Expression F → F) → Row` — given a way to evaluate already-allocated wires, return the new row's values. Witness derivation always lives inside this closure; there is no parameter or callback shape to plumb through signatures.
+
 ## Naming conventions
 
 - **No `General*` prefix.** Use plain `circuit`, `Spec`, `Assumptions`, `soundness`, `completeness`. The prefix is noise even when the underlying type is `GeneralFormalCircuit`.
-- **Drop unused template arguments.** If a parameter (e.g., `hintReader`) isn't used in a definition, don't take it as an argument at all. For unused arguments in pure props, underscore-prefix them:
+- **Drop unused template arguments.** If a parameter isn't used in a definition, don't take it as an argument at all. For unused arguments in pure props, underscore-prefix them:
   ```lean
   def Assumptions (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
   ```
@@ -111,20 +173,40 @@ let acc ← subcircuit (Mul.circuit ⟨input.x0, input.s⟩)
 let acc ← Mul.circuit ⟨input.x0, input.s⟩
 ```
 
-## Mirror Rust delegation in Lean
+## Mirror Rust circuit structure in Lean
 
-If the Rust circuit delegates to a sub-gadget (e.g., `Element::invert` calls `Element::invert_with`), the Lean reimpl should delegate the same way. Then the parent proof can **use the child's spec** instead of re-deriving the math.
+The Lean reimpl should mirror the circuit-emitting structure on the Rust side.
+If Rust delegates to a sub-gadget (e.g., `Element::invert` calls `Element::invert_with`), Lean should delegate the same way.
+If Rust calls the driver primitive `dr.mul()`, Lean should call `Core.mul`.
 
 This keeps the abstraction boundary aligned across Rust and Lean and avoids duplicate proofs.
 
-**Corollary: delegate even when Rust didn't.** If the Lean body you're about to write is structurally identical to an existing Lean reimpl, *call it as a subcircuit* — even if the Rust source inlined the witness pattern. Two cases seen so far:
+**Current pattern: use `Core.mul` for env-aware rows.** `Core.mul` takes an `UnconstrainedDep Row` input, so callers can pass a function of the prover environment and compute the row locally from `eval`ed inputs.
 
-- `Boolean.And.main` is `Element.Mul.main`. Refactor: `Element.Mul.circuit { x := input.a, y := input.b }`.
-- `Boolean.Alloc.main` is `Core.AllocMul.circuit` plus two extra asserts. Refactor: call `Core.AllocMul.circuit` and only emit the extra asserts.
+## Pass subcircuit lemmas to `circuit_proof_start`
 
-The Rust API may inline because `dr.gate(...)` and helpers are ergonomic enough; the Lean reimpl benefits more from delegation because each call brings its child spec for free.
+Composed gadgets — anything that calls another gadget as a subcircuit — need their soundness / completeness proofs to know about the children's `Spec` and `Assumptions`. The vehicle is `circuit_proof_start`'s argument list.
 
-**Carve-out: env-aware witnesses.** If the gadget computes its witness from `Expression.eval env input` (with no separate `ProverHint` parameter), delegating to a hint-only sub-gadget like `Core.AllocMul.circuit` would require changing the gadget's public API to take a `hintReader` — and pushing the burden of pre-computing the row to every caller. **Don't refactor unilaterally**; either accept the inline pattern or coordinate the API change across all callers (e.g., `Element.IsZero` → `Element.IsEqual`, `Element.Mul` → many points). Concrete cases where this applies: `Boolean.ConditionalSelect`, `Boolean.ConditionalEnforceEqual`, `Element.IsZero`, `Element.Mul`.
+**Pattern.** For every subcircuit you compose with, pass its `circuit`, `Assumptions`, and `Spec` to `circuit_proof_start`:
+
+```lean
+theorem soundness (curveParams : Spec.CurveParams p) :
+    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+  circuit_proof_start [
+    Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
+  ]
+  ...
+```
+
+Without these in the list, the proof state stalls on un-unfolded subcircuit terms — `simp` can't see through `Element.DivNonzero.circuit` to apply its `Spec`, and you end up manually unfolding each one with `dsimp [...]` calls.
+
+**Why this matters for complex gadgets.** A leaf gadget with no subcircuits passes `circuit_proof_start` with no arguments. A four-deep composition like `DoubleAndAddIncomplete` needs ~12 lemmas — three per subcircuit. Getting the list right is the difference between a one-shot proof and an hour of manual unfolding. Forgetting a subcircuit's `Spec` is the most common cause of "the proof was almost there but `simp` got stuck" frustration.
+
+**Heuristic.** Before writing a soundness or completeness proof for a composed gadget, enumerate every gadget you call as a subcircuit. For each, add `<Sub>.circuit`, `<Sub>.Assumptions`, `<Sub>.Spec` to the `circuit_proof_start` argument list. If your proof later stalls on a goal mentioning `(<Sub>.circuit input).output ...` or unfolded `Sub.Spec`, you missed a triple — add it.
+
+**What NOT to pass.** Clean's prover-proof expansion auto-unfolds _local_ `main`, `Spec`, `Assumptions`, `ProverSpec` and `ProverAssumptions` everywhere — but only your gadget's own, not for subcircuits. Don't include any of these in `circuit_proof_start [..]`, `circuit_proof_all [..]`, or follow-up `simp [..]` lists; doing so is redundant noise.
 
 ## Length polymorphism is supported
 
@@ -150,9 +232,9 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 | `qa/lean/Ragu/Instances/Autogen/<Module>/<Gadget>.lean` | mechanical (CI-checked) | Extractor-produced flat op trace. Regenerated via `cargo run -p lean_extraction -- export`; `check` enforces byte-equality. |
 | `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` | reimpl untrusted; `Inputs` / `Outputs` / `Spec` / `Assumptions` trusted | The reimpl: `main`, `Spec`, `Assumptions`, `elaborated`, `soundness`, `completeness`. |
 | `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | untrusted | `FormalInstance` packaging: proves reimpl ≡ autogen, exposes the spec. |
-| `qa/lean/Ragu/Instances/<Module>/Hints.lean` | trusted | Hint readers, factored **per module** (not per gadget). |
+| circuit input types containing `Unconstrained` / `UnconstrainedDep` | trusted | The hint shape exposed to callers; should mirror the Rust API and avoid leaking internal rows. |
 
-**Sub-gadget carve-out — the scaling lesson.** Gadgets used only as subcircuits inside other gadgets (e.g., `Element.Mul`, `Element.Square`, `Element.DivNonzero`, `Core.AllocMul`) live **only as Lean reimpls + soundness / completeness**. No Rust `CircuitInstance`, no autogen, no `FormalInstance`. Their correctness reaches the top via composition: the parent reimpl's proof uses the child's `Spec`. Only top-level gadgets — the ones a Ragu consumer composes with — get the full pipeline. **When adding a gadget, decide up front whether it is top-level (full pipeline) or a sub-gadget (reimpl + proofs only).** This is what keeps the pipeline tractable as gadget count grows.
+**Sub-gadget carve-out — the scaling lesson.** Gadgets used only as subcircuits inside other gadgets can live **only as Lean reimpls + soundness / completeness**. Their correctness reaches the top via composition: the parent reimpl's proof uses the child's `Spec`. Top-level gadgets — the ones a Ragu consumer composes with — get the full pipeline. Some core gates such as `Core.mul` still have extractor instances because they are useful as direct equivalence anchors, but that should be an intentional choice rather than the default for every helper.
 
 **Canonical per-gadget commit sequence** (PR #642 followed this ~6 times):
 1. Reimpl skeleton in `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` — `main`, `Spec`, `Assumptions`, `elaborated`.
@@ -160,11 +242,11 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 3. Run `cargo run -p lean_extraction -- export` → autogen file appears under `qa/lean/Ragu/Instances/Autogen/<Module>/<Gadget>.lean`.
 4. Write `soundness`.
 5. Write `completeness` (define honest witness gen if needed).
-6. Add `FormalInstance` packaging in `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` (top-level only).
+6. Add formal-instance packaging in `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` (top-level only).
 
 Steps 1–2 can swap. Sub-gadgets stop after step 5.
 
-**Framework co-evolution is part of the workflow.** Several PR #642 commits are *upstream Clean changes* pulled back into Ragu — the `CompletenessSpec` mechanism (to undo inlining in `Point.Alloc`), the `ProverHint` / `Environment` rename, weakening `DivNonzero` assumptions. When Clean can't express what a Ragu reimpl needs — most commonly around hint shape, completeness contracts, or assumption polymorphism — **PR upstream first, bump the dep in `qa/lean/lakefile.lean`, then continue**. Don't paper over with workarounds in Ragu (bogus Assumptions, leaked sub-gadget shapes — see "Hint types mirror the Rust interface"). The positive counterpart to checklist item 11 below.
+**Framework co-evolution is part of the workflow.** Several PR #642 commits are *upstream Clean changes* pulled back into Ragu — the `ProverAssumptions` / `ProverSpec` split, hint-aware `CircuitType` inputs, the `ProverHint` / `Environment` rename, weakening `DivNonzero` assumptions. When Clean can't express what a Ragu reimpl needs — most commonly around hint shape, completeness contracts, or assumption polymorphism — **PR upstream first, bump the dep in `qa/lean/lakefile.lean`, then continue**. Don't paper over with workarounds in Ragu (bogus Assumptions, leaked sub-gadget shapes — see "Hint types mirror the Rust interface"). The positive counterpart to checklist item 11 below.
 
 **Compositionality scales the pipeline ([PR #674](https://github.com/tachyon-zcash/ragu/pull/674#pullrequestreview-4171812720)).** As gadgets get more complex, the *single most important* discipline is delegating to existing Lean sub-gadgets instead of inlining their math. Skipping the step-1 homework — surveying what's already there before writing new `main` / `Spec` — is exactly the failure mode the PR #674 reviewer flagged ("agents missed the compositionality of clean and wrote specs that just repeat the math equations"). The lessons under "Mirror Rust delegation" and "Specs lift to high-level operations" enforce this; the per-gadget workflow only scales if those are followed religiously.
 
@@ -173,10 +255,10 @@ Steps 1–2 can swap. Sub-gadgets stop after step 5.
 1. **Audit the Rust circuit first** — does it emit operations? If no, skip the Lean reimpl entirely.
 2. **Pick the circuit type** — `FormalCircuit` (default), `FormalAssertion` (narrowing input), `GeneralFormalCircuit` (last resort).
 3. **Match the Rust hint type** — if Rust takes `bool`, Lean takes `Bool`. Don't expose internal sub-gadget shapes.
-4. **Mirror Rust call structure** — delegate to the same sub-gadgets so child specs compose. *And* delegate to existing Lean sub-gadgets even when Rust inlines.
+4. **Mirror Rust call structure** — delegate to the same sub-gadgets Rust delegates to; use `Core.mul` for Rust `dr.mul()` calls.
 5. **Write the spec at the operation level** — boolean / Nat / `if`-`then`-`else` / "input.cond = 1 → output equals X". If your spec reads like the constraint system, rewrite it.
 6. **Sanity-check `Assumptions`** — should be a high-level precondition (`IsBool x`, often `True`). A complex math identity in `Assumptions` is a smell; suspect the interface.
-7. **For `GeneralFormalCircuit`, remember soundness doesn't see `Assumptions`** — if you need invariants on inputs, either bake them into the constraints or use `FormalCircuit`.
+7. **Sort preconditions into the right slot** — verifier-visible preconditions go in `Assumptions`; prover-side witness conditions go in `ProverAssumptions`. If the two end up equal, downgrade to `FormalCircuit`; if there is no meaningful output and the gadget enforces an input predicate (which means `ProverAssumptions` are just the `Spec`), downgrade to `FormalAssertion` instead.
 8. **Drop unused parameters**; underscore-prefix unused props arguments.
 9. **Use plain names** (`circuit`, `Spec`, `soundness`) — no `General*` prefix.
 10. **Run `lake build` after each commit**; audit specs for correctness.

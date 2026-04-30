@@ -6,57 +6,43 @@ namespace Ragu.Instances.Element.AllocSquare
 open Ragu.Instances.Autogen.Element.AllocSquare
 
 set_option linter.unusedVariables false in
-def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var unit (F p) := ()
+def deserializeInput (input : Vector (Expression (F p)) inputLen) :
+    Var (UnconstrainedDep field) (F p) :=
+  fun _ => 0
 
 def serializeOutput (output : Var Circuits.Element.AllocSquare.Square (F p)) : Vector (Expression (F p)) 2 :=
   #v[output.a, output.a_sq]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
-  inputLen
-  outputLen
   exportedOperations
   exportedOutput
-
-  Input := unit
-  Output := Circuits.Element.AllocSquare.Square
 
   deserializeInput
   serializeOutput
 
-  Spec _input output := output.a_sq = output.a^2
-
-  reimplementation := Circuits.Element.AllocSquare.circuit (fun _ => 0)
+  reimplementation := Circuits.Element.AllocSquare.circuit
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
       Circuits.Element.AllocSquare.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
     intro input
     simp [circuit_norm,
-      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
       Circuits.Element.AllocSquare.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Element.AllocSquare.circuit,
-      Circuits.Element.AllocSquare.Spec]
-    aesop
+      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Element.AllocSquare

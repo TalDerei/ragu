@@ -18,7 +18,7 @@ impl CircuitInstance for ElementAllocInstance {
         // MaybeKind = Empty: the assignment closure is never called.
         let assignment = ExtractionDriver::<Fp>::just(|| Fp::ZERO);
         // Use the trivial `()` allocator: one mul gate per alloc, wastes A and C.
-        // Structurally equivalent to `Core::AllocMul` projected to the middle wire.
+        // Structurally equivalent to `Core::Mul` projected to the middle wire.
         let element = Element::alloc(dr, &mut (), assignment)?;
         WireCollector::collect_from(&element)
     }

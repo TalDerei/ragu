@@ -125,21 +125,41 @@ For these cases, Clean provides `GeneralFormalCircuit`:
 structure GeneralFormalCircuit (F : Type) (Input Output : TypeMap) [Field F]
     [ProvableType Input] [ProvableType Output] where
   main : Var Input F → Circuit F (Var Output F)
-  Assumptions      : Input F → ProverData F → ProverHint F → Prop
+  Assumptions      : Input F → ProverData F → Prop
   Spec             : Input F → Output F → ProverData F → Prop
-  CompletenessSpec : Input F → Output F → ProverHint F → Prop
-  soundness        : GeneralFormalCircuit.Soundness F Spec
-  completeness     : GeneralFormalCircuit.Completeness F Assumptions
-  completenessSpec : GeneralFormalCircuit.CompletenessSpecProof F Assumptions CompletenessSpec
+  ProverAssumptions : Input F → ProverData F → ProverHint F → Prop
+  ProverSpec        : Input F → Output F → ProverHint F → Prop
+  soundness         : GeneralFormalCircuit.Soundness F elaborated Assumptions Spec
+  completeness      : GeneralFormalCircuit.Completeness F elaborated ProverAssumptions ProverSpec
 ```
 
 The two auxiliary pieces of data that `Input F`/`Output F` get paired with are complementary:
 
-- `ProverData F` is committed into the proof. Both the verifier and the honest prover see the same `ProverData`. It shows up in `Spec` (soundness) and in `Assumptions` (completeness) when a property depends on committed auxiliary data such as the content of a lookup table.
-- `ProverHint F` is the prover's runtime-only witness-generation aid. It never appears in the proof, so the verifier cannot observe it. It shows up in `Assumptions` (the honest prover may want to assume something about its own hint) and in `CompletenessSpec` (an extra output-side promise the honest prover can make to its caller), but not in `Spec`.
+- `ProverData F` is committed into the proof. Both the verifier and the honest prover see the same `ProverData`. It shows up in verifier-side `Assumptions` and `Spec`, and in prover-side `ProverAssumptions` when a property depends on committed auxiliary data such as the content of a lookup table.
+- `ProverHint F` is the prover's runtime-only witness-generation aid. It never appears in the proof, so the verifier cannot observe it. It shows up only in `ProverAssumptions` and `ProverSpec`, the completeness-side predicates used by the honest prover.
 
 Compared to `FormalCircuit`:
 
-- `Assumptions` is used only for completeness: it is what the honest prover assumes about the inputs, the committed `ProverData`, and its own `ProverHint` when generating witnesses.
-- `Spec` is used only for soundness: it may include, as a hypothesis on the LHS of `→`, some assumptions for the verifier. The verifier needs to establish the LHS of `→` without depending on the circuit before using the `Spec`. The LHS of `→` in `Spec` is usually different from the honest prover's `Assumptions` (otherwise, `FormalCircuit` is commonly preferred).
-- `CompletenessSpec` lets the honest prover promise an extra relation between inputs, outputs, and its hint. It defaults to the trivially-true predicate, so most circuits ignore it.
+- `Assumptions` is used for soundness: it is what the verifier is allowed to assume about the input and committed `ProverData`.
+- `Spec` is used for soundness: it states what the constraints imply for any satisfying witness assignment.
+- `ProverAssumptions` is used for completeness: it is what the honest prover assumes about the inputs, committed `ProverData`, and private `ProverHint` when generating witnesses.
+- `ProverSpec` lets the honest prover promise an extra relation between inputs, outputs, and its hint alongside completeness. It defaults to the trivially-true predicate, so most circuits ignore it.
+
+## Hint-aware circuits
+
+`GeneralFormalCircuit` still assumes the verifier and prover see the same input type. When an input contains private hint fields, Clean uses `CircuitType` and the hint-aware wrapper:
+
+```lean
+structure GeneralFormalCircuit.WithHint (F : Type) (Input Output : TypeMap) [Field F]
+    [CircuitType Input] [CircuitType Output] where
+  main : Var Input F → Circuit F (Var Output F)
+  Assumptions       : Value Input F → ProverData F → Prop
+  Spec              : Value Input F → Value Output F → ProverData F → Prop
+  ProverAssumptions : ProverValue Input F → ProverData F → ProverHint F → Prop
+  ProverSpec        : ProverValue Input F → ProverValue Output F → ProverHint F → Prop
+  soundness         : GeneralFormalCircuit.WithHint.Soundness F elaborated Assumptions Spec
+  completeness      : GeneralFormalCircuit.WithHint.Completeness F elaborated ProverAssumptions ProverSpec
+```
+
+Here `Value Input F` is the verifier-visible view with hints erased, while `ProverValue Input F` is the honest prover view with hint fields available.
+This is the right abstraction for inputs containing `Unconstrained` or `UnconstrainedDep` fields.

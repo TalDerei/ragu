@@ -4,9 +4,9 @@ use ragu_pasta::Fp;
 
 use crate::{driver::ExtractionDriver, expr::Expr, instance::CircuitInstance};
 
-pub struct CoreAllocMulInstance;
+pub struct CoreMulInstance;
 
-impl CircuitInstance for CoreAllocMulInstance {
+impl CircuitInstance for CoreMulInstance {
     type Field = Fp;
 
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
