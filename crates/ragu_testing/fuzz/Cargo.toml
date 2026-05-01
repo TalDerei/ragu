@@ -45,7 +45,7 @@ rand = "0.10"
 addchain = { git = "https://github.com/ebfull/addchain", rev = "da4099a81bc29c895f3ca0ebcaae21c860494c12" }
 ff = { git = "https://github.com/ebfull/ff", branch = "release-0.14.0-with-rand-0.10" }
 group = { git = "https://github.com/ebfull/group", branch = "release-0.14.0-with-rand-0.10" }
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", branch = "ff-0.14-with-rand-0.10" }
+pasta_curves = { git = "https://github.com/ebfull/pasta_curves", branch = "ff-0.14-with-rand-0.10-and-deferred" }
 
 # Poseidon sponge: absorb/squeeze mode transitions + save/resume consistency
 [[bin]]
