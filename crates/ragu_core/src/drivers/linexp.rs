@@ -528,23 +528,9 @@ fn direct_sum_all_coeff_arms_with_gain_negative_one() {
 mod proptests {
     use proptest::prelude::*;
     use ragu_pasta::Fp;
+    use ragu_testing::strategies;
 
     use super::*;
-
-    fn arb_fe() -> impl Strategy<Value = Fp> {
-        (0u64..1000).prop_map(Fp::from)
-    }
-
-    fn arb_coeff() -> impl Strategy<Value = Coeff<Fp>> {
-        prop_oneof![
-            Just(Coeff::Zero),
-            Just(Coeff::One),
-            Just(Coeff::Two),
-            Just(Coeff::NegativeOne),
-            arb_fe().prop_map(Coeff::Arbitrary),
-            arb_fe().prop_map(Coeff::NegativeArbitrary),
-        ]
-    }
 
     #[derive(Debug, Clone)]
     enum Op {
@@ -554,8 +540,12 @@ mod proptests {
 
     fn arb_op() -> impl Strategy<Value = Op> {
         prop_oneof![
-            (arb_fe(), arb_coeff()).prop_map(|(w, c)| Op::AddTerm(w, c)),
-            arb_coeff().prop_map(Op::Gain),
+            (
+                strategies::prime_field_element::<Fp>(),
+                strategies::coeff::<Fp>()
+            )
+                .prop_map(|(w, c)| Op::AddTerm(w, c)),
+            strategies::coeff::<Fp>().prop_map(Op::Gain),
         ]
     }
 
@@ -579,7 +569,7 @@ mod proptests {
                 }
             }
 
-            assert_eq!(ds.value(),manual_value);
+            prop_assert_eq!(ds.value(), manual_value);
         }
     }
 }

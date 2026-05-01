@@ -528,9 +528,9 @@ mod root_of_unity_tests {
 mod proptests {
     use alloc::format;
 
-    use ff::PrimeField;
     use proptest::prelude::*;
     use ragu_core::maybe::Maybe;
+    use ragu_testing::strategies;
 
     use super::*;
 
@@ -538,14 +538,12 @@ mod proptests {
     type Simulator = crate::Simulator<F>;
     use crate::allocator::Standard;
 
-    fn arb_fe() -> impl Strategy<Value = F> {
-        (any::<u64>(), any::<u64>())
-            .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
-    }
-
     proptest! {
         #[test]
-        fn element_add_sub_roundtrip(a_fe in arb_fe(), b_fe in arb_fe()) {
+        fn element_add_sub_roundtrip(
+            a_fe in strategies::prime_field_element::<F>(),
+            b_fe in strategies::prime_field_element::<F>(),
+        ) {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
@@ -557,11 +555,15 @@ mod proptests {
                 actual = Some(*result.value().take());
                 Ok(())
             }).map_err(|e| TestCaseError::fail(format!("{e:?}")))?;
+
             prop_assert_eq!(actual, Some(a_fe));
         }
 
         #[test]
-        fn element_mul_commutative(a_fe in arb_fe(), b_fe in arb_fe()) {
+        fn element_mul_commutative(
+            a_fe in strategies::prime_field_element::<F>(),
+            b_fe in strategies::prime_field_element::<F>(),
+        ) {
             let mut actual = None;
             Simulator::simulate((a_fe, b_fe), |dr, witness| {
                 let (a, b) = witness.cast();
@@ -573,11 +575,8 @@ mod proptests {
                 actual = Some((*ab.value().take(), *ba.value().take()));
                 Ok(())
             }).map_err(|e| TestCaseError::fail(format!("{e:?}")))?;
-            if let Some((ab, ba)) = actual {
-                prop_assert_eq!(ab, ba);
-            } else {
-                return Err(TestCaseError::fail("missing simulated result"));
-            }
+
+            prop_assert_eq!(actual, Some((a_fe * b_fe, b_fe * a_fe)));
         }
     }
 }
