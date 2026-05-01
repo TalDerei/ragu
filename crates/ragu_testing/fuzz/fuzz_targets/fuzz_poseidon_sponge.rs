@@ -86,6 +86,12 @@ fn run_sponge(ops: &[Op], values: &[Fp]) -> Fp {
                     absorb_idx += 1;
                 }
                 Op::Squeeze => {
+                    // Skip squeeze ops scheduled before any absorb. The Sponge
+                    // API rejects squeeze-from-empty as a precondition error,
+                    // and Arbitrary input ordering can't enforce absorb-first.
+                    if absorb_idx == 0 {
+                        continue;
+                    }
                     let squeezed = sponge.squeeze(dr)?;
                     if !got_output.get() {
                         output.set(*squeezed.value().take());
