@@ -1,4 +1,4 @@
-//! Fuzz the folding-revdot identity for structured polynomials.
+//! Fuzz the folding-revdot identity for sparse polynomials.
 //!
 //! Invariants:
 //! - `fold(lhs, s).revdot(&fold(rhs, t)) == sum_{i,j} s^i * t^j * lhs[i].revdot(&rhs[j])`
@@ -10,7 +10,10 @@ use arbitrary::Arbitrary;
 use ff::Field;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
-use ragu_circuits::polynomials::{TestRank, Rank, structured::Polynomial};
+use ragu_circuits::polynomials::{
+    Rank, TestRank,
+    sparse::{Polynomial, View},
+};
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -22,30 +25,25 @@ struct Input {
     eval_point: u64,
 }
 
-fn build_poly(
-    lens: &[u8; 4],
-    coeffs: &mut impl Iterator<Item = Fp>,
-) -> Polynomial<Fp, TestRank> {
+fn build_poly(lens: &[u8; 4], coeffs: &mut impl Iterator<Item = Fp>) -> Polynomial<Fp, TestRank> {
     let n = TestRank::n();
+    let mut view: View<Fp, TestRank, _> = View::trace();
     let clamp = |l: u8| (l as usize) % (n + 1);
-    let mut poly = Polynomial::new();
 
-    let fwd = poly.forward();
     for _ in 0..clamp(lens[0]) {
-        fwd.a.push(coeffs.next().unwrap_or(Fp::ZERO));
+        view.a.push(coeffs.next().unwrap_or(Fp::ZERO));
     }
     for _ in 0..clamp(lens[1]) {
-        fwd.b.push(coeffs.next().unwrap_or(Fp::ZERO));
+        view.b.push(coeffs.next().unwrap_or(Fp::ZERO));
     }
     for _ in 0..clamp(lens[2]) {
-        fwd.c.push(coeffs.next().unwrap_or(Fp::ZERO));
+        view.c.push(coeffs.next().unwrap_or(Fp::ZERO));
     }
-    drop(fwd);
-    let bwd = poly.backward();
     for _ in 0..clamp(lens[3]) {
-        bwd.c.push(coeffs.next().unwrap_or(Fp::ZERO));
+        view.d.push(coeffs.next().unwrap_or(Fp::ZERO));
     }
-    poly
+
+    view.build()
 }
 
 fuzz_target!(|input: Input| {
