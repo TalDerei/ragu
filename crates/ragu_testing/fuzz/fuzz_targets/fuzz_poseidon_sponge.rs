@@ -16,7 +16,7 @@ use ragu_arithmetic::Cycle;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::Pasta;
 use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Element, Simulator};
+use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 fn special_value(idx: u8) -> Fp {
     match idx % 8 {
@@ -67,6 +67,7 @@ fn run_sponge(ops: &[Op], values: &[Fp]) -> Fp {
     let got_output = Cell::new(false);
 
     let result = Simulator::<Fp>::simulate(values.to_vec(), |dr, witness| {
+        let allocator = &mut Standard::new();
         let params = Pasta::baked();
         let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
             dr,
@@ -74,7 +75,7 @@ fn run_sponge(ops: &[Op], values: &[Fp]) -> Fp {
         );
 
         let elems: Vec<Element<'_, _>> = (0..values.len())
-            .map(|i| Element::alloc(dr, witness.as_ref().map(|v| v[i])))
+            .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|v| v[i])))
             .collect::<Result<_, _>>()?;
 
         let mut absorb_idx = 0;
@@ -130,9 +131,10 @@ fuzz_target!(|input: Input| {
         let resume_output = Cell::new(Fp::ZERO);
 
         let result = Simulator::<Fp>::simulate(values.clone(), |dr, witness| {
+            let allocator = &mut Standard::new();
             let params = Pasta::baked();
             let elems: Vec<Element<'_, _>> = (0..values.len())
-                .map(|i| Element::alloc(dr, witness.as_ref().map(|v| v[i])))
+                .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|v| v[i])))
                 .collect::<Result<_, _>>()?;
 
             // Direct path: absorb all → squeeze

@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-DURATION="${1:-300}"
+DURATION="${1:-30}"
 PARALLEL="${2:-}"
 
 TARGETS=(

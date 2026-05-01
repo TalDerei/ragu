@@ -13,7 +13,7 @@ use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_arithmetic::Coeff;
 use ragu_core::maybe::Maybe;
-use ragu_primitives::{Boolean, Element, Simulator};
+use ragu_primitives::{Boolean, Element, Simulator, allocator::Standard};
 
 fn special_value(idx: u8) -> Fp {
     match idx % 8 {
@@ -79,12 +79,13 @@ fuzz_target!(|input: Input| {
     }
 
     let _ = Simulator::<Fp>::simulate(fes.clone(), |dr, witness| {
+        let allocator = &mut Standard::new();
         let mut elems: Vec<Element<'_, _>> = (0..fes.len())
             .map(|i| {
                 if input.constant_mask & (1 << (i % 8)) != 0 {
                     Ok(Element::constant(dr, fes[i]))
                 } else {
-                    Element::alloc(dr, witness.as_ref().map(|v| v[i]))
+                    Element::alloc(dr, allocator, witness.as_ref().map(|v| v[i]))
                 }
             })
             .collect::<Result<_, _>>()?;
@@ -138,7 +139,7 @@ fuzz_target!(|input: Input| {
                 }
                 Op::IsZero(a) => {
                     let a = a as usize % elen;
-                    if let Ok(b) = elems[a].is_zero(dr) {
+                    if let Ok(b) = elems[a].is_zero(dr, allocator) {
                         bools.push(b);
                     }
                 }
@@ -155,7 +156,7 @@ fuzz_target!(|input: Input| {
                 }
                 Op::Fold(a, b, s) => {
                     let (a, b) = (a as usize % elen, b as usize % elen);
-                    let scale = Element::alloc(dr, witness.as_ref().map(|_| Fp::from(s)))?;
+                    let scale = Element::alloc(dr, allocator, witness.as_ref().map(|_| Fp::from(s)))?;
                     if let Ok(r) = Element::fold(dr, [&elems[a], &elems[b]], &scale) {
                         elems.push(r);
                     }
@@ -166,7 +167,7 @@ fuzz_target!(|input: Input| {
                 }
                 Op::AllocSpecial(idx) => {
                     let v = special_value(idx);
-                    let r = Element::alloc(dr, witness.as_ref().map(|_| v))?;
+                    let r = Element::alloc(dr, allocator, witness.as_ref().map(|_| v))?;
                     elems.push(r);
                 }
                 Op::AllocSquare(v) => {
@@ -181,6 +182,7 @@ fuzz_target!(|input: Input| {
                 Op::BoolAlloc(v) => {
                     if let Ok(b) = Boolean::alloc(
                         dr,
+                        allocator,
                         witness.as_ref().map(|_| v),
                     ) {
                         bools.push(b);

@@ -18,7 +18,7 @@ use ragu_arithmetic::{Cycle, PoseidonPermutation};
 use ragu_core::maybe::Maybe;
 use ragu_pasta::Pasta;
 use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Element, Simulator};
+use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 fn special_value(idx: u8) -> Fp {
     match idx % 8 {
@@ -197,13 +197,14 @@ fuzz_target!(|input: Input| {
         .collect();
 
     let result = Simulator::<Fp>::simulate(absorb_values.clone(), |dr, witness| {
+        let allocator = &mut Standard::new();
         let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
             dr,
             Pasta::circuit_poseidon(params),
         );
 
         let elems: Vec<Element<'_, _>> = (0..absorb_values.len())
-            .map(|i| Element::alloc(dr, witness.as_ref().map(|v| v[i])))
+            .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|v| v[i])))
             .collect::<Result<_, _>>()?;
 
         let mut absorb_idx = 0;

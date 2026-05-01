@@ -22,7 +22,8 @@ use pasta_curves::Fp;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, Point, Simulator, extract_endoscalar, lift_endoscalar,
+    Boolean, Element, Endoscalar, Point, Simulator, allocator::Standard, extract_endoscalar,
+    lift_endoscalar,
 };
 
 /// Edge-case field elements that trigger boundary conditions.
@@ -117,8 +118,9 @@ fuzz_target!(|input: Input| {
         .collect();
 
     let result = Simulator::<Fp>::simulate((r, extracted, p, p2, cond_bools.clone()), |dr, witness| {
+        let allocator = &mut Standard::new();
         let (r_val, _endo_val, p_val, p2_val, bool_vals) = witness.cast();
-        let r_elem = Element::alloc(dr, r_val)?;
+        let r_elem = Element::alloc(dr, allocator, r_val)?;
         let endo = Endoscalar::extract(dr, r_elem)?;
 
         // Circuit lift must match native lift
@@ -165,7 +167,7 @@ fuzz_target!(|input: Input| {
                     }
                 }
                 PointOp::ConditionalEndo(cond) => {
-                    let b = Boolean::alloc(dr, bool_vals.as_ref().map(|v| v[bool_idx]))?;
+                    let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
                     bool_idx += 1;
                     match current.conditional_endo(dr, &b) {
                         Ok(result) => {
@@ -181,7 +183,7 @@ fuzz_target!(|input: Input| {
                     }
                 }
                 PointOp::ConditionalNegate(cond) => {
-                    let b = Boolean::alloc(dr, bool_vals.as_ref().map(|v| v[bool_idx]))?;
+                    let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
                     bool_idx += 1;
                     match current.conditional_negate(dr, &b) {
                         Ok(result) => {
