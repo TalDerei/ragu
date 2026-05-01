@@ -40,12 +40,13 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
             Corruption::PBlind(v) => self
                 .native_p_poly
                 .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![v])),
-            Corruption::PEval(v) => self
-                .native_p_poly
-                .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
-                    C::CircuitField::ZERO,
-                    v,
-                ])),
+            Corruption::PEval(v) => {
+                self.native_p_poly
+                    .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
+                        C::CircuitField::ZERO,
+                        v,
+                    ]))
+            }
             Corruption::AbC(v) => self
                 .native_a_poly
                 .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![v])),
