@@ -209,7 +209,7 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
 /// trait is `unsafe` to implement and the implementor must ensure that this
 /// property holds. The [`Gadget`](derive@Gadget) derive macro ensures that this
 /// is the case.
-pub unsafe trait GadgetKind<F: Field>: core::any::Any {
+pub unsafe trait GadgetKind<F: Field>: 'static {
     /// The rebinding type for this gadget. Use [`Bound`] type alias instead of
     /// accessing this directly.
     type Rebind<'dr, D: Driver<'dr, F = F>>: Gadget<'dr, D, Kind = Self>;
