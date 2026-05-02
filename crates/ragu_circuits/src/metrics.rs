@@ -23,12 +23,19 @@
 //!   thing to $s(X,Y)$ with overwhelming probability.
 //!
 //! - [`DeepFingerprint`] — `{ base, deep }`. Extends the base fingerprint
-//!   with a recursive 64-bit BLAKE2b digest that binds the input/output
-//!   [`TypeId`]s, the raw geometric-sequence evaluations of the routine's
-//!   output-gadget wires, and the deep fingerprints of every direct child
-//!   routine. Two invocations with the same `DeepFingerprint` are
-//!   structurally identical at every nesting level and can be memoized
-//!   together with their entire subtree.
+//!   with a recursive 64-bit BLAKE2b digest that binds the raw
+//!   geometric-sequence evaluations of the routine's output-gadget wires
+//!   and the deep fingerprints of every direct child routine. Two invocations
+//!   with the same `DeepFingerprint` are structurally identical at every
+//!   nesting level and can be memoized together with their entire subtree.
+//!
+//! Type identity is deliberately *not* part of the fingerprint. Under the
+//! relaxed-fungibility model, routine equivalence is layout-keyed: two routines
+//! that contribute identically to $s(X, Y)$ and produce the same wire layout
+//! are equivalent for memoization purposes regardless of the Rust types of
+//! their `Input` or `Output` gadgets. Allocation determinism on `GadgetKind`
+//! ensures that reconstructing the typed output gadget from cached wire values
+//! yields the correct result independent of static type identity.
 //!
 //! Fingerprints are wrapped in [`RoutineIdentity`], an enum that distinguishes
 //! the root circuit body ([`Root`](RoutineIdentity::Root)) from actual routine
@@ -36,14 +43,8 @@
 //! deliberately does **not** implement comparison or hashing traits, forcing
 //! callers to handle the root variant explicitly rather than accidentally
 //! including it in equivalence maps.
-//!
-//! [`TypeId`]: core::any::TypeId
 
 use alloc::vec::Vec;
-use core::{
-    any::TypeId,
-    hash::{Hash, Hasher},
-};
 
 use ff::{FromUniformBytes, PrimeField};
 use ragu_arithmetic::Coeff;
@@ -85,15 +86,13 @@ pub enum RoutineIdentity {
 /// overwhelming probability.
 ///
 /// `BaseFingerprint` is what the floor planner uses to group segments with
-/// the same polynomial shape. [`TypeId`]s and nested-subtree information are
-/// deliberately excluded — they do not affect the polynomial contribution of
-/// the base segment alone; they live only in the enclosing [`DeepFingerprint`].
+/// the same polynomial shape. Nested-subtree information is deliberately
+/// excluded — it does not affect the polynomial contribution of the base
+/// segment alone; it lives only in the enclosing [`DeepFingerprint`].
 ///
 /// The 64-bit `eval` truncation gives ~2^{-64} collision probability per pair,
 /// which is adequate for floor-planner and intra-circuit memoization
 /// equivalence classes.
-///
-/// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BaseFingerprint {
     num_gates: usize,
@@ -124,47 +123,25 @@ impl BaseFingerprint {
 /// Full recursive fingerprint for a routine invocation.
 ///
 /// Augments [`BaseFingerprint`] with a 64-bit BLAKE2b digest that recursively
-/// folds in the routine's input/output [`TypeId`]s, the raw values of its
-/// output-gadget wires (which carry positional information relative to the
-/// routine's own scope), and the deep fingerprints of every direct child
-/// routine. Two invocations with matching `DeepFingerprint`s are structurally
-/// identical at every nesting level — same base shape, same output wire
-/// placement, same recursive subtree.
+/// folds in the raw values of the routine's output-gadget wires (which carry
+/// positional information relative to the routine's own scope) and the deep
+/// fingerprints of every direct child routine. Two invocations with matching
+/// `DeepFingerprint`s are structurally identical at every nesting level —
+/// same base shape, same output wire placement, same recursive subtree.
+///
+/// Type identity is *not* part of the digest: under relaxed fungibility,
+/// routines whose outputs differ only in Rust type wrapper (e.g. `Element`
+/// vs a newtype wrapping it, with the same wire layout) are treated as
+/// equivalent. Allocation determinism on `GadgetKind` is what makes
+/// substitution between such routines safe at memoization time.
 ///
 /// The separation from [`BaseFingerprint`] matters because deep equivalence is
 /// a stronger claim than base equivalence and enables stronger memoization
 /// (caching an entire routine subtree, not just the base segment).
-///
-/// [`TypeId`]: core::any::TypeId
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeepFingerprint {
     base: BaseFingerprint,
     deep: u64,
-}
-
-/// Extracts a deterministic `u64` from a [`TypeId`] by feeding its
-/// [`Hash`] output through a passthrough [`Hasher`] that captures the
-/// first `write_u64` call.
-///
-/// [`TypeId`]: core::any::TypeId
-fn type_id_u64(id: TypeId) -> u64 {
-    struct PassU64(u64);
-    impl Hasher for PassU64 {
-        fn finish(&self) -> u64 {
-            self.0
-        }
-        fn write(&mut self, bytes: &[u8]) {
-            for (i, &b) in bytes.iter().enumerate().take(8) {
-                self.0 |= (b as u64) << (i * 8);
-            }
-        }
-        fn write_u64(&mut self, i: u64) {
-            self.0 = i;
-        }
-    }
-    let mut h = PassU64(0);
-    id.hash(&mut h);
-    h.finish()
 }
 
 /// Domain tag for the deep fingerprint hash.
@@ -176,14 +153,13 @@ impl DeepFingerprint {
     ///
     /// The deep hash absorbs, in order:
     ///
-    /// 1. The routine's input and output [`TypeId`]s (one `u64` each);
-    /// 2. all [`BaseFingerprint`] fields: `eval`, `num_gates`,
+    /// 1. all [`BaseFingerprint`] fields: `eval`, `num_gates`,
     ///    `num_constraints`;
-    /// 3. the number of output-gadget wires (length-bound to avoid
+    /// 2. the number of output-gadget wires (length-bound to avoid
     ///    concatenation ambiguity on the subsequent stream) followed by
     ///    each output wire's raw field-element value in canonical byte
     ///    repr;
-    /// 4. the number of direct child routines (length-bound) followed by
+    /// 3. the number of direct child routines (length-bound) followed by
     ///    each child's deep hash.
     ///
     /// Hashing output-wire values directly (rather than collapsing them
@@ -191,18 +167,15 @@ impl DeepFingerprint {
     /// permutations that leave the output gadget tuple-equal. The stored
     /// `deep` is the first 8 bytes of the BLAKE2b digest interpreted as a
     /// little-endian `u64`.
-    ///
-    /// [`TypeId`]: core::any::TypeId
     fn new<F: PrimeField, Ro: Routine<F>>(
         base: BaseFingerprint,
         output_wires: &[F],
         children: &[u64],
     ) -> Self {
+        let _ = core::marker::PhantomData::<Ro>;
         let mut state = blake2b_simd::Params::new()
             .personal(DEEP_HASH_PERSONAL)
             .to_state();
-        state.update(&type_id_u64(TypeId::of::<Ro::Input>()).to_le_bytes());
-        state.update(&type_id_u64(TypeId::of::<Ro::Output>()).to_le_bytes());
         state.update(&base.eval.to_le_bytes());
         state.update(&(base.num_gates as u64).to_le_bytes());
         state.update(&(base.num_constraints as u64).to_le_bytes());
