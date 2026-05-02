@@ -1768,25 +1768,28 @@ fn test_wire_collision_via_eval_metrics_identical() {
 }
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
-/// Element)) have zero body constraints and identical Horner scalars —
-/// same polynomial contribution (base fingerprints match), but
-/// different memoization identity (deep hashes differ via TypeIds).
+/// Element)) have zero body constraints, identical Horner scalars, and
+/// both forward the first input wire (so output wires are positionally
+/// identical). Under relaxed fungibility the input Rust type alone must
+/// not distinguish them — the deep hashes collide as well.
 #[test]
-fn test_type_distinct_input_discrimination() {
+fn test_input_type_does_not_distinguish_fingerprint() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// `Passthrough` (Output = Element) and `Duplicate` (Output =
-/// (Element, Element)) share the same Input type and have zero body
-/// constraints — same polynomial contribution, different memoization
-/// identity.
+/// `Passthrough` (Output = Element, 1 wire) vs `Duplicate`
+/// (Output = (Element, Element), 2 wires) share the same input type and
+/// algebraic contribution, but their output wire vectors differ in
+/// length and content. The deep hash absorbs `output_wires` and
+/// `output_wires.len()`, so the fingerprints remain distinct even with
+/// type identity removed.
 #[test]
-fn test_type_distinct_output_discrimination() {
+fn test_output_arity_distinguishes_fingerprint() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_elem(&Duplicate);
 
@@ -1795,47 +1798,50 @@ fn test_type_distinct_output_discrimination() {
     assert_ne!(a, b);
 }
 
-/// 3 vs 4 input wires produce identical post-remap Counter state.
-/// Same polynomial contribution, different memoization identity.
+/// 3 vs 4 input wires, both routines forward the first input. The first
+/// input is at the same position (`x_remap`) in either case, so output
+/// wires match. Under relaxed fungibility the input arity alone must
+/// not distinguish.
 #[test]
-fn test_type_distinct_triple_vs_quad_input_wires() {
+fn test_input_arity_does_not_distinguish_when_outputs_align() {
     let a = fingerprint_triple(&PassthroughTriple);
     let b = fingerprint_quad(&PassthroughQuad);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Trivial enforce_zero (empty LC) with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// Trivial enforce_zero (empty LC) with 1 vs 2 input wires, output is
+/// the first input wire in both cases. Input type must not distinguish.
 #[test]
-fn test_type_distinct_trivial_enforce_zero() {
+fn test_trivial_enforce_zero_input_type_irrelevant() {
     let a = fingerprint_elem(&TrivialEnforce);
     let b = fingerprint_pair(&TrivialEnforcePair);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Input-dependent enforce_zero with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// Input-dependent enforce_zero with 1 vs 2 input wires; both forward
+/// the first input. Input type must not distinguish.
 #[test]
-fn test_type_distinct_enforce_first_input() {
+fn test_first_input_enforce_input_type_irrelevant() {
     let a = fingerprint_elem(&EnforceInput);
     let b = fingerprint_pair(&EnforceInputPair);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// SquareOnce (Output = Element) vs SquareDuplicate (Output = (Element, Element)):
-/// identical body constraints. Same polynomial contribution, different
-/// memoization identity.
+/// `SquareOnce` (Output = Element, 1 wire) vs `SquareDuplicate`
+/// (Output = (Element, Element), 2 wires) share input type and body
+/// constraints, but differ in output arity. The deep hash distinguishes
+/// them via `output_wires.len()`.
 #[test]
-fn test_type_distinct_output_with_square() {
+fn test_output_arity_with_square_distinguishes() {
     let a = fingerprint_elem(&SquareOnce);
     let b = fingerprint_elem(&SquareDuplicate);
 
@@ -1844,11 +1850,12 @@ fn test_type_distinct_output_with_square() {
     assert_ne!(a, b);
 }
 
-/// Passthrough (Element → Element) vs PairPassthrough ((Element, Element) →
-/// (Element, Element)): both TypeIds differ simultaneously.
-/// Same polynomial contribution, different memoization identity.
+/// `Passthrough` (Element → Element) vs `PairPassthrough`
+/// ((Element, Element) → (Element, Element)): both input *and* output
+/// arity differ. The deep hash distinguishes them via
+/// `output_wires.len()` regardless of type identity.
 #[test]
-fn test_type_distinct_both_differ() {
+fn test_input_and_output_arity_both_differ() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&PairPassthrough);
 
@@ -1857,22 +1864,24 @@ fn test_type_distinct_both_differ() {
     assert_ne!(a, b);
 }
 
-/// Internal-only constraint (alloc + enforce_zero) with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// Internal-only constraint (alloc + enforce_zero) with 1 vs 2 input
+/// wires; output is unaffected by the extra unused input. Input type
+/// must not distinguish.
 #[test]
-fn test_type_distinct_internal_only_constraints() {
+fn test_internal_only_constraints_input_type_irrelevant() {
     let a = fingerprint_elem(&InternalEnforce);
     let b = fingerprint_pair(&InternalEnforcePair);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Production path cross-check: Passthrough via eval vs DropFirst via pair.
-/// Same polynomial contribution, different memoization identity.
+/// Production path cross-check: `Passthrough` via `metrics::eval` vs
+/// `DropFirst` via the test-only `fingerprint_pair`. Both paths must
+/// produce identical fingerprints under relaxed fungibility.
 #[test]
-fn test_type_distinct_production_path() {
+fn test_production_path_input_type_irrelevant() {
     let a = fingerprint_via_eval(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
@@ -1881,14 +1890,16 @@ fn test_type_distinct_production_path() {
         fingerprint_elem(&Passthrough),
     );
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Nested delegation with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// Nested delegation with 1 vs 2 input wires. The extra input shifts
+/// where the child's output lands in the parent's `x_remap` sequence,
+/// so `output_wires` content differs and the deep hash distinguishes —
+/// independent of type identity.
 #[test]
-fn test_type_distinct_nested_with_pairing() {
+fn test_input_arity_affects_nested_output_position() {
     let a = fingerprint_elem(&PureNesting);
     let b = fingerprint_pair(&PureNestingPair);
 
@@ -1897,28 +1908,28 @@ fn test_type_distinct_nested_with_pairing() {
     assert_ne!(a, b);
 }
 
-/// Three Horner steps (3× enforce_zero) with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// Three Horner steps (3× enforce_zero) with 1 vs 2 input wires; both
+/// forward the first input. Input type must not distinguish.
 #[test]
-fn test_type_distinct_multiple_horner_steps() {
+fn test_multiple_horner_steps_input_type_irrelevant() {
     let a = fingerprint_elem(&TripleEnforceInput);
     let b = fingerprint_pair(&TripleEnforceInputPair);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// ONE wire reference in enforce_zero with 1 vs 2 input wires.
-/// Same polynomial contribution, different memoization identity.
+/// ONE wire reference in enforce_zero with 1 vs 2 input wires; both
+/// forward the first input. Input type must not distinguish.
 #[test]
-fn test_type_distinct_one_wire_constraint() {
+fn test_one_wire_constraint_input_type_irrelevant() {
     let a = fingerprint_elem(&OneWireEnforce);
     let b = fingerprint_pair(&OneWireEnforcePair);
 
     assert_eq!(a.base(), b.base());
-    assert_ne!(a.deep(), b.deep());
-    assert_ne!(a, b);
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
 /// Allocates `w1` then `w2`, both zero, and enforces `w1 + w2 = 0`.
