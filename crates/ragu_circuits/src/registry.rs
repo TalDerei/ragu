@@ -1053,4 +1053,409 @@ mod tests {
 
         Ok(())
     }
+
+    /// Differential test of substitution safety under TypeId-removed
+    /// fingerprints.
+    ///
+    /// This test pairs a `PassthroughCircuit` (witness-side calls
+    /// `Passthrough`: `Element -> Element`) with a `DropFirstCircuit`
+    /// (witness-side calls `DropFirst`: `(Element, Element) -> Element`).
+    /// With the TypeId-removal patch in `RoutineFingerprint::of`, the two
+    /// routines produce *identical* `RoutineFingerprint`s — the floor
+    /// planner aligns them at the same canonical position, and the cache
+    /// populated by one circuit's invocation is hit by the other's. The
+    /// hit triggers `WireInjector`-based output reconstruction.
+    ///
+    /// The assertion `wxy == wxy_combined` checks whether the
+    /// reconstructed output keeps `s(x, y)` correct under substitution
+    /// between fingerprint-equivalent different-typed routines.
+    #[test]
+    fn test_wxy_combined_typeid_drop_substitution() -> Result<()> {
+        use crate::Circuit;
+        use ragu_core::drivers::{Driver, DriverValue};
+        use ragu_core::gadgets::{Bound, Kind};
+        use ragu_core::maybe::Maybe;
+        use ragu_core::routines::{Prediction, Routine};
+        use ragu_primitives::Element;
+
+        // Routine: returns its single Element input unchanged. Zero gates,
+        // zero constraints.
+        #[derive(Clone)]
+        struct Passthrough;
+
+        impl Routine<Fp> for Passthrough {
+            type Input = Kind![Fp; Element<'_, _>];
+            type Output = Kind![Fp; Element<'_, _>];
+            type Aux<'dr> = ();
+
+            fn execute<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                input: Bound<'dr, D, Self::Input>,
+                _aux: DriverValue<D, Self::Aux<'dr>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                Ok(input)
+            }
+
+            fn predict<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _input: &Bound<'dr, D, Self::Input>,
+            ) -> Result<
+                Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>,
+            > {
+                Ok(Prediction::Unknown(D::just(|| ())))
+            }
+        }
+
+        // Routine: takes two Element inputs, returns the first. Zero
+        // gates, zero constraints. Paired-allocation arithmetic ensures
+        // the (eval, num_mul, num_lc) triple matches Passthrough.
+        #[derive(Clone)]
+        struct DropFirst;
+
+        impl Routine<Fp> for DropFirst {
+            type Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+            type Output = Kind![Fp; Element<'_, _>];
+            type Aux<'dr> = ();
+
+            fn execute<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                input: Bound<'dr, D, Self::Input>,
+                _aux: DriverValue<D, Self::Aux<'dr>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                let (a, _b) = input;
+                Ok(a)
+            }
+
+            fn predict<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _input: &Bound<'dr, D, Self::Input>,
+            ) -> Result<
+                Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>,
+            > {
+                Ok(Prediction::Unknown(D::just(|| ())))
+            }
+        }
+
+        // Circuit that allocates one Element witness and invokes
+        // `Passthrough`. Output is the (unchanged) Element.
+        struct PassthroughCircuit;
+
+        impl Circuit<Fp> for PassthroughCircuit {
+            type Instance<'source> = Fp;
+            type Output = Kind![Fp; Element<'_, _>];
+            type Witness<'source> = Fp;
+            type Aux<'source> = ();
+
+            fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                instance: DriverValue<D, Self::Instance<'source>>,
+            ) -> Result<Bound<'dr, D, Self::Output>>
+            where
+                Self: 'dr,
+            {
+                Element::alloc(dr, instance)
+            }
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                witness: DriverValue<D, Self::Witness<'source>>,
+            ) -> Result<(
+                Bound<'dr, D, Self::Output>,
+                DriverValue<D, Self::Aux<'source>>,
+            )>
+            where
+                Self: 'dr,
+            {
+                let input = Element::alloc(dr, witness)?;
+                let output = dr.routine(Passthrough, input)?;
+                Ok((output, D::just(|| ())))
+            }
+        }
+
+        // Circuit that allocates two Element witnesses and invokes
+        // `DropFirst`. Output is the first Element.
+        struct DropFirstCircuit;
+
+        impl Circuit<Fp> for DropFirstCircuit {
+            type Instance<'source> = Fp;
+            type Output = Kind![Fp; Element<'_, _>];
+            type Witness<'source> = (Fp, Fp);
+            type Aux<'source> = ();
+
+            fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                instance: DriverValue<D, Self::Instance<'source>>,
+            ) -> Result<Bound<'dr, D, Self::Output>>
+            where
+                Self: 'dr,
+            {
+                Element::alloc(dr, instance)
+            }
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                witness: DriverValue<D, Self::Witness<'source>>,
+            ) -> Result<(
+                Bound<'dr, D, Self::Output>,
+                DriverValue<D, Self::Aux<'source>>,
+            )>
+            where
+                Self: 'dr,
+            {
+                let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
+                let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+                let output = dr.routine(DropFirst, (a, b))?;
+                Ok((output, D::just(|| ())))
+            }
+        }
+
+        let registry = TestRegistryBuilder::new()
+            .register_circuit(PassthroughCircuit)?
+            .register_circuit(DropFirstCircuit)?
+            .finalize()?;
+
+        let w = Fp::random(&mut rand::rng());
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        // Out-of-domain: this is the path that exercises the shared
+        // `MemoCache` across circuits via Lagrange interpolation.
+        let wxy_native = registry.wxy(w, x, y);
+        let wxy_memo = registry.wxy_combined(w, x, y);
+        assert_ne!(
+            wxy_native,
+            Fp::ZERO,
+            "wxy must not be trivially zero (would defeat the test)"
+        );
+        assert_eq!(
+            wxy_native, wxy_memo,
+            "wxy_combined must match wxy out-of-domain even when \
+             fingerprint-equivalent different-typed routines are aligned \
+             at the same canonical position"
+        );
+
+        // In-domain: both code paths should still match (this branch
+        // bypasses the shared cache, so it's a sanity check).
+        let w_in_domain = registry.domain.omega();
+        assert_eq!(
+            registry.wxy(w_in_domain, x, y),
+            registry.wxy_combined(w_in_domain, x, y),
+            "wxy_combined must match wxy in-domain"
+        );
+
+        Ok(())
+    }
+
+    /// Same-input, same-body, *different output gadget type* substitution test.
+    ///
+    /// Pairs `OutputElement` (`Element -> Element`, returns input) with
+    /// `OutputElementUnit` (`Element -> (Element, ())`, returns `(input, ())`).
+    /// Both have:
+    /// - Same `Input` Rust type (`Element`).
+    /// - Same algebraic contribution: zero gates, zero constraints, `eval = 0`.
+    /// - Same flattened output wire vector: `[x_remap]` (the unit `()`
+    ///   contributes zero wires under `extract_wires`).
+    /// - **Different `Output` Rust types** (`Element` vs `(Element, ())`).
+    ///
+    /// With the TypeId-removal patch in `RoutineFingerprint::of`, the two
+    /// routines collide on `RoutineFingerprint` because the fingerprint no
+    /// longer discriminates by Rust type. The floor planner aligns them at
+    /// the same canonical registry position; the cache populated by one
+    /// circuit's invocation is hit by the other's; `WireInjector` reconstructs
+    /// the output gadget by walking the *current* call site's `Routine::Output`
+    /// type (one of `Element` or `(Element, ())`) and stuffing cached wires
+    /// into the slots.
+    ///
+    /// The assertion `wxy == wxy_combined` checks whether substituting between
+    /// fingerprint-equivalent routines with **different output gadget types**
+    /// preserves $s(X, Y)$ — the exact output-side scenario from Sean's
+    /// PR 669 comment.
+    #[test]
+    fn test_wxy_combined_different_output_gadget_types() -> Result<()> {
+        use crate::Circuit;
+        use ragu_core::drivers::{Driver, DriverValue};
+        use ragu_core::gadgets::{Bound, Kind};
+        use ragu_core::maybe::Maybe;
+        use ragu_core::routines::{Prediction, Routine};
+        use ragu_primitives::Element;
+
+        // Routine: returns its single Element input as `Element`.
+        #[derive(Clone)]
+        struct OutputElement;
+
+        impl Routine<Fp> for OutputElement {
+            type Input = Kind![Fp; Element<'_, _>];
+            type Output = Kind![Fp; Element<'_, _>];
+            type Aux<'dr> = ();
+
+            fn execute<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                input: Bound<'dr, D, Self::Input>,
+                _aux: DriverValue<D, Self::Aux<'dr>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                Ok(input)
+            }
+
+            fn predict<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _input: &Bound<'dr, D, Self::Input>,
+            ) -> Result<
+                Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>,
+            > {
+                Ok(Prediction::Unknown(D::just(|| ())))
+            }
+        }
+
+        // Routine: returns its single Element input wrapped as `(Element, ())`.
+        // Different Output Rust type, but `extract_wires` produces the same
+        // single-wire vector (() contributes 0 wires).
+        #[derive(Clone)]
+        struct OutputElementUnit;
+
+        impl Routine<Fp> for OutputElementUnit {
+            type Input = Kind![Fp; Element<'_, _>];
+            type Output = Kind![Fp; (Element<'_, _>, ())];
+            type Aux<'dr> = ();
+
+            fn execute<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                input: Bound<'dr, D, Self::Input>,
+                _aux: DriverValue<D, Self::Aux<'dr>>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                Ok((input, ()))
+            }
+
+            fn predict<'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                _dr: &mut D,
+                _input: &Bound<'dr, D, Self::Input>,
+            ) -> Result<
+                Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>,
+            > {
+                Ok(Prediction::Unknown(D::just(|| ())))
+            }
+        }
+
+        // Circuit invoking `OutputElement`. Output gadget: `Element`.
+        struct OutputElementCircuit;
+
+        impl Circuit<Fp> for OutputElementCircuit {
+            type Instance<'source> = Fp;
+            type Output = Kind![Fp; Element<'_, _>];
+            type Witness<'source> = Fp;
+            type Aux<'source> = ();
+
+            fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                instance: DriverValue<D, Self::Instance<'source>>,
+            ) -> Result<Bound<'dr, D, Self::Output>>
+            where
+                Self: 'dr,
+            {
+                Element::alloc(dr, instance)
+            }
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                witness: DriverValue<D, Self::Witness<'source>>,
+            ) -> Result<(
+                Bound<'dr, D, Self::Output>,
+                DriverValue<D, Self::Aux<'source>>,
+            )>
+            where
+                Self: 'dr,
+            {
+                let input = Element::alloc(dr, witness)?;
+                let output = dr.routine(OutputElement, input)?;
+                Ok((output, D::just(|| ())))
+            }
+        }
+
+        // Circuit invoking `OutputElementUnit`. Output gadget: `(Element, ())`.
+        // Note the circuit's own Output type is the tuple — the witness path
+        // discards the `()` half before returning the bound to the registry,
+        // so the circuit-level output is still `Element`. (Required because
+        // `Circuit::Output` must match across registered circuits in this
+        // test setup.)
+        struct OutputElementUnitCircuit;
+
+        impl Circuit<Fp> for OutputElementUnitCircuit {
+            type Instance<'source> = Fp;
+            type Output = Kind![Fp; Element<'_, _>];
+            type Witness<'source> = Fp;
+            type Aux<'source> = ();
+
+            fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                instance: DriverValue<D, Self::Instance<'source>>,
+            ) -> Result<Bound<'dr, D, Self::Output>>
+            where
+                Self: 'dr,
+            {
+                Element::alloc(dr, instance)
+            }
+
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+                &self,
+                dr: &mut D,
+                witness: DriverValue<D, Self::Witness<'source>>,
+            ) -> Result<(
+                Bound<'dr, D, Self::Output>,
+                DriverValue<D, Self::Aux<'source>>,
+            )>
+            where
+                Self: 'dr,
+            {
+                let input = Element::alloc(dr, witness)?;
+                let (elem, _unit) = dr.routine(OutputElementUnit, input)?;
+                Ok((elem, D::just(|| ())))
+            }
+        }
+
+        let registry = TestRegistryBuilder::new()
+            .register_circuit(OutputElementCircuit)?
+            .register_circuit(OutputElementUnitCircuit)?
+            .finalize()?;
+
+        let w = Fp::random(&mut rand::rng());
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        let wxy_native = registry.wxy(w, x, y);
+        let wxy_memo = registry.wxy_combined(w, x, y);
+        assert_ne!(
+            wxy_native,
+            Fp::ZERO,
+            "wxy must not be trivially zero (would defeat the test)"
+        );
+        assert_eq!(
+            wxy_native, wxy_memo,
+            "wxy_combined must match wxy out-of-domain when fingerprint-equivalent \
+             routines with DIFFERENT output gadget types are aligned at the same \
+             canonical position"
+        );
+
+        let w_in_domain = registry.domain.omega();
+        assert_eq!(
+            registry.wxy(w_in_domain, x, y),
+            registry.wxy_combined(w_in_domain, x, y),
+            "wxy_combined must match wxy in-domain"
+        );
+
+        Ok(())
+    }
 }

@@ -105,9 +105,16 @@ impl RoutineFingerprint {
         local_num_multiplication_constraints: usize,
         local_num_linear_constraints: usize,
     ) -> Self {
+        // PATCH (substitution-safety differential test): drop TypeId<Input>/
+        // TypeId<Output> from the fingerprint by setting both to `()`. With
+        // TypeIds removed, fingerprint-equivalent routines with different
+        // Input/Output Rust types (e.g. Passthrough vs DropFirst) will
+        // collide and exercise the wire-injection memoization path.
+        let _ = TypeId::of::<Ro::Input>();
+        let _ = TypeId::of::<Ro::Output>();
         Self {
-            input_kind: TypeId::of::<Ro::Input>(),
-            output_kind: TypeId::of::<Ro::Output>(),
+            input_kind: TypeId::of::<()>(),
+            output_kind: TypeId::of::<()>(),
             eval: ragu_arithmetic::low_u64(&eval),
             local_num_multiplication_constraints,
             local_num_linear_constraints,
