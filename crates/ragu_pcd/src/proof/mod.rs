@@ -2,7 +2,10 @@
 //!
 //! Defines the [`Proof`] structure containing trace polynomials, commitments,
 //! and accumulated claims, along with [`Pcd`] which bundles a [`Proof`] with the
-//! data that a [`Header`] succinctly encodes.
+//! data that a [`Header`] succinctly encodes. Each field corresponds to a phase
+//! of the protocol (application proof, folding, query/evaluation, and commitment
+//! opening), and is kept separately to make verification and proof
+//! transformation explicit.
 
 #![allow(dead_code)]
 

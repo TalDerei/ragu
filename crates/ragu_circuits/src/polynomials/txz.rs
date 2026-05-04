@@ -1,6 +1,10 @@
 //! In-circuit evaluation of the gate polynomial
 //! $$t(x, z) = -\sum_{i=0}^{n - 1} x^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})$$
 //! as a [`Routine`].
+//!
+//! The $t(X, Z)$ polynomial helps enforce multiplication constraints in the
+//! witness. It shares the same exponent pattern as the structured layout so it
+//! can be evaluated efficiently inside the circuit.
 
 use core::marker::PhantomData;
 
