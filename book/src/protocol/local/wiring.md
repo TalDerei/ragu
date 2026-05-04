@@ -42,28 +42,28 @@ constraints where $\v{k}_j$ takes a nonzero value set during verification.
 
 Public inputs tend to take the value of final computation outputs within a
 circuit, and so their constraints are emitted last so they may naturally relate
-to every previously emitted wire. As a result, Ragu tends to refer to these as
-"public outputs" from the perspective of circuits.
+to every previously emitted wire. As a result, Ragu interchangeably refers to
+these as "public outputs" from the perspective of circuits.
 
 This gives the layout
 
 $$
 \v{k} = \bigl(\,
   \underbrace{1}_{\v{k}_0}\,,\;
-  \underbrace{\v{k}_1, \ldots, \v{k}_\ell}_{\text{public outputs (reversed)}}\,,\;
+  \underbrace{\v{k}_1, \ldots, \v{k}_\ell}_{\text{public outputs}}\,,\;
   \underbrace{0, \ldots, 0}_{\text{constraints}}\,
 \bigr)
 $$
 
 due to the Horner ordering described above (last emitted at the lowest
-$Y$-powers). The first value $\v{k}_0 = 1$ seeds the circuit with a stable
-constant value; it is like a public input that is always set to
-$1$.[^instance-literature] The remaining values of $\v{k}$ are implicitly set to
-zero because circuit implementations themselves only emit constraints using
-[`enforce_zero`](ragu_core::drivers::Driver::enforce_zero).
+$Y$-powers). This is also an ideal arrangement for the verifier, since $\v{k}$
+represents the coefficients of a low degree polynomial $k(Y)$.
 
-$\v{k}$ thus represents the coefficients of a low degree polynomial
-$k(Y)$, which is ideal for the verifier.
+The first value $\v{k}_0 = 1$ seeds the circuit with a stable constant value; it
+is like a public input that is always set to $1$.[^instance-literature] The
+remaining values of $\v{k}$ are implicitly set to zero because circuit
+implementations themselves only emit constraints using
+[`enforce_zero`](ragu_core::drivers::Driver::enforce_zero).
 
 [^instance-literature]: In the literature, the public instance is often
 presented as the pair $(1, \v{x})$, combining the constant $1$ with the public
