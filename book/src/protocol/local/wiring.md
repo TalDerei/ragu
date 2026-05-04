@@ -35,15 +35,15 @@ the highest $Y$ power and the last-emitted at $Y^0$.
 
 ## Public Inputs
 
-The instance vector $\v{k}$ encodes the expected values that linear combinations
-over the wires are required to take due to the circuit's
-[constraints](arithmetization.md). Public input constraints are designated
-constraints where $\v{k}_j$ takes a nonzero value set during verification.
+The instance vector $\v{k}$ records the expected values imposed by the circuit's
+[constraints](arithmetization.md) on linear combinations of wires. Public input
+constraints are designated constraints whose corresponding entries in $\v{k}$
+are explicitly set during verification.
 
-Public inputs tend to take the value of final computation outputs within a
-circuit, and so their constraints are emitted last so they may naturally relate
-to every previously emitted wire. As a result, Ragu interchangeably refers to
-these as "public outputs" from the perspective of circuits.
+In practice, public inputs often represent the final outputs of a circuit
+computation. For this reason, their constraints are emitted last, allowing them
+to refer naturally to any previously emitted wire. Ragu therefore also refers to
+them as "public outputs" when describing them from the circuit's perspective.
 
 This gives the layout
 
@@ -55,19 +55,19 @@ $$
 \bigr)
 $$
 
-due to the Horner ordering described above (last emitted at the lowest
-$Y$-powers). This is also an ideal arrangement for the verifier, since $\v{k}$
-represents the coefficients of a low degree polynomial $k(Y)$.
+because of the Horner ordering described above: the last emitted constraints
+occupy the lowest powers of $Y$. This layout is also convenient for the verifier,
+since $\v{k}$ represents the coefficients of a low-degree polynomial $k(Y)$.
 
-The first value $\v{k}_0 = 1$ seeds the circuit with a stable constant value; it
-is like a public input that is always set to $1$.[^instance-literature] The
-remaining values of $\v{k}$ are implicitly set to zero because circuit
-implementations themselves only emit constraints using
+The first value, $\v{k}_0 = 1$, seeds the circuit with a stable constant value;
+it acts like a public input that is always set to $1$.[^instance-literature]
+The remaining entries of $\v{k}$ are implicitly zero because circuit
+implementations only emit constraints through
 [`enforce_zero`](ragu_core::drivers::Driver::enforce_zero).
 
 [^instance-literature]: In the literature, the public instance is often
 presented as the pair $(1, \v{x})$, combining the constant $1$ with the public
-inputs $\v{x}$ into a single vector. Ragu's $\v{k}$ matches this convention.
+inputs $\v{x}$ into a single vector. Ragu's $\v{k}$ follows this convention.
 
 ## The `SYSTEM` Gate
 
