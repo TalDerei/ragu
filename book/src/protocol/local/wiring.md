@@ -90,7 +90,7 @@ which is the first gate over wires $\v{a}_0, \v{b}_0, \v{c}_0, \v{d}_0$:
 
 The presence of the `SYSTEM` gate reduces the number of usable gates to $n - 1$.
 
-There is also a special constraint $\color{#7e22ce}{\kappa} \v{c}_0 = 0$
+There is also a special constraint $\color{#7e22ce}{\kappa} \cdot \v{c}_0 = 0$
 injected in all wiring polynomials at the $Y^{4n - 1}$ position; circuits are
 restricted in the number of constraints they emit to avoid overlapping this
 term. This so-called [registry constraint](../extensions/registry.md) is
@@ -104,6 +104,16 @@ evaluation of $s$ to be unpredictable even to someone who chooses $s$.
     practice. However, because $\v{a}_0$ and $\v{d}_0$ are used as "free" wires
     during allocation for symmetry, this is maintained in the `SYSTEM` gate as a
     convention.
+
+## Layout for Circuit Wiring
+
+| reversed trace | monomials | $Y^0$ | $\cdots$ | $Y^{4n-1}$ |
+|:--:|:--:|:--:|:--:|:--:|
+| $\left.\begin{array}{l} \color{blue}{\v{d}_0 = 1} \\ \v{d}_1 \\ \vdots \\ \v{d}_{n-1} \end{array}\right\}\v{d}$ | $\begin{array}{c} X^0 \\ X^1 \\ \vdots \\ X^{n-1} \end{array}$ | $\begin{array}{c} \color{blue}{1} \\ \phantom{\vdots} \\ \phantom{1} \\ \phantom{1} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ |
+| $\left.\begin{array}{l} \v{b}_{n-1} \\ \vdots \\ \v{b}_1 \\ \v{b}_0 = 0 \end{array}\right\}\rv{b}$ | $\begin{array}{c} X^n \\ \vdots \\ X^{2n-2} \\ X^{2n-1} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ 0 \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ 0 \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ 0 \end{array}$ |
+| $\left.\begin{array}{l} \color{#dc2626}{\v{a}_0 = \alpha} \\ \v{a}_1 \\ \vdots \\ \v{a}_{n-1} \end{array}\right\}\v{a}$ | $\begin{array}{c} X^{2n} \\ X^{2n+1} \\ \vdots \\ X^{3n-1} \end{array}$ | $\begin{array}{c} \color{#dc2626}{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \color{#dc2626}{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \color{#dc2626}{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ |
+| $\left.\begin{array}{l} \v{c}_{n-1} \\ \vdots \\ \v{c}_1 \\ \color{#7e22ce}{\v{c}_0 = 0} \end{array}\right\}\rv{c}$ | $\begin{array}{c} X^{3n} \\ \vdots \\ X^{4n-2} \\ X^{4n-1} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#7e22ce}{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#7e22ce}{0} \end{array}$ | $\begin{array}{c} \phantom{\kappa} \\ \phantom{\vdots} \\ \phantom{\kappa} \\ \color{#7e22ce}{\kappa} \end{array}$ |
+| _instance_ $\v{k}$ |  | $\v{k}_0=1$ | $\underbrace{\v{k}_1, \ldots, \v{k}_\ell}_{\text{public outputs}}, \underbrace{0, \ldots, 0}_{\text{constraints}}$ | $0$ |
 
 ## Bonding Polynomials
 
@@ -155,17 +165,80 @@ s_{\text{mask}}(X, Y) &= \color{#7e22ce}{\kappa}\color{black} \cdot (XY)^{4n - 1
 \end{array}
 $$
 
-## Layout for Wiring Polynomials
+## Layout for Bonding Wiring
 
-| trace $\uparrow$ | monomials | wiring $\downarrow$ | $Y^0$ | $\cdots$ | $Y^{4n-1}$ |
-|:--:|:--:|:--:|:--:|:--:|:--:|
-| $\left.\begin{array}{ll} \v{d}_0 & = \color{blue}{0 \, \text{or} \, 1} \\ \v{d}_1 \\ \vdots \\ \v{d}_{n-1} \end{array}\right\}\v{d}$ | $\begin{array}{c} X^{4n-1} \\ X^{4n-2} \\ \vdots \\ X^{3n} \end{array}$ | $\v{c}\left\{\begin{array}{c} \color{#7e22ce}{\v{c}_0} \\ \v{c}_1 \\ \vdots \\ \v{c}_{n-1} \end{array}\right.$ | $\begin{array}{c} \color{#7e22ce}{0} \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \color{#7e22ce}{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \color{#7e22ce}{\kappa} \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ |
-| $\left.\begin{array}{ll} \v{b}_{n-1} & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{b}_1 \\ \v{b}_0 & = 0 \end{array}\right\}\v{b}$ | $\begin{array}{c} X^{3n-1} \\ \vdots \\ X^{2n+1} \\ X^{2n} \end{array}$ | $\v{a}\left\{\begin{array}{c} \v{a}_{n-1} \\ \vdots \\ \v{a}_1 \\ \color{#dc2626}{\v{a}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ |
-| $\left.\begin{array}{ll} \color{#dc2626}{\v{a}_0} & = \color{#dc2626}{\alpha} \\ \v{a}_1 & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{a}_{n-1} \end{array}\right\}\v{a}$ | $\begin{array}{c} X^{2n-1} \\ X^{2n-2} \\ \vdots \\ X^n \end{array}$ | $\v{b}\left\{\begin{array}{c} \v{b}_0 \\ \v{b}_1 \\ \vdots \\ \v{b}_{n-1} \end{array}\right.$ | $\begin{array}{c} 0 \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ | $\begin{array}{c} 0 \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} 0 \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ |
-| $\left.\begin{array}{ll} \v{c}_{n-1} & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{c}_1 \\ \color{#7e22ce}{\v{c}_0} & \color{#7e22ce}{= 0} \end{array}\right\}\v{c}$ | $\begin{array}{c} X^{n-1} \\ \vdots \\ X^1 \\ X^0 \end{array}$ | $\v{d}\left\{\begin{array}{c} \v{d}_{n-1} \\ \vdots \\ \v{d}_1 \\ \color{blue}{\v{d}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{0 \, \text{or} \, 1} \\ \phantom{\vdots} \\ \phantom{0 \, \text{or} \, 1} \\ \color{blue}{0 \, \text{or} \, 1} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ |
+| reversed trace | monomials          | $Y^0..Y^{n-1}$ | $Y^n..Y^{2n-1}$ | $Y^{2n}..Y^{3n-1}$ | $Y^{3n}..Y^{4n-1}$ |
+|:--------:|:------------------:|:--------------:|:---------------:|:------------------:|:------------------:|
+| $\v{d}$  | $X^0..X^{n-1}$     | $D_{\v{d}}$    | $\mathbf{0}$    | $\mathbf{0}$       | $\mathbf{0}$       |
+| $\rv{b}$ | $X^n..X^{2n-1}$    | $\mathbf{0}$   | $D_{\rv{b}}$    | $\mathbf{0}$       | $\mathbf{0}$       |
+| $\v{a}$  | $X^{2n}..X^{3n-1}$ | $\mathbf{0}$   | $\mathbf{0}$    | $D_{\v{a}}$        | $\mathbf{0}$       |
+| $\rv{c}$ | $X^{3n}..X^{4n-1}$ | $\mathbf{0}$   | $\mathbf{0}$    | $\mathbf{0}$       | $D_{\rv{c}}$       |
 
-All wiring polynomials share the same layout. Circuit wiring polynomials have
-$s(X, 0) = 1$ (because of the `ONE` constraint against $\v{k}_0$) but bonding
-polynomials skip this constraint with $s(X, 0) = 0$.
+Each diagonal block is an $n \times n$ main-diagonal matrix with $1$ at every
+position where the corresponding wire is forced to $0$ (via
+$\revdot{\v{r}}{\v{s}} = 0$) and $0$ at the `SYSTEM` corner and stage-gate
+positions where the wire is unconstrained. Drawing all four blocks (with
+`SYSTEM`-wire $0$ subscripted by the wire name, stage $0$s subscripted only
+at the boundaries of the carve-out, and plain $1$s in between):
+
+$$
+D_{\v{d}}^{(g,m)} =
+\begin{bmatrix}
+\color{blue}{0_{\v{d}_0}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{d}_g} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{d}_{g+m-1}} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 \\
+\end{bmatrix}
+\qquad
+D_{\rv{b}}^{(g,m)} =
+\begin{bmatrix}
+1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_{g+m-1}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_g} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_0} \\
+\end{bmatrix}
+$$
+
+$$
+D_{\v{a}}^{(g,m)} =
+\begin{bmatrix}
+\color{#dc2626}{0_{\v{a}_0}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{a}_g} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{a}_{g+m-1}} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 \\
+\end{bmatrix}
+\qquad
+D_{\rv{c}}^{(g,m)} =
+\begin{bmatrix}
+1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{c}_{g+m-1}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{c}_g} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \color{#7e22ce}{\kappa_{\v{c}_0}} \\
+\end{bmatrix}
+$$
+
+The bottom-right of $D_{\rv{c}}$ holds $\color{#7e22ce}{\kappa}$ rather than
+$0$: $\v{c}_0$'s `SYSTEM` exemption would put a $0$ at $(X^{4n-1}, Y^{4n-1})$,
+but the registry adds $\kappa \cdot (XY)^{4n-1}$ at exactly that slot (see
+[the SYSTEM gate](#the-system-gate) properties), so the effective coefficient
+once the bonding polynomial is assembled into the registry polynomial $m(W, X,
+Y)$ is $\kappa$. The other three `SYSTEM` corners stay $0$ — $\kappa$ touches
+only the $\v{c}_0$ slot.
 
 [`ONE`]: ragu_core::drivers::Driver::ONE
