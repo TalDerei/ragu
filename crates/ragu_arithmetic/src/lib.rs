@@ -83,6 +83,10 @@ pub use coeff::Coeff;
 pub use domain::Domain;
 use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 pub use fft::{Ring, bitreverse};
+/// Internal re-export consumed by [`par_join!`]. `par_join!` expands to a path
+/// through `$crate`, so the helper must be reachable at the crate root.
+#[doc(hidden)]
+pub use multicore::join;
 pub use pasta_curves::{
     arithmetic::{Coordinates, CurveAffine, CurveExt},
     deferred::DeferredField,
@@ -103,6 +107,21 @@ pub use u128 as Uendo;
 pub use util::{
     batch_to_affine, dot, eval, factor, factor_iter, geosum, low_u64, mul, poly_with_roots,
 };
+
+/// N-way parallel join for coarse-grained task parallelism.
+///
+/// Like rayon's `join` for more than two closures: nests internally and
+/// flattens the result into a single tuple. Each closure may return a
+/// different type. Supports 2..=4 closures — for higher arities prefer a
+/// data-parallel iterator.
+///
+/// ```
+/// use ragu_arithmetic::par_join;
+///
+/// let (a, b, c) = par_join!(|| 1u32, || "two", || 3.0_f64);
+/// assert_eq!((a, b, c), (1, "two", 3.0));
+/// ```
+pub use crate::__ragu_arithmetic_par_join as par_join;
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
 /// is the base field of the other, and vice-versa.
