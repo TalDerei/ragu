@@ -8,7 +8,7 @@
 //! This phase of the fuse operation is also used to commit to the $m(W, x, y)$
 //! restriction.
 
-use ragu_arithmetic::{Cycle, ff::Field, par_join, rand::CryptoRng};
+use ragu_arithmetic::{Cycle, bitreverse, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
@@ -39,17 +39,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let y = *y.value().take();
         let xz = x * *z.value().take();
 
-        let registry_xy_poly = B::registry_xy(&self.native_registry, x, y);
+        let registry_xy_evals = B::registry_wxy_over_domain(&self.native_registry, x, y);
+        let log2_n = self.native_registry.log2_domain();
 
-        // Evaluate the registry polynomial at all internal-circuit points and
-        // at w concurrently with the left/right child witness construction.
-        let (fixed_registry, registry_wxy, left_witness, right_witness) = par_join!(
-            // TODO: these can all be evaluated at the same time; in fact,
-            // that's what registry.xy is supposed to allow.
-            || native::InternalCircuitValues::from_fn(|id| B::sparse_eval(
-                &registry_xy_poly,
-                id.circuit_index().omega_j()
-            )),
+        let fixed_registry = native::InternalCircuitValues::from_fn(|id| {
+            let i = usize::from(id.circuit_index()) as u32;
+            registry_xy_evals[bitreverse(i, log2_n) as usize]
+        });
+        let registry_xy_poly = B::registry_interpolate_xy(&self.native_registry, registry_xy_evals);
+
+        // Evaluate the registry polynomial at w concurrently with the
+        // left/right child witness construction.
+        let (registry_wxy, left_witness, right_witness) = par_join!(
             || B::sparse_eval(&registry_xy_poly, w),
             || native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
                 left,

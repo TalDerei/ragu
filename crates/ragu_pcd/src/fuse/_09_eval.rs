@@ -46,10 +46,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             || native::stages::eval::ChildEvaluationsWitness::from_proof::<C, R, B>(left, u),
             || native::stages::eval::ChildEvaluationsWitness::from_proof::<C, R, B>(right, u),
             || native::stages::eval::CurrentStepWitness {
-                // TODO: registry_wx0_poly, registry_wx1_poly, and
-                // registry_wy.poly are each evaluated independently here. A
-                // batched evaluation path (analogous to wxy_over_domain) could
-                // amortize the per-circuit cost across all three.
                 registry_wx0: B::sparse_eval(&s_prime.registry_wx0_poly, u),
                 registry_wx1: B::sparse_eval(&s_prime.registry_wx1_poly, u),
                 registry_wy: B::sparse_eval(&registry_wy.poly, u),
