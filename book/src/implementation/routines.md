@@ -391,28 +391,42 @@ therefore capture the positional values of these output wires.
 struct DeepFingerprint {
     base: BaseFingerprint,
     /// deep hash:
-    /// H(self.base, output_gadget, output_gadget.len(),
-    ///   child_deep_hashes, input_type, output_type)
+    /// H(self.base, output_len, output_gadget,
+    ///   children_len, child_deep_hashes)
     deep: u64,
 }
 ```
 
-Ragu augments the base fingerprint with the wire values of the output gadget,
-the output gadget's length (to prevent length-extension collisions when two
-routines pack different amounts of state into structurally similar output
-shapes), the deep fingerprints of all child invocations (one level deeper),
-and the `TypeId` of the input and output gadget types (optional,
-defense-in-depth only). The monomial evaluation of output wires already
-encodes their positions relative to the start of the sub-routine, and thus
-transitively relative to the start of the parent routine. Because the
-parent's deep fingerprint recursively folds in the deep hashes of all
-children, the final hash binds the entire invocation tree.
+Ragu augments the base fingerprint with the output gadget's length, its wire
+values, the number of child invocations, and the deep fingerprints of all
+child invocations (one level deeper). Both lengths prevent length-extension
+collisions: two routines that pack different amounts of state into
+structurally similar output shapes — or that have differently sized child
+arrays — must produce different deep fingerprints. The monomial
+evaluation of output wires already encodes their positions relative to the
+start of the sub-routine, and thus transitively relative to the start of the
+parent routine. Because the parent's deep fingerprint recursively folds in
+the deep hashes of all children, the final hash binds the entire invocation
+tree.
 
 Composition is via hashing rather than algebraic combination: combining
 fingerprints across tree levels with field arithmetic would risk interference
 between layers and break the linear independence that Schwartz–Zippel relies
 on at the base level. Hashing keeps each level's fingerprint as an opaque
 equality tag while still binding the full tree.
+
+Notably, the input and output [`GadgetKind`][gadgetkind-page] types are
+deliberately _absent_ from the deep hash. From a polynomial perspective the
+contribution to $s(X, Y)$ is type-oblivious, and two invocations whose output
+wires resolve to equivalent streams are interchangeable even when their
+output Rust types differ — for instance, one routine returning `Element` and
+another returning a thin wrapper `MyElement` that encodes a single field
+element identically. Including `TypeId`s would mark such pairs as
+deep-inequivalent and block legitimate memoization without adding any
+soundness margin. The discipline that lets the driver hand back a correctly
+typed output gadget without consulting types in the fingerprint is a
+gadget-layer property, discussed in
+[Output Gadget Reconstruction](#output-reconstruction).
 
 
 [^swapped]: As an example, suppose two `RoutineB` invocations each nest a call
@@ -550,6 +564,48 @@ a single memoizable unit. This is the key advantage of the deep fingerprint: it
 enables full-tree memoization rather than segment-by-segment caching.
 ```
 
+### Output Gadget Reconstruction {#output-reconstruction}
+
+Caching $g_1, g_2, g_3$ makes the contribution to $s(X, Y)$ replayable, but
+the caller still expects a typed output gadget on every invocation —
+including those whose body is skipped on a cache hit. The driver synthesizes
+that gadget by _injecting_ the cached output wires, [shifted](#shifting) to
+the new offset, into a freshly assembled output gadget rather than re-running
+the body to allocate them.
+
+For this injection to be sound, the gadget layer must guarantee that the
+gadget is unambiguously reconstructible from the wire stream alone. We call
+this property **allocation determinism**:
+
+> Given a [`GadgetKind`][gadgetkind-page] and the wire stream produced at the
+> routine boundary, a deterministic algorithm assembles the gadget instance
+> using the stream's length as the only dynamic input, with no out-of-band
+> metadata.
+
+Allocation determinism is strictly weaker than the wire-layout determinism
+that classical [fungibility](../guide/gadgets/index.md#fungibility) implies:
+a gadget kind may own a runtime-sized collection (the stream length resolves
+the count, and any divergence is already caught by the fingerprint), so
+`Vec`-shaped gadgets are admissible. What it rules out are shapes that need
+a side-channel discriminant — most notably enum-shaped gadgets, where
+variant choice cannot in general be recovered from the wire stream (two
+variants may share wire counts, or the variant set may evolve such that
+they collide).
+
+Allocation determinism is the gadget-side counterpart to deep fingerprinting.
+The deep fingerprint guarantees that two invocations contribute identically
+to $s(X, Y)$ and produce equivalent output wire streams; allocation
+determinism guarantees that any gadget reconstructed from such a stream
+agrees with what the body would have produced. Together they make output
+injection safe without consulting gadget types in the fingerprint, which is
+why the deep hash omits `TypeId`s.
+
+Constraint-semantic equivalence — that a `GadgetKind` also pins down the
+constraints applied to its allocated wires — is orthogonal to memoization
+soundness (the constraints live inside the routine body and are already
+captured by the fingerprint scalar) but remains required as an API contract
+so circuit code can reason about a gadget's invariants from its type alone.
+
 When matching fingerprints occur only _within_ a single circuit, memoization
 requires nothing beyond caching and repositioning: the driver records the
 contribution on the first invocation and rescales it for subsequent ones.
@@ -638,3 +694,4 @@ that omits a necessary field — not only bugs in the memoization code.
 [`SegmentRecord`]: ragu_circuits::metrics::SegmentRecord
 [`Any`]: core::any::Any
 [conversions]: ../guide/gadgets/conversion.md
+[gadgetkind-page]: ../guide/gadgets/gadgetkind.md
