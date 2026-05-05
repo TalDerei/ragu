@@ -9,7 +9,7 @@
 //! restriction.
 
 use ff::Field;
-use ragu_arithmetic::{Cycle, par_join};
+use ragu_arithmetic::{Cycle, bitreverse, par_join};
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
@@ -39,16 +39,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let xz = x * *z.value().take();
 
-        let registry_xy_poly = self.native_registry.xy(x, y);
+        let registry_xy_evals = self.native_registry.wxy_over_domain(x, y);
+        let log2_n = self.native_registry.log2_domain();
 
-        // Evaluate the registry polynomial at all internal-circuit points and
-        // at w concurrently with the left/right child witness construction.
-        let (fixed_registry, registry_wxy, left_witness, right_witness) = par_join!(
-            // TODO: these can all be evaluated at the same time; in fact,
-            // that's what registry.xy is supposed to allow.
-            || native::InternalCircuitValues::from_fn(
-                |id| registry_xy_poly.eval(id.circuit_index().omega_j())
-            ),
+        let fixed_registry = native::InternalCircuitValues::from_fn(|id| {
+            let i = usize::from(id.circuit_index()) as u32;
+            registry_xy_evals[bitreverse(i, log2_n) as usize]
+        });
+        let registry_xy_poly = self.native_registry.interpolate_xy(registry_xy_evals);
+
+        // Evaluate the registry polynomial at w concurrently with the
+        // left/right child witness construction.
+        let (registry_wxy, left_witness, right_witness) = par_join!(
             || registry_xy_poly.eval(w),
             || native::stages::query::ChildEvaluationsWitness::from_proof(
                 left,

@@ -410,32 +410,60 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $W$.
+    ///
+    /// Composed of [`wxy_over_domain`](Self::wxy_over_domain) followed by
+    /// [`interpolate_xy`](Self::interpolate_xy). When a caller needs both
+    /// representations, it can call those two methods directly to share a
+    /// single per-circuit pass.
     pub fn xy(&self, x: F, y: F) -> sparse::Polynomial<F, R> {
-        let key_scalar = self.key_sxy(x, y);
-        let mut coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
+        let evals = self.wxy_over_domain(x, y);
+        self.interpolate_xy(evals)
+    }
 
+    /// Evaluate the registry polynomial at every element of its $W$-domain
+    /// with $X = x$, $Y = y$, returning evaluations $m(\omega^j, x, y)$ for
+    /// $j \in [0, n)$.
+    ///
+    /// The returned vector is ordered by $j$, not by circuit index — circuit
+    /// $i$'s value $s\_{i}(x, y) = m(\omega\_{j(i)}, x, y)$ lives at
+    /// `evals[bitreverse(i, log2_n)]`. Domain positions with no registered
+    /// circuit hold only the W-independent key contribution.
+    pub fn wxy_over_domain(&self, x: F, y: F) -> Vec<F> {
+        // The key term k * (XY)^{4n-1} has no W factor, so it adds the same
+        // scalar to every domain evaluation.
+        let key_scalar = self.key_sxy(x, y);
+        let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
+
+        let mut evals = alloc::vec![key_scalar; self.domain.n()];
         // Masking polynomials return only -notch from sxy(); add the shared
         // global term to each mask slot inline.
-        let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
             let mut v = circuit.sxy(x, y, &self.floor_plans[i]);
             if circuit.is_mask() {
                 v += global_xy;
             }
-            coeffs[j] = v;
+            evals[j] += v;
         }
+        evals
+    }
 
-        // Convert from the Lagrange basis.
-        let domain = &self.domain;
-        domain.ifft(&mut coeffs[..domain.n()]);
+    /// Interpolate the Lagrange-basis evaluations from
+    /// [`wxy_over_domain`](Self::wxy_over_domain) into the monomial-basis
+    /// polynomial $m(W, x, y)$ via an inverse FFT.
+    ///
+    /// Consumes `evals` and reuses its allocation as the polynomial's
+    /// coefficient buffer. `evals.len()` must equal the registry's domain size.
+    pub fn interpolate_xy(&self, mut evals: Vec<F>) -> sparse::Polynomial<F, R> {
+        assert_eq!(evals.len(), self.domain.n());
+        self.domain.ifft(&mut evals);
+        sparse::Polynomial::from_coeffs(evals)
+    }
 
-        // The key term k * (XY)^{4n-1} has no W factor, so it evaluates to
-        // the same scalar at every domain point. After IFFT the contribution
-        // lives entirely in the W^0 (DC) coefficient.
-        coeffs[0] += key_scalar;
-
-        sparse::Polynomial::from_coeffs(coeffs)
+    /// Returns $\log_2$ of the registry's $W$-domain size (the smallest power
+    /// of two that fits all registered circuits).
+    pub fn log2_domain(&self) -> u32 {
+        self.domain.log2_n()
     }
 
     /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
@@ -770,6 +798,58 @@ mod tests {
             assert_eq!(wxy_value, wx_poly.eval(y));
 
             w *= registry.domain.omega();
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_wxy_over_domain_consistency() -> Result<()> {
+        // Use a non-power-of-two count so the domain has zero-padded slots.
+        let registry = TestRegistryBuilder::new()
+            .register_circuit(SquareCircuit { times: 2 })?
+            .register_circuit(SquareCircuit { times: 5 })?
+            .register_circuit(SquareCircuit { times: 10 })?
+            .register_circuit(SquareCircuit { times: 11 })?
+            .register_circuit(SquareCircuit { times: 19 })?
+            .finalize()?;
+
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        let evals = registry.wxy_over_domain(x, y);
+        let poly = registry.xy(x, y);
+
+        assert_eq!(evals.len(), registry.domain.n());
+
+        // evals[k] must equal m(omega^k, x, y) = poly.eval(omega^k).
+        let mut omega_pow = Fp::ONE;
+        for (k, eval) in evals.iter().enumerate() {
+            assert_eq!(
+                *eval,
+                poly.eval(omega_pow),
+                "evals[{}] should equal poly.eval(omega^{})",
+                k,
+                k
+            );
+            omega_pow *= registry.domain.omega();
+        }
+
+        // For each registered circuit i, its evaluation at omega_j(i) lives
+        // at the bit-reversed domain position.
+        let log2_n = registry.log2_domain();
+        for i in 0..registry.num_circuits() {
+            let k = bitreverse(i as u32, log2_n) as usize;
+            let omega_j = CircuitIndex::new(i).omega_j::<Fp>();
+            assert_eq!(evals[k], poly.eval(omega_j));
+        }
+
+        // interpolate_xy on the evals reproduces xy() (compared via
+        // evaluation at random off-domain points).
+        let interpolated = registry.interpolate_xy(evals);
+        for _ in 0..4 {
+            let probe = Fp::random(&mut rand::rng());
+            assert_eq!(interpolated.eval(probe), poly.eval(probe));
         }
 
         Ok(())
