@@ -8,7 +8,7 @@
 //! This phase of the fuse operation is also used to commit to the $m(W, x, y)$
 //! restriction.
 
-use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
+use ragu_arithmetic::{Cycle, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
@@ -43,41 +43,30 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
         // Evaluate the registry polynomial at all internal-circuit points and
         // at w concurrently with the left/right child witness construction.
-        let ((fixed_registry, registry_wxy), (left_witness, right_witness)) = maybe_rayon::join(
-            || {
-                (
-                    // TODO: these can all be evaluated at the same time; in fact,
-                    // that's what registry.xy is supposed to allow.
-                    native::InternalCircuitValues::from_fn(|id| {
-                        B::sparse_eval(&registry_xy_poly, id.circuit_index().omega_j())
-                    }),
-                    B::sparse_eval(&registry_xy_poly, w),
-                )
-            },
-            || {
-                maybe_rayon::join(
-                    || {
-                        native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
-                            left,
-                            w,
-                            x,
-                            xz,
-                            &registry_xy_poly,
-                            &registry_wy.poly,
-                        )
-                    },
-                    || {
-                        native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
-                            right,
-                            w,
-                            x,
-                            xz,
-                            &registry_xy_poly,
-                            &registry_wy.poly,
-                        )
-                    },
-                )
-            },
+        let (fixed_registry, registry_wxy, left_witness, right_witness) = par_join!(
+            // TODO: these can all be evaluated at the same time; in fact,
+            // that's what registry.xy is supposed to allow.
+            || native::InternalCircuitValues::from_fn(|id| B::sparse_eval(
+                &registry_xy_poly,
+                id.circuit_index().omega_j()
+            )),
+            || B::sparse_eval(&registry_xy_poly, w),
+            || native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
+                left,
+                w,
+                x,
+                xz,
+                &registry_xy_poly,
+                &registry_wy.poly,
+            ),
+            || native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
+                right,
+                w,
+                x,
+                xz,
+                &registry_xy_poly,
+                &registry_wy.poly,
+            ),
         );
 
         let query_witness = native::stages::query::Witness {
