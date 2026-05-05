@@ -41,29 +41,50 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
         let registry_xy_poly = B::registry_xy(&self.native_registry, x, y);
 
+        // Evaluate the registry polynomial at all internal-circuit points and
+        // at w concurrently with the left/right child witness construction.
+        let ((fixed_registry, registry_wxy), (left_witness, right_witness)) = maybe_rayon::join(
+            || {
+                (
+                    // TODO: these can all be evaluated at the same time; in fact,
+                    // that's what registry.xy is supposed to allow.
+                    native::InternalCircuitValues::from_fn(|id| {
+                        B::sparse_eval(&registry_xy_poly, id.circuit_index().omega_j())
+                    }),
+                    B::sparse_eval(&registry_xy_poly, w),
+                )
+            },
+            || {
+                maybe_rayon::join(
+                    || {
+                        native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
+                            left,
+                            w,
+                            x,
+                            xz,
+                            &registry_xy_poly,
+                            &registry_wy.poly,
+                        )
+                    },
+                    || {
+                        native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
+                            right,
+                            w,
+                            x,
+                            xz,
+                            &registry_xy_poly,
+                            &registry_wy.poly,
+                        )
+                    },
+                )
+            },
+        );
+
         let query_witness = native::stages::query::Witness {
-            // TODO: these can all be evaluated at the same time; in fact,
-            // that's what registry.xy is supposed to allow.
-            fixed_registry: native::InternalCircuitValues::from_fn(|id| {
-                B::sparse_eval(&registry_xy_poly, id.circuit_index().omega_j())
-            }),
-            registry_wxy: B::sparse_eval(&registry_xy_poly, w),
-            left: native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
-                left,
-                w,
-                x,
-                xz,
-                &registry_xy_poly,
-                &registry_wy.poly,
-            ),
-            right: native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
-                right,
-                w,
-                x,
-                xz,
-                &registry_xy_poly,
-                &registry_wy.poly,
-            ),
+            fixed_registry,
+            registry_wxy,
+            left: left_witness,
+            right: right_witness,
         };
 
         let rx = native::stages::query::Stage::<C, R, HEADER_SIZE>::rx(
