@@ -322,6 +322,85 @@ pub enum RxComponent {
     Rx(RxIndex),
 }
 
+/// Static prefix of the polynomial-query order used to construct and verify
+/// the fuse quotient polynomial $f(X)$.
+///
+/// These queries are consumed by both the prover-side `compute_f` path and the
+/// `compute_v` circuit. Keeping this prefix in one ordered list prevents the
+/// two implementations from drifting independently; the dynamic suffixes are
+/// still driven by [`RxIndex::ALL`] and [`InternalCircuitIndex::ALL`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StaticFQuery {
+    /// Left child proof $p(u)=v$ check.
+    LeftP,
+    /// Right child proof $p(u)=v$ check.
+    RightP,
+    /// Left child registry-xy polynomial queried at the current `w`.
+    LeftRegistryXyAtW,
+    /// Right child registry-xy polynomial queried at the current `w`.
+    RightRegistryXyAtW,
+    /// Current `m(w, x_0, Y)` queried at the left child's `y`.
+    RegistryWx0AtLeftY,
+    /// Current `m(w, x_1, Y)` queried at the right child's `y`.
+    RegistryWx1AtRightY,
+    /// Current `m(w, x_0, Y)` queried at the current `y`.
+    RegistryWx0AtY,
+    /// Current `m(w, x_1, Y)` queried at the current `y`.
+    RegistryWx1AtY,
+    /// Current `m(w, X, y)` queried at the left child's `x`.
+    RegistryWyAtLeftX,
+    /// Current `m(w, X, y)` queried at the right child's `x`.
+    RegistryWyAtRightX,
+    /// Current `m(w, X, y)` queried at the current `x`.
+    RegistryWyAtX,
+    /// Current registry-xy polynomial queried at the current `w`.
+    RegistryXyAtW,
+    /// Current registry-xy polynomial queried at the left child's circuit id.
+    RegistryXyAtLeftCircuitId,
+    /// Current registry-xy polynomial queried at the right child's circuit id.
+    RegistryXyAtRightCircuitId,
+    /// Left child `a` polynomial queried at `xz`.
+    LeftAbAAtXz,
+    /// Left child `b` polynomial queried at `x`.
+    LeftAbBAtX,
+    /// Right child `a` polynomial queried at `xz`.
+    RightAbAAtXz,
+    /// Right child `b` polynomial queried at `x`.
+    RightAbBAtX,
+    /// Current accumulator `a` polynomial queried at `xz`.
+    CurrentAAtXz,
+    /// Current accumulator `b` polynomial queried at `x`.
+    CurrentBAtX,
+}
+
+/// Ordered static prefix for fuse quotient polynomial queries.
+pub(crate) const STATIC_F_QUERIES: [StaticFQuery; 20] = [
+    StaticFQuery::LeftP,
+    StaticFQuery::RightP,
+    StaticFQuery::LeftRegistryXyAtW,
+    StaticFQuery::RightRegistryXyAtW,
+    StaticFQuery::RegistryWx0AtLeftY,
+    StaticFQuery::RegistryWx1AtRightY,
+    StaticFQuery::RegistryWx0AtY,
+    StaticFQuery::RegistryWx1AtY,
+    StaticFQuery::RegistryWyAtLeftX,
+    StaticFQuery::RegistryWyAtRightX,
+    StaticFQuery::RegistryWyAtX,
+    StaticFQuery::RegistryXyAtW,
+    StaticFQuery::RegistryXyAtLeftCircuitId,
+    StaticFQuery::RegistryXyAtRightCircuitId,
+    StaticFQuery::LeftAbAAtXz,
+    StaticFQuery::LeftAbBAtX,
+    StaticFQuery::RightAbAAtXz,
+    StaticFQuery::RightAbBAtX,
+    StaticFQuery::CurrentAAtXz,
+    StaticFQuery::CurrentBAtX,
+];
+
+/// Total number of polynomial queries used to construct and verify $f(X)$.
+pub(crate) const NUM_F_QUERIES: usize =
+    STATIC_F_QUERIES.len() + 2 * RxIndex::NUM + InternalCircuitIndex::NUM;
+
 /// Registers internal native circuits and masks into the provided registry.
 ///
 /// Does not register internal steps (rerandomize, trivial); those are
@@ -419,4 +498,28 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     );
 
     Ok(registry)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{InternalCircuitIndex, NUM_F_QUERIES, RxIndex, STATIC_F_QUERIES};
+
+    #[test]
+    fn f_query_count_matches_static_and_dynamic_sections() {
+        assert_eq!(STATIC_F_QUERIES.len(), 20);
+        assert_eq!(
+            NUM_F_QUERIES,
+            STATIC_F_QUERIES.len() + 2 * RxIndex::NUM + InternalCircuitIndex::NUM
+        );
+    }
+
+    #[test]
+    fn static_f_queries_are_unique() {
+        for (i, query) in STATIC_F_QUERIES.iter().enumerate() {
+            assert!(
+                !STATIC_F_QUERIES[..i].contains(query),
+                "duplicate static f query: {query:?}"
+            );
+        }
+    }
 }
