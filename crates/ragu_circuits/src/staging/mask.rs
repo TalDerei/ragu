@@ -309,8 +309,7 @@ pub fn verify_stage_support<F: Field, R: Rank>(
 ) -> bool {
     let n = R::n();
     let stage_end = skip_gates + num_gates;
-    let gate_allowed =
-        |gate: usize| gate == 0 || (gate >= skip_gates && gate < stage_end);
+    let gate_allowed = |gate: usize| gate == 0 || (gate >= skip_gates && gate < stage_end);
 
     for (degree, _coeff) in rx.iter_nonzero() {
         let wire_ok = if degree < n {
@@ -729,8 +728,10 @@ mod tests {
         // Plant a nonzero on the a-wire of gate 250 — INSIDE stage 2's
         // notch [200, 300) and OUTSIDE stage 1's notch [1, 101).
         const PLANTED_GATE: usize = 250;
-        assert!(PLANTED_GATE >= STAGE2_SKIP && PLANTED_GATE < STAGE2_SKIP + STAGE2_NUM);
-        assert!(PLANTED_GATE < STAGE1_SKIP || PLANTED_GATE >= STAGE1_SKIP + STAGE1_NUM);
+        const _: () =
+            assert!(PLANTED_GATE >= STAGE2_SKIP && PLANTED_GATE < STAGE2_SKIP + STAGE2_NUM);
+        const _: () =
+            assert!(PLANTED_GATE < STAGE1_SKIP || PLANTED_GATE >= STAGE1_SKIP + STAGE1_NUM);
 
         let n = R::n();
         let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
@@ -797,8 +798,8 @@ mod tests {
         let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
 
         // SYSTEM gate: a[0] = alpha (nonzero), d[0] = 1.
-        coeffs[2 * n - 1 - 0] = Fp::from(7u64); // a[0]
-        coeffs[4 * n - 1 - 0] = Fp::ONE; // d[0]
+        coeffs[2 * n - 1] = Fp::from(7u64); // a[0]
+        coeffs[4 * n - 1] = Fp::ONE; // d[0]
 
         // Active window: a[g] and d[g] for g in [10, 60).
         for g in SKIP..SKIP + NUM {

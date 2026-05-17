@@ -37,39 +37,40 @@ use crate::{
 fn verify_native_stage_supports<C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     proof: &Proof<C, R>,
 ) -> bool {
-    let stage_windows: [(RxIndex, usize, usize); 5] = [
-        (
-            RxIndex::Preamble,
-            <stages::preamble::Stage<C, R, HEADER_SIZE>>::skip_gates(),
-            <stages::preamble::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
-        ),
-        (
-            RxIndex::OuterError,
-            <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
-            <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
-                _,
-                _,
-            >>::num_gates(),
-        ),
-        (
-            RxIndex::InnerError,
-            <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
-            <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
-                _,
-                _,
-            >>::num_gates(),
-        ),
-        (
-            RxIndex::Query,
-            <stages::query::Stage<C, R, HEADER_SIZE>>::skip_gates(),
-            <stages::query::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
-        ),
-        (
-            RxIndex::Eval,
-            <stages::eval::Stage<C, R, HEADER_SIZE>>::skip_gates(),
-            <stages::eval::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
-        ),
-    ];
+    let stage_windows: [(RxIndex, usize, usize); 5] =
+        [
+            (
+                RxIndex::Preamble,
+                <stages::preamble::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+                <stages::preamble::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+            ),
+            (
+                RxIndex::OuterError,
+                <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
+                <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
+                    _,
+                    _,
+                >>::num_gates(),
+            ),
+            (
+                RxIndex::InnerError,
+                <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
+                <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
+                    _,
+                    _,
+                >>::num_gates(),
+            ),
+            (
+                RxIndex::Query,
+                <stages::query::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+                <stages::query::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+            ),
+            (
+                RxIndex::Eval,
+                <stages::eval::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+                <stages::eval::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+            ),
+        ];
 
     stage_windows
         .into_iter()
@@ -389,7 +390,7 @@ mod tests {
         // Baseline: an honestly-seeded leaf (trivial step) verifies.
         let (leaf, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
         assert!(
-            app.verify(&leaf, &mut StdRng::seed_from_u64(5678)).unwrap(),
+            app.verify(&leaf, StdRng::seed_from_u64(5678)).unwrap(),
             "honestly-seeded trivial leaf must verify",
         );
 
@@ -405,7 +406,7 @@ mod tests {
             sparse::Polynomial::<Fp, TestR>::from_coeffs(coeffs);
 
         let result = app
-            .verify(&tampered, &mut StdRng::seed_from_u64(5678))
+            .verify(&tampered, StdRng::seed_from_u64(5678))
             .expect("verify should not error");
         assert!(
             !result,
