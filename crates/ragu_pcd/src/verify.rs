@@ -366,4 +366,50 @@ mod tests {
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
         assert!(!result, "verify should reject wrong right_header size");
     }
+
+    /// End-to-end check that the per-stage support fence catches a
+    /// malformed stage rx that the bundled bonding revdot would miss.
+    ///
+    /// Plant a nonzero coefficient on `native_outer_error_rx`'s a-wire at
+    /// gate 500. Stage `OuterError`'s own window is `[226, 360)`; stage
+    /// `InnerError`'s window is `[360, 696)`. Gate 500 lies inside
+    /// `InnerError`'s window — i.e. inside the bundled `OuterInnerError`
+    /// union — so the bundled mask is zero there and the bundled revdot
+    /// would not detect the planted entry. The support fence rejects it
+    /// because gate 500 lies outside `OuterError`'s own window.
+    #[test]
+    fn verify_rejects_native_stage_rx_planted_outside_its_window() {
+        use ragu_pasta::Fp;
+
+        use crate::step::internal::trivial::Trivial;
+
+        let app = create_test_app();
+        let mut rng = StdRng::seed_from_u64(1234);
+
+        // Baseline: an honestly-seeded leaf (trivial step) verifies.
+        let (leaf, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
+        assert!(
+            app.verify(&leaf, &mut StdRng::seed_from_u64(5678)).unwrap(),
+            "honestly-seeded trivial leaf must verify",
+        );
+
+        // Plant a `0xDEADBEEF` on `native_outer_error_rx`'s a-wire at gate 500.
+        // Gate 500 is inside InnerError's window [360, 696) (the OuterInnerError
+        // bundle's union) and outside OuterError's own window [226, 360).
+        let mut tampered = leaf;
+        let n = <TestR as Rank>::n();
+        const PLANTED_GATE: usize = 500;
+        let mut coeffs = alloc::vec![Fp::ZERO; <TestR as Rank>::num_coeffs()];
+        coeffs[2 * n - 1 - PLANTED_GATE] = Fp::from(0xDEADBEEFu64);
+        tampered.proof_mut().native_outer_error_rx =
+            sparse::Polynomial::<Fp, TestR>::from_coeffs(coeffs);
+
+        let result = app
+            .verify(&tampered, &mut StdRng::seed_from_u64(5678))
+            .expect("verify should not error");
+        assert!(
+            !result,
+            "tampered leaf must be rejected by the per-stage support fence",
+        );
+    }
 }

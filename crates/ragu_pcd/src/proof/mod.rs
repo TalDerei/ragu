@@ -64,6 +64,13 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Pcd<C, R, H> {
         &self.proof
     }
 
+    /// Returns a mutable reference to the recursive proof. Used by tests
+    /// that tamper with proof fields to exercise verifier-side fences.
+    #[cfg(test)]
+    pub(crate) fn proof_mut(&mut self) -> &mut Proof<C, R> {
+        &mut self.proof
+    }
+
     /// Consumes the proof-carrying data and returns the proof and data
     /// separately.
     pub(crate) fn into_parts(self) -> (Proof<C, R>, H::Data) {
