@@ -123,6 +123,7 @@ mod rx_driver;
 use alloc::boxed::Box;
 
 pub use builder::{StageBuilder, StageGuard};
+pub use mask::verify_stage_support;
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::{

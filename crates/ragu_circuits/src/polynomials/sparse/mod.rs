@@ -214,6 +214,21 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         }
     }
 
+    /// Returns an iterator over `(degree, &coefficient)` pairs for every
+    /// stored nonzero coefficient, in ascending degree order. Skips both
+    /// structural gaps between blocks and inline zeros within blocks.
+    pub fn iter_nonzero(&self) -> impl Iterator<Item = (usize, &F)> + '_ {
+        self.blocks.iter().flat_map(|(start, data)| {
+            data.iter().enumerate().filter_map(move |(i, c)| {
+                if bool::from(c.is_zero()) {
+                    None
+                } else {
+                    Some((start + i, c))
+                }
+            })
+        })
+    }
+
     /// Merges another polynomial into this one using the given binary
     /// operation, pruning all-zero blocks from the result.
     fn combine_assign(&mut self, other: &Self, mut op: impl FnMut(&mut F, &F)) {

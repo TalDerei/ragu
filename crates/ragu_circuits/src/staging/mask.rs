@@ -283,6 +283,58 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
     }
 }
 
+/// Structural well-formedness check for a stage rx: every nonzero
+/// coefficient must live on the `a` or `d` wires at gate `0` (SYSTEM)
+/// or within `[skip_gates, skip_gates + num_gates)`.
+///
+/// The bundled bonding identity `revdot(rx_i, s_bundle) = 0` no longer
+/// enforces this locally — `s_bundle` is zero on the union of all
+/// bundled stages' windows, so a coefficient planted inside another
+/// stage's window slips through. Called per rx with its own window,
+/// this primitive rejects such plants structurally.
+///
+/// Wire/gate map (trace perspective, `n = R::n()`):
+///
+/// - `c[g]` -> degree `g`           (range `[0, n)`)
+/// - `a[g]` -> degree `2n - 1 - g`  (range `[n, 2n)`)
+/// - `b[g]` -> degree `2n + g`      (range `[2n, 3n)`)
+/// - `d[g]` -> degree `4n - 1 - g`  (range `[3n, 4n)`)
+///
+/// `b` and `c` are rejected wholesale (the honest Standard-allocator
+/// layout is `(a, 0, 0, d)` per gate).
+pub fn verify_stage_support<F: Field, R: Rank>(
+    rx: &sparse::Polynomial<F, R>,
+    skip_gates: usize,
+    num_gates: usize,
+) -> bool {
+    let n = R::n();
+    let stage_end = skip_gates + num_gates;
+    let gate_allowed =
+        |gate: usize| gate == 0 || (gate >= skip_gates && gate < stage_end);
+
+    for (degree, _coeff) in rx.iter_nonzero() {
+        let wire_ok = if degree < n {
+            // c-wire: must be zero everywhere under Standard layout.
+            false
+        } else if degree < 2 * n {
+            // a-wire: gate = 2n - 1 - degree.
+            gate_allowed(2 * n - 1 - degree)
+        } else if degree < 3 * n {
+            // b-wire: must be zero everywhere under Standard layout.
+            false
+        } else {
+            // d-wire: gate = 4n - 1 - degree.
+            gate_allowed(4 * n - 1 - degree)
+        };
+
+        if !wire_ok {
+            return false;
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use core::marker::PhantomData;
@@ -644,6 +696,168 @@ mod tests {
             rx.revdot(&full_sy),
             Fp::ZERO,
             "bundled mask should reject rx with planted entry outside notch union",
+        );
+    }
+
+    /// Demonstrates the soundness gap flagged in PR #688 review (alxiong):
+    /// the bundled mask `s_global - notch_1 - notch_2` zeros out **both**
+    /// stage windows, so a malformed `rx_1` carrying a nonzero coefficient
+    /// inside stage 2's notch slips through `revdot(rx_1, bundled_sy) = 0`.
+    /// The original per-stage check `revdot(rx_1, stage1_sy) = 0` catches
+    /// the same entry because `s_1 = s_global - notch_1` is nonzero on
+    /// stage 2's region.
+    ///
+    /// This test asserts the failure mode is real: the bundled check
+    /// accepts a malformed rx that the per-stage check would reject. It
+    /// passes only as long as the gap exists.
+    #[test]
+    fn test_bundled_mask_misses_cross_stage_planted_rx() {
+        // Stage 1: gates 1..101. Stage 2: gates 200..300. Disjoint.
+        const STAGE1_SKIP: usize = 1;
+        const STAGE1_NUM: usize = 100;
+        const STAGE2_SKIP: usize = 200;
+        const STAGE2_NUM: usize = 100;
+
+        let stage1_mask = StageMask::<R>::new(STAGE1_SKIP, STAGE1_NUM).unwrap();
+        let bundled_mask = StageMask::<R>::new(STAGE1_SKIP, STAGE1_NUM)
+            .unwrap()
+            .with_notch(STAGE2_SKIP, STAGE2_NUM)
+            .unwrap();
+
+        let y = Fp::random(&mut rand::rng());
+
+        // Plant a nonzero on the a-wire of gate 250 — INSIDE stage 2's
+        // notch [200, 300) and OUTSIDE stage 1's notch [1, 101).
+        const PLANTED_GATE: usize = 250;
+        assert!(PLANTED_GATE >= STAGE2_SKIP && PLANTED_GATE < STAGE2_SKIP + STAGE2_NUM);
+        assert!(PLANTED_GATE < STAGE1_SKIP || PLANTED_GATE >= STAGE1_SKIP + STAGE1_NUM);
+
+        let n = R::n();
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        // Trace perspective: a-wire at gate j is at coefficient index 2n - 1 - j.
+        coeffs[2 * n - 1 - PLANTED_GATE] = Fp::from(0xDEADBEEFu64);
+        let malicious_rx_1 = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+
+        // Bundled bonding check: notch_2 zeros s_global on gate 250, so the
+        // planted entry contributes nothing. The malformed rx_1 passes.
+        let mut bundled_sy = super::global_project::<Fp, R>(y);
+        bundled_sy += &bundled_mask.notch_project(y);
+        let bundled_check = malicious_rx_1.revdot(&bundled_sy);
+        assert_eq!(
+            bundled_check,
+            Fp::ZERO,
+            "soundness gap: bundled mask is zero on stage 2's region, so a planted \
+             entry of rx_1 inside stage 2 is invisible to the bundled bonding check",
+        );
+
+        // Per-stage bonding check: stage 1's mask is nonzero on stage 2's
+        // region (notch_1 doesn't reach there), so the same entry is visible
+        // and the check rejects.
+        let mut stage1_sy = super::global_project::<Fp, R>(y);
+        stage1_sy += &stage1_mask.notch_project(y);
+        let stage1_check = malicious_rx_1.revdot(&stage1_sy);
+        assert_ne!(
+            stage1_check,
+            Fp::ZERO,
+            "the original per-stage check rejects the malformed rx_1 — bundling lost \
+             a constraint that the separate-mask protocol enforced",
+        );
+    }
+
+    /// `verify_stage_support` closes the gap from
+    /// [`test_bundled_mask_misses_cross_stage_planted_rx`]: the same
+    /// planted rx that slips past the bundled bonding revdot is rejected
+    /// structurally because gate 250 lies outside stage 1's own window
+    /// `[1, 101)`.
+    #[test]
+    fn test_verify_stage_support_rejects_cross_stage_plant() {
+        const STAGE1_SKIP: usize = 1;
+        const STAGE1_NUM: usize = 100;
+        const PLANTED_GATE: usize = 250;
+
+        let n = R::n();
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[2 * n - 1 - PLANTED_GATE] = Fp::from(0xDEADBEEFu64);
+        let malicious_rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+
+        assert!(
+            !super::verify_stage_support(&malicious_rx, STAGE1_SKIP, STAGE1_NUM),
+            "support check must reject a planted entry outside stage 1's own window",
+        );
+    }
+
+    /// An honest rx that places witnesses only on `a`/`d` wires at
+    /// gate `0` and within `[skip, skip + num)` must be accepted.
+    #[test]
+    fn test_verify_stage_support_accepts_honest_layout() {
+        const SKIP: usize = 10;
+        const NUM: usize = 50;
+
+        let n = R::n();
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+
+        // SYSTEM gate: a[0] = alpha (nonzero), d[0] = 1.
+        coeffs[2 * n - 1 - 0] = Fp::from(7u64); // a[0]
+        coeffs[4 * n - 1 - 0] = Fp::ONE; // d[0]
+
+        // Active window: a[g] and d[g] for g in [10, 60).
+        for g in SKIP..SKIP + NUM {
+            coeffs[2 * n - 1 - g] = Fp::from(g as u64 + 1);
+            coeffs[4 * n - 1 - g] = Fp::from(g as u64 + 100);
+        }
+
+        let honest_rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+
+        assert!(
+            super::verify_stage_support(&honest_rx, SKIP, NUM),
+            "support check must accept an honest (a, 0, 0, d) layout",
+        );
+    }
+
+    /// Stress all four wire / window-position combinations.
+    #[test]
+    fn test_verify_stage_support_rejects_b_and_c_wires() {
+        const SKIP: usize = 5;
+        const NUM: usize = 20;
+        const G_INSIDE: usize = 10;
+        const G_OUTSIDE: usize = 100;
+
+        let n = R::n();
+
+        // c-wire inside window — still rejected (Standard layout forbids c).
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[G_INSIDE] = Fp::ONE;
+        let rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+        assert!(
+            !super::verify_stage_support(&rx, SKIP, NUM),
+            "c-wire (inside window) must be rejected",
+        );
+
+        // b-wire inside window — still rejected.
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[2 * n + G_INSIDE] = Fp::ONE;
+        let rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+        assert!(
+            !super::verify_stage_support(&rx, SKIP, NUM),
+            "b-wire (inside window) must be rejected",
+        );
+
+        // a-wire outside window — rejected.
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[2 * n - 1 - G_OUTSIDE] = Fp::ONE;
+        let rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+        assert!(
+            !super::verify_stage_support(&rx, SKIP, NUM),
+            "a-wire (outside window) must be rejected",
+        );
+
+        // d-wire outside window — rejected.
+        let mut coeffs = alloc::vec![Fp::ZERO; R::num_coeffs()];
+        coeffs[4 * n - 1 - G_OUTSIDE] = Fp::ONE;
+        let rx = sparse::Polynomial::<Fp, R>::from_coeffs(coeffs);
+        assert!(
+            !super::verify_stage_support(&rx, SKIP, NUM),
+            "d-wire (outside window) must be rejected",
         );
     }
 
