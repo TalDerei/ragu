@@ -123,11 +123,17 @@ fn test_nested_internal_circuit_constraint_counts() {
     }
 
     // Stage masks are capped by the StageMask formula (4n-1 constraints, n gates).
-    // BridgeGroup bundles 8 stages into one slot — this is the headline change in PR #688.
     check(NestedIdx::EndoscalarStage, 2048, 8191);
     check(NestedIdx::PointsStage, 2048, 8191);
     check(NestedIdx::PointsFinalStaged, 2048, 8191);
-    check(NestedIdx::BridgeGroup, 2048, 8191);
+    check(NestedIdx::BridgePreamble, 2048, 8191);
+    check(NestedIdx::BridgeSPrime, 2048, 8191);
+    check(NestedIdx::BridgeInnerError, 2048, 8191);
+    check(NestedIdx::BridgeOuterError, 2048, 8191);
+    check(NestedIdx::BridgeAB, 2048, 8191);
+    check(NestedIdx::BridgeQuery, 2048, 8191);
+    check(NestedIdx::BridgeF, 2048, 8191);
+    check(NestedIdx::BridgeEval, 2048, 8191);
 
     check(NestedIdx::Loading, 154, 76);
     check(NestedIdx::Copying(Side::Left), 154, 18);
