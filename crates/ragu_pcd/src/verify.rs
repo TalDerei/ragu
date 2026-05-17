@@ -7,6 +7,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
+    staging::{Stage, StageExt, verify_stage_support},
 };
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::Element;
@@ -17,10 +18,63 @@ use crate::{
     header::Header,
     internal::{
         claims,
-        native::{claims as native_claims, stages::preamble::ProofInputs},
+        native::{
+            RevdotParameters, RxIndex, claims as native_claims, stages,
+            stages::preamble::ProofInputs,
+        },
         nested::claims as nested_claims,
     },
 };
+
+/// Per-rx structural well-formedness check for every native stage in the proof.
+///
+/// Each stage rx is pinned to its own gate window: nonzero coefficients must
+/// live on the `(a, d)` wires at gate `0` (SYSTEM) or within
+/// `[skip, skip + num)` for that stage. Rxs that place coefficients outside
+/// their stage's own window are rejected.
+///
+/// Returns `true` if every native stage rx is admissible.
+fn verify_native_stage_supports<C: Cycle, R: Rank, const HEADER_SIZE: usize>(
+    proof: &Proof<C, R>,
+) -> bool {
+    let stage_windows: [(RxIndex, usize, usize); 5] = [
+        (
+            RxIndex::Preamble,
+            <stages::preamble::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+            <stages::preamble::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+        ),
+        (
+            RxIndex::OuterError,
+            <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
+            <stages::outer_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
+                _,
+                _,
+            >>::num_gates(),
+        ),
+        (
+            RxIndex::InnerError,
+            <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters>>::skip_gates(),
+            <stages::inner_error::Stage<C, R, HEADER_SIZE, RevdotParameters> as StageExt<
+                _,
+                _,
+            >>::num_gates(),
+        ),
+        (
+            RxIndex::Query,
+            <stages::query::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+            <stages::query::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+        ),
+        (
+            RxIndex::Eval,
+            <stages::eval::Stage<C, R, HEADER_SIZE>>::skip_gates(),
+            <stages::eval::Stage<C, R, HEADER_SIZE> as StageExt<_, _>>::num_gates(),
+        ),
+    ];
+
+    stage_windows
+        .into_iter()
+        .all(|(idx, skip, num)| verify_stage_support(&proof[idx], skip, num))
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Verifies some [`Pcd`] for the provided [`Header`].
@@ -54,6 +108,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         if pcd.proof().left_header().len() != HEADER_SIZE
             || pcd.proof().right_header().len() != HEADER_SIZE
         {
+            return Ok(false);
+        }
+
+        // Validate per-stage rx well-formedness. The bundled bonding identity
+        // only catches plants outside the union of all bundled stages' windows;
+        // this structural check rejects plants inside another bundled stage's
+        // window that the bundled revdot would miss.
+        if !verify_native_stage_supports::<C, R, HEADER_SIZE>(pcd.proof()) {
             return Ok(false);
         }
 
