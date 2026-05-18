@@ -7,9 +7,14 @@ name: Continuous fuzzing
 # crash as a failed job + uploaded artifact.
 
 on:
-  # Weekly: Sundays at 00:00 UTC.
+  # Twice-weekly: Sundays and Wednesdays at 00:00 UTC. Spreading the runs
+  # gives libFuzzer fresh mutation randomness on each fire (while still
+  # accumulating the corpus across runs via cache), which empirically
+  # outperforms single long runs for shallow-bug discovery. Catches
+  # regressions ~3 days faster than once-weekly.
   schedule:
     - cron: '0 0 * * 0'
+    - cron: '0 0 * * 3'
   # Ad-hoc trigger from the Actions tab.
   workflow_dispatch:
     inputs:
