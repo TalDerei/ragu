@@ -155,7 +155,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: crates/ragu_testing/fuzz/target
-          key: ${{ runner.os }}-fuzz-target-${{ hashFiles('crates/ragu_testing/fuzz/Cargo.toml') }}-${{ hashFiles('crates/ragu_testing/fuzz/fuzz_targets/**/*.rs') }}
+          key: ${{ runner.os }}-fuzz-target-${{ hashFiles('crates/ragu_testing/fuzz/Cargo.toml') }}-${{ hashFiles('crates/ragu_testing/fuzz/fuzz_targets/**/*.rs') }}-${{ hashFiles('crates/ragu_testing/fuzz/bin/**/*.rs') }}
           restore-keys: |
             ${{ runner.os }}-fuzz-target-
 
