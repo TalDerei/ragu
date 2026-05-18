@@ -42,6 +42,7 @@ TARGETS=(
   fuzz_algebraic_identities
   fuzz_element_assertions
   fuzz_multipack
+  fuzz_point_identities
 )
 
 run_target() {

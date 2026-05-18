@@ -177,3 +177,13 @@ path = "fuzz_targets/fuzz_multipack.rs"
 test = false
 doc = false
 bench = false
+
+# Point gadget identities: complement fuzz_endoscalar's differential testing
+# with direct algebraic identities (endo cube, double-negation,
+# conditional_*), plus the only coverage of double_and_add_incomplete.
+[[bin]]
+name = "fuzz_point_identities"
+path = "fuzz_targets/fuzz_point_identities.rs"
+test = false
+doc = false
+bench = false
