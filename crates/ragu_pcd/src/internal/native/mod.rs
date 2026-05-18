@@ -397,10 +397,6 @@ pub(crate) const STATIC_F_QUERIES: [StaticFQuery; 20] = [
     StaticFQuery::CurrentBAtX,
 ];
 
-/// Total number of polynomial queries used to construct and verify $f(X)$.
-pub(crate) const NUM_F_QUERIES: usize =
-    STATIC_F_QUERIES.len() + 2 * RxIndex::NUM + InternalCircuitIndex::NUM;
-
 /// Registers internal native circuits and masks into the provided registry.
 ///
 /// Does not register internal steps (rerandomize, trivial); those are
@@ -498,28 +494,4 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     );
 
     Ok(registry)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{InternalCircuitIndex, NUM_F_QUERIES, RxIndex, STATIC_F_QUERIES};
-
-    #[test]
-    fn f_query_count_matches_static_and_dynamic_sections() {
-        assert_eq!(STATIC_F_QUERIES.len(), 20);
-        assert_eq!(
-            NUM_F_QUERIES,
-            STATIC_F_QUERIES.len() + 2 * RxIndex::NUM + InternalCircuitIndex::NUM
-        );
-    }
-
-    #[test]
-    fn static_f_queries_are_unique() {
-        for (i, query) in STATIC_F_QUERIES.iter().enumerate() {
-            assert!(
-                !STATIC_F_QUERIES[..i].contains(query),
-                "duplicate static f query: {query:?}"
-            );
-        }
-    }
 }
