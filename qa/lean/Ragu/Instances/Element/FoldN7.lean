@@ -1,13 +1,16 @@
 import Ragu.Circuits.Element.Fold
-import Ragu.Instances.Autogen.Element.Fold
+import Ragu.Instances.Autogen.Element.FoldN7
 import Ragu.Core
 
-namespace Ragu.Instances.Element.Fold
-open Ragu.Instances.Autogen.Element.Fold
+set_option maxHeartbeats 1000000
+
+namespace Ragu.Instances.Element.FoldN7
+open Ragu.Instances.Autogen.Element.FoldN7
 
 def deserializeInput (input : Vector (Expression (F p)) inputLen)
-    : Var Circuits.Element.Fold.Input (F p) :=
-  { x0 := input[0], x1 := input[1], x2 := input[2], s := input[3] }
+    : Var (Circuits.Element.Fold.Input 7) (F p) :=
+  { xs := #v[input[0], input[1], input[2], input[3], input[4], input[5], input[6]],
+    s := input[7] }
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
@@ -20,7 +23,7 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := Circuits.Element.Fold.circuit.isGeneralFormalCircuit.toWithHint
+  reimplementation := (Circuits.Element.Fold.circuit 7).isGeneralFormalCircuit.toWithHint
 
   same_constraints := by
     intro input
@@ -30,9 +33,12 @@ def formal_instance : Core.Statements.FormalInstance where
       GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Element.Fold.circuit, Circuits.Element.Fold.elaborated, Circuits.Element.Fold.main,
+      Circuits.Element.Fold.circuit,
+      Circuits.Element.Fold.elaborated,
+      Circuits.Element.Fold.main,
+      Circuits.Element.Fold.hornerStep,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    constructor
+    rfl
   same_output := by
     intro input
     simp [circuit_norm,
@@ -40,7 +46,11 @@ def formal_instance : Core.Statements.FormalInstance where
       GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
-      Circuits.Element.Fold.circuit, Circuits.Element.Fold.elaborated, Circuits.Element.Fold.main,
+      Circuits.Element.Fold.circuit,
+      Circuits.Element.Fold.elaborated,
+      Circuits.Element.Fold.main,
+      Circuits.Element.Fold.hornerStep,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
+    rfl
 
-end Ragu.Instances.Element.Fold
+end Ragu.Instances.Element.FoldN7

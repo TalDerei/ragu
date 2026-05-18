@@ -1,6 +1,6 @@
 import Ragu.Core
 
-namespace Ragu.Instances.Autogen.Element.Fold
+namespace Ragu.Instances.Autogen.Element.FoldN3
 open Core.Primes
 
 @[reducible]
@@ -30,4 +30,4 @@ def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Ex
   ((var ⟨5⟩) + (input_var[2]))
 ]
 
-end Ragu.Instances.Autogen.Element.Fold
+end Ragu.Instances.Autogen.Element.FoldN3
