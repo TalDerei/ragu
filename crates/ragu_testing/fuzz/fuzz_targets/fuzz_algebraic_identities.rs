@@ -53,6 +53,13 @@
 //!
 //! - double not:             `!!bv == bv`
 //! - self and:               `bv & bv == bv`
+//! - not on constants:       `not(alloc(true)) == false`,
+//!                           `not(alloc(false)) == true`
+//! - and identity:           `and(bv, alloc(true)) == bv`
+//! - and annihilator:        `and(bv, alloc(false)) == false`
+//! - and correctness:        `and(bv, bv2).value() == (bv_val && bv2_val)`
+//! - and commutativity:      `and(bv, bv2) == and(bv2, bv)`
+//! - element() conversion:   `bv.element().value() == (if bv then 1 else 0)`
 //!
 //! # Identities (ConditionalSelect)
 //!
@@ -61,6 +68,7 @@
 //!
 //! - false select:           `cond_select(false, a, b) == a`
 //! - true select:            `cond_select(true, a, b) == b`
+//! - branches equal:         `cond_select(c, x, x) == x` (any `c`)
 //!
 //! If any assertion fails, libFuzzer records a crash with the input
 //! that triggered it.
@@ -81,8 +89,11 @@ struct Input {
     a_bytes: [u8; 32],
     /// 32 raw bytes parsed as canonical Fp via from_repr.
     b_bytes: [u8; 32],
-    /// Boolean witness for the Boolean-side identities.
+    /// First Boolean witness for the Boolean-side identities.
     bv: bool,
+    /// Second Boolean witness, used for and commutativity / correctness
+    /// identities that need two distinct booleans.
+    bv2: bool,
 }
 
 /// Parse 32 bytes as a canonical Fp, falling back to a low-entropy
@@ -101,6 +112,7 @@ fuzz_target!(|input: Input| {
     let a_val = parse_fp(input.a_bytes);
     let b_val = parse_fp(input.b_bytes);
     let bv_val = input.bv;
+    let bv2_val = input.bv2;
 
     // from_repr round-trip: pure field-arithmetic check. Doesn't exercise
     // any gadget; just guards that the canonical byte representation is a
@@ -116,7 +128,7 @@ fuzz_target!(|input: Input| {
         );
     }
 
-    let witness_data = (a_val, b_val, bv_val);
+    let witness_data = (a_val, b_val, bv_val, bv2_val);
 
     let _ = Simulator::<Fp>::simulate(witness_data, |dr, witness| {
         let allocator = &mut Standard::new();
@@ -124,6 +136,7 @@ fuzz_target!(|input: Input| {
         let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
         let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
         let bv = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?;
+        let bv2 = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.3))?;
         let zero = Element::constant(dr, Fp::ZERO);
         let one = Element::constant(dr, Fp::ONE);
 
@@ -477,6 +490,66 @@ fuzz_target!(|input: Input| {
             bv_val,
         );
 
+        // not on constants
+        let true_const = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| true))?;
+        let false_const = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| false))?;
+        let not_true = true_const.not(dr);
+        let not_false = false_const.not(dr);
+        assert!(
+            !not_true.value().take(),
+            "not(true) != false",
+        );
+        assert!(
+            not_false.value().take(),
+            "not(false) != true",
+        );
+
+        // and identity: and(bv, true) == bv
+        let and_true = bv.and(dr, &true_const)?;
+        assert_eq!(
+            and_true.value().take(),
+            bv_val,
+            "and(bv, true) != bv: bv={}",
+            bv_val,
+        );
+
+        // and annihilator: and(bv, false) == false
+        let and_false = bv.and(dr, &false_const)?;
+        assert!(
+            !and_false.value().take(),
+            "and(bv, false) != false: bv={}",
+            bv_val,
+        );
+
+        // and correctness against native: and(bv, bv2).value() == (bv && bv2)
+        let and_correctness = bv.and(dr, &bv2)?;
+        assert_eq!(
+            and_correctness.value().take(),
+            bv_val && bv2_val,
+            "and(bv, bv2) != bv && bv2: bv={} bv2={}",
+            bv_val,
+            bv2_val,
+        );
+
+        // and commutativity: and(bv, bv2) == and(bv2, bv)
+        let and_swapped = bv2.and(dr, &bv)?;
+        assert_eq!(
+            and_correctness.value().take(),
+            and_swapped.value().take(),
+            "and not commutative: bv={} bv2={}",
+            bv_val,
+            bv2_val,
+        );
+
+        // element() conversion: bv.element().value() == (if bv then 1 else 0)
+        let bv_as_elem = bv.element();
+        assert_eq!(
+            *bv_as_elem.value().take(),
+            if bv_val { Fp::ONE } else { Fp::ZERO },
+            "bv.element() != (if bv then 1 else 0): bv={}",
+            bv_val,
+        );
+
         // ------------------------------------------------------------------
         // ConditionalSelect identities
         // ------------------------------------------------------------------
@@ -505,6 +578,16 @@ fuzz_target!(|input: Input| {
             "true-cond conditional_select failed: a={:?} b={:?}",
             a_val,
             b_val,
+        );
+
+        // Equal branches: cond_select(c, x, x) == x regardless of c
+        let bv_select_same = bv.conditional_select(dr, &a, &a)?;
+        assert_eq!(
+            *bv_select_same.value().take(),
+            a_val,
+            "cond_select(bv, a, a) != a: bv={} a={:?}",
+            bv_val,
+            a_val,
         );
 
         Ok(())

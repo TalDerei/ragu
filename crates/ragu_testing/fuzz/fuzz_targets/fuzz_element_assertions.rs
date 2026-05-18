@@ -28,6 +28,11 @@
 //!     `a⁻¹` (requires `a != 0`)
 //!   - NEG: `alloc(a).invert_with(0)` → Err (since `a * 0 = 0 != 1`)
 //!   - NEG: `alloc(0).invert_with(_)` → Err (since `0 * _ = 0 != 1`)
+//!
+//! `Boolean::conditional_enforce_equal`:
+//!   - POS: `alloc(true).cee(alloc(a), alloc(a))` → Ok (trivially equal)
+//!   - POS: `alloc(false).cee(alloc(a), alloc(b))` → Ok (no enforcement)
+//!   - NEG: `alloc(true).cee(alloc(a), alloc(b))` → Err (when `a != b`)
 
 #![no_main]
 
@@ -36,12 +41,15 @@ use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_core::maybe::Maybe;
-use ragu_primitives::{Element, Simulator, allocator::Standard};
+use ragu_primitives::{Boolean, Element, Simulator, allocator::Standard};
 
 #[derive(Arbitrary, Debug)]
 struct Input {
     /// 32 bytes parsed as canonical Fp (with low-entropy u64 fallback).
     a_bytes: [u8; 32],
+    /// A second Fp value, used as the right-hand side for
+    /// conditional_enforce_equal tests.
+    b_bytes: [u8; 32],
 }
 
 fn parse_fp(bytes: [u8; 32]) -> Fp {
@@ -54,6 +62,7 @@ fn parse_fp(bytes: [u8; 32]) -> Fp {
 
 fuzz_target!(|input: Input| {
     let a_val = parse_fp(input.a_bytes);
+    let b_val = parse_fp(input.b_bytes);
 
     // ============================================================
     // enforce_zero
@@ -178,4 +187,56 @@ fuzz_target!(|input: Input| {
         r.is_err(),
         "invert_with(0, _) should fail (0 * _ = 0 != 1)",
     );
+
+    // ============================================================
+    // Boolean::conditional_enforce_equal
+    // ============================================================
+
+    // POS: alloc(true).cee(alloc(a), alloc(a)) → Ok (trivially a == a)
+    let r = Simulator::<Fp>::simulate(a_val, |dr, witness| {
+        let allocator = &mut Standard::new();
+        let cond = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| true))?;
+        let x = Element::alloc(dr, allocator, witness.as_ref().map(|v| *v))?;
+        let y = Element::alloc(dr, allocator, witness.as_ref().map(|v| *v))?;
+        cond.conditional_enforce_equal(dr, allocator, &x, &y)
+    });
+    assert!(
+        r.is_ok(),
+        "cee(true, a, a) should succeed; a={:?} err={:?}",
+        a_val,
+        r.err(),
+    );
+
+    // POS: alloc(false).cee(alloc(a), alloc(b)) → Ok (no enforcement)
+    let r = Simulator::<Fp>::simulate((a_val, b_val), |dr, witness| {
+        let allocator = &mut Standard::new();
+        let cond = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| false))?;
+        let x = Element::alloc(dr, allocator, witness.as_ref().map(|v| v.0))?;
+        let y = Element::alloc(dr, allocator, witness.as_ref().map(|v| v.1))?;
+        cond.conditional_enforce_equal(dr, allocator, &x, &y)
+    });
+    assert!(
+        r.is_ok(),
+        "cee(false, a, b) should succeed (no enforcement); a={:?} b={:?} err={:?}",
+        a_val,
+        b_val,
+        r.err(),
+    );
+
+    // NEG: alloc(true).cee(alloc(a), alloc(b)) → Err when a != b
+    if a_val != b_val {
+        let r = Simulator::<Fp>::simulate((a_val, b_val), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let cond = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| true))?;
+            let x = Element::alloc(dr, allocator, witness.as_ref().map(|v| v.0))?;
+            let y = Element::alloc(dr, allocator, witness.as_ref().map(|v| v.1))?;
+            cond.conditional_enforce_equal(dr, allocator, &x, &y)
+        });
+        assert!(
+            r.is_err(),
+            "cee(true, a, b) should fail when a != b; a={:?} b={:?}",
+            a_val,
+            b_val,
+        );
+    }
 });
