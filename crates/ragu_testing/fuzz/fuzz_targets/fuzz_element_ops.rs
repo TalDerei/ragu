@@ -44,6 +44,11 @@ enum Op {
     AllocConst(u64),
     AllocSpecial(u8),
     AllocSquare(u64),
+    /// Allocate an `Element` whose value is the 32-byte chunk interpreted
+    /// as a canonical `Fp` (via `Fp::from_repr`). Lets libFuzzer's
+    /// dictionary entries land directly in the witness without going
+    /// through the `Arbitrary` `u64`-seed reinterpretation.
+    AllocRaw([u8; 32]),
     BoolAlloc(bool),
     BoolNot(u8),
     BoolAnd(u8, u8),
@@ -169,6 +174,16 @@ fuzz_target!(|input: Input| {
                     let v = special_value(idx);
                     let r = Element::alloc(dr, allocator, witness.as_ref().map(|_| v))?;
                     elems.push(r);
+                }
+                Op::AllocRaw(bytes) => {
+                    let v: Option<Fp> = Fp::from_repr(bytes).into();
+                    if let Some(fp) = v {
+                        if let Ok(r) =
+                            Element::alloc(dr, allocator, witness.as_ref().map(|_| fp))
+                        {
+                            elems.push(r);
+                        }
+                    }
                 }
                 Op::AllocSquare(v) => {
                     if let Ok((root, sq)) = Element::alloc_square(

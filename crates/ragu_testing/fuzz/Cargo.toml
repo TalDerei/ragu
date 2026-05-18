@@ -139,3 +139,13 @@ path = "fuzz_targets/fuzz_witness_coverage.rs"
 test = false
 doc = false
 bench = false
+
+# Auxiliary tool (not a fuzz target). Emits a libFuzzer dictionary of Ragu's
+# field-element constants. Regenerate dict.txt via:
+#   cargo run --release --bin extract_dict > dict.txt
+[[bin]]
+name = "extract_dict"
+path = "bin/extract_dict.rs"
+test = false
+doc = false
+bench = false
