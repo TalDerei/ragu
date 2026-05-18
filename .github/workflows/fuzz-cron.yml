@@ -77,8 +77,8 @@ jobs:
       - name: Cache fuzz build artifacts
         uses: actions/cache@v5
         with:
-          path: crates/ragu_testing/fuzz/target
-          key: ${{ runner.os }}-fuzz-cron-target-${{ hashFiles('crates/ragu_testing/fuzz/Cargo.toml') }}-${{ hashFiles('crates/ragu_testing/fuzz/fuzz_targets/**/*.rs') }}-${{ hashFiles('crates/ragu_testing/fuzz/bin/**/*.rs') }}
+          path: qa/fuzz/target
+          key: ${{ runner.os }}-fuzz-cron-target-${{ hashFiles('qa/fuzz/Cargo.toml') }}-${{ hashFiles('qa/fuzz/fuzz_targets/**/*.rs') }}-${{ hashFiles('qa/fuzz/bin/**/*.rs') }}
           restore-keys: |
             ${{ runner.os }}-fuzz-cron-target-
 
@@ -89,7 +89,7 @@ jobs:
       - name: Restore fuzz corpus
         uses: actions/cache@v5
         with:
-          path: crates/ragu_testing/fuzz/corpus/${{ matrix.target }}
+          path: qa/fuzz/corpus/${{ matrix.target }}
           key: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
@@ -98,7 +98,7 @@ jobs:
         run: cargo install cargo-fuzz
 
       - name: Run fuzz target
-        working-directory: crates/ragu_testing/fuzz
+        working-directory: qa/fuzz
         env:
           DURATION: ${{ github.event.inputs.duration || '18000' }}
           USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
@@ -111,7 +111,7 @@ jobs:
             cargo +${{ steps.toolchain.outputs.name }} run --release --bin extract_dict > dict.txt
             DICT_FLAG="-dict=dict.txt"
           fi
-          cargo +${{ steps.toolchain.outputs.name }} fuzz run "${{ matrix.target }}" -- \
+          cargo +${{ steps.toolchain.outputs.name }} fuzz run --fuzz-dir . "${{ matrix.target }}" -- \
             $DICT_FLAG \
             -max_len=1024 \
             -max_total_time="$DURATION"
@@ -121,7 +121,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: crashes-${{ matrix.target }}
-          path: crates/ragu_testing/fuzz/artifacts/${{ matrix.target }}/
+          path: qa/fuzz/artifacts/${{ matrix.target }}/
           retention-days: 30
           # Don't fail the workflow if there are no artifacts (rare race:
           # libFuzzer aborted before writing the crash file).

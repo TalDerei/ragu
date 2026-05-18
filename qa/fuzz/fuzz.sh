@@ -43,7 +43,7 @@ if [[ "${1:-}" == "summarize" ]]; then
     echo "Input file not found: $INPUT_FILE" >&2
     exit 1
   fi
-  DEBUG_INPUT=1 cargo +nightly fuzz run "$TARGET" "$INPUT_FILE"
+  DEBUG_INPUT=1 cargo +nightly fuzz run --fuzz-dir . "$TARGET" "$INPUT_FILE"
   exit
 fi
 
@@ -59,7 +59,7 @@ if [[ "${1:-}" == "triage" ]]; then
     echo "Input file not found: $INPUT_FILE" >&2
     exit 1
   fi
-  TRIAGE_CHEAT=1 cargo +nightly fuzz run fuzz_soundness_cheat "$INPUT_FILE"
+  TRIAGE_CHEAT=1 cargo +nightly fuzz run --fuzz-dir . fuzz_soundness_cheat "$INPUT_FILE"
   exit
 fi
 
@@ -95,7 +95,7 @@ TARGETS=(
 run_target() {
   local target="$1"
   echo "=== $target (${DURATION}s) ==="
-  cargo +nightly fuzz run "$target" -- \
+  cargo +nightly fuzz run --fuzz-dir . "$target" -- \
     $DICT_FLAG \
     -max_len=1024 \
     -max_total_time="$DURATION" \
