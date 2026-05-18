@@ -39,6 +39,7 @@ TARGETS=(
   fuzz_soundness_cheat
   fuzz_driver_metamorphic
   fuzz_witness_coverage
+  fuzz_algebraic_identities
 )
 
 run_target() {

@@ -149,3 +149,12 @@ path = "bin/extract_dict.rs"
 test = false
 doc = false
 bench = false
+
+# Algebraic-identity fuzz target: random Fp pairs through gadget API, assert
+# commutativity / identity / inverse / distributivity / etc. hold uniformly.
+[[bin]]
+name = "fuzz_algebraic_identities"
+path = "fuzz_targets/fuzz_algebraic_identities.rs"
+test = false
+doc = false
+bench = false
