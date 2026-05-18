@@ -43,6 +43,8 @@ TARGETS=(
   fuzz_element_assertions
   fuzz_multipack
   fuzz_point_identities
+  fuzz_consistent
+  fuzz_io_roundtrip
 )
 
 run_target() {

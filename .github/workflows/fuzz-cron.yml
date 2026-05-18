@@ -56,6 +56,8 @@ jobs:
           - fuzz_element_assertions
           - fuzz_multipack
           - fuzz_point_identities
+          - fuzz_consistent
+          - fuzz_io_roundtrip
           - fuzz_poseidon_sponge
           - fuzz_poseidon_differential
           - fuzz_endoscalar

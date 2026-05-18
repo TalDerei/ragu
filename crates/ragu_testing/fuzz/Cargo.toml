@@ -187,3 +187,21 @@ path = "fuzz_targets/fuzz_point_identities.rs"
 test = false
 doc = false
 bench = false
+
+# Consistent trait: enforce_consistent on properly-allocated gadgets should
+# always succeed (idempotent). Catches regressions in trait impls.
+[[bin]]
+name = "fuzz_consistent"
+path = "fuzz_targets/fuzz_consistent.rs"
+test = false
+doc = false
+bench = false
+
+# IO write/buffer roundtrip: Write impls produce expected element counts
+# and values, in the right order.
+[[bin]]
+name = "fuzz_io_roundtrip"
+path = "fuzz_targets/fuzz_io_roundtrip.rs"
+test = false
+doc = false
+bench = false
