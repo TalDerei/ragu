@@ -1,25 +1,26 @@
-//! The [`Consistent`] trait for enforcing a gadget's internal constraints
-//! on existing wires.
+//! The [`Consistent`] trait — implemented for gadgets that are capable of
+//! emitting constraints to re-express all of their invariants.
 
 use alloc::boxed::Box;
 
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
-/// Trait that enforces a gadget's internal constraints on existing wires.
+/// Implemented for gadgets that are capable of emitting constraints to
+/// re-express all of their invariants on the wires inside `self`.
 ///
-/// Some gadgets require internal invariants for correctness; a [`Point`] must
-/// satisfy its curve equation, a [`Boolean`] must be 0 or 1. This trait enforces
-/// those constraints on wires allocated elsewhere, separating allocation from
-/// constraint enforcement.
+/// Not every gadget can implement this.
 ///
-/// Gadgets without internal constraints (like [`Element`]) implement this as a
-/// no-op. Composite gadgets delegate to their fields.
+/// [`Point`] re-enforces its curve equation; [`Boolean`] re-enforces 0/1;
+/// [`Element`] is a no-op. Composite gadgets derived with the
+/// [`Consistent`](derive@Consistent) macro delegate to their
+/// `#[ragu(gadget)]` fields.
 ///
 /// [`Point`]: crate::Point
 /// [`Boolean`]: crate::Boolean
 /// [`Element`]: crate::Element
 pub trait Consistent<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
-    /// Enforce internal consistency constraints on this gadget's wires.
+    /// Emit constraints that re-express `Self`'s invariants on the wires
+    /// inside `self`, against the driver `dr`.
     fn enforce_consistent(&self, dr: &mut D) -> Result<()>;
 }
 
