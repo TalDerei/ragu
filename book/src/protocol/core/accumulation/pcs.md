@@ -195,7 +195,7 @@ Instead, Ragu proposes two encodings of the same input $\inst$ such that the
 encoded values contains either purely $\F_p$ elements or $\F_q$ elements.
 Then, by marking these encoded values as the witness for a dedicated
 [stage](../../extensions/staging.md), Ragu can leverage the
-[staging well-formedness checks]()
+[staging well-formedness checks](../../extensions/staging.md)
 to enforce the same underlying input during the _recursion at the next step_.
 
 **Encoding in the primary circuit** (over $\F_p$):
