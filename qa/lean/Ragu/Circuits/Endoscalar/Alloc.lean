@@ -14,14 +14,9 @@ in `crates/ragu_primitives/src/endoscalar.rs::Endoscalar::alloc`.
 so `Uendo::BITS = u128::BITS = 128`. This Lean reimpl is monomorphic at 128 —
 no polymorphism needed.
 
-TODO: extraction instance deferred. The 512-operation autogen (128 Booleans ×
-4 ops each) exceeds what Clean's current simp/tactic infrastructure can reduce
-through a `Circuit.mapFinRange`-based `main` to match the extractor's literal
-operation list. Per fv-review's sub-gadget carve-out, this is acceptable
-because `Endoscalar::alloc` is only called from other circuit factories
-(`internal/endoscalar.rs`, `staging/mask.rs`) — trust flows through their
-extraction instances when ported. Revisit once Clean exposes an
-`operations_eq` lemma for `mapFinRange` suitable for unfolding at concrete `n`. -/
+Extraction instance: `qa/lean/Ragu/Instances/Endoscalar/Alloc.lean` proves
+byte-equivalence to the autogen op list via an inductive helper that peels one
+`Boolean.Alloc` iteration at a time from the `Vector.mapM` over `Vector.finRange 128`. -/
 def main (value : ProverEnvironment (F p) → BitVec 128)
     : Circuit (F p) (Vector (Expression (F p)) 128) :=
   Circuit.mapFinRange 128 fun (i : Fin 128) =>
