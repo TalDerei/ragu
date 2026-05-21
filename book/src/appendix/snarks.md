@@ -40,43 +40,20 @@ witness contains the full polynomial vectors and auxiliary data needed
 by the decider. When proofs leave the recursive pipeline, they can be
 [compressed](../concepts/pcd.md) to a succinct form for transmission.
 
-## Trusted setup
+## SNARK trade-offs
 
-SNARKs differ in whether they require a _trusted setup_: a one-time
-ceremony that produces structured reference parameters. If the secret
-randomness from the ceremony leaks, soundness breaks and an adversary
-could forge proofs.
+Some SNARKs require a _trusted setup_, a one-time ceremony that
+produces structured reference parameters from secret randomness. If
+that randomness leaks, an adversary can forge proofs.
 
-- **Pairing-based SNARKs** (Groth16, PlonK with KZG) require a trusted
-  setup. In exchange, they achieve constant-size proofs and
-  constant-time verification.
-- **IPA-based systems** (Bulletproofs, Halo, Ragu) require no trusted
-  setup. The commitment scheme uses only a set of independent group
-  generators, which can be derived deterministically. Verification is
-  linear-time, but accumulation avoids paying that cost at every
-  recursive step.
+|                  | Pairing-based (Groth16, PLONK+KZG)  | IPA-based (Bulletproofs, Halo, Ragu)    |
+|------------------|--------------------------------------|-----------------------------------------|
+| **Setup**        | Trusted ceremony                     | Transparent (no trust)                  |
+| **Proof size**   | Constant                             | Logarithmic                             |
+| **Verification** | Constant time                        | Linear time (deferred via accumulation) |
 
 Ragu targets deployment in Zcash as part of
-[Project Tachyon](https://tachyon.z.cash/), where avoiding a trusted
-setup is a hard constraint. The Pasta curves are not
-pairing-friendly, which rules out pairing-based commitments
-entirely and limits us to the IPA-based approach.
-
-## Security assumptions
-
-Ragu's security rests on:
-
-- The **elliptic-curve discrete logarithm problem (ECDLP)** on the
-  Pasta curves.
-- The
-  [**discrete log relation assumption**](../protocol/prelim/assumptions.md#ecdlp),
-  a stronger variant that underlies the binding property of
-  Pedersen vector commitments.
-- The **random oracle model**, instantiated with
-  [Poseidon](https://eprint.iacr.org/2019/458) for Fiat-Shamir
-  transformations.
-
-Knowledge soundness, the guarantee that a convincing prover
-_knows_ a valid witness, relies on a
-[knowledge assumption](../protocol/prelim/assumptions.md#knowledge-soundness)
-for the polynomial commitment scheme.
+[Project Tachyon](https://tachyon.z.cash/), where avoiding a
+trusted setup is a strong design goal. The Pasta curves are not
+pairing-friendly, which rules out pairing-based commitments,
+so Ragu uses IPA-based commitments throughout.
