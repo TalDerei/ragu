@@ -27,11 +27,13 @@ The circuit-side `main` separates the two phases of the loop:
   with no constraint emission. The final answer adds a closed-form constant
   capturing the initial `2·(ζ+1)` and the 64 implicit `+1` shifts.
 
-TODO: extraction instance deferred. The 256-op autogen (64 `Boolean.And` calls
-× 4 ops each) is at the upper end of what Clean's current simp/tactic infra
-collapses comfortably. Per fv-review's sub-gadget carve-out, this is acceptable
-because `Endoscalar::lift` is only called from `internal/endoscalar.rs` and
-`compute_v.rs`. -/
+Extraction instance: `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust
+side uses an inlined `Boolean::and` (gate + 2 `enforce_equal`s, same pattern as
+`boolean_and.rs`) so the autogen Expression tree shape matches this reimpl's
+`stepCircuit` form verbatim. `same_constraints` proves byte-equivalence of the
+256-op constraint trace via the same `mapM`-induction pattern as
+`Endoscalar.Alloc`. `same_output` is a documented `sorry`; the scaffolding
+(recursive `lift_acc_aux`, foldl-bridging lemmas) is in place. -/
 structure Input (F : Type) where
   bits : Vector F 128
 deriving ProvableStruct
