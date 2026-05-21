@@ -322,10 +322,15 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
 ///
 /// If either input is empty, `out` is cleared and the function returns.
 /// Otherwise `out.len()` becomes `a.len() + b.len() - 1` on return, with
-/// capacity left at `≥ 2 · next_power_of_two(a.len() + b.len() - 1)`
-/// (the function uses the tail as FFT scratch); one-shot callers that
-/// care about the slack should `shrink_to_fit` before handing the buffer
-/// to consumers.
+/// capacity left at `≥ 2 · next_power_of_two(a.len() + b.len() - 1)` (the
+/// function uses the upper half of the buffer as FFT scratch); one-shot
+/// callers that care about the slack should `shrink_to_fit` before handing
+/// the buffer to consumers.
+///
+/// # Panics
+///
+/// Panics if the required FFT domain size exceeds the field's 2-adicity,
+/// i.e., if `(a.len() + b.len() - 1).next_power_of_two().ilog2() > F::S`.
 pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.clear();
 
@@ -360,38 +365,41 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
 }
 
 /// Decomposes the product $a(X) \cdot b(X)$ into coefficient vectors
-/// $(p, q)$ whose free coefficient $p(0)$ equals the *reverse dot product*
-/// $\mathrm{revdot}(\mathbf{a}, \mathbf{b}) = \sum_{i=0}^{n-1} a_i b_{n-1-i}$.
+/// $(p, q)$ whose constant term $p(0)$ equals the *reverse dot product*
+/// $\mathrm{revdot}(\mathbf{a}, \mathbf{b}) = \sum\_{i=0}^{n-1} a\_i b\_{n-1-i}$.
 ///
 /// This is the polynomial-decomposition step in the protocol's reduction
 /// from a revdot claim to a polynomial query; see the
 /// [book](https://tachyon.z.cash/ragu/protocol/prelim/structured_vectors.html#reduction-to-polynomial-queries)
 /// for how the protocol consumes it.
 ///
-/// Concretely, with $c = a \cdot b$ of length $2n - 1$: $p$ is the reverse
-/// of the lower $n$ coefficients of $c$ and $q$ is the upper $n - 1$
-/// coefficients, so
+/// Equal length is required: the identity is parameterized by a single $n$
+/// where $|\mathbf{a}| = |\mathbf{b}| = n$. With $c = a \cdot b$ of length
+/// $2n - 1$, $p$ is the reverse of the lower $n$ coefficients of $c$ and
+/// $q$ is the upper $n - 1$ coefficients, so
 ///
-/// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x). $$
+/// $$ a(X) \cdot b(X) = X^{n-1} p(X^{-1}) + X^n q(X). $$
 ///
-/// Equal length $n$ is required because the identity is parameterized by
-/// a single $n$: $p(0) = c_{n-1}$ equals
-/// $\mathrm{revdot}(\mathbf{a}, \mathbf{b})$ only when
-/// $|\mathbf{a}| = |\mathbf{b}| = n$.
+/// $p(0) = c\_{n-1}$ holds by construction of $p$, and the further
+/// identification $c\_{n-1} = \mathrm{revdot}(\mathbf{a}, \mathbf{b})$
+/// holds because $|\mathbf{a}| = |\mathbf{b}| = n$.
 ///
 /// # Output lengths
 ///
 /// When $n \geq 1$:
 /// - `p.len() == n`
-/// - `q.len() == n - 1` (empty when $n = 1$). Note: `q` is the raw upper
-///   half of $c$ with no leading-zero trimming, so `q.last()` may be
-///   `F::ZERO` even though it is the highest-degree coefficient.
+/// - `q.len() == n - 1` (empty when $n = 1$)
+///
+/// `q` is the raw upper half of $c$ with no leading-zero trimming. In
+/// particular, for $n \geq 2$, `q.last()` (the highest-degree coefficient
+/// of `q` viewed as a polynomial) may be `F::ZERO`.
 ///
 /// When both inputs are empty, both vectors are returned empty.
 ///
 /// # Panics
 ///
-/// Panics if `a` and `b` have different lengths.
+/// Panics if `a` and `b` have different lengths. Also inherits the FFT
+/// domain-size panic from [`poly_mul`].
 pub fn decomp_product_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
     assert_eq!(
         a.len(),
@@ -409,14 +417,18 @@ pub fn decomp_product_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) 
     let n = a.len();
     let mut c = Vec::new();
     poly_mul(a, b, &mut c);
-    assert_eq!(c.len(), 2 * n - 1, "internal: poly_mul invariant violated");
+    assert_eq!(
+        c.len(),
+        2 * n - 1,
+        "internal invariant: poly_mul should produce a vector of length 2n - 1"
+    );
 
     let q = c.split_off(n);
     c.reverse();
     // `poly_mul` resized `out` to `2 · next_power_of_two(2n - 1)` (the upper
-    // half held FFT(b)) and then truncated to `2n - 1`, leaving slack in
-    // `c`'s capacity. `split_off` preserves that capacity, so shrink before
-    // returning so `p` doesn't carry it.
+    // half was used as scratch for `FFT(b)`) and then truncated to `2n - 1`,
+    // leaving slack in `c`'s capacity. `split_off` preserves that capacity,
+    // so shrink before returning so `p` doesn't carry it.
     c.shrink_to_fit();
     (c, q)
 }
@@ -544,9 +556,9 @@ mod proptests {
             .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
     }
 
-    /// Random nonzero field element, occasionally hitting `1` or `-1` to
-    /// exercise boundary points that uniformly random elements would
-    /// essentially never reach.
+    /// Random nonzero field element. With probability `1/10` each, returns
+    /// `F::ONE` or `-F::ONE`, exercising boundary points that uniformly
+    /// random elements would essentially never reach.
     fn arb_fe_nonzero() -> impl Strategy<Value = F> {
         prop_oneof![
             8 => arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero())),
@@ -555,9 +567,9 @@ mod proptests {
         ]
     }
 
-    /// Like `arb_fe`, but with a ~10% probability of returning `F::ZERO`,
-    /// so vectors built from this strategy exercise sparse polynomials
-    /// and the leading-zero-coefficient case.
+    /// Like `arb_fe`, but returns `F::ZERO` with probability `1/10`, so
+    /// vectors built from this strategy exercise sparse polynomials and
+    /// the case where the highest-degree coefficient is zero.
     fn arb_fe_with_zeros() -> impl Strategy<Value = F> {
         prop_oneof![
             9 => arb_fe(),
@@ -567,7 +579,9 @@ mod proptests {
 
     /// Draws two vectors of independently random field elements with a
     /// common random length in `1..=32`. Coefficients occasionally land
-    /// on zero, exercising sparse and leading-zero inputs.
+    /// on zero, exercising sparse polynomials and the case where the
+    /// highest-degree coefficient is zero — relevant to the no-trim
+    /// contract on `decomp_product_poly`'s `q`.
     fn arb_equal_length_pair() -> impl Strategy<Value = (Vec<F>, Vec<F>)> {
         (1usize..=32).prop_flat_map(|n| {
             (
@@ -579,11 +593,12 @@ mod proptests {
 
     /// Checks the [`decomp_product_poly`] identity
     /// $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$ from precomputed
-    /// evaluations at $x$. Centralizes the exponents so future tests of a
-    /// verifier that inlines this check can compare against the same form.
+    /// evaluations at $x$. Centralizing the exponents in one helper makes
+    /// the identity explicit and easy to mirror in any future verifier
+    /// implementation.
     ///
-    /// Requires `n >= 1` — the helper computes `(n - 1) as u64`, which would
-    /// underflow for `n == 0`.
+    /// Requires `n >= 1` — the helper computes `n - 1` as a `usize`, which
+    /// would underflow for `n == 0`. The body asserts this precondition.
     fn check_decomp_identity<F: PrimeField>(
         a_at_x: F,
         b_at_x: F,
