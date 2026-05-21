@@ -32,8 +32,9 @@ side uses an inlined `Boolean::and` (gate + 2 `enforce_equal`s, same pattern as
 `boolean_and.rs`) so the autogen Expression tree shape matches this reimpl's
 `stepCircuit` form verbatim. `same_constraints` proves byte-equivalence of the
 256-op constraint trace via the same `mapM`-induction pattern as
-`Endoscalar.Alloc`. `same_output` is a documented `sorry`; the scaffolding
-(recursive `lift_acc_aux`, foldl-bridging lemmas) is in place. -/
+`Endoscalar.Alloc`. `same_output` proves the output-expression equality via a
+recursive `lift_acc_aux` helper + induction on the foldl, with `circuit_norm`
+substituting the mapM's output element-wise into the foldl body. -/
 structure Input (F : Type) where
   bits : Vector F 128
 deriving ProvableStruct

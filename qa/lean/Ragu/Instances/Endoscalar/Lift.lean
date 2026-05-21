@@ -284,22 +284,32 @@ def formal_instance : Core.Statements.FormalInstance where
     rw [mapM_boolean_and_ops input (Vector.finRange 64) 0]
     rfl
 
-  -- `same_output` is deferred. The scaffolding is in place:
-  --   `lift_acc_aux` (the recursive helper matching the foldl structure)
-  --   `exportedOutput_eq_aux` (autogen → helper, by `rfl`)
-  --   `fin_foldl_congr_aux`, `fin_foldl_succ_last_eq_aux` (foldl bridging)
-  --   `fin_foldl_eq_lift_acc_aux` (foldl with `var ⟨i*3+2⟩` body → helper)
-  -- Remaining: substitute `(Vector.mapM body finRange).1[i]` for
-  -- `var ⟨i.val * 3 + 2⟩` inside the reimpl's foldl body via
-  -- `Circuit.MapM.output_eq`. Two minor blockers:
-  --   1. `size (Value Lift.Input)` doesn't unfold to `128` in omega's view,
-  --      forcing manual bounds proofs on each `input[2*j.val]` access.
-  --   2. `subcircuit` (CoeFun for `FormalCircuit`) vs `subcircuitWithAssertion`
-  --      / `subcircuitWithHintAssertion` — the framework wrapping unfolds at
-  --      the outer layer (Lift → WithHint) but the inner `Boolean.And.circuit`
-  --      stays in bare `subcircuit` form, requiring care when stating the
-  --      substitution lemma. The constraint-trace proof (`same_constraints`)
-  --      — the load-bearing 256-op byte-equivalence — goes through cleanly.
-  same_output := by sorry
+  same_output := by
+    intro input
+    rw [exportedOutput_eq_aux]
+    apply Vector.ext
+    intro idx hidx
+    interval_cases idx
+    -- Use `circuit_norm` to leverage tagged lemmas (mapFinRange.output_eq,
+    -- bind_output_eq, ...) for substituting the mapM's output. After this,
+    -- the foldl body should contain `var ⟨i.val * 3 + 2⟩` directly.
+    simp only [GeneralFormalCircuit.WithHint.toSubcircuit,
+               subcircuitWithHintAssertion,
+               FormalCircuit.isGeneralFormalCircuit,
+               GeneralFormalCircuit.toWithHint,
+               Circuits.Endoscalar.Lift.circuit,
+               Circuits.Endoscalar.Lift.elaborated,
+               Circuits.Endoscalar.Lift.main,
+               deserializeInput, serializeOutput,
+               Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
+               Circuits.Boolean.And.circuit,
+               Circuits.Boolean.And.main,
+               Circuits.Boolean.And.elaborated,
+               Circuits.Core.Mul.main,
+               Nat.zero_add, Nat.add_assoc,
+               show (1 + 1 : ℕ) = 2 from rfl,
+               circuit_norm]
+    congr 1
+    exact fin_foldl_eq_lift_acc_aux input 64 (le_refl 64)
 
 end Ragu.Instances.Endoscalar.Lift
