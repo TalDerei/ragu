@@ -34,6 +34,8 @@ use crate::instances::{
     element_is_zero::ElementIsZeroInstance,
     element_mul::ElementMulInstance,
     element_square::ElementSquareInstance,
+    endoscalar_alloc::EndoscalarAllocInstance,
+    endoscalar_lift::EndoscalarLiftInstance,
     point_add_incomplete::PointAddIncompleteInstance,
     point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
     point_conditional_endo::PointConditionalEndoInstance,
@@ -179,6 +181,16 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Boolean.ConditionalEnforceEqual",
         export: export_instance::<BooleanConditionalEnforceEqualInstance>,
         generated_file: generated_file_instance::<BooleanConditionalEnforceEqualInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Endoscalar.Alloc",
+        export: export_instance::<EndoscalarAllocInstance>,
+        generated_file: generated_file_instance::<EndoscalarAllocInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Endoscalar.Lift",
+        export: export_instance::<EndoscalarLiftInstance>,
+        generated_file: generated_file_instance::<EndoscalarLiftInstance>,
     },
 ];
 

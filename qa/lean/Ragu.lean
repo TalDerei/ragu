@@ -25,3 +25,4 @@ import Ragu.Instances.Boolean.And
 import Ragu.Instances.Boolean.ConditionalSelect
 import Ragu.Instances.Boolean.ConditionalEnforceEqual
 import Ragu.Instances.Endoscalar.Alloc
+import Ragu.Instances.Endoscalar.Lift

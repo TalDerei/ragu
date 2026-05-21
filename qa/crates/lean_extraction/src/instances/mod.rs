@@ -15,6 +15,8 @@ pub mod element_is_equal;
 pub mod element_is_zero;
 pub mod element_mul;
 pub mod element_square;
+pub mod endoscalar_alloc;
+pub mod endoscalar_lift;
 pub mod point_add_incomplete;
 pub mod point_alloc;
 pub mod point_conditional_endo;
