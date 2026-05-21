@@ -320,9 +320,12 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
 
 /// Writes $c(X) = a(X) \cdot b(X)$ into `out` via FFT.
 ///
-/// `out.len()` becomes `a.len() + b.len() - 1` on return, but capacity is
-/// retained at `2 * next_power_of_two(len)` for reuse; one-shot callers that
-/// care about the slack should `shrink_to_fit` at the handoff.
+/// If either input is empty, `out` is cleared and the function returns.
+/// Otherwise `out.len()` becomes `a.len() + b.len() - 1` on return, with
+/// capacity left at `≥ 2 · next_power_of_two(a.len() + b.len() - 1)`
+/// (the function uses the tail as FFT scratch); one-shot callers that
+/// care about the slack should `shrink_to_fit` before handing the buffer
+/// to consumers.
 pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.clear();
 
@@ -332,12 +335,14 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
 
     let result_len = a.len() + b.len() - 1;
     let n = result_len.next_power_of_two();
-    // TODO(cnode): instantiate Domain{...} in-line instead of using new(...) which performs a loop
+    // TODO(cnode): instantiate Domain{...} in-line instead of using new(...),
+    // which loops `F::S - k` times to derive the generator via halvings.
     let domain = Domain::new(n.ilog2());
 
-    // Lay out both evaluation forms back-to-back in `out`: lower half carries
-    // FFT(a), upper half carries FFT(b). The `resize` zero-fills, so the
-    // tail of each half is already padded.
+    // Lay out both evaluation forms back-to-back in `out`: lower half will
+    // carry FFT(a), upper half will carry FFT(b). The `resize` zero-fills,
+    // so the zero-padding tail of each half is in place before we write
+    // the inputs.
     out.resize(2 * n, F::ZERO);
     out[..a.len()].copy_from_slice(a);
     domain.fft(&mut out[..n]);
@@ -354,27 +359,35 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.truncate(result_len);
 }
 
-/// Decomposes the product $a(X) \cdot b(X)$ into $(p, q)$ whose free
-/// coefficient $p(0)$ equals $\mathrm{revdot}(\mathbf{a}, \mathbf{b})$.
+/// Decomposes the product $a(X) \cdot b(X)$ into coefficient vectors
+/// $(p, q)$ whose free coefficient $p(0)$ equals the *reverse dot product*
+/// $\mathrm{revdot}(\mathbf{a}, \mathbf{b}) = \sum_{i=0}^{n-1} a_i b_{n-1-i}$.
 ///
-/// This is the reduction from a reverse-dot-product query to a pair of
-/// polynomial evaluations; see the
+/// This is the polynomial-decomposition step in the protocol's reduction
+/// from a revdot claim to a polynomial query; see the
 /// [book](https://tachyon.z.cash/ragu/protocol/prelim/structured_vectors.html#reduction-to-polynomial-queries)
 /// for how the protocol consumes it.
 ///
-/// Concretely, with $c = a \cdot b$ of length $2n - 1$: $p$ is the reverse of
-/// the lower $n$ coefficients of $c$ and $q$ is the upper $n - 1$, so
+/// Concretely, with $c = a \cdot b$ of length $2n - 1$: $p$ is the reverse
+/// of the lower $n$ coefficients of $c$ and $q$ is the upper $n - 1$
+/// coefficients, so
 ///
 /// $$ a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x). $$
 ///
-/// The equal-length precondition is essential: the exponents $n-1$ and $n$
-/// above are only well-defined when $\mathbf{a}$ and $\mathbf{b}$ share a
-/// common length $n$.
+/// Equal length $n$ is required because the identity is parameterized by
+/// a single $n$: $p(0) = c_{n-1}$ equals
+/// $\mathrm{revdot}(\mathbf{a}, \mathbf{b})$ only when
+/// $|\mathbf{a}| = |\mathbf{b}| = n$.
 ///
 /// # Output lengths
 ///
+/// When $n \geq 1$:
 /// - `p.len() == n`
-/// - `q.len() == n - 1` (empty when $n = 1$; leading zeros of $q$ are trimmed)
+/// - `q.len() == n - 1` (empty when $n = 1$). Note: `q` is the raw upper
+///   half of $c$ with no leading-zero trimming, so `q.last()` may be
+///   `F::ZERO` even though it is the highest-degree coefficient.
+///
+/// When both inputs are empty, both vectors are returned empty.
 ///
 /// # Panics
 ///
@@ -390,18 +403,20 @@ pub fn decomp_product_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) 
         return (vec![], vec![]);
     }
 
-    // `c` has length `2n - 1`. Split off the upper `n - 1` coefficients into `q`
-    // and zero-pad to `n`; reverse the remaining lower `n` coefficients in place
-    // to form `p`.
+    // `c` has length `2n - 1`; split off the upper `n - 1` coefficients into
+    // `q`, then reverse the remaining lower `n` coefficients in place to
+    // form `p`.
     let n = a.len();
     let mut c = Vec::new();
     poly_mul(a, b, &mut c);
-    assert_eq!(c.len(), 2 * n - 1, "poly_mul should produce length 2n-1");
+    assert_eq!(c.len(), 2 * n - 1, "internal: poly_mul invariant violated");
 
     let q = c.split_off(n);
     c.reverse();
-    // `poly_mul` leaves `c` with capacity `2 * domain_size` (it used the tail
-    // as scratch); shrink so the returned `p` doesn't carry that slack.
+    // `poly_mul` resized `out` to `2 · next_power_of_two(2n - 1)` (the upper
+    // half held FFT(b)) and then truncated to `2n - 1`, leaving slack in
+    // `c`'s capacity. `split_off` preserves that capacity, so shrink before
+    // returning so `p` doesn't carry it.
     c.shrink_to_fit();
     (c, q)
 }
@@ -421,7 +436,8 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     }
 
     let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
-    // `poly_mul` uses `out` itself as scratch and grows it to `2 * domain`.
+    // `poly_mul` uses `out` itself as scratch and grows it to twice the FFT
+    // domain size; pre-allocate for the largest multiply we'll do.
     let max_n = (roots.len() + 1).next_power_of_two();
     let mut out = Vec::with_capacity(2 * max_n);
 
@@ -534,8 +550,11 @@ mod proptests {
 
     /// Checks the [`decomp_product_poly`] identity
     /// $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$ from precomputed
-    /// evaluations at $x$. Single source of truth for the exponents so any
-    /// future verifier that inlines the check can be asserted against this.
+    /// evaluations at $x$. Centralizes the exponents so future tests of a
+    /// verifier that inlines this check can compare against the same form.
+    ///
+    /// Requires `n >= 1` — the helper computes `(n - 1) as u64`, which would
+    /// underflow for `n == 0`.
     fn check_decomp_identity<F: PrimeField>(
         a_at_x: F,
         b_at_x: F,
@@ -544,9 +563,7 @@ mod proptests {
         x: F,
         n: usize,
     ) -> bool {
-        if n == 0 {
-            return a_at_x * b_at_x == F::ZERO;
-        }
+        assert!(n >= 1, "check_decomp_identity requires n >= 1");
         let x_pow_n_minus_1 = x.pow_vartime([(n - 1) as u64]);
         let x_pow_n = x_pow_n_minus_1 * x;
         a_at_x * b_at_x == x_pow_n_minus_1 * p_at_x_inv + x_pow_n * q_at_x
