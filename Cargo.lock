@@ -382,8 +382,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "ff"
-version = "0.14.0-pre.0"
-source = "git+https://github.com/zkcrypto/ff?rev=bdd74a3f75c4c378d69e954944a61bb0930532a0#bdd74a3f75c4c378d69e954944a61bb0930532a0"
+version = "0.14.0-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d1fa20678d31fcd57b1e146f5ca2c24282428601f45a1002a0d2a54136ef681"
 dependencies = [
  "bitvec",
  "ff_derive",
@@ -393,8 +394,9 @@ dependencies = [
 
 [[package]]
 name = "ff_derive"
-version = "0.14.0-pre.0"
-source = "git+https://github.com/zkcrypto/ff?rev=bdd74a3f75c4c378d69e954944a61bb0930532a0#bdd74a3f75c4c378d69e954944a61bb0930532a0"
+version = "0.14.0-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc58d7ca5bc500948e3ef5837fbbe707a4a9475e24346121ab8f793a14fd0eaf"
 dependencies = [
  "addchain",
  "num-bigint",
@@ -451,8 +453,9 @@ dependencies = [
 
 [[package]]
 name = "group"
-version = "0.14.0-pre.0"
-source = "git+https://github.com/zkcrypto/group?rev=326b36b0c43dcb1507b89017323f43a57c3bffd8#326b36b0c43dcb1507b89017323f43a57c3bffd8"
+version = "0.14.0-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d2d58f7caba35039967de2de47857f38cba03e6b173d32fef14412282d49ac9"
 dependencies = [
  "ff",
  "rand_core 0.10.0",
@@ -695,7 +698,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 [[package]]
 name = "pasta_curves"
 version = "0.5.1"
-source = "git+https://github.com/ebfull/pasta_curves?rev=4f9da85aeebc650a57610501d50d036454dcdc48#4f9da85aeebc650a57610501d50d036454dcdc48"
+source = "git+https://github.com/ebfull/pasta_curves?rev=4b2c768ec4b14b2c7fa0f6e527e453cde97805aa#4b2c768ec4b14b2c7fa0f6e527e453cde97805aa"
 dependencies = [
  "blake2b_simd",
  "ff",
