@@ -40,20 +40,21 @@ witness contains the full polynomial vectors and auxiliary data needed
 by the decider. When proofs leave the recursive pipeline, they can be
 [compressed](../concepts/pcd.md) to a succinct form for transmission.
 
-## SNARK trade-offs
+## Trusted setup
 
 Some SNARKs require a _trusted setup_, a one-time ceremony that
 produces structured reference parameters from secret randomness. If
 that randomness leaks, an adversary can forge proofs.
 
-|                  | Pairing-based (Groth16, PLONK+KZG)  | IPA-based (Bulletproofs, Halo, Ragu)    |
-|------------------|--------------------------------------|-----------------------------------------|
-| **Setup**        | Trusted ceremony                     | Transparent (no trust)                  |
-| **Proof size**   | Constant                             | Logarithmic                             |
-| **Verification** | Constant time                        | Linear time (deferred via accumulation) |
+|                  | Pairing-based (Groth16, PLONK+KZG)  | IPA-based (Bulletproofs, Halo, Ragu)        |
+|------------------|--------------------------------------|---------------------------------------------|
+| **Setup**        | Trusted ceremony                     | Transparent (no trust)                      |
+| **Opening proof** | Constant size                       | Logarithmic size                             |
+| **Verification** | Constant time                        | Linear time (deferred via accumulation)     |
 
 Ragu targets deployment in Zcash as part of
 [Project Tachyon](https://tachyon.z.cash/), where avoiding a
 trusted setup is a strong design goal. The Pasta curves are not
 pairing-friendly, which rules out pairing-based commitments,
-so Ragu uses IPA-based commitments throughout.
+so Ragu uses IPA-based commitments throughout. Ragu's internal split
+form still carries a linear-size witness until compression.
