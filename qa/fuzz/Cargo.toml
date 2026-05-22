@@ -80,6 +80,17 @@ test = false
 doc = false
 bench = false
 
+# Algebraic identity bridging witness and constraint sides: for satisfying
+# witnesses, r.revdot(r + r.dilate(z) + s(X,y) + t(X,z)) must equal
+# circuit.ky(instance, y). Catches witness-pipeline regressions that would
+# pass the cheaper checks in fuzz_circuit_witness.
+[[bin]]
+name = "fuzz_circuit_revdot_identity"
+path = "fuzz_targets/fuzz_circuit_revdot_identity.rs"
+test = false
+doc = false
+bench = false
+
 # Structured polynomial revdot vs unstructured dot product
 [[bin]]
 name = "fuzz_revdot"
