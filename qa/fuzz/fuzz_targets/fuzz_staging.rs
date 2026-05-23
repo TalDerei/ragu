@@ -78,6 +78,24 @@
 //! compensating reversal inside another stage's — because each stage is
 //! checked against its own mask in isolation, not against an aggregate.
 //!
+//! ## final_mask check
+//!
+//! One additional structural check layers on top of Invariant A:
+//!
+//! - **`final_mask` zero check** (mirrors production proving at
+//!   `crates/ragu_pcd/src/internal/endoscalar.rs:470`): the *assembled
+//!   `MultiStage` trace polynomial* (before adding any stage `rx_i`) must
+//!   revdot to zero against the last stage's `final_mask()`. The
+//!   `final_mask` is constructed from `StageMask::new_final(skip+num)`
+//!   (`staging/mask.rs:121`) and carves out `[last_stage_end, R::n())` —
+//!   the post-stage gate range, where the assembled trace holds its only
+//!   non-zero values. Stage-wire positions in the assembled trace are
+//!   already zero because `StageBuilder::configure_stage` allocates them
+//!   as `Coeff::Zero` (`staging/builder.rs:221`); the SYSTEM gate
+//!   contributes nothing because `global_project` zeros it. Distinct
+//!   code path from regular `mask()`, so a regression in `new_final` that
+//!   doesn't affect `new` surfaces here.
+//!
 //! ## Circuit menu
 //!
 //! Three `MultiStageCircuit` variants, all using `TestRank` for ~2-5k
@@ -457,6 +475,29 @@ static MASK_REGISTRY_W4_CHILD: LazyLock<Option<Registry<'static, Fp, TestRank>>>
     build_mask_registry(mask)
 });
 
+// Final-mask registries — one per stage type, built from
+// `StageExt::final_mask()` instead of `mask()`. `final_mask` covers
+// `[skip_gates, R::n())` (every gate after the stage's skip), whereas
+// `mask` covers only the stage's own `[skip, skip+num)` slots. Used
+// only for the LAST stage in a variant's chain.
+static MASK_REGISTRY_W2_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    let mask: BondingObject<'static, Fp, TestRank> =
+        <StageW2 as StageExt<Fp, TestRank>>::final_mask().ok()?;
+    build_mask_registry(mask)
+});
+
+static MASK_REGISTRY_W4_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    let mask: BondingObject<'static, Fp, TestRank> =
+        <StageW4 as StageExt<Fp, TestRank>>::final_mask().ok()?;
+    build_mask_registry(mask)
+});
+
+static MASK_REGISTRY_W4_CHILD_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    let mask: BondingObject<'static, Fp, TestRank> =
+        <StageW4Child as StageExt<Fp, TestRank>>::final_mask().ok()?;
+    build_mask_registry(mask)
+});
+
 // ---------------------------------------------------------------------------
 // Input shape — one variant per MultiStageCircuit. Same `Arbitrary` style
 // as fuzz_circuit_revdot_identity.
@@ -578,19 +619,23 @@ fn check_stage_isolation(
     );
 }
 
-/// Run the Invariant B oracle. The `stage_rx_sum` argument is the sum of
-/// per-stage `StageExt::rx(0, ...)` polynomials for the variant's stages;
-/// adding it to `MultiStage::trace` reconstructs the full $r(X)$ that the
-/// algebraic identity is about. See module docstring for derivation.
+/// Run the Invariant B oracle and the bare-MultiStage-trace `final_mask`
+/// check together. `stage_rx_sum` is added to the assembled trace before
+/// the algebraic identity is checked (per the canonical derivation), but
+/// the bare assembled trace alone is checked against `final_mask_registry`
+/// first — this mirrors production proving at
+/// `crates/ragu_pcd/src/internal/endoscalar.rs:470`.
 ///
 /// Returns `(expected_ky, actual_revdot)` so the caller's panic message
-/// can show both sides.
+/// can show both sides of the Invariant B check.
 fn check_identity<C: Circuit<Fp>>(
+    label: &str,
     registry: &Registry<'_, Fp, TestRank>,
     circuit: &C,
     witness: C::Witness<'_>,
     instance: C::Instance<'_>,
     stage_rx_sum: sparse::Polynomial<Fp, TestRank>,
+    final_mask_registry: Option<&Registry<'_, Fp, TestRank>>,
     y: Fp,
     z: Fp,
 ) -> Option<(Fp, Fp)> {
@@ -600,9 +645,30 @@ fn check_identity<C: Circuit<Fp>>(
     // term — same rationale as fuzz_circuit_revdot_identity. The stage rx
     // polynomials are also computed with alpha = 0; together with the
     // trace's a[0]=0 the gate-0 SYSTEM constraint stays clean.
-    let mut r = registry
+    let multistage_trace = registry
         .assemble_with_alpha(&trace, CircuitIndex::new(0), Fp::ZERO)
         .expect("assemble_with_alpha failed on a registered MultiStage circuit");
+
+    // final_mask: the bare assembled MultiStage trace (no stage rx yet)
+    // must revdot to zero against the last stage's final_mask polynomial.
+    // The final_mask carves out [last_stage_end, R::n()); the assembled
+    // trace's post-stage gate values live in that range, so the revdot
+    // collects them weighted by zero. Stage-wire positions in the
+    // assembled trace are zero (StageBuilder allocates them as
+    // Coeff::Zero), so the SYSTEM gate and earlier gates contribute
+    // nothing either.
+    if let Some(fm_reg) = final_mask_registry {
+        let fm_sy = sy_from_mask_registry(fm_reg, y);
+        let fm_actual = multistage_trace.revdot(&fm_sy);
+        assert_eq!(
+            fm_actual,
+            Fp::ZERO,
+            "final_mask check failed for {label}: \
+             assembled_multistage_trace.revdot(final_mask) = {fm_actual:?}, expected 0 at y={y:?}"
+        );
+    }
+
+    let mut r = multistage_trace;
     r.add_assign(&stage_rx_sum);
 
     let mut b = r.clone();
@@ -649,10 +715,19 @@ fuzz_target!(|input: Input| {
             if let Some(mask_reg) = MASK_REGISTRY_W2.as_ref() {
                 check_stage_isolation("Single2W/StageW2", &stage_w2_rx, mask_reg, y);
             }
-            // Invariant B: combined revdot identity through MultiStage.
-            let Some((expected, actual)) =
-                check_identity(registry, &circuit, witness, instance, stage_w2_rx, y, z)
-            else {
+            // Invariant B (with bundled final_mask check on the bare trace):
+            // StageW2 is the last (and only) stage in this variant.
+            let Some((expected, actual)) = check_identity(
+                "Single2W",
+                registry,
+                &circuit,
+                witness,
+                instance,
+                stage_w2_rx,
+                MASK_REGISTRY_W2_FINAL.as_ref(),
+                y,
+                z,
+            ) else {
                 return;
             };
             assert_eq!(
@@ -687,9 +762,17 @@ fuzz_target!(|input: Input| {
             if let Some(mask_reg) = MASK_REGISTRY_W4.as_ref() {
                 check_stage_isolation("Single4W/StageW4", &stage_w4_rx, mask_reg, y);
             }
-            let Some((expected, actual)) =
-                check_identity(registry, &circuit, witness, instance, stage_w4_rx, y, z)
-            else {
+            let Some((expected, actual)) = check_identity(
+                "Single4W",
+                registry,
+                &circuit,
+                witness,
+                instance,
+                stage_w4_rx,
+                MASK_REGISTRY_W4_FINAL.as_ref(),
+                y,
+                z,
+            ) else {
                 return;
             };
             assert_eq!(
@@ -742,12 +825,39 @@ fuzz_target!(|input: Input| {
             if let Some(mask_reg) = MASK_REGISTRY_W4_CHILD.as_ref() {
                 check_stage_isolation("Chain/child StageW4Child", &child_rx, mask_reg, y);
             }
-            // Invariant B: combined revdot identity.
+            // Cross-mask discrimination (parent.rx vs child.mask and vice
+            // versa) is intentionally NOT asserted here. The check
+            // `rx.revdot(foreign_mask) != 0` is structurally fragile under
+            // adversarial fuzzing: it reduces to a linear equation in the
+            // witness and `y` (e.g.,
+            // `child_a*y^(2n+2) + child_c*y^(2n+3) + child_b*y^2 + child_d*y^3 = 0`),
+            // and the fuzzer readily finds (witness, y) pairs that
+            // satisfy it. The canonical test at `staging/mask.rs:489` works
+            // because it uses random witnesses where the probability of
+            // hitting a degenerate point is `≤ deg/|F| ≈ 2^-254`; under
+            // libfuzzer's coverage-guided search, that probability is
+            // effectively 1. Invariant B catches any *systematic*
+            // cross-stage indistinguishability via the algebraic identity,
+            // so this gap is not coverage-relevant — it's specifically
+            // the "this rx is structurally indistinguishable" claim that
+            // can't be made on adversarial inputs.
+            //
+            // Invariant B (with bundled final_mask check on the bare trace):
+            // StageW4Child is the chain's last stage; its final_mask covers
+            // `[child_skip + child_num, R::n())`, the post-stage gate range.
             let mut stage_rx_sum = parent_rx;
             stage_rx_sum.add_assign(&child_rx);
-            let Some((expected, actual)) =
-                check_identity(registry, &circuit, witness, instance, stage_rx_sum, y, z)
-            else {
+            let Some((expected, actual)) = check_identity(
+                "Chain2x4",
+                registry,
+                &circuit,
+                witness,
+                instance,
+                stage_rx_sum,
+                MASK_REGISTRY_W4_CHILD_FINAL.as_ref(),
+                y,
+                z,
+            ) else {
                 return;
             };
             assert_eq!(
