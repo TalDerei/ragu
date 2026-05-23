@@ -58,10 +58,15 @@ jobs:
       - name: Load baseline
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        env:
+          # SHAs are hex-only and not attacker-controllable, but route
+          # through `env:` to match the discipline applied elsewhere and
+          # avoid tripping zizmor's template-injection rule.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         with:
           path: target/gungraun
           key: never-${{ github.sha }}-${{ github.run_id }}
-          restore-keys: bench-${{ github.event.pull_request.base.sha }}
+          restore-keys: bench-${{ env.BASE_SHA }}
 
       - name: Clean benchmark summaries
         run: |

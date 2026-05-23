@@ -30,7 +30,10 @@ jobs:
         with:
           advanced-security: false
           annotations: true
-          # `informational`-severity findings (e.g. template-injection of
-          # SHA-pinned action outputs like dtolnay/rust-toolchain) are
-          # defense-in-depth-only; don't block CI on them.
-          min-severity: low
+          # Catch all findings, including `informational`. Known-safe
+          # patterns must be silenced via line-level
+          # `# zizmor: ignore[<rule>]` comments at the site, not by
+          # raising the threshold globally — otherwise a new template
+          # injection or unpinned use slips in silently with future
+          # workflow edits.
+          min-severity: informational

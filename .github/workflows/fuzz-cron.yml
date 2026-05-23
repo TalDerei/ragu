@@ -104,18 +104,27 @@ jobs:
         env:
           DURATION: ${{ github.event.inputs.duration || '18000' }}
           USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
+          # Route the toolchain through env (rustup picks it up
+          # automatically) rather than `cargo +TOOLCHAIN`, so the
+          # action output stays out of shell-interpolated text.
+          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+          FUZZ_TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          # Reject anything other than the literal "true"/"false" the
+          # `type: boolean` input is supposed to produce, so a future
+          # loosening of the equality check can't smuggle other values.
+          case "$USE_DICT" in true|false) ;; *) echo "::error::USE_DICT must be 'true' or 'false', got '$USE_DICT'"; exit 1 ;; esac
           DICT_FLAG=""
           if [ "$USE_DICT" = "true" ]; then
             # Regenerate dict.txt in case the constants drifted since the
             # last manual regeneration.
-            cargo +${{ steps.toolchain.outputs.name }} run --release --bin extract_dict > dict.txt
+            cargo run --release --bin extract_dict > dict.txt
             DICT_FLAG="-dict=dict.txt"
           fi
           # Tee output so we can extract stats after the run regardless
           # of whether the fuzz target crashed.
-          cargo +${{ steps.toolchain.outputs.name }} fuzz run --fuzz-dir . "${{ matrix.target }}" -- \
+          cargo fuzz run --fuzz-dir . "$FUZZ_TARGET" -- \
             $DICT_FLAG \
             -max_len=1024 \
             -max_total_time="$DURATION" 2>&1 | tee fuzz-run.log
@@ -128,11 +137,14 @@ jobs:
         env:
           DURATION: ${{ github.event.inputs.duration || '18000' }}
           USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
+          FUZZ_TARGET: ${{ matrix.target }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          STATS="fuzz-stats-${{ matrix.target }}.txt"
+          STATS="fuzz-stats-${FUZZ_TARGET}.txt"
           {
-            echo "Target:   ${{ matrix.target }}"
-            echo "Run:      ${{ github.run_id }} (${{ github.event_name }})"
+            echo "Target:   ${FUZZ_TARGET}"
+            echo "Run:      ${RUN_ID} (${EVENT_NAME})"
             echo "Duration: ${DURATION}s"
             echo "Dict:     ${USE_DICT}"
             echo ""
@@ -150,7 +162,7 @@ jobs:
           # Mirror the summary to the GitHub Actions job summary panel so
           # it's visible without downloading the artifact.
           {
-            echo "## fuzz_${{ matrix.target }}"
+            echo "## fuzz_${FUZZ_TARGET}"
             echo ""
             echo '```'
             tail -10 fuzz-run.log

@@ -63,7 +63,9 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo +${{ steps.toolchain.outputs.name }} fmt --all -- --config-path rustfmt.nightly.toml --check
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+        run: cargo fmt --all -- --config-path rustfmt.nightly.toml --check
 
   clippy:
     name: clippy
@@ -179,7 +181,9 @@ jobs:
 
       - name: cargo check fuzz harness
         working-directory: qa/fuzz
-        run: cargo +${{ steps.toolchain.outputs.name }} check --bins
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+        run: cargo check --bins
 
   docs:
     name: docs
