@@ -27,9 +27,13 @@ runs:
     - name: Install additional packages
       if: runner.os == 'Linux' && inputs.apt-packages
       shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.apt-packages }}
       run: |
         sudo apt-get update
-        sudo apt-get install -y ${{ inputs.apt-packages }}
+        # word-splitting is intentional: callers pass a space-separated list
+        # shellcheck disable=SC2086
+        sudo apt-get install -y $APT_PACKAGES
 
     - name: Install Rust toolchain (from rust-toolchain.toml)
       uses: dtolnay/rust-toolchain@b18f7037bce1ea84c086f4d5e9493f853c0ce412 # 1.90.0 branch HEAD @ 2026-05-23
