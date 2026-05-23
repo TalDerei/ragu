@@ -20,10 +20,10 @@ jobs:
     outputs:
       fv: ${{ steps.filter.outputs.fv }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         id: filter
         with:
           filters: |
@@ -42,7 +42,7 @@ jobs:
     if: needs.changes.outputs.fv == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
@@ -53,7 +53,7 @@ jobs:
         run: cargo run --locked -p lean_extraction -- check
 
       - name: Build Lean project
-        uses: leanprover/lean-action@v1
+        uses: leanprover/lean-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v1.5.0
         with:
           auto-config: false
           build: true

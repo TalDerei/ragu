@@ -66,16 +66,16 @@ jobs:
           - fuzz_sxy_agreement
           - fuzz_verify_reject
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install pinned nightly toolchain
         id: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
         with:
           toolchain: nightly-2026-04-11
 
       - name: Cache fuzz build artifacts
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: qa/fuzz/target
           key: ${{ runner.os }}-fuzz-cron-target-${{ hashFiles('qa/fuzz/Cargo.toml') }}-${{ hashFiles('qa/fuzz/fuzz_targets/**/*.rs') }}-${{ hashFiles('qa/fuzz/bin/**/*.rs') }}
@@ -87,7 +87,7 @@ jobs:
       # (key includes the run id, so every run produces a fresh cache entry;
       # restore-keys then pulls the most recent prior entry on the next run).
       - name: Restore fuzz corpus
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: qa/fuzz/corpus/${{ matrix.target }}
           key: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload run stats
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stats-${{ matrix.target }}
           path: qa/fuzz/fuzz-stats-${{ matrix.target }}.txt
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload crash artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: crashes-${{ matrix.target }}
           path: qa/fuzz/artifacts/${{ matrix.target }}/

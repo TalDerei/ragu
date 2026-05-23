@@ -24,10 +24,10 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       book: ${{ steps.filter.outputs.book }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         id: filter
         with:
           filters: |
@@ -47,11 +47,11 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install pinned nightly rustfmt
         id: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
         with:
           toolchain: nightly-2026-04-11
           components: rustfmt
@@ -65,7 +65,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -79,7 +79,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -99,7 +99,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -113,7 +113,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -129,7 +129,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -143,16 +143,16 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install pinned nightly toolchain
         id: toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
         with:
           toolchain: nightly-2026-04-11
 
       - name: Cache fuzz target directory
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: qa/fuzz/target
           key: ${{ runner.os }}-fuzz-target-${{ hashFiles('qa/fuzz/Cargo.toml') }}-${{ hashFiles('qa/fuzz/fuzz_targets/**/*.rs') }}-${{ hashFiles('qa/fuzz/bin/**/*.rs') }}
@@ -169,7 +169,7 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
         with:
@@ -185,11 +185,11 @@ jobs:
     if: needs.changes.outputs.book == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
       - name: Install mdbook and plugins
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9 # v2.79.5
         with:
           tool: mdbook@0.4.52,mdbook-katex@0.9.4,mdbook-mermaid@0.16.2,mdbook-admonish@1.20.0
       - name: Build book
