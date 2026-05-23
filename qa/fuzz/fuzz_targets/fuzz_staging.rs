@@ -619,6 +619,70 @@ fn check_stage_isolation(
     );
 }
 
+/// Maps a sparse-polynomial coefficient degree (Trace perspective) back
+/// to its `(wire, gate_index)`. Returns `None` for degrees outside `[0, 4n)`.
+///
+/// Mirror of `polynomials::sparse::view::Trace::map_to_blocks`:
+/// - `c[i]` → degree `i`             (range `[0, n)`)
+/// - `a[i]` → degree `2n - 1 - i`    (reversed, range `[n, 2n)`)
+/// - `b[i]` → degree `2n + i`        (range `[2n, 3n)`)
+/// - `d[i]` → degree `4n - 1 - i`    (reversed, range `[3n, 4n)`)
+fn trace_degree_to_gate(deg: usize) -> Option<usize> {
+    let n = TestRank::n();
+    if deg < n {
+        Some(deg) // c[i]
+    } else if deg < 2 * n {
+        Some(2 * n - 1 - deg) // a[i]
+    } else if deg < 3 * n {
+        Some(deg - 2 * n) // b[i]
+    } else if deg < 4 * n {
+        Some(4 * n - 1 - deg) // d[i]
+    } else {
+        None
+    }
+}
+
+/// Structural cross-stage discrimination check (robust replacement for the
+/// adversarially-fragile `rx.revdot(foreign_mask) ≠ 0` algebraic version).
+/// Asserts that every non-zero coefficient of `stage_rx` maps back (under
+/// the Trace perspective) to a gate index inside the stage's declared
+/// `[skip, skip + num)` range — or to gate 0 (the SYSTEM gate, where
+/// `rx_configured` places `alpha`).
+///
+/// Catches `rx_configured` slot-leak bugs deterministically, without
+/// going through `y`, so libfuzzer can't adversarially construct
+/// witness/y pairs that hide the bug. Stronger than Invariant A:
+/// Invariant A catches via the algebraic identity which can be
+/// adversarially zeroed; this catches via direct structural inspection.
+fn check_stage_slot_range(
+    label: &str,
+    stage_rx: &sparse::Polynomial<Fp, TestRank>,
+    own_skip: usize,
+    own_num: usize,
+) {
+    for (deg, val) in stage_rx.iter_coeffs().enumerate() {
+        if val == Fp::ZERO {
+            continue;
+        }
+        let gate = trace_degree_to_gate(deg)
+            .unwrap_or_else(|| panic!("{label}: degree {deg} out of range"));
+        // Gate 0 (SYSTEM) is allowed because `rx_configured` writes
+        // `alpha` to `a[0]`. Otherwise the non-zero must lie in the
+        // stage's declared range.
+        let in_own_range = gate == 0 || (gate >= own_skip && gate < own_skip + own_num);
+        assert!(
+            in_own_range,
+            "Structural cross-mask check failed for {label}: rx has \
+             non-zero coefficient at degree {deg} (gate {gate}), which \
+             lies outside the stage's declared range [{own_skip}, {}). \
+             This stage's rx_configured is writing to a slot it shouldn't \
+             — a value-preserving slot leak that Invariant A's algebraic \
+             check can miss under adversarial witness/y combinations.",
+            own_skip + own_num
+        );
+    }
+}
+
 /// Run the Invariant B oracle and the bare-MultiStage-trace `final_mask`
 /// check together. `stage_rx_sum` is added to the assembled trace before
 /// the algebraic identity is checked (per the canonical derivation), but
@@ -707,10 +771,22 @@ fuzz_target!(|input: Input| {
             let witness = (a, b);
             let circuit = MultiStage::<Fp, TestRank, _>::new(Single2W);
             let instance = Single2W::native_instance(witness);
+            // Pin StageW2's declared offsets against hand-coded constants.
+            // Catches symmetric `skip_gates` bugs that would shift both
+            // `rx_configured` and `StageMask::new` together — invariants
+            // A/B and final_mask all stay structurally satisfied under
+            // such a shift, but this assertion fails immediately.
+            debug_assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            debug_assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
+
             let stage_w2_rx = match StageW2::rx(Fp::ZERO, (a, b)) {
                 Ok(p) => p,
                 Err(_) => return,
             };
+            // Structural cross-mask check (robust replacement for the
+            // dropped algebraic version): assert non-zero positions land
+            // only in StageW2's declared range or the SYSTEM gate.
+            check_stage_slot_range("Single2W/StageW2", &stage_w2_rx, 1, 1);
             // Invariant A: per-stage isolation against the stage's own mask.
             if let Some(mask_reg) = MASK_REGISTRY_W2.as_ref() {
                 check_stage_isolation("Single2W/StageW2", &stage_w2_rx, mask_reg, y);
@@ -755,10 +831,15 @@ fuzz_target!(|input: Input| {
             let witness = (a, b, c, d);
             let circuit = MultiStage::<Fp, TestRank, _>::new(Single4W);
             let instance = Single4W::native_instance(witness);
+            // Pin StageW4's declared offsets (same rationale as Single2W).
+            debug_assert_eq!(<StageW4 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            debug_assert_eq!(<StageW4 as StageExt<Fp, TestRank>>::num_gates(), 2);
+
             let stage_w4_rx = match StageW4::rx(Fp::ZERO, witness) {
                 Ok(p) => p,
                 Err(_) => return,
             };
+            check_stage_slot_range("Single4W/StageW4", &stage_w4_rx, 1, 2);
             if let Some(mask_reg) = MASK_REGISTRY_W4.as_ref() {
                 check_stage_isolation("Single4W/StageW4", &stage_w4_rx, mask_reg, y);
             }
@@ -807,6 +888,15 @@ fuzz_target!(|input: Input| {
             );
             let circuit = MultiStage::<Fp, TestRank, _>::new(Chain2x4);
             let instance = Chain2x4::native_instance(witness);
+
+            // Pin parent and child stage offsets. Catches symmetric
+            // `skip_gates` shifts that A/B/final_mask all stay structurally
+            // satisfied under.
+            debug_assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            debug_assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
+            debug_assert_eq!(<StageW4Child as Stage<Fp, TestRank>>::skip_gates(), 2);
+            debug_assert_eq!(<StageW4Child as StageExt<Fp, TestRank>>::num_gates(), 2);
+
             // Stages composed in order: StageW2 then StageW4Child. Sum both
             // rx polynomials so the combined `r(X)` is consistent with what
             // the verifier would see after committing each stage separately.
@@ -818,6 +908,11 @@ fuzz_target!(|input: Input| {
                 Ok(p) => p,
                 Err(_) => return,
             };
+            // Structural cross-mask: each rx must write only into its own
+            // declared range. Stronger than Invariant A; not adversarially
+            // foolable via the revdot algebraic identity.
+            check_stage_slot_range("Chain/parent StageW2", &parent_rx, 1, 1);
+            check_stage_slot_range("Chain/child StageW4Child", &child_rx, 2, 2);
             // Invariant A: each stage checked against its own mask in isolation.
             if let Some(mask_reg) = MASK_REGISTRY_W2.as_ref() {
                 check_stage_isolation("Chain/parent StageW2", &parent_rx, mask_reg, y);

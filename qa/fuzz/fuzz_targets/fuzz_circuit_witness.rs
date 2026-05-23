@@ -56,7 +56,11 @@
 //!   complementing `fuzz_endoscalar`'s gadget-level coverage with an
 //!   end-to-end Circuit-pipeline path.
 //! - **`RoutineCircuit`** — `Driver::routine` plus an inline
-//!   `Routine::{predict, execute}` split (the `ScaleByThree` routine).
+//!   `Routine::{predict, execute}` split via `Prediction::Unknown(aux)`
+//!   (the `ScaleByThree` routine).
+//! - **`KnownRoutineCircuit`** — the `Prediction::Known(output, aux)`
+//!   branch of Routine, the path that lets witness drivers short-circuit
+//!   `execute` (the `DoubleKnown` routine).
 //!
 //! Multi-stage circuits (`StageBuilder`, `MultiStage`, `MultiStageCircuit`)
 //! are covered by the sibling `fuzz_staging` target, not here. The
@@ -140,8 +144,18 @@ enum CircuitChoice {
         scalar_seed: u64,
     },
     /// `RoutineCircuit` over a single Fp witness. Exercises
-    /// `Driver::routine` and the `Routine::{predict, execute}` split.
+    /// `Driver::routine` and the `Routine::{predict, execute}` split via
+    /// the `Prediction::Unknown(aux)` path.
     Routine {
+        witness_seed: u64,
+        use_special: Option<u8>,
+    },
+    /// `KnownRoutineCircuit` over a single Fp witness. Exercises the
+    /// `Prediction::Known(output, aux)` branch of the Routine trait —
+    /// the branch that lets witness drivers short-circuit `execute`.
+    /// Catches Routine impls that mis-construct the predicted-output
+    /// gadget while still satisfying the synthesis-side aux contract.
+    KnownRoutine {
         witness_seed: u64,
         use_special: Option<u8>,
     },
@@ -230,6 +244,14 @@ static ROUTINE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = Laz
         .and_then(|b| b.finalize())
         .ok()
 });
+
+static KNOWN_ROUTINE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
+    LazyLock::new(|| {
+        RegistryBuilder::<Fp, TestRank>::new()
+            .register_circuit(KnownRoutineCircuit)
+            .and_then(|b| b.finalize())
+            .ok()
+    });
 
 /// Native spec for `SquareCircuit`: compute `w^(2^times)` by repeated
 /// squaring directly in the field.
@@ -433,6 +455,97 @@ impl Circuit<Fp> for RoutineCircuit {
 /// Native spec for `RoutineCircuit`: `output = 3 * witness`.
 fn routine_native(witness: Fp) -> Fp {
     witness * Fp::from(3u64)
+}
+
+// ---------------------------------------------------------------------------
+// KnownRoutineCircuit — exercises the `Prediction::Known(output, aux)`
+// branch of the Routine trait. `ScaleByThree` above uses
+// `Prediction::Unknown(aux)`; `DoubleKnown` returns
+// `Prediction::Known(predicted_output, aux)`, letting witness-extraction
+// drivers short-circuit execution if they choose to. Catches Routine
+// impls that mis-construct the predicted-output gadget (wrong wire shape
+// or wrong predicted value) — bugs that an Unknown-only routine cannot
+// surface because witness drivers never see the predicted output there.
+// ---------------------------------------------------------------------------
+
+/// Routine that doubles its input. `predict` returns
+/// `Prediction::Known(predicted_elem, aux)` so witness drivers can
+/// skip `execute`; synthesis drivers (which always call `execute`) use
+/// the `aux` value to allocate the output and enforce the relation.
+#[derive(Clone)]
+struct DoubleKnown;
+
+impl Routine<Fp> for DoubleKnown {
+    type Input = Kind![Fp; Element<'_, _>];
+    type Output = Kind![Fp; Element<'_, _>];
+    type Aux<'dr> = Fp;
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        input: Bound<'dr, D, Self::Input>,
+        aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        let output = Element::alloc(dr, allocator, aux)?;
+        // Enforce: 2 * input - output == 0 via Element::double.
+        let two_input = input.double(dr);
+        dr.enforce_zero(|lc| lc.add(two_input.wire()).sub(output.wire()))?;
+        Ok(output)
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp, Wire = ()>>(
+        &self,
+        dr: &mut D,
+        input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        let aux = input.value().map(|v| *v * Fp::from(2u64));
+        // Allocate the predicted output on the wireless predict driver
+        // (Wire = ()). This is what distinguishes Known from Unknown:
+        // we hand the witness driver a fully-constructed output gadget,
+        // not just an aux value.
+        let allocator = &mut Standard::new();
+        let predicted_output =
+            Element::alloc(dr, allocator, input.value().map(|v| *v * Fp::from(2u64)))?;
+        Ok(Prediction::Known(predicted_output, aux))
+    }
+}
+
+struct KnownRoutineCircuit;
+
+impl Circuit<Fp> for KnownRoutineCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = Fp;
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        let x = Element::alloc(dr, allocator, witness)?;
+        let result = dr.routine(DoubleKnown, x)?;
+        Ok(WithAux::new(result, D::unit()))
+    }
+}
+
+/// Native spec for `KnownRoutineCircuit`: `output = 2 * witness`.
+fn known_routine_native(witness: Fp) -> Fp {
+    witness * Fp::from(2u64)
 }
 
 /// Run the differential alpha-injection check on an assembled trace.
@@ -783,6 +896,56 @@ fuzz_target!(|input: Input| {
                 Ok(t) => t.into_output(),
                 Err(_) => panic!(
                     "trace::eval rejected RoutineCircuit witness={witness:?} \
+                     but Simulator accepted — driver disagreement"
+                ),
+            };
+
+            if alphas_distinct {
+                check_alpha_injection(registry, &trace, alpha_a, alpha_b);
+            }
+        }
+
+        CircuitChoice::KnownRoutine {
+            witness_seed,
+            use_special,
+        } => {
+            let registry = match KNOWN_ROUTINE_REGISTRY.as_ref() {
+                Some(r) => r,
+                None => return,
+            };
+            let witness: Fp = match use_special {
+                Some(idx) => special_value(idx),
+                None => Fp::from(witness_seed),
+            };
+            let circuit = KnownRoutineCircuit;
+            let expected = known_routine_native(witness);
+
+            let mut sim_value: Option<Fp> = None;
+            let sim_result = Simulator::<Fp>::simulate(witness, |dr, w_just| {
+                let cw = circuit.witness(dr, w_just)?;
+                let elem = cw.into_output();
+                sim_value = Some(*elem.value().take());
+                Ok(())
+            });
+
+            if sim_result.is_err() {
+                panic!(
+                    "Simulator rejected KnownRoutineCircuit witness={witness:?} \
+                     — DoubleKnown should accept any Fp witness"
+                );
+            }
+
+            let sim_value = sim_value.expect("Simulator Ok without writing value");
+            assert_eq!(
+                sim_value, expected,
+                "KnownRoutineCircuit: synthesis output != native 2 * witness: \
+                 witness={witness:?}, sim={sim_value:?}, expected={expected:?}"
+            );
+
+            let trace = match circuit.trace(witness) {
+                Ok(t) => t.into_output(),
+                Err(_) => panic!(
+                    "trace::eval rejected KnownRoutineCircuit witness={witness:?} \
                      but Simulator accepted — driver disagreement"
                 ),
             };
