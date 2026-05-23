@@ -47,8 +47,6 @@
 
 #![no_main]
 
-use core::cell::RefCell;
-
 use arbitrary::Arbitrary;
 use ff::Field;
 use ff::PrimeField;
@@ -314,31 +312,31 @@ where
 /// Run the program through `Simulator`, capturing the final fingerprint
 /// on success.
 fn run_simulator(input: &Input, fes: &[Fp]) -> Option<Fingerprint> {
-    let snapshot: RefCell<Option<Fingerprint>> = RefCell::new(None);
+    let mut snapshot: Option<Fingerprint> = None;
     let sim = Simulator::<Fp>::simulate(fes.to_vec(), |dr, witness| {
         let fp = run_ops(dr, &witness, input, fes)?;
-        *snapshot.borrow_mut() = Some(fp);
+        snapshot = Some(fp);
         Ok(())
     });
     if sim.is_err() {
         return None;
     }
-    snapshot.into_inner()
+    snapshot
 }
 
 /// Run the program through `Emulator<Wired<Fp>>`, capturing the final
 /// fingerprint on success.
 fn run_emulator(input: &Input, fes: &[Fp]) -> Option<Fingerprint> {
-    let snapshot: RefCell<Option<Fingerprint>> = RefCell::new(None);
+    let mut snapshot: Option<Fingerprint> = None;
     let result = Emulator::<Wired<Fp>>::emulate_wired(fes.to_vec(), |dr, witness| {
         let fp = run_ops(dr, &witness, input, fes)?;
-        *snapshot.borrow_mut() = Some(fp);
+        snapshot = Some(fp);
         Ok(())
     });
     if result.is_err() {
         return None;
     }
-    snapshot.into_inner()
+    snapshot
 }
 
 fuzz_target!(|input: Input| {

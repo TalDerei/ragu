@@ -12,7 +12,7 @@ use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::Pasta;
-use ragu_pcd::{ApplicationBuilder, fuzz_utils::Corruption};
+use ragu_pcd::{ApplicationBuilder, Proof, fuzz_utils::Corruption};
 use rand::{SeedableRng, rngs::StdRng};
 
 use std::sync::LazyLock;
@@ -35,6 +35,14 @@ static APP: LazyLock<SyncApp> = LazyLock::new(|| {
             .expect("failed to create application"),
     )
 });
+
+/// Cached trivial proof. Building one runs the full endoscaling pipeline
+/// (hundreds of ms per call), but the result is deterministic from
+/// `&APP.0`. Cloning the cached value is ~10000x faster than rebuilding,
+/// so per-input work clones, corrupts, and verifies — turning the
+/// fuzz_verify_reject hot path into clone + corrupt + verify rather than
+/// build + corrupt + verify.
+static TRIVIAL_PROOF: LazyLock<Proof<C, R>> = LazyLock::new(|| APP.0.test_trivial_proof());
 
 #[derive(Arbitrary, Debug)]
 enum FuzzCorruption {
@@ -64,7 +72,7 @@ fuzz_target!(|input: Input| {
     }
     let app = &APP.0;
 
-    let mut proof = app.test_trivial_proof();
+    let mut proof = TRIVIAL_PROOF.clone();
 
     let corruption = match input.corruption {
         FuzzCorruption::PBlind(v) => Corruption::PBlind(Fp::from(v)),

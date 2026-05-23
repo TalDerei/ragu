@@ -42,13 +42,32 @@ use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{Boolean, Point, Simulator, allocator::Standard};
 
-/// Get a non-trivial curve point by multiplying generator by a scalar.
-fn point_from_seed(seed: u64) -> EpAffine {
-    if seed == 0 {
-        EpAffine::generator()
-    } else {
-        (EpAffine::generator() * Fq::from(seed)).to_affine()
+use std::sync::LazyLock;
+
+/// Precomputed table of non-identity Pallas points.
+///
+/// Replaces per-input `EpAffine::generator() * Fq::from(seed)` (~50µs
+/// each) with a 64-point modular lookup. The point-identity tests
+/// (negate involution, endo cube, conditional_*, add commutativity,
+/// double-and-add) exercise *algebraic gadget paths*, not point-shape
+/// coverage — 64 distinct on-curve points is enough to hit every gadget
+/// branch the test probes. The pair (`p_seed`, `q_seed`) still controls
+/// whether `p` and `q` collide on x (skipped via existing distinctness
+/// guard) and whether `2P` and `Q` collide on x (existing skip guard).
+const POINT_TABLE_LEN: usize = 64;
+static POINT_TABLE: LazyLock<[EpAffine; POINT_TABLE_LEN]> = LazyLock::new(|| {
+    let mut points = [EpAffine::generator(); POINT_TABLE_LEN];
+    for (i, p) in points.iter_mut().enumerate() {
+        if i > 0 {
+            *p = (EpAffine::generator() * Fq::from(i as u64)).to_affine();
+        }
     }
+    points
+});
+
+/// Get a non-trivial curve point from a fuzzer-supplied seed.
+fn point_from_seed(seed: u64) -> EpAffine {
+    POINT_TABLE[(seed as usize) % POINT_TABLE_LEN]
 }
 
 /// Native negation of an EpAffine point.

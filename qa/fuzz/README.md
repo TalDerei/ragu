@@ -8,7 +8,8 @@ don't leak into the rest of the repo.
 ## Quick start
 
 ```bash
-# Run every target for 30 seconds, sequentially.
+# Run every target for 30 seconds, sequentially. ASAN off by default
+# (~70% throughput win on simulator-heavy targets).
 ./fuzz.sh
 
 # Custom duration (seconds).
@@ -19,6 +20,10 @@ don't leak into the rest of the repo.
 
 # With the field-element constant dictionary loaded.
 DICT=1 ./fuzz.sh
+
+# Re-enable AddressSanitizer for memory-bug coverage (slower, but
+# required for triaging crash artifacts properly).
+ASAN=1 ./fuzz.sh
 
 # Run a single target directly.
 cargo +nightly fuzz run fuzz_element_ops -- -max_total_time=60

@@ -20,8 +20,6 @@
 
 #![no_main]
 
-use core::cell::RefCell;
-
 use arbitrary::Arbitrary;
 use ff::Field;
 use ff::PrimeField;
@@ -135,8 +133,8 @@ fn build_seeds(input: &Input) -> Vec<Fp> {
 /// (a degenerate input that would produce a false-positive fingerprint
 /// match).
 fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint> {
-    let snapshot: RefCell<Option<Fingerprint>> = RefCell::new(None);
-    let cheat_noop: RefCell<bool> = RefCell::new(false);
+    let mut snapshot: Option<Fingerprint> = None;
+    let mut cheat_noop = false;
 
     let sim = Simulator::<Fp>::simulate(fes.to_vec(), |dr, witness| {
         let allocator = &mut Standard::new();
@@ -174,7 +172,7 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
                     // happens to equal what was already there. Fingerprints
                     // would trivially match. Flag and bail out so the
                     // outer harness discards this run.
-                    *cheat_noop.borrow_mut() = true;
+                    cheat_noop = true;
                     return Ok(());
                 }
                 let cheated = match input.cheat {
@@ -339,15 +337,15 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
         // is Always.
         let elem_vals: Vec<Fp> = elems.iter().map(|e| *e.value().take()).collect();
         let bool_vals: Vec<bool> = bools.iter().map(|b| b.value().take()).collect();
-        *snapshot.borrow_mut() = Some((elem_vals, bool_vals));
+        snapshot = Some((elem_vals, bool_vals));
 
         Ok(())
     });
 
-    if sim.is_err() || *cheat_noop.borrow() {
+    if sim.is_err() || cheat_noop {
         return None;
     }
-    snapshot.into_inner()
+    snapshot
 }
 
 /// How many elements an Op pushes onto the `elems` stack.
@@ -361,6 +359,24 @@ fn op_pushes(op: &Op) -> usize {
         Op::IsZero(_) | Op::BoolAlloc(_) | Op::BoolNot(_) | Op::BoolAnd(_, _) => 0,
         _ => 1,
     }
+}
+
+/// Whether an Op's element-push is conditional on a runtime `Result`
+/// (`if let Ok(_)` in `run_path`). `op_pushes` is an upper bound for these
+/// — actual `run_path` execution may push zero. Used by `is_dead_cheat` to
+/// refuse predicting through unpredictable stack growth.
+fn op_can_fail_push(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::Mul(_, _)
+            | Op::Square(_)
+            | Op::Invert(_)
+            | Op::DivNonzero(_, _)
+            | Op::Fold(_, _, _)
+            | Op::AllocRaw(_)
+            | Op::AllocSquare(_)
+            | Op::ConditionalSelect(_, _, _)
+    )
 }
 
 /// Whether an Op reads `elems[target]` (given the current elem stack length).
@@ -383,7 +399,10 @@ fn op_reads_target(op: &Op, target: usize, elens: usize) -> bool {
 /// invoking the Simulator. Returns `(target_at_cheat, downstream_reads,
 /// downstream_ops)` describing how many downstream ops actually reference
 /// the cheated slot. A `downstream_reads = 0` result indicates a "dead
-/// cheat" — the soundness signal is a false positive.
+/// cheat" — the soundness assertion cannot fire (the cheat value remains
+/// observable at position `target_at_cheat` in the cheat-path fingerprint
+/// while honest-path holds the original value, so honest != cheated is
+/// trivially satisfied).
 fn triage_cheat(input: &Input) -> (usize, usize, usize) {
     let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
     let cheat_at_idx = (input.cheat_at as usize).min(input.ops.len());
@@ -422,6 +441,74 @@ fn triage_cheat(input: &Input) -> (usize, usize, usize) {
     }
 
     (target_at_cheat, downstream_reads, downstream_ops)
+}
+
+/// Pre-flight check: returns `true` if the static op walk can prove the
+/// cheated slot is never read by any downstream op. Inputs classified as
+/// dead are skipped — running the two simulator paths on them is pure
+/// waste, and they dominate the input distribution under random `Op`
+/// sampling (most variants either don't read elements at all or pick
+/// indices that miss the cheated slot).
+///
+/// **Soundness bound.** `op_pushes` is an upper-bound estimator (it
+/// assumes Result-returning ops succeed). To match `run_path`'s
+/// `target_at_cheat` computation exactly, we refuse to predict when any
+/// pre-cheat op has a fallible push: in those cases the predicted `elens`
+/// at the cheat point would exceed the real `elens`, drifting
+/// `target_at_cheat = target_idx % elens.min(64)` to a different slot than
+/// `run_path` actually cheats on. We conservatively return `false` (not
+/// dead) and run the full path.
+///
+/// Residual suffix drift: when a *suffix* op fails to push, the prediction
+/// can still miss a real read (`(a % elens_real) == target` while
+/// `(a % elens_pred) != target`). This is a coverage shave, not a
+/// soundness break — it requires both a suffix failure and a specific
+/// modular near-miss on the read index. Inputs with multiple real reads
+/// almost always trip the live-cheat check on a non-drifting read first.
+///
+/// Bails out on the first read, so the walk costs O(prefix + 1) for live
+/// cheats vs. O(prefix + suffix) for dead cheats — the asymmetry favors
+/// the cheap path.
+fn is_dead_cheat(input: &Input) -> bool {
+    let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
+    let cheat_at_idx = (input.cheat_at as usize).min(input.ops.len());
+
+    for op in &input.ops[..cheat_at_idx] {
+        // Pre-cheat fallible push → `elens` prediction may exceed reality,
+        // breaking `target_at_cheat` agreement with `run_path`. Bail.
+        if op_can_fail_push(op) {
+            return false;
+        }
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    if elens == 0 {
+        return true;
+    }
+
+    // Mirror `run_path` line 163: `target_idx % elems.len().min(64)`. The
+    // `.max(1)` guards `% 0` if `elens` is ever zero here (currently
+    // unreachable given the seed shape, but defends against future input
+    // schema changes).
+    let target_at_cheat = (input.target_idx as usize) % elens.min(64).max(1);
+
+    for op in &input.ops[cheat_at_idx..] {
+        if elens == 0 {
+            break;
+        }
+        if op_reads_target(op, target_at_cheat, elens) {
+            return false;
+        }
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    true
 }
 
 fuzz_target!(|input: Input| {
@@ -474,6 +561,16 @@ fuzz_target!(|input: Input| {
     // Cheat must land inside the executable op range, otherwise the cheat
     // is a no-op and fingerprints trivially match.
     if (input.cheat_at as usize) >= input.ops.len() {
+        return;
+    }
+
+    // Skip dead cheats — inputs where the cheated slot is never read
+    // downstream. The soundness assertion cannot fire on these (the cheat
+    // value remains visible at position `target_at_cheat` in the cheat-path
+    // fingerprint, differing from honest-path's original value by
+    // construction), so running the simulator twice would be pure waste.
+    // This walk reads bytes only; no field arithmetic, no constraint checks.
+    if is_dead_cheat(&input) {
         return;
     }
 
