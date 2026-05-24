@@ -56,15 +56,14 @@ jobs:
           persist-credentials: false
 
       - name: Install pinned nightly rustfmt
-        id: toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
+        id: nightly
+        uses: ./.github/actions/rust-nightly-setup
         with:
-          toolchain: nightly-2026-04-11
           components: rustfmt
 
       - name: Check formatting
         env:
-          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
         run: cargo fmt --all -- --config-path rustfmt.nightly.toml --check
 
   clippy:
@@ -166,10 +165,8 @@ jobs:
           persist-credentials: false
 
       - name: Install pinned nightly toolchain
-        id: toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
-        with:
-          toolchain: nightly-2026-04-11
+        id: nightly
+        uses: ./.github/actions/rust-nightly-setup
 
       - name: Cache fuzz target directory
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -182,7 +179,7 @@ jobs:
       - name: cargo check fuzz harness
         working-directory: qa/fuzz
         env:
-          RUSTUP_TOOLCHAIN: ${{ steps.toolchain.outputs.name }}
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
         run: cargo check --bins
 
   docs:
