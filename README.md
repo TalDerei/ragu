@@ -18,17 +18,13 @@
 
 ## Requirements
 
-* The minimum supported [Rust](https://rust-lang.org/) version is currently
-  **1.90.0**.
-* Ragu requires minimal dependencies and currently strives to avoid using
-  dependencies that are not already used in
-  [Zebra](https://github.com/ZcashFoundation/zebra).
-* Ragu's library crates are `no_std`-compatible and only need a global
-  allocator; the default `multicore` feature uses [maybe-rayon] and pulls
-  in `std`. See the [book](https://tachyon.z.cash/ragu/guide/requirements.html#no-std)
-  for details.
+* The minimum supported [Rust](https://rust-lang.org/) version is currently **1.90.0**.
+* Ragu requires minimal dependencies and currently strives to avoid using dependencies that are not already used in [Zebra](https://github.com/ZcashFoundation/zebra).
+* Ragu's library crates are `no_std`-compatible and only need a global allocator; the default `multicore` feature uses [maybe-rayon] and pulls in `std`. See the [book][book-no-std] for details.
 
 [maybe-rayon]: https://crates.io/crates/maybe-rayon
+[Zebra]: https://github.com/ZcashFoundation/zebra
+[book-no-std]: https://tachyon.z.cash/ragu/guide/requirements.html#no-std
 
 ## License
 
