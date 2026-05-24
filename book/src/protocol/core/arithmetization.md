@@ -145,7 +145,7 @@ ${\v{c} \circ \v{d} = \v{0^n}}$ each hold with high probability. (The latter
 claim is useless and redundant for our purposes, since $\v{d} = \v{0^n}$ for
 witness vectors anyway.)
 
-## Constraints
+## Constraints {#constraints}
 
 Given a choice of witness $\v{a}, \v{b}, \v{c}$, if for some random choice of
 $y \in \F$ the equality
