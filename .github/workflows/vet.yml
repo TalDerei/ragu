@@ -16,37 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  # Detect whether anything that could affect vet/audit changed. The downstream
-  # jobs always evaluate (so branch-protection required-check semantics work)
-  # but short-circuit when nothing relevant changed.
-  changes:
-    name: detect changes
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      lockfile: ${{ steps.filter.outputs.lockfile }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
-        id: filter
-        with:
-          filters: |
-            lockfile:
-              - '**/Cargo.lock'
-              - '**/Cargo.toml'
-              - 'qa/supply-chain/**'
-              - '.github/workflows/vet.yml'
-
   vet:
     name: cargo vet
-    needs: changes
-    if: needs.changes.outputs.lockfile == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # cargo-vet only reads manifests; it doesn't compile our crates. Bypass
     # the workspace's rust-toolchain.toml (which pins 1.90.0 + clippy) so we
     # use the runner's preinstalled stable and avoid rustup component-install
@@ -74,9 +47,8 @@ jobs:
 
   audit:
     name: cargo audit
-    needs: changes
-    if: needs.changes.outputs.lockfile == 'true' || github.event_name == 'push' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       RUSTUP_TOOLCHAIN: stable
     steps:
