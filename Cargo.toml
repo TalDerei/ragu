@@ -72,7 +72,7 @@ group = { version = "0.14.0-pre.1", default-features = false }
 pasta_curves = { version = "0.5.1", features = ["deferred"] }
 rand = "0.10"
 lazy_static = "1.5.0"
-proptest = "1.7.0"
+proptest = "1.11.0"
 gungraun = "0.17.0"
 blake2b_simd = "1.0"
 maybe-rayon = { version = "0.1.1", default-features = false }
