@@ -201,6 +201,13 @@ user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
 
+[[publisher.pasta_curves]]
+version = "0.5.1"
+when = "2023-03-02"
+user-id = 6289
+user-login = "str4d"
+user-name = "Jack Grigg"
+
 [[publisher.prettyplease]]
 version = "0.2.37"
 when = "2025-08-19"
