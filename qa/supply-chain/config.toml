@@ -29,15 +29,6 @@ url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/
 ours = "crypto-reviewed"
 theirs = "crypto-reviewed"
 
-[policy.ff]
-audit-as-crates-io = true
-
-[policy.ff_derive]
-audit-as-crates-io = true
-
-[policy.group]
-audit-as-crates-io = true
-
 [policy.pasta_curves]
 audit-as-crates-io = true
 
@@ -87,24 +78,12 @@ criteria = "safe-to-deploy"
 version = "0.8.21"
 criteria = "safe-to-deploy"
 
-[[exemptions.ff]]
-version = "0.14.0-pre.0@git:f4ca7c23e6ea693b13aba0c690ad7c43852c561c"
-criteria = "safe-to-deploy"
-
-[[exemptions.ff_derive]]
-version = "0.14.0-pre.0@git:f4ca7c23e6ea693b13aba0c690ad7c43852c561c"
-criteria = "safe-to-deploy"
-
 [[exemptions.funty]]
 version = "2.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.getrandom]]
 version = "0.4.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.group]]
-version = "0.14.0-pre.0@git:5f5c693275598d7885827e153c21ff99c60e18f3"
 criteria = "safe-to-deploy"
 
 [[exemptions.gungraun]]
