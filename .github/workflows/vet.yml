@@ -1,0 +1,56 @@
+name: Supply chain
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/Cargo.lock'
+      - 'qa/supply-chain/**'
+      - '.github/workflows/vet.yml'
+  pull_request:
+    paths:
+      - '**/Cargo.lock'
+      - 'qa/supply-chain/**'
+      - '.github/workflows/vet.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  vet:
+    name: cargo vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@b18f7037bce1ea84c086f4d5e9493f853c0ce412 # 1.90.0 branch HEAD @ 2026-05-23
+
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-vet-${{ hashFiles('Cargo.lock', 'qa/supply-chain/**') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-vet-
+
+      - name: Install cargo-vet
+        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
+        with:
+          tool: cargo-vet@0.10.3
+
+      # cargo-vet expects `supply-chain/` adjacent to the workspace Cargo.toml.
+      # Our config lives at `qa/supply-chain/`, so stage a symlink for CI.
+      - name: Stage supply-chain symlink
+        run: ln -s qa/supply-chain supply-chain
+
+      - name: Run cargo vet
+        run: cargo vet --locked
