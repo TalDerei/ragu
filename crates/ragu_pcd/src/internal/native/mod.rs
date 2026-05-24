@@ -329,47 +329,46 @@ pub enum RxComponent {
 /// `compute_v` circuit. Keeping this prefix in one ordered list prevents the
 /// two implementations from drifting independently; the dynamic suffixes are
 /// still driven by [`RxIndex::ALL`] and [`InternalCircuitIndex::ALL`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StaticFQuery {
     /// Left child proof $p(u)=v$ check.
     LeftP,
     /// Right child proof $p(u)=v$ check.
     RightP,
-    /// Left child registry-xy polynomial queried at the current `w`.
+    /// Left child registry-xy polynomial queried at the current $w$.
     LeftRegistryXyAtW,
-    /// Right child registry-xy polynomial queried at the current `w`.
+    /// Right child registry-xy polynomial queried at the current $w$.
     RightRegistryXyAtW,
-    /// Current `m(w, x_0, Y)` queried at the left child's `y`.
+    /// Current $m(w, x_0, Y)$ queried at the left child's $y$.
     RegistryWx0AtLeftY,
-    /// Current `m(w, x_1, Y)` queried at the right child's `y`.
+    /// Current $m(w, x_1, Y)$ queried at the right child's $y$.
     RegistryWx1AtRightY,
-    /// Current `m(w, x_0, Y)` queried at the current `y`.
+    /// Current $m(w, x_0, Y)$ queried at the current $y$.
     RegistryWx0AtY,
-    /// Current `m(w, x_1, Y)` queried at the current `y`.
+    /// Current $m(w, x_1, Y)$ queried at the current $y$.
     RegistryWx1AtY,
-    /// Current `m(w, X, y)` queried at the left child's `x`.
+    /// Current $m(w, X, y)$ queried at the left child's $x$.
     RegistryWyAtLeftX,
-    /// Current `m(w, X, y)` queried at the right child's `x`.
+    /// Current $m(w, X, y)$ queried at the right child's $x$.
     RegistryWyAtRightX,
-    /// Current `m(w, X, y)` queried at the current `x`.
+    /// Current $m(w, X, y)$ queried at the current $x$.
     RegistryWyAtX,
-    /// Current registry-xy polynomial queried at the current `w`.
+    /// Current registry-xy polynomial queried at the current $w$.
     RegistryXyAtW,
     /// Current registry-xy polynomial queried at the left child's circuit id.
     RegistryXyAtLeftCircuitId,
     /// Current registry-xy polynomial queried at the right child's circuit id.
     RegistryXyAtRightCircuitId,
-    /// Left child `a` polynomial queried at `xz`.
+    /// Left child $a$ polynomial queried at $xz$.
     LeftAbAAtXz,
-    /// Left child `b` polynomial queried at `x`.
+    /// Left child $b$ polynomial queried at $x$.
     LeftAbBAtX,
-    /// Right child `a` polynomial queried at `xz`.
+    /// Right child $a$ polynomial queried at $xz$.
     RightAbAAtXz,
-    /// Right child `b` polynomial queried at `x`.
+    /// Right child $b$ polynomial queried at $x$.
     RightAbBAtX,
-    /// Current accumulator `a` polynomial queried at `xz`.
+    /// Current accumulator $a$ polynomial queried at $xz$.
     CurrentAAtXz,
-    /// Current accumulator `b` polynomial queried at `x`.
+    /// Current accumulator $b$ polynomial queried at $x$.
     CurrentBAtX,
 }
 
