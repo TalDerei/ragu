@@ -70,7 +70,7 @@ jobs:
         run: cargo install --locked cargo-vet@0.10.2
 
       - name: Run cargo vet
-        run: cargo vet --frozen --locked --store-path ./qa/supply-chain/
+        run: cargo vet --locked --store-path ./qa/supply-chain/
 
   audit:
     name: cargo audit
