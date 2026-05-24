@@ -62,7 +62,7 @@ $$
 \end{array}
 $$
 
-### Reduction to Polynomial Queries
+### Reduction to Polynomial Queries {#reduction-to-polynomial-queries}
 
 Given a claim $(\v{a}, \v{b}, c)$ where $a, b \in \F[X]$ are polynomials
 described by the respective coefficient vectors $\v{a}, \v{b} \in \F^{n}$, the

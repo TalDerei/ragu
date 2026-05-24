@@ -43,8 +43,8 @@ $$
 $$
 
 for some (sparse) public input vector $\v{k} \in \F^{4n}$ and fixed matrices
-$\v{u}, \v{v}, \v{w} \in \F^{n \times 4n}$, where
-$\v{u_{j}}, \v{v_{j}}, \v{w_{j}} \in \F^{4n}$ denote the _j-th row_ of those
+$\v{u}, \v{v}, \v{w} \in \F^{4n \times n}$, where
+$\v{u_{j}}, \v{v_{j}}, \v{w_{j}} \in \F^{n}$ denote the _j-th row_ of those
 matrices. Because $n$ is fixed, individual circuits vary only by these matrices
 after this reduction.
 
@@ -52,7 +52,7 @@ Bootle16 CS is practically identical to the more commonly known R1CS, as they
 are linear-time interreducible, thus equivalent for all practical purposes.
 See [appendix](../../appendix/cs.md) for a more detailed comparison.
 
-## Gates
+## Gates {#gates}
 
 The gates over the witness can be rewritten as $\v{a} \circ
 \v{b} = \v{c}$. It is possible to _probabilistically_ reduce this to a dot

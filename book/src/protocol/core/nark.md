@@ -39,7 +39,7 @@ costs roughly twice as much as degree-$4n$ polynomials. And we only care about
 one coefficient (the $c_{4n-1}$ term), so paying double for the whole thing
 seems wasteful.
 
-### The Decomposition Trick
+### The Decomposition Trick {#the-decomposition-trick}
 
 Instead of committing to the full product, we decompose it into two smaller pieces:
 
