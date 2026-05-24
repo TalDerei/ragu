@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Audit on a weekly cadence so new RustSec advisories published against
+  # already-pinned deps surface even without a lockfile change.
+  schedule:
+    - cron: '0 6 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -12,9 +16,9 @@ permissions:
   contents: read
 
 jobs:
-  # Detect whether anything that could affect the vet result changed. The vet
-  # job always runs (so branch-protection required-check semantics work) but
-  # short-circuits when nothing relevant changed.
+  # Detect whether anything that could affect vet/audit changed. The downstream
+  # jobs always evaluate (so branch-protection required-check semantics work)
+  # but short-circuit when nothing relevant changed.
   changes:
     name: detect changes
     runs-on: ubuntu-latest
@@ -22,7 +26,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      vet: ${{ steps.filter.outputs.vet }}
+      lockfile: ${{ steps.filter.outputs.lockfile }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -32,7 +36,7 @@ jobs:
         id: filter
         with:
           filters: |
-            vet:
+            lockfile:
               - '**/Cargo.lock'
               - '**/Cargo.toml'
               - 'qa/supply-chain/**'
@@ -41,7 +45,7 @@ jobs:
   vet:
     name: cargo vet
     needs: changes
-    if: needs.changes.outputs.vet == 'true' || github.event_name == 'push'
+    if: needs.changes.outputs.lockfile == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     # cargo-vet only reads manifests; it doesn't compile our crates. Bypass
     # the workspace's rust-toolchain.toml (which pins 1.90.0 + clippy) so we
@@ -67,3 +71,29 @@ jobs:
 
       - name: Run cargo vet
         run: cargo vet --frozen --locked --store-path ./qa/supply-chain/
+
+  audit:
+    name: cargo audit
+    needs: changes
+    if: needs.changes.outputs.lockfile == 'true' || github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Cache cargo-audit binary
+        id: cache-audit
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-cargo-audit-bin-0.22.1
+
+      - name: Install cargo-audit
+        if: steps.cache-audit.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-audit@0.22.1
+
+      - name: Run cargo audit
+        run: cargo audit
