@@ -25,8 +25,7 @@ pub struct Invertible<'dr, D: Driver<'dr>> {
 impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     /// Allocate an [`Invertible`] field element.
     ///
-    /// The constraint system will not be satisfied (and synthesis will fail) if
-    /// the provided `value` is zero.
+    /// This will be unsatisfied (and fail to synthesize) if `value` is zero.
     ///
     /// Computing the inverse witness costs a field inversion. If the inverse
     /// is already known, prefer
@@ -46,8 +45,8 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
 
     /// Allocate an [`Invertible`] field element given its inverse as advice.
     ///
-    /// The witness will not satisfy the constraint system if `value` is zero or
-    /// if `inverse_value` is not its multiplicative inverse.
+    /// This will be unsatisfied if `value` is zero or if `inverse_value` is not
+    /// really its multiplicative inverse.
     ///
     /// This costs one gate and one constraint.
     pub fn alloc_with_advice(
@@ -86,6 +85,18 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     /// Returns the inverse of the underlying [`Element`].
     pub fn inverse(&self) -> &Element<'dr, D> {
         &self.inverse
+    }
+
+    /// Consumes the [`Invertible`] and returns the underlying [`Element`],
+    /// discarding the inverse.
+    pub fn into_element(self) -> Element<'dr, D> {
+        self.element
+    }
+
+    /// Consumes the [`Invertible`] and returns the inverse [`Element`],
+    /// discarding the original.
+    pub fn into_inverse(self) -> Element<'dr, D> {
+        self.inverse
     }
 }
 

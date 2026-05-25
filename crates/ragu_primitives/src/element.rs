@@ -16,7 +16,7 @@ use ragu_core::{
 };
 
 use crate::{
-    Boolean,
+    Boolean, Invertible,
     allocator::Allocator,
     consistent::Consistent,
     io::{Buffer, Write},
@@ -235,38 +235,61 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         self.add(dr, self)
     }
 
-    /// Invert this element if it is nonzero.
+    /// Returns an [`Invertible`] for this element.
     ///
-    /// This will fail to synthesize if the element is zero.
-    pub fn invert(&self, dr: &mut D) -> Result<Self> {
-        let inverse = D::try_just(|| {
-            self.value
-                .snag()
-                .invert()
-                .into_option()
-                .ok_or_else(|| Error::InvalidWitness("division by zero".into()))
-        })?;
-
-        self.invert_with(dr, inverse)
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn invertible(&self, dr: &mut D) -> Result<Invertible<'dr, D>> {
+        let invertible = Invertible::alloc(dr, self.value.clone())?;
+        invertible.element().enforce_equal(dr, self)?;
+        Ok(invertible)
     }
 
-    /// Enforce that this element times the provided `inverse` (unallocated value) equals one.
-    /// Returns the allocated `inverse` element.
-    pub fn invert_with(&self, dr: &mut D, inverse: DriverValue<D, D::F>) -> Result<Self> {
-        let (a, b, c) = dr.mul(|| {
-            Ok((
-                Coeff::Arbitrary(*self.value.snag()),
-                Coeff::Arbitrary(*inverse.snag()),
-                Coeff::One,
-            ))
-        })?;
-        dr.enforce_equal(&a, self.wire())?;
-        dr.enforce_equal(&c, &D::ONE)?;
+    /// Returns an [`Invertible`] for this element, using the supplied
+    /// `inverse_value` as advice about what this element's inverse is.
+    ///
+    /// This will be unsatisfied if this element is zero or if the provided
+    /// `inverse_value` is not really its multiplicative inverse.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn invertible_with(
+        &self,
+        dr: &mut D,
+        inverse_value: DriverValue<D, D::F>,
+    ) -> Result<Invertible<'dr, D>> {
+        let invertible = Invertible::alloc_with_advice(dr, self.value.clone(), inverse_value)?;
+        invertible.element().enforce_equal(dr, self)?;
+        Ok(invertible)
+    }
 
-        Ok(Element {
-            value: inverse,
-            wire: b,
-        })
+    /// Returns the multiplicative inverse of this element.
+    ///
+    /// Convenience over [`Self::invertible`] for callers that only need the
+    /// inverse [`Element`].
+    ///
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn invert(&self, dr: &mut D) -> Result<Self> {
+        self.invertible(dr).map(Invertible::into_inverse)
+    }
+
+    /// Returns the multiplicative inverse of this element, using the supplied
+    /// `inverse_value` as advice about what this element's inverse is.
+    ///
+    /// Convenience over [`Self::invertible_with`] for callers that only need
+    /// the inverse [`Element`].
+    ///
+    /// This will be unsatisfied if this element is zero or if the provided
+    /// `inverse_value` is not really its multiplicative inverse.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn invert_with(&self, dr: &mut D, inverse_value: DriverValue<D, D::F>) -> Result<Self> {
+        self.invertible_with(dr, inverse_value)
+            .map(Invertible::into_inverse)
     }
 
     /// Divides this element by the provided element `by` and returns the
