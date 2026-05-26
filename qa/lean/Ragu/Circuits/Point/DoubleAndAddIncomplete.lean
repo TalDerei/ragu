@@ -184,16 +184,14 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     · rw [h_slope, h_yterm, h_sq2]
       linear_combination (-h_lam2_mul)
   refine ⟨_, h_add_eq1, h_add_eq2, ?_⟩
-  have h_r_curve := Lemmas.add_incomplete_preserves_membership
-    { x := x_p, y := y_p } { x := x_q, y := y_q } curveParams h_x_ne h_curve1 h_curve2
-  rw [h_add_eq1] at h_r_curve
-  have h_out_curve := Lemmas.add_incomplete_preserves_membership
+  have h_r_curve := by
+    simpa [h_add_eq1] using Lemmas.add_incomplete_preserves_membership
+      { x := x_p, y := y_p } { x := x_q, y := y_q } curveParams h_x_ne h_curve1 h_curve2
+  simpa [h_add_eq2] using Lemmas.add_incomplete_preserves_membership
     { x := env.get (i₀ + 3 + 3 + 2) + -x_p + -x_q,
       y := env.get (i₀ + 3) *
             (x_p - (env.get (i₀ + 3 + 3 + 2) + -x_p + -x_q)) - y_p }
     { x := x_p, y := y_p } curveParams h_r_ne_xp h_r_curve h_curve1
-  rw [h_add_eq2] at h_out_curve
-  exact h_out_curve
 
 theorem completeness (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated

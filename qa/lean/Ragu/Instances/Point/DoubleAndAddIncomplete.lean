@@ -1,5 +1,6 @@
 import Ragu.Circuits.Point.DoubleAndAddIncomplete
 import Ragu.Instances.Autogen.Point.DoubleAndAddIncomplete
+import Ragu.CircuitFlattening
 import Ragu.Core
 
 namespace Ragu.Instances.Point.DoubleAndAddIncomplete
@@ -15,7 +16,6 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p))
     : Vector (Expression (F p)) 2 :=
   #v[output.x, output.y]
 
-set_option maxHeartbeats 800000 in
 def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
@@ -29,10 +29,9 @@ def formal_instance : Core.Statements.FormalInstance where
 
   same_constraints := by
     intro input
+    rw [CircuitFlattening.subcircuitWithHintAssertion_toFlat]
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-      GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.DoubleAndAddIncomplete.circuit,
       Circuits.Point.DoubleAndAddIncomplete.elaborated,
@@ -49,7 +48,10 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.EnforceNonzero.circuit,
       Circuits.Element.EnforceNonzero.elaborated,
       Circuits.Element.EnforceNonzero.main,
-      Circuits.Core.Mul.main]
+      Circuits.Core.Mul.main,
+      CircuitFlattening.formal_toSubcircuit_toFlat,
+      CircuitFlattening.general_toSubcircuit_toFlat,
+      CircuitFlattening.withHint_toSubcircuit_toFlat]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
             ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> rfl
   same_output := by

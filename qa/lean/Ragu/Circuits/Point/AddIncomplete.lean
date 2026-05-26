@@ -125,10 +125,9 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     · rw [h_sq, h_delta]; ring
     · rw [h_y_term, h_sq, h_delta]; ring
   refine ⟨h_add_eq, ?_⟩
-  have h_curve := Lemmas.add_incomplete_preserves_membership
-    ⟨x1, y1⟩ ⟨x2, y2⟩ curveParams h_x_ne h_curve1 h_curve2
-  rw [h_add_eq] at h_curve
-  exact h_curve
+  simpa [h_add_eq] using
+    Lemmas.add_incomplete_preserves_membership
+      ⟨x1, y1⟩ ⟨x2, y2⟩ curveParams h_x_ne h_curve1 h_curve2
 
 theorem completeness (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated

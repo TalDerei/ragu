@@ -54,8 +54,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
   obtain ⟨h_curve, h_no_order2⟩ := h_assumptions
   have hy_ne : input_y ≠ 0 := h_no_order2 ⟨input_x, input_y⟩ h_curve
   have h_2y_eq : input_y + input_y = 2 * input_y := (two_mul _).symm
-  have h_2y_ne : input_y + input_y ≠ 0 := by
-    rw [h_2y_eq]; exact mul_ne_zero (NeZero.ne 2) hy_ne
+  have h_2y_ne : input_y + input_y ≠ 0 := h_2y_eq ▸ mul_ne_zero (NeZero.ne 2) hy_ne
   obtain ⟨h_x2, h_div, h_delta_sq, h_y_term⟩ := h_holds
   have h_delta : env.get (i₀ + 3) = 3 * input_x ^ 2 / (input_y + input_y) := by
     rw [h_div (Or.inl h_2y_ne), h_x2]
@@ -69,9 +68,8 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     · rw [h_delta_sq, h_delta, h_2y_eq]; ring
     · rw [h_y_term, h_delta_sq, h_delta, h_2y_eq]; ring
   refine ⟨h_double_eq, ?_⟩
-  have := Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_curve h_no_order2
-  rw [h_double_eq] at this
-  exact this
+  simpa [h_double_eq] using
+    Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_curve h_no_order2
 
 theorem completeness (curveParams : Spec.CurveParams p) :
     Completeness (F p) elaborated (Assumptions curveParams) := by
@@ -80,10 +78,8 @@ theorem completeness (curveParams : Spec.CurveParams p) :
     Element.Mul.circuit, Element.Mul.Assumptions]
   obtain ⟨h_curve, h_no_order2⟩ := h_assumptions
   have hy_ne : input_y ≠ 0 := h_no_order2 ⟨input_x, input_y⟩ h_curve
-  have h_2y_ne : input_y + input_y ≠ 0 := by
-    rw [show (input_y + input_y) = 2 * input_y from (two_mul _).symm]
-    exact mul_ne_zero (NeZero.ne 2) hy_ne
-  exact h_2y_ne
+  rw [(two_mul input_y).symm]
+  exact mul_ne_zero (NeZero.ne 2) hy_ne
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Spec.Point Spec.Point where
   elaborated
