@@ -8,7 +8,7 @@ use ragu_core::{
 };
 
 use crate::{
-    Element,
+    Element, GadgetExt,
     consistent::Consistent,
     io::{Buffer, Write},
 };
@@ -19,7 +19,7 @@ use crate::{
 ///
 /// [`Nonzero`] dereferences to the underlying [`Element`], so all of
 /// [`Element`]'s methods are available directly on a [`Nonzero`].
-#[derive(Gadget)]
+#[derive(Gadget, Write)]
 pub struct Nonzero<'dr, D: Driver<'dr>> {
     element: Element<'dr, D>,
 }
@@ -88,16 +88,6 @@ impl<'dr, D: Driver<'dr, F: PrimeField>> Nonzero<'dr, D> {
     pub fn double(&self, dr: &mut D) -> Self {
         let () = Self::ASSERT_ODD_CHAR;
         Self::new_unchecked(self.element.double(dr))
-    }
-}
-
-impl<F: Field> Write<F> for Kind![F; @Nonzero<'_, _>] {
-    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
-        this: &Nonzero<'dr, D>,
-        dr: &mut D,
-        buf: &mut B,
-    ) -> Result<()> {
-        buf.write(dr, this)
     }
 }
 
@@ -210,6 +200,17 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Invertible<'dr, D> {
         let value = D::just(|| *self.element.value().take());
         let inverse_value = D::just(|| *self.inverse.value().take());
         Self::alloc_with_advice(dr, value, inverse_value)?.enforce_equal(dr, self)
+    }
+}
+
+/// Encodes only the element; the inverse is derivable and is omitted.
+impl<F: Field> Write<F> for Kind![F; @Invertible<'_, _>] {
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+        this: &Invertible<'dr, D>,
+        dr: &mut D,
+        buf: &mut B,
+    ) -> Result<()> {
+        this.element().write(dr, buf)
     }
 }
 
