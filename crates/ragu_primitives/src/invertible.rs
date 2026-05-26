@@ -1,9 +1,12 @@
+use core::marker::PhantomData;
+
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
+    convert::WireMap,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, Kind},
+    gadgets::{Bound, Gadget, GadgetKind, Kind},
     maybe::Maybe,
 };
 
@@ -113,7 +116,6 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Nonzero<'dr, D> {
 /// [`inverse`](Self::inverse).
 ///
 /// Inversion is free, since the inverse is located within the gadget.
-#[derive(Gadget)]
 pub struct Invertible<'dr, D: Driver<'dr>> {
     element: Nonzero<'dr, D>,
     inverse: Nonzero<'dr, D>,
@@ -200,6 +202,54 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Invertible<'dr, D> {
         let value = D::just(|| *self.element.value().take());
         let inverse_value = D::just(|| *self.inverse.value().take());
         Self::alloc_with_advice(dr, value, inverse_value)?.enforce_equal(dr, self)
+    }
+}
+
+impl<'dr, D: Driver<'dr>> Clone for Invertible<'dr, D> {
+    fn clone(&self) -> Self {
+        Self {
+            element: self.element.clone(),
+            inverse: self.inverse.clone(),
+        }
+    }
+}
+
+impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for Invertible<'dr, D> {
+    type Kind = Invertible<'static, PhantomData<<D as Driver<'dr>>::F>>;
+}
+
+// SAFETY: `Invertible` contains only `Nonzero` fields, which are `Send` when
+// `D::Wire: Send`. So the `Send` propagation required by `GadgetKind` holds.
+unsafe impl<F: Field> GadgetKind<F> for Invertible<'static, PhantomData<F>> {
+    type Rebind<'dr, D: Driver<'dr, F = F>> = Invertible<'dr, D>;
+
+    fn map_gadget<
+        'src,
+        'dst,
+        WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+    >(
+        this: &Bound<'src, WM::Src, Self>,
+        wm: &mut WM,
+    ) -> Result<Bound<'dst, WM::Dst, Self>> {
+        Ok(Invertible {
+            element: Gadget::map(&this.element, wm)?,
+            inverse: Gadget::map(&this.inverse, wm)?,
+        })
+    }
+
+    fn enforce_equal_gadget<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &Bound<'dr, D2, Self>,
+        b: &Bound<'dr, D2, Self>,
+    ) -> Result<()> {
+        // Soundness: comparing only the element suffices because
+        // `alloc_with_advice` enforces `element * inverse = 1`, so equal
+        // elements have equal inverses in any satisfied assignment.
+        Gadget::enforce_equal(&a.element, dr, &b.element)
     }
 }
 
@@ -368,7 +418,7 @@ mod tests {
             Ok(())
         })?;
         assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 3);
+        assert_eq!(sim.num_constraints(), 2);
         Ok(())
     }
 
