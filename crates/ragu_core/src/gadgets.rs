@@ -95,6 +95,31 @@ use super::{
 /// the common pattern of accessing `<K as GadgetKind<F>>::Rebind<'dr, D>`.
 pub type Bound<'dr, D, K> = <K as GadgetKind<<D as Driver<'dr>>::F>>::Rebind<'dr, D>;
 
+/// A restricted view over a [`Driver`] that exposes *only* the ability to
+/// enforce equality between corresponding wire pairs.
+///
+/// Conservative gadget equality (see
+/// [`GadgetKind::enforce_conservative_equal_gadget`]) must constrain each pair
+/// of corresponding wires and do nothing else — it must not allocate gates, add
+/// arbitrary constraints, or take invariant-aware equality shortcuts, since it
+/// is the raw fallback used where a gadget's invariants are not guaranteed (for
+/// example consistency re-establishment and wire-substitution paths). Handing
+/// implementations this adapter instead of a full [`Driver`] enforces that
+/// contract at the type level rather than by documentation alone: the only
+/// operation it exposes is
+/// [`enforce_conservative_equal`](Self::enforce_conservative_equal).
+pub struct WireEqualizer<'a, 'dr, D: Driver<'dr>> {
+    dr: &'a mut D,
+    _marker: core::marker::PhantomData<&'dr ()>,
+}
+
+impl<'a, 'dr, D: Driver<'dr>> WireEqualizer<'a, 'dr, D> {
+    /// Constrains the corresponding wire pair `(a, b)` to be equal.
+    pub fn enforce_conservative_equal(&mut self, a: &D::Wire, b: &D::Wire) -> Result<()> {
+        self.dr.enforce_equal(a, b)
+    }
+}
+
 /// A type that encapsulates wires allocated by a [`Driver`] along with any
 /// corresponding witness data, and satisfies **fungibility**.
 ///
