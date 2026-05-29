@@ -76,7 +76,6 @@ mod coeff;
 mod domain;
 mod fft;
 mod multicore;
-mod uendo;
 mod util;
 
 pub use coeff::Coeff;
@@ -92,14 +91,6 @@ pub use pasta_curves::{
 /// [`Fp::pow`](pasta_curves::Fp::pow) need as input. This makes constants
 /// slightly more readable, but is not intended for use in other contexts.
 pub use ragu_macros::repr256;
-/// TODO(ebfull): Use this if we need to increase the bit size of endoscalars.
-///
-/// The `uendo` module is a speculative implementation. We may need a
-/// flexible-width challenge space larger than 128 bits due to birthday bound /
-/// adversary advantage concerns. `Uendo` is a drop-in replacement for `u128`
-/// that's generic over bit length, in case the security proof demands something
-/// like 134-bit challenges. This may end up being removed if 128 bits suffices.
-pub use u128 as Uendo;
 pub use util::{
     batch_to_affine, decomp_product_poly, dot, eval, factor, factor_iter, geosum, low_u64, mul,
     poly_mul, poly_with_roots,

@@ -92,7 +92,7 @@ enum Op {
     Negate(u8),
     Invert(u8),
     IsZero(u8),
-    DivNonzero(u8, u8),
+    Divide(u8, u8),
     Scale(u8, u64),
     Fold(u8, u8, u64),
     AllocConst(u64),
@@ -269,9 +269,11 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
                         bools.push(b);
                     }
                 }
-                Op::DivNonzero(a, b) => {
+                Op::Divide(a, b) => {
                     let (a, b) = (a as usize % elen, b as usize % elen);
-                    if let Ok(r) = elems[a].div_nonzero(dr, &elems[b]) {
+                    if let Ok(b_nz) = elems[b].clone().enforce_nonzero(dr)
+                        && let Ok(r) = elems[a].divide(dr, &b_nz)
+                    {
                         elems.push(r);
                     }
                 }
@@ -413,7 +415,7 @@ fn op_can_fail_push(op: &Op) -> bool {
         Op::Mul(_, _)
             | Op::Square(_)
             | Op::Invert(_)
-            | Op::DivNonzero(_, _)
+            | Op::Divide(_, _)
             | Op::Fold(_, _, _)
             | Op::AllocRaw(_)
             | Op::AllocSquare(_)
@@ -428,7 +430,7 @@ fn op_reads_target(op: &Op, target: usize, elens: usize) -> bool {
     }
     let resolves = |a: u8| (a as usize) % elens == target;
     match op {
-        Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::DivNonzero(a, b)
+        Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Divide(a, b)
         | Op::Fold(a, b, _) => resolves(*a) || resolves(*b),
         Op::ConditionalSelect(_, a, b) => resolves(*a) || resolves(*b),
         Op::Scale(a, _) | Op::Square(a) | Op::Double(a) | Op::Negate(a)

@@ -22,8 +22,8 @@ use pasta_curves::Fp;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, Point, Simulator, allocator::Standard, extract_endoscalar,
-    lift_endoscalar,
+    Boolean, Element, Endoscalar, NonzeroBank, Point, Simulator, allocator::Standard,
+    extract_endoscalar, lift_endoscalar,
 };
 
 use std::sync::LazyLock;
@@ -237,7 +237,7 @@ fuzz_target!(|input: Input| {
         let p2_coords = p2.coordinates().unwrap();
         if p_coords.x() != p2_coords.x() {
             let p_again = Point::<'_, _, EpAffine>::constant(dr, p)?;
-            let sum = p_again.add_incomplete(dr, &q, None)?;
+            let sum = NonzeroBank::scope(dr, |dr, bank| p_again.add_incomplete(dr, &q, bank))?;
             let expected_sum: EpAffine = (p.to_curve() + p2.to_curve()).to_affine();
             assert_eq!(
                 sum.value().take(),

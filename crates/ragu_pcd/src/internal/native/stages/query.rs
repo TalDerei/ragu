@@ -125,7 +125,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         InternalCircuitValues::try_from_fn(|id| this.get(id).map(wm))
     }
 
-    fn enforce_equal_gadget<
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -135,7 +135,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         b: &InternalCircuitValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &InternalCircuitIndex::ALL {
-            a.get(id).enforce_equal(dr, b.get(id))?;
+            a.get(id).enforce_conservative_equal(dr, b.get(id))?;
         }
         Ok(())
     }
@@ -163,7 +163,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         RxValues::try_from_fn(|id| this.get(id).map(wm))
     }
 
-    fn enforce_equal_gadget<
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -173,7 +173,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         b: &RxValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &RxIndex::ALL {
-            a.get(id).enforce_equal(dr, b.get(id))?;
+            a.get(id).enforce_conservative_equal(dr, b.get(id))?;
         }
         Ok(())
     }

@@ -15,7 +15,7 @@ use alloc::{vec, vec::Vec};
 
 pub(crate) use builder::ProofBuilder;
 use ff::Field;
-use ragu_arithmetic::{Cycle, Uendo};
+use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, sparse},
@@ -463,7 +463,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
     pub(crate) fn compute_endoscaling<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
-        beta_endo: Uendo,
+        beta_endo: u128,
         points: &[C::HostCurve],
         endoscalar_alpha: C::ScalarField,
         points_alpha: C::ScalarField,

@@ -16,8 +16,9 @@ use ragu_core::{
 };
 
 use crate::{
-    Boolean,
+    Boolean, GadgetExt, Invertible, Nonzero,
     allocator::Allocator,
+    comparison::GadgetEquals,
     consistent::Consistent,
     io::{Buffer, Write},
 };
@@ -235,53 +236,82 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         self.add(dr, self)
     }
 
-    /// Invert this element if it is nonzero.
+    /// Returns an [`Invertible`] for this element.
     ///
-    /// This will fail to synthesize if the element is zero.
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn enforce_invertible(&self, dr: &mut D) -> Result<Invertible<'dr, D>> {
+        let invertible = Invertible::alloc(dr, self.value.clone())?;
+        self.enforce_equal(dr, invertible.element())?;
+        Ok(invertible)
+    }
+
+    /// Returns an [`Invertible`] for this element, using the supplied
+    /// `inverse_value` as advice about what this element's inverse is.
+    ///
+    /// This will be unsatisfied if this element is zero or if the provided
+    /// `inverse_value` is not really its multiplicative inverse.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn enforce_invertible_with(
+        &self,
+        dr: &mut D,
+        inverse_value: DriverValue<D, D::F>,
+    ) -> Result<Invertible<'dr, D>> {
+        let invertible = Invertible::alloc_with_advice(dr, self.value.clone(), inverse_value)?;
+        self.enforce_equal(dr, invertible.element())?;
+        Ok(invertible)
+    }
+
+    /// Constrains this element to be nonzero and returns it as a [`Nonzero`].
+    ///
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn enforce_nonzero(self, dr: &mut D) -> Result<Nonzero<'dr, D>> {
+        Ok(self.enforce_invertible(dr)?.into_element())
+    }
+
+    /// Returns the multiplicative inverse of this element.
+    ///
+    /// Convenience over [`Self::enforce_invertible`] for callers that only
+    /// need the inverse [`Element`].
+    ///
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
     pub fn invert(&self, dr: &mut D) -> Result<Self> {
-        let inverse = D::try_just(|| {
-            self.value
-                .snag()
-                .invert()
-                .into_option()
-                .ok_or_else(|| Error::InvalidWitness("division by zero".into()))
-        })?;
-
-        self.invert_with(dr, inverse)
+        self.enforce_invertible(dr)
+            .map(|inv| inv.into_inverse().into_inner())
     }
 
-    /// Enforce that this element times the provided `inverse` (unallocated value) equals one.
-    /// Returns the allocated `inverse` element.
-    pub fn invert_with(&self, dr: &mut D, inverse: DriverValue<D, D::F>) -> Result<Self> {
-        let (a, b, c) = dr.mul(|| {
-            Ok((
-                Coeff::Arbitrary(*self.value.snag()),
-                Coeff::Arbitrary(*inverse.snag()),
-                Coeff::One,
-            ))
-        })?;
-        dr.enforce_equal(&a, self.wire())?;
-        dr.enforce_equal(&c, &D::ONE)?;
-
-        Ok(Element {
-            value: inverse,
-            wire: b,
-        })
+    /// Returns the multiplicative inverse of this element, using the supplied
+    /// `inverse_value` as advice about what this element's inverse is.
+    ///
+    /// Convenience over [`Self::enforce_invertible_with`] for callers that
+    /// only need the inverse [`Element`].
+    ///
+    /// This will be unsatisfied if this element is zero or if the provided
+    /// `inverse_value` is not really its multiplicative inverse.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn invert_with(&self, dr: &mut D, inverse_value: DriverValue<D, D::F>) -> Result<Self> {
+        self.enforce_invertible_with(dr, inverse_value)
+            .map(|inv| inv.into_inverse().into_inner())
     }
 
-    /// Divides this element by the provided element `by` and returns the
-    /// quotient. If `by` is zero, the result may be unconstrained.
+    /// Divides this element by `divisor` and returns the quotient.
     ///
-    /// Essentially, the prover witnesses `quotient` such that
-    ///
-    /// `quotient * by = self`
-    ///
-    /// which enforces that `quotient` is equal to `self / by` if and only if
-    /// `by` is nonzero.
-    pub fn div_nonzero(&self, dr: &mut D, by: &Self) -> Result<Self> {
+    /// This costs one gate and two constraints.
+    pub fn divide(&self, dr: &mut D, divisor: &Nonzero<'dr, D>) -> Result<Self> {
         let quotient_value = D::try_just(|| {
             Ok(*self.value().take()
-                * by.value()
+                * divisor
+                    .value()
                     .take()
                     .invert()
                     .into_option()
@@ -290,7 +320,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
         let (quotient, denominator, numerator) = dr.mul(|| {
             let c = *self.value().take();
-            let b = *by.value().take();
+            let b = *divisor.value().take();
             let a = *quotient_value.snag();
 
             Ok((
@@ -300,7 +330,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
             ))
         })?;
         dr.enforce_equal(self.wire(), &numerator)?;
-        dr.enforce_equal(by.wire(), &denominator)?;
+        dr.enforce_equal(divisor.wire(), &denominator)?;
 
         Ok(Element {
             value: quotient_value,
@@ -382,6 +412,20 @@ impl<F: Field> Write<F> for Kind![F; @Element<'_, _>] {
         buf: &mut B,
     ) -> Result<()> {
         buf.write(dr, this)
+    }
+}
+
+impl<F: Field> GadgetEquals<F> for Kind![F; @Element<'_, _>] {
+    fn enforce_equal_gadget<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &Element<'dr, D2>,
+        b: &Element<'dr, D2>,
+    ) -> Result<()> {
+        dr.enforce_equal(a.wire(), b.wire())
     }
 }
 
@@ -587,7 +631,7 @@ mod tests {
     use crate::allocator::Standard;
 
     #[test]
-    fn test_div_nonzero() -> Result<()> {
+    fn test_divide() -> Result<()> {
         type F = ragu_pasta::Fp;
         type Simulator = crate::Simulator<F>;
 
@@ -597,8 +641,10 @@ mod tests {
                 let allocator = &mut Standard::new();
                 let a = Element::alloc(dr, allocator, a.clone())?;
                 let b = Element::alloc(dr, allocator, b.clone())?;
+                let b = b.enforce_nonzero(dr)?;
+                dr.reset();
 
-                let quotient = a.div_nonzero(dr, &b)?;
+                let quotient = a.divide(dr, &b)?;
 
                 assert_eq!(
                     *quotient.value().take(),
@@ -607,7 +653,7 @@ mod tests {
 
                 Ok(())
             })?;
-            assert_eq!(sim.num_gates(), 2);
+            assert_eq!(sim.num_gates(), 1);
             assert_eq!(sim.num_constraints(), 2);
             Ok(())
         };

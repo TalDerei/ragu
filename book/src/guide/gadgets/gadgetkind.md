@@ -34,19 +34,31 @@ associated type `Kind` that relates back to its corresponding
 The [`Bound<'dr, D, K>`][bound-alias] type alias is shorthand for
 `<K as GadgetKind<F>>::Rebind<'dr, D>`.
 
-## `map_gadget`
+## `map_gadget` {#map-gadget}
 
 [`GadgetKind::map_gadget`](ragu_core::gadgets::GadgetKind::map_gadget)
 translates a gadget from one driver to another, walking its fields and
 converting wires and witness data to the destination driver. See
 [Conversion](conversion.md) for details.
 
-## `enforce_equal_gadget`
+This traversal is part of the gadget's contract. It must visit wire fields in
+the same order for every instance of the same concrete gadget type, defining
+which wires correspond between instances. [Fungibility](index.md#fungibility)
+is stated in terms of this correspondence, and drivers and internal Ragu code
+use it to count, substitute, or extract wires.
 
-Gadgets offer the [`GadgetKind::enforce_equal_gadget`][enforce-equal] method to
-specify how two instances are enforced to be equivalent. A gadget may provide a
-specialized implementation that is more efficient than constraining
-corresponding wires individually.
+## `enforce_conservative_equal_gadget`
+
+Gadgets offer the
+[`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
+specify conservative equality constraints by pairing corresponding wires in the
+gadget's canonical traversal.
+
+Most circuit code should avoid using this method directly. Prefer
+[`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
+[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons. Conservative
+equality is mainly useful for infrastructure such as consistency checks and
+wire-substitution paths that need canonical pairwise constraints.
 
 ## Safety
 
@@ -77,5 +89,6 @@ see it.
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
 [bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
-[enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_equal_gadget
-
+[enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_conservative_equal_gadget
+[gadgetext-enforce-equal]: ragu_primitives::GadgetExt::enforce_equal
+[gadget-equals]: ragu_primitives::comparison::GadgetEquals

@@ -35,7 +35,7 @@ mod unit_impl {
             Ok(())
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = F>,
             D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -82,7 +82,7 @@ mod array_impl {
                 .unwrap_or_else(|_| unreachable!("Vec had exactly N elements")))
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = F>,
             D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -92,7 +92,7 @@ mod array_impl {
             b: &Bound<'dr, D2, Self>,
         ) -> Result<()> {
             for (a, b) in a.iter().zip(b.iter()) {
-                G::enforce_equal_gadget(dr, a, b)?;
+                G::enforce_conservative_equal_gadget(dr, a, b)?;
             }
             Ok(())
         }
@@ -126,7 +126,7 @@ mod pair_impl {
             Ok((G1::map_gadget(&this.0, wm)?, G2::map_gadget(&this.1, wm)?))
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = F>,
             D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -135,8 +135,8 @@ mod pair_impl {
             a: &Bound<'dr, D2, Self>,
             b: &Bound<'dr, D2, Self>,
         ) -> Result<()> {
-            G1::enforce_equal_gadget(dr, &a.0, &b.0)?;
-            G2::enforce_equal_gadget(dr, &a.1, &b.1)?;
+            G1::enforce_conservative_equal_gadget(dr, &a.0, &b.0)?;
+            G2::enforce_conservative_equal_gadget(dr, &a.1, &b.1)?;
             Ok(())
         }
     }
@@ -167,7 +167,7 @@ mod box_impl {
             Ok(Box::new(G::map_gadget(this, wm)?))
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = F>,
             D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -176,7 +176,7 @@ mod box_impl {
             a: &Bound<'dr, D2, Self>,
             b: &Bound<'dr, D2, Self>,
         ) -> Result<()> {
-            G::enforce_equal_gadget(dr, a, b)
+            G::enforce_conservative_equal_gadget(dr, a, b)
         }
     }
 }

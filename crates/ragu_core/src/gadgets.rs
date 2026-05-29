@@ -9,20 +9,20 @@
 //! code, gadgets must synthesize deterministically independently of the
 //! concrete driver.
 //!
-//! Witness types are driver-defined and their contents can only be extracted
-//! by the driver, so no gadget can convey invariants about witness data.
-//! In contrast, while wire types are also opaque handles defined by the driver,
+//! Witness types are driver-defined and their contents can only be extracted by
+//! the driver, so no gadget can convey invariants about witness data. In
+//! contrast, while wire types are also opaque handles defined by the driver,
 //! gadgets *can* convey invariants about the constraints placed over their
 //! wires.
 //!
 //! The [`Gadget`] trait is implemented for gadgets instantiated over a driver;
-//! the [`GadgetKind`] trait relates gadgets instantiated over different drivers.
-//! Both can be [automatically derived](derive@Gadget) in most cases. Gadgets
-//! that are not used with [routines](crate::routines) need not implement these
-//! traits.
+//! the [`GadgetKind`] trait relates gadgets instantiated over different
+//! drivers. Both can be [automatically derived](derive@Gadget) in most cases.
+//! Gadgets that are not used with [routines](crate::routines) need not
+//! implement these traits.
 //!
-//! See the *Gadgets* chapter in the [book] for design motivation,
-//! composition examples, and the derive macro walkthrough.
+//! See the *Gadgets* chapter in the [book] for design motivation, composition
+//! examples, and the derive macro walkthrough.
 //!
 //! #### Basic Properties
 //!
@@ -37,27 +37,28 @@
 //!
 //! [`Gadget`] is a trait for gadgets with a stricter property called
 //! **fungibility**: for any two instances `a` and `b` of the same concrete
-//! gadget type, substituting all of `a`'s wires into `b` must yield an
-//! instance indistinguishable in all subsequent synthesis from `a`, carrying
-//! identical invariants over their wires.
+//! gadget type, substituting `a`'s corresponding wire assignments for `b`'s
+//! must yield an instance indistinguishable in all subsequent synthesis from
+//! `a`, carrying identical invariants over those wires.
 //!
-//! One of the direct consequences of fungibility is that a [`Gadget`] impl
-//! must always contain the same number of wires in every instance, and
-//! cannot carry any additional state that would influence synthesis
-//! behavior. It also means that gadgets usually cannot be `enum`s.
-//! Fortunately, most gadgets only contain wires, witness data and other
-//! gadgets. These simple gadgets always qualify as fungible by definition.
+//! One of the direct consequences of fungibility is that a [`Gadget`] impl must
+//! always contain the same number of wires in every instance, and cannot carry
+//! any additional state that would influence synthesis behavior. It also means
+//! that gadgets usually cannot be `enum`s. Fortunately, most gadgets only
+//! contain wires, witness data and other gadgets. These simple gadgets always
+//! qualify as fungible by definition.
 //!
 //! #### Transformations between Drivers
 //!
 //! Gadgets must define a canonical mapping between their instantiations over
-//! different [`Driver`] types. This mapping is described using an associated
-//! [`GadgetKind`] implementation and uses the [`WireMap`] trait to facilitate
-//! the transformation of wires and witness data from one driver to another.
+//! different [`Driver`] types. This mapping uses the [`WireMap`] trait to
+//! facilitate the transformation of wires and witness data from one driver to
+//! another.
 //!
-//! It is required that the transformation of wires for a gadget does not depend
-//! on the gadget's state. This naturally follows from fungibility, and is
-//! imposed on gadgets that are automatically derived.
+//! That mapping defines the wire correspondence used by fungibility. It must
+//! visit wire fields in the same order for every instance of the same concrete
+//! gadget type, so drivers and internal Ragu code can count, substitute,
+//! extract, and pair wires for equality by following the same traversal.
 //!
 //! #### Multithreading
 //!
@@ -102,19 +103,24 @@ pub type Bound<'dr, D, K> = <K as GadgetKind<<D as Driver<'dr>>::F>>::Rebind<'dr
 /// ## Fungibility
 ///
 /// For any two instances `a` and `b` of the same concrete gadget type,
-/// substituting all of `a`'s wires into `b` must yield an instance
-/// indistinguishable in all subsequent synthesis from `a`, carrying identical
-/// invariants over their wires. This precludes dynamic-length collections,
-/// enum discriminants, and any other instance state that affects synthesis.
-/// Wires are fungible by definition, and witness data cannot affect synthesis,
-/// so gadgets containing only these automatically satisfy this requirement.
+/// substituting `a`'s corresponding wire assignments for `b`'s must yield an
+/// instance indistinguishable in all subsequent synthesis from `a`, carrying
+/// identical invariants over those wires. This precludes dynamic-length
+/// collections, enum discriminants, and any other instance state that affects
+/// synthesis. Wires are fungible by definition, and witness data cannot affect
+/// synthesis, so gadgets containing only these automatically satisfy this
+/// requirement.
+///
+/// The wire correspondence used here is defined by
+/// [`GadgetKind::map_gadget`]. Its traversal must be the same for every
+/// instance of the same concrete gadget type.
 ///
 /// ## Implementations
 ///
 /// In order to make it easy to satisfy the API contract, this trait can be
 /// [automatically derived](derive@Gadget) for almost all gadgets.
 pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
-    /// The kind of this gadget.
+    /// The driver-agnostic form of this gadget.
     type Kind: GadgetKind<D::F, Rebind<'dr, D> = Self>;
 
     /// Proxy for [`GadgetKind::map_gadget`].
@@ -125,13 +131,13 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         Self::Kind::map_gadget(self, wm)
     }
 
-    /// Proxy for [`GadgetKind::enforce_equal_gadget`].
-    fn enforce_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
+    /// Proxy for [`GadgetKind::enforce_conservative_equal_gadget`].
+    fn enforce_conservative_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
         &self,
         dr: &mut D2,
         other: &Self,
     ) -> Result<()> {
-        Self::Kind::enforce_equal_gadget::<D2, D>(dr, self, other)
+        Self::Kind::enforce_conservative_equal_gadget::<D2, D>(dr, self, other)
     }
 
     /// Returns how many wires are in this gadget.
@@ -168,7 +174,7 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     }
 }
 
-/// A driver-agnostic kindness of a gadget.
+/// The driver-agnostic form of a gadget.
 ///
 /// The [`Gadget::Kind`] associated type is used to specify the driver-agnostic
 /// _kind_ of a gadget, using this trait to specify how gadgets can have their
@@ -209,24 +215,30 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     /// accessing this directly.
     type Rebind<'dr, D: Driver<'dr, F = F>>: Gadget<'dr, D, Kind = Self>;
 
-    /// Maps a gadget of this kind from one driver to another using a
-    /// [`WireMap`].
+    /// Maps a gadget from one driver to another using a [`WireMap`].
     ///
-    /// The mapping behavior must be deterministic and agnostic to the
-    /// instance's state (this follows from
-    /// [fungibility](Gadget#fungibility)).
+    /// The mapping behavior defines the gadget's canonical wire traversal. It
+    /// must visit wire fields in the same order for every instance of the same
+    /// concrete gadget type, defining which wires correspond between
+    /// instances. [Fungibility](Gadget#fungibility) is stated in terms of this
+    /// correspondence, and drivers and internal Ragu code use it to count,
+    /// substitute, extract, and pair wires for equality.
     fn map_gadget<'src, 'dst, WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>>(
         this: &Bound<'src, WM::Src, Self>,
         wm: &mut WM,
     ) -> Result<Bound<'dst, WM::Dst, Self>>;
 
-    /// Enforces that two gadgets' wires are equal.
+    /// Enforces equality between two instances of the same gadget.
     ///
-    /// The provided driver is used to create constraints between the
-    /// gadgets' wires through recursive descent through the gadget structure.
-    /// The provided gadgets can be for another driver, since it's only
-    /// important that the wire type be the same.
-    fn enforce_equal_gadget<
+    /// This method is deliberately conservative: it must constrain each pair of
+    /// corresponding wires to be equal, rather than using gadget-specific
+    /// shortcuts.
+    ///
+    /// The wire correspondence is defined by
+    /// [`map_gadget`](GadgetKind::map_gadget). The provided gadgets can be for
+    /// another driver, since the emitted constraints only require corresponding
+    /// wire assignments to be equal.
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,

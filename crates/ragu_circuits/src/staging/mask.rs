@@ -240,7 +240,7 @@ mod tests {
     use ff::Field;
     use group::{Curve, CurveAffine as _};
     use proptest::prelude::*;
-    use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, Uendo};
+    use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
@@ -402,10 +402,10 @@ mod tests {
             type Parent = ();
 
             fn values() -> usize {
-                Uendo::BITS as usize
+                u128::BITS as usize
             }
 
-            type Witness<'source> = Uendo;
+            type Witness<'source> = u128;
             type OutputKind = Endoscalar<'static, core::marker::PhantomData<Fp>>;
 
             fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
@@ -448,8 +448,8 @@ mod tests {
             }
         }
 
-        let endoscalar_a: Uendo = rand::rng().random();
-        let endoscalar_b: Uendo = rand::rng().random();
+        let endoscalar_a: u128 = rand::rng().random();
+        let endoscalar_b: u128 = rand::rng().random();
         let p1 = (EpAffine::generator() * Fq::random(&mut rand::rng())).into();
         let p2 = (EpAffine::generator() * Fq::random(&mut rand::rng())).into();
 

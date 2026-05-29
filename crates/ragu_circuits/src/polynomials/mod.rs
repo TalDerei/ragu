@@ -98,13 +98,12 @@ pub trait Rank:
             drivers::{Driver, emulator::Emulator},
             maybe::Maybe,
         };
-        use ragu_primitives::Element;
+        use ragu_primitives::Invertible;
 
         *Emulator::emulate_wireless((x, z), |dr, xz| {
             let (x, z) = xz.cast();
-            let allocator = &mut ();
-            let x = Element::alloc(dr, allocator, x)?;
-            let z = Element::alloc(dr, allocator, z)?;
+            let x = Invertible::alloc(dr, x)?;
+            let z = Invertible::alloc(dr, z)?;
 
             dr.routine(txz::Evaluate::<Self>::new(), (x, z))
         })

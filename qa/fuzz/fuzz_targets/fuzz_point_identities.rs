@@ -40,7 +40,7 @@ use pasta_curves::Fp;
 use pasta_curves::arithmetic::CurveAffine;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
-use ragu_primitives::{Boolean, Point, Simulator, allocator::Standard};
+use ragu_primitives::{Boolean, NonzeroBank, Point, Simulator, allocator::Standard};
 
 use std::sync::LazyLock;
 
@@ -203,8 +203,8 @@ fuzz_target!(|input: Input| {
 
         // add_incomplete commutativity: P + Q == Q + P, both equal native sum
         let expected_sum = native_add(p, q);
-        let sum_pq = p_pt.add_incomplete(dr, &q_pt, None)?;
-        let sum_qp = q_pt.add_incomplete(dr, &p_pt, None)?;
+        let sum_pq = NonzeroBank::scope(dr, |dr, bank| p_pt.add_incomplete(dr, &q_pt, bank))?;
+        let sum_qp = NonzeroBank::scope(dr, |dr, bank| q_pt.add_incomplete(dr, &p_pt, bank))?;
         assert_eq!(
             sum_pq.value().take(),
             expected_sum,
@@ -222,10 +222,12 @@ fuzz_target!(|input: Input| {
 
         // double_and_add_incomplete: P.dna(Q) computes 2*P + Q.
         // Skip when 2*P and Q share an x-coordinate (would make the
-        // inner add_incomplete's div_nonzero fail).
+        // inner add_incomplete's divide fail).
         let q_x = *q_coords.x();
         if p_doubled_x != q_x {
-            let dna = p_pt.double_and_add_incomplete(dr, &q_pt)?;
+            let dna = NonzeroBank::scope(dr, |dr, bank| {
+                p_pt.double_and_add_incomplete(dr, &q_pt, bank)
+            })?;
             let expected_dna = native_add(p_doubled, q);
             assert_eq!(
                 dna.value().take(),
@@ -237,7 +239,9 @@ fuzz_target!(|input: Input| {
 
             // Also verify it matches the slower equivalent:
             //   P.double().add_incomplete(Q) == P.dna(Q)
-            let slow_path = p_pt.double(dr)?.add_incomplete(dr, &q_pt, None)?;
+            let slow_path = NonzeroBank::scope(dr, |dr, bank| {
+                p_pt.double(dr)?.add_incomplete(dr, &q_pt, bank)
+            })?;
             assert_eq!(
                 slow_path.value().take(),
                 dna.value().take(),
