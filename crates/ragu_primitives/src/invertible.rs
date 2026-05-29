@@ -48,7 +48,7 @@ impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
     /// Squares this element. The result is nonzero since `F` is an integral
     /// domain.
     ///
-    /// This costs one gate.
+    /// This costs one gate and two constraints.
     pub fn square(&self, dr: &mut D) -> Result<Self> {
         Ok(Self::new_unchecked(self.element.square(dr)?))
     }
@@ -56,7 +56,7 @@ impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
     /// Multiplies this element by another nonzero element. The result is
     /// nonzero since `F` is an integral domain.
     ///
-    /// This costs one gate.
+    /// This costs one gate and two constraints.
     pub fn mul(&self, dr: &mut D, other: &Self) -> Result<Self> {
         Ok(Self::new_unchecked(self.element.mul(dr, &other.element)?))
     }
@@ -270,8 +270,8 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// [`scope`](Self::scope) succeeds. Errors from that scope must be
     /// propagated.
     ///
-    /// This costs one gate in discharging mode and zero gates in unchecked
-    /// mode.
+    /// This costs one gate and two constraints in discharging mode, and zero
+    /// gates and zero constraints in unchecked mode.
     pub fn fold(&mut self, dr: &mut D, elem: Element<'dr, D>) -> Result<Nonzero<'dr, D>> {
         if let Some(product) = &mut self.product {
             *product = product.mul(dr, &elem)?;
@@ -297,9 +297,9 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// Callers must propagate errors from this function. Swallowing an error
     /// can skip deferred nonzero checks and lead to unsound circuit code.
     ///
-    /// This costs one gate and two constraints for the final discharge,
-    /// plus one gate per [`fold`](Self::fold) in discharging mode, on top
-    /// of whatever the body itself emits.
+    /// This costs one gate and two constraints for the final discharge, plus
+    /// one gate and two constraints per [`fold`](Self::fold) in discharging
+    /// mode, on top of whatever the body itself emits.
     pub fn scope<T>(
         dr: &mut D,
         body: impl FnOnce(&mut D, &mut NonzeroBank<'dr, D>) -> Result<T>,
@@ -456,6 +456,55 @@ mod tests {
     }
 
     #[test]
+    fn test_nonzero_square_cost() -> Result<()> {
+        let sim = Sim::simulate(F::from(7u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?.enforce_nonzero(dr)?;
+
+            dr.reset();
+            let _ = element.square(dr)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_nonzero_mul_cost() -> Result<()> {
+        let sim = Sim::simulate((F::from(7u64), F::from(11u64)), |dr, witness| {
+            let (a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let a = Element::alloc(dr, allocator, a.clone())?.enforce_nonzero(dr)?;
+            let b = Element::alloc(dr, allocator, b.clone())?.enforce_nonzero(dr)?;
+
+            dr.reset();
+            let _ = a.mul(dr, &b)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_nonzero_divide_cost() -> Result<()> {
+        let sim = Sim::simulate((F::from(7u64), F::from(11u64)), |dr, witness| {
+            let (a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let a = Element::alloc(dr, allocator, a.clone())?.enforce_nonzero(dr)?;
+            let b = Element::alloc(dr, allocator, b.clone())?.enforce_nonzero(dr)?;
+
+            dr.reset();
+            let _ = a.divide(dr, &b)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
+        Ok(())
+    }
+
+    #[test]
     fn test_nonzero_bank_scope_discharges() -> Result<()> {
         let sim = Sim::simulate(F::from(7u64), |dr, witness| {
             let allocator = &mut Standard::new();
@@ -468,6 +517,38 @@ mod tests {
         })?;
         assert_eq!(sim.num_gates(), 2);
         assert_eq!(sim.num_constraints(), 4);
+        Ok(())
+    }
+
+    #[test]
+    fn test_nonzero_bank_fold_costs_in_discharging_mode() -> Result<()> {
+        let sim = Sim::simulate(F::from(7u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            let mut bank = NonzeroBank::new();
+
+            dr.reset();
+            let _ = bank.fold(dr, element)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_nonzero_bank_fold_costs_in_unchecked_mode() -> Result<()> {
+        let sim = Sim::simulate(F::from(7u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            let mut bank = NonzeroBank::new_unchecked();
+
+            dr.reset();
+            let _ = bank.fold(dr, element)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 0);
+        assert_eq!(sim.num_constraints(), 0);
         Ok(())
     }
 
