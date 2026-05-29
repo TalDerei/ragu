@@ -275,6 +275,11 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     ///
     /// The provided gadgets can be for another driver, since the emitted
     /// constraints only require corresponding wire assignments to be equal.
+    ///
+    /// This is a conservative fallback. When a gadget's kind implements
+    /// `GadgetEquals` (in `ragu_primitives`), the ordinary
+    /// `GadgetExt::enforce_equal` can discharge equality with fewer constraints
+    /// and is preferred.
     fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
