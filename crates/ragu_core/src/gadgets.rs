@@ -86,7 +86,7 @@ mod foreign;
 use ff::Field;
 
 use super::{
-    Result,
+    Error, Result,
     convert::WireMap,
     drivers::{Driver, DriverTypes},
 };
@@ -167,6 +167,8 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         struct EnforceEq<'a, 'd, Src: DriverTypes, Demit> {
             dr: &'a mut Demit,
             others: alloc::vec::IntoIter<Src::ImplWire>,
+            expected: usize,
+            actual: usize,
             _marker: core::marker::PhantomData<&'d ()>,
         }
 
@@ -179,10 +181,11 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
             type Dst = core::marker::PhantomData<F>;
 
             fn convert_wire(&mut self, wire: &Src::ImplWire) -> Result<()> {
-                let other = self
-                    .others
-                    .next()
-                    .expect("gadgets of the same kind have the same wire count");
+                let other = self.others.next().ok_or(Error::VectorLengthMismatch {
+                    expected: self.expected,
+                    actual: self.actual + 1,
+                })?;
+                self.actual += 1;
                 self.dr.enforce_equal(wire, &other)
             }
         }
@@ -192,12 +195,21 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         };
         other.map(&mut collector)?;
 
+        let expected = collector.wires.len();
         let mut enforcer = EnforceEq::<'_, '_, D, D2> {
             dr,
             others: collector.wires.into_iter(),
+            expected,
+            actual: 0,
             _marker: core::marker::PhantomData,
         };
         self.map(&mut enforcer)?;
+        if enforcer.others.len() != 0 {
+            return Err(Error::VectorLengthMismatch {
+                expected: enforcer.expected,
+                actual: enforcer.actual,
+            });
+        }
 
         Ok(())
     }
@@ -406,3 +418,95 @@ pub use ragu_macros::Gadget;
 /// macro that it should perform the substitution without qualifications, which
 /// works fine in most cases.
 pub use ragu_macros::gadget_kind as Kind;
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+    use core::marker::PhantomData;
+
+    use ff::Field;
+    use ragu_pasta::Fp;
+
+    use super::*;
+    use crate::drivers::emulator::{Emulator, Wired};
+
+    struct VariableWires<'dr, D: Driver<'dr>> {
+        wires: alloc::vec::Vec<D::Wire>,
+        _marker: PhantomData<&'dr ()>,
+    }
+
+    impl<'dr, D: Driver<'dr>> Clone for VariableWires<'dr, D> {
+        fn clone(&self) -> Self {
+            Self {
+                wires: self.wires.clone(),
+                _marker: PhantomData,
+            }
+        }
+    }
+
+    struct VariableWiresKind;
+
+    /// # Safety
+    ///
+    /// This test-only gadget contains only wires, so `D::Wire: Send` implies the
+    /// rebound type is `Send`. It intentionally violates fungibility so
+    /// conservative equality's mismatch checks can be exercised.
+    unsafe impl<F: Field> GadgetKind<F> for VariableWiresKind {
+        type Rebind<'dr, D: Driver<'dr, F = F>> = VariableWires<'dr, D>;
+
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
+            wm: &mut WM,
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
+            let wires = this
+                .wires
+                .iter()
+                .map(|wire| wm.convert_wire(wire))
+                .collect::<Result<_>>()?;
+            Ok(VariableWires {
+                wires,
+                _marker: PhantomData,
+            })
+        }
+    }
+
+    impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for VariableWires<'dr, D> {
+        type Kind = VariableWiresKind;
+    }
+
+    #[test]
+    fn conservative_equal_rejects_traversal_length_mismatch_both_directions() {
+        type F = Fp;
+        type D = Emulator<Wired<F>>;
+
+        let short: VariableWires<'_, D> = VariableWires {
+            wires: vec![F::from(1)],
+            _marker: PhantomData,
+        };
+        let long: VariableWires<'_, D> = VariableWires {
+            wires: vec![F::from(1), F::from(2)],
+            _marker: PhantomData,
+        };
+
+        let mut dr = D::extractor();
+        assert!(matches!(
+            short.enforce_conservative_equal(&mut dr, &long),
+            Err(Error::VectorLengthMismatch {
+                expected: 2,
+                actual: 1
+            })
+        ));
+
+        assert!(matches!(
+            long.enforce_conservative_equal(&mut dr, &short),
+            Err(Error::VectorLengthMismatch {
+                expected: 1,
+                actual: 2
+            })
+        ));
+    }
+}
