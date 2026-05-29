@@ -204,20 +204,6 @@ mod tests {
                 _marker: core::marker::PhantomData,
             })
         }
-
-        fn enforce_conservative_equal_gadget<
-            'dr,
-            D1: Driver<'dr, F = FieldType>,
-            D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
-        >(
-            dr: &mut D1,
-            a: &Bound<'dr, D2, Self>,
-            b: &Bound<'dr, D2, Self>,
-        ) -> Result<()> {
-            dr.enforce_equal(&a.a, &b.a)?;
-            dr.enforce_equal(&a.b, &b.b)?;
-            Ok(())
-        }
     }
 
     impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for TwoWires<'dr, D> {
@@ -258,19 +244,6 @@ mod tests {
                 w: ndr.convert_wire(&this.w)?,
                 _marker: core::marker::PhantomData,
             })
-        }
-
-        fn enforce_conservative_equal_gadget<
-            'dr,
-            D1: Driver<'dr, F = FieldType>,
-            D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
-        >(
-            dr: &mut D1,
-            a: &Bound<'dr, D2, Self>,
-            b: &Bound<'dr, D2, Self>,
-        ) -> Result<()> {
-            dr.enforce_equal(&a.w, &b.w)?;
-            Ok(())
         }
     }
 

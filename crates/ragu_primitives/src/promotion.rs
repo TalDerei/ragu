@@ -174,16 +174,4 @@ unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
             gadget: G::map_gadget(&this.gadget, &mut Demoter { inner: wm })?,
         })
     }
-
-    fn enforce_conservative_equal_gadget<
-        'dr,
-        D1: Driver<'dr, F = F>,
-        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
-    >(
-        dr: &mut D1,
-        a: &Bound<'dr, D2, Self>,
-        b: &Bound<'dr, D2, Self>,
-    ) -> Result<()> {
-        G::enforce_conservative_equal_gadget(dr, &a.gadget, &b.gadget)
-    }
 }
