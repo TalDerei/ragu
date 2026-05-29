@@ -131,13 +131,75 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         Self::Kind::map_gadget(self, wm)
     }
 
-    /// Proxy for [`GadgetKind::enforce_conservative_equal_gadget`].
+    /// Enforces that `self` and `other` are equal by constraining every
+    /// corresponding wire pair to be equal.
+    ///
+    /// Wires are paired by the canonical traversal defined by
+    /// [`map_gadget`](GadgetKind::map_gadget): a first pass collects `other`'s
+    /// wires in traversal order, and a second pass walks `self`, constraining
+    /// each wire equal to its counterpart. This relies on no gadget invariants,
+    /// so it remains correct on wires whose invariants have not been established
+    /// (e.g. consistency re-establishment and wire-substitution paths). For an
+    /// invariant-aware equality that may constrain fewer wires, see the
+    /// `GadgetEquals` extension in `ragu_primitives`.
     fn enforce_conservative_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
         &self,
         dr: &mut D2,
         other: &Self,
     ) -> Result<()> {
-        Self::Kind::enforce_conservative_equal_gadget::<D2, D>(dr, self, other)
+        // Captures a gadget's wires in canonical traversal order.
+        struct Collector<Src: DriverTypes> {
+            wires: alloc::vec::Vec<Src::ImplWire>,
+        }
+
+        impl<F: Field, Src: DriverTypes<ImplField = F>> WireMap<F> for Collector<Src> {
+            type Src = Src;
+            type Dst = core::marker::PhantomData<F>;
+
+            fn convert_wire(&mut self, wire: &Src::ImplWire) -> Result<()> {
+                self.wires.push(wire.clone());
+                Ok(())
+            }
+        }
+
+        // Constrains each visited wire equal to the next collected counterpart,
+        // emitting on `dr`.
+        struct EnforceEq<'a, 'd, Src: DriverTypes, Demit> {
+            dr: &'a mut Demit,
+            others: alloc::vec::IntoIter<Src::ImplWire>,
+            _marker: core::marker::PhantomData<&'d ()>,
+        }
+
+        impl<'a, 'd, F: Field, Src, Demit> WireMap<F> for EnforceEq<'a, 'd, Src, Demit>
+        where
+            Src: DriverTypes<ImplField = F>,
+            Demit: Driver<'d, F = F, Wire = Src::ImplWire>,
+        {
+            type Src = Src;
+            type Dst = core::marker::PhantomData<F>;
+
+            fn convert_wire(&mut self, wire: &Src::ImplWire) -> Result<()> {
+                let other = self
+                    .others
+                    .next()
+                    .expect("gadgets of the same kind have the same wire count");
+                self.dr.enforce_equal(wire, &other)
+            }
+        }
+
+        let mut collector = Collector::<D> {
+            wires: alloc::vec::Vec::new(),
+        };
+        other.map(&mut collector)?;
+
+        let mut enforcer = EnforceEq::<'_, '_, D, D2> {
+            dr,
+            others: collector.wires.into_iter(),
+            _marker: core::marker::PhantomData,
+        };
+        self.map(&mut enforcer)?;
+
+        Ok(())
     }
 
     /// Returns how many wires are in this gadget.
@@ -228,16 +290,19 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         wm: &mut WM,
     ) -> Result<Bound<'dst, WM::Dst, Self>>;
 
-    /// Enforces equality between two instances of the same gadget.
+    /// Enforces equality between two instances of the same gadget by
+    /// constraining each pair of corresponding wires to be equal.
     ///
-    /// This method is deliberately conservative: it must constrain each pair of
-    /// corresponding wires to be equal, rather than using gadget-specific
-    /// shortcuts.
-    ///
-    /// The wire correspondence is defined by
-    /// [`map_gadget`](GadgetKind::map_gadget). The provided gadgets can be for
+    /// This is deliberately conservative: it relies on no gadget-specific
+    /// invariants, so it is correct even on wires whose invariants have not been
+    /// established. The wire correspondence is defined by
+    /// [`map_gadget`](GadgetKind::map_gadget); the provided gadgets can be for
     /// another driver, since the emitted constraints only require corresponding
     /// wire assignments to be equal.
+    ///
+    /// The default implementation derives the pairwise check from the canonical
+    /// `map_gadget` traversal via [`Gadget::enforce_conservative_equal`].
+    /// Gadgets should not override it.
     fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
@@ -246,7 +311,9 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         dr: &mut D1,
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        a.enforce_conservative_equal(dr, b)
+    }
 }
 
 /// Automatically derives the [`Gadget`], [`GadgetKind`] and [`Clone`] traits
