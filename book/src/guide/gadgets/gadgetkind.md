@@ -49,16 +49,29 @@ use it to count, substitute, or extract wires.
 
 ## `enforce_conservative_equal_gadget`
 
-Gadgets offer the
+Gadgets implement the
 [`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
 specify conservative equality constraints by pairing corresponding wires in the
-gadget's canonical traversal.
+gadget's canonical traversal. This is the raw fallback used where a gadget's
+invariants are *not* guaranteed to hold, so the contract is strict: it must
+constrain each pair of corresponding wires and do nothing else — no extra gates,
+no arbitrary constraints, and no invariant-aware equality shortcuts.
 
-Most circuit code should avoid using this method directly. Prefer
+To make that contract enforceable at the type level rather than by convention,
+the method does not receive a full [`Driver`][driver-trait]. Instead it is
+handed a [`WireEqualizer`][wire-equalizer] — a restricted view over the driver
+whose only operation is
+[`enforce_conservative_equal`][wire-equalizer-method] over a wire pair.
+Composite gadgets thread the same `WireEqualizer` into their subgadgets via
+[`Gadget::enforce_conservative_equal_with`][enforce-equal-with], and the derive
+macro generates exactly these calls.
+
+Most circuit code should avoid this path directly. Prefer
 [`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
-[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons. Conservative
-equality is mainly useful for infrastructure such as consistency checks and
-wire-substitution paths that need canonical pairwise constraints.
+[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons — it may
+constrain fewer wires by relying on a gadget's invariants. Conservative equality
+is reserved for infrastructure such as consistency checks and wire-substitution
+paths, which must re-establish constraints without trusting any prior invariant.
 
 ## Safety
 
@@ -90,5 +103,8 @@ see it.
 [bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
 [enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_conservative_equal_gadget
+[enforce-equal-with]: ragu_core::gadgets::Gadget::enforce_conservative_equal_with
+[wire-equalizer]: ragu_core::gadgets::WireEqualizer
+[wire-equalizer-method]: ragu_core::gadgets::WireEqualizer::enforce_conservative_equal
 [gadgetext-enforce-equal]: ragu_primitives::GadgetExt::enforce_equal
 [gadget-equals]: ragu_primitives::comparison::GadgetEquals
