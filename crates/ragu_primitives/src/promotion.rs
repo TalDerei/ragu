@@ -175,7 +175,7 @@ unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
         })
     }
 
-    fn enforce_equal_gadget<
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -184,6 +184,6 @@ unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for DemotedKind<F, G> {
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
     ) -> Result<()> {
-        G::enforce_equal_gadget(dr, &a.gadget, &b.gadget)
+        G::enforce_conservative_equal_gadget(dr, &a.gadget, &b.gadget)
     }
 }

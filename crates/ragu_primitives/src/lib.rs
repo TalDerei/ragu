@@ -19,6 +19,7 @@ extern crate self as ragu_primitives;
 
 pub mod allocator;
 mod boolean;
+pub mod comparison;
 pub mod consistent;
 mod element;
 mod endoscalar;
@@ -46,9 +47,31 @@ pub use sendable::Sendable;
 pub use simulator::Simulator;
 pub use suffix::WithSuffix;
 
-/// Extension trait that adds serialization ([`write`](GadgetExt::write)) and
-/// witness-stripping ([`demote`](GadgetExt::demote)) to all gadgets.
+/// Extension trait that adds invariant-aware equality
+/// ([`enforce_equal`](GadgetExt::enforce_equal)), serialization
+/// ([`write`](GadgetExt::write)), and witness-stripping
+/// ([`demote`](GadgetExt::demote)) to all supporting gadgets.
 pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
+    /// Enforce equality with another gadget, using this gadget's
+    /// [`comparison::GadgetEquals`] implementation.
+    ///
+    /// This is the ordinary equality operation for circuit code working with
+    /// constructed gadgets. It may be more efficient than the conservative
+    /// [`Gadget::enforce_conservative_equal`] check by using the gadget's
+    /// representation and invariants.
+    fn enforce_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
+        &self,
+        dr: &mut D2,
+        other: &Self,
+    ) -> Result<()>
+    where
+        Self::Kind: comparison::GadgetEquals<D::F>,
+    {
+        <Self::Kind as comparison::GadgetEquals<D::F>>::enforce_equal_gadget::<D2, D>(
+            dr, self, other,
+        )
+    }
+
     /// Write this gadget into a buffer, assuming the gadget's
     /// [`Kind`](Gadget::Kind) implements [`Write`].
     fn write<B: Buffer<'dr, D>>(&self, dr: &mut D, buf: &mut B) -> Result<()>

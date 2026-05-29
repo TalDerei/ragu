@@ -19,6 +19,7 @@ use crate::allocator::Standard;
 use crate::{
     Element, GadgetExt,
     allocator::Allocator,
+    comparison::GadgetEquals,
     consistent::Consistent,
     io::{Buffer, Write},
     promotion::{Demoted, Promotion},
@@ -27,7 +28,7 @@ use crate::{
 
 /// Represents a wire that is constrained to be zero or one, along with its
 /// corresponding [`bool`] value.
-#[derive(Gadget)]
+#[derive(Gadget, GadgetEquals)]
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
     #[ragu(wire)]
@@ -277,7 +278,7 @@ pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
 
 impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
-        Self::alloc(dr, &mut (), self.value())?.enforce_equal(dr, self)
+        Self::alloc(dr, &mut (), self.value())?.enforce_conservative_equal(dr, self)
     }
 }
 

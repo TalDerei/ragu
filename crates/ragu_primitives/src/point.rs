@@ -15,7 +15,10 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-use crate::{Boolean, Element, Nonzero, NonzeroBank, consistent::Consistent, io::Write};
+use crate::{
+    Boolean, Element, Nonzero, NonzeroBank, comparison::GadgetEquals, consistent::Consistent,
+    io::Write,
+};
 
 /// Represents an affine point on a curve defined over the circuit's field.
 ///
@@ -28,7 +31,7 @@ use crate::{Boolean, Element, Nonzero, NonzeroBank, consistent::Consistent, io::
 /// These assumptions are satisfied by the Pasta curves.
 ///
 /// As a result, the $x$ and $y$ coordinates are nonzero for every affine point.
-#[derive(Gadget, Write)]
+#[derive(Gadget, Write, GadgetEquals)]
 pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     #[ragu(gadget)]
     x: Nonzero<'dr, D>,
@@ -239,7 +242,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
 
 impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Consistent<'dr, D> for Point<'dr, D, C> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
-        Self::alloc(dr, self.value())?.enforce_equal(dr, self)
+        Self::alloc(dr, self.value())?.enforce_conservative_equal(dr, self)
     }
 }
 

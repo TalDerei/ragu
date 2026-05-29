@@ -33,7 +33,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Endoscalar, NonzeroBank, Point,
+    Endoscalar, GadgetExt, NonzeroBank, Point,
     vec::{FixedVec, Len},
 };
 

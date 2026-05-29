@@ -16,8 +16,9 @@ use ragu_core::{
 };
 
 use crate::{
-    Boolean, Invertible, Nonzero,
+    Boolean, GadgetExt, Invertible, Nonzero,
     allocator::Allocator,
+    comparison::GadgetEquals,
     consistent::Consistent,
     io::{Buffer, Write},
 };
@@ -411,6 +412,20 @@ impl<F: Field> Write<F> for Kind![F; @Element<'_, _>] {
         buf: &mut B,
     ) -> Result<()> {
         buf.write(dr, this)
+    }
+}
+
+impl<F: Field> GadgetEquals<F> for Kind![F; @Element<'_, _>] {
+    fn enforce_equal_gadget<
+        'dr,
+        D1: Driver<'dr, F = F>,
+        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
+    >(
+        dr: &mut D1,
+        a: &Element<'dr, D2>,
+        b: &Element<'dr, D2>,
+    ) -> Result<()> {
+        dr.enforce_equal(a.wire(), b.wire())
     }
 }
 

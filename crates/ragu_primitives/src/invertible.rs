@@ -1,17 +1,15 @@
-use core::marker::PhantomData;
-
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
-    convert::WireMap,
     drivers::{Driver, DriverValue},
-    gadgets::{Bound, Gadget, GadgetKind, Kind},
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
 
 use crate::{
     Element, GadgetExt,
+    comparison::GadgetEquals,
     consistent::Consistent,
     io::{Buffer, Write},
 };
@@ -22,7 +20,7 @@ use crate::{
 ///
 /// [`Nonzero`] dereferences to the underlying [`Element`], so all of
 /// [`Element`]'s methods are available directly on a [`Nonzero`].
-#[derive(Gadget, Write)]
+#[derive(Gadget, Write, GadgetEquals)]
 pub struct Nonzero<'dr, D: Driver<'dr>> {
     element: Element<'dr, D>,
 }
@@ -116,6 +114,7 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Nonzero<'dr, D> {
 /// [`inverse`](Self::inverse).
 ///
 /// Inversion is free, since the inverse is located within the gadget.
+#[derive(Gadget)]
 pub struct Invertible<'dr, D: Driver<'dr>> {
     element: Nonzero<'dr, D>,
     inverse: Nonzero<'dr, D>,
@@ -126,8 +125,8 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     ///
     /// This will be unsatisfied (and fail to synthesize) if `value` is zero.
     ///
-    /// Computing the inverse witness costs a field inversion. If the inverse
-    /// is already known, prefer
+    /// Computing the inverse witness costs a field inversion. If the inverse is
+    /// already known, prefer
     /// [`alloc_with_advice`](Invertible::alloc_with_advice).
     ///
     /// This costs one gate and one constraint.
@@ -201,55 +200,24 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Invertible<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         let value = D::just(|| *self.element.value().take());
         let inverse_value = D::just(|| *self.inverse.value().take());
-        Self::alloc_with_advice(dr, value, inverse_value)?.enforce_equal(dr, self)
+        Self::alloc_with_advice(dr, value, inverse_value)?.enforce_conservative_equal(dr, self)
     }
 }
 
-impl<'dr, D: Driver<'dr>> Clone for Invertible<'dr, D> {
-    fn clone(&self) -> Self {
-        Self {
-            element: self.element.clone(),
-            inverse: self.inverse.clone(),
-        }
-    }
-}
-
-impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for Invertible<'dr, D> {
-    type Kind = Invertible<'static, PhantomData<<D as Driver<'dr>>::F>>;
-}
-
-// SAFETY: `Invertible` contains only `Nonzero` fields, which are `Send` when
-// `D::Wire: Send`. So the `Send` propagation required by `GadgetKind` holds.
-unsafe impl<F: Field> GadgetKind<F> for Invertible<'static, PhantomData<F>> {
-    type Rebind<'dr, D: Driver<'dr, F = F>> = Invertible<'dr, D>;
-
-    fn map_gadget<
-        'src,
-        'dst,
-        WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
-    >(
-        this: &Bound<'src, WM::Src, Self>,
-        wm: &mut WM,
-    ) -> Result<Bound<'dst, WM::Dst, Self>> {
-        Ok(Invertible {
-            element: Gadget::map(&this.element, wm)?,
-            inverse: Gadget::map(&this.inverse, wm)?,
-        })
-    }
-
+impl<F: Field> GadgetEquals<F> for Kind![F; @Invertible<'_, _>] {
     fn enforce_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
         dr: &mut D1,
-        a: &Bound<'dr, D2, Self>,
-        b: &Bound<'dr, D2, Self>,
+        a: &Invertible<'dr, D2>,
+        b: &Invertible<'dr, D2>,
     ) -> Result<()> {
         // Soundness: comparing only the element suffices because
         // `alloc_with_advice` enforces `element * inverse = 1`, so equal
         // elements have equal inverses in any satisfied assignment.
-        Gadget::enforce_equal(&a.element, dr, &b.element)
+        a.element.enforce_equal(dr, &b.element)
     }
 }
 
@@ -418,7 +386,44 @@ mod tests {
             Ok(())
         })?;
         assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 2);
+        assert_eq!(sim.num_constraints(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_gadget_ext_enforce_equal_uses_gadget_equals() -> Result<()> {
+        let sim = Sim::simulate(F::from(5u64), |dr, witness| {
+            let a = Invertible::alloc(dr, witness.clone())?;
+            let b = Invertible::alloc(dr, witness.clone())?;
+            dr.reset();
+            a.enforce_equal(dr, &b)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 0);
+        assert_eq!(sim.num_constraints(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_invertible_gadget_equals_uses_represented_value() -> Result<()> {
+        let sim = Sim::simulate(F::from(5u64), |dr, witness| {
+            let value = *witness.snag();
+            let valid = Invertible::alloc(dr, witness.clone())?;
+            let malformed = Invertible {
+                element: Nonzero::new_unchecked(Element::constant(dr, value)),
+                inverse: Nonzero::new_unchecked(Element::constant(dr, F::from(9u64))),
+            };
+
+            dr.reset();
+            malformed.enforce_equal(dr, &valid)?;
+            assert_eq!(dr.num_gates(), 0);
+            assert_eq!(dr.num_constraints(), 1);
+
+            dr.reset();
+            assert!(malformed.enforce_conservative_equal(dr, &valid).is_err());
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 0);
         Ok(())
     }
 

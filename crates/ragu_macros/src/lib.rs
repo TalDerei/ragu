@@ -95,6 +95,22 @@ pub fn derive_consistent(input: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 #[allow(unused_imports)]
+use ragu_primitives::comparison::GadgetEquals as _;
+
+// Documentation for the `GadgetEquals` derive macro is in `derive@ragu_primitives::comparison::GadgetEquals`.
+#[allow(missing_docs)]
+#[proc_macro_derive(GadgetEquals, attributes(ragu))]
+pub fn derive_gadget_equals(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    macro_body(|| {
+        let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
+        let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
+        derive::gadgetequals::derive(input, ragu_core_path, ragu_primitives_path)
+    })
+}
+
+#[cfg(test)]
+#[allow(unused_imports)]
 use ragu_core::maybe::MaybeCast as _;
 
 /// Generate `ragu_core::maybe::MaybeCast` implementations for tuples of sizes 2

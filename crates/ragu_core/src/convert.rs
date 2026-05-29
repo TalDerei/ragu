@@ -205,7 +205,7 @@ mod tests {
             })
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = FieldType>,
             D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
@@ -260,7 +260,7 @@ mod tests {
             })
         }
 
-        fn enforce_equal_gadget<
+        fn enforce_conservative_equal_gadget<
             'dr,
             D1: Driver<'dr, F = FieldType>,
             D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
