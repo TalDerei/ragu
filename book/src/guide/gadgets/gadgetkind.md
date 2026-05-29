@@ -52,10 +52,9 @@ use it to count, substitute, or extract wires.
 Gadgets implement the
 [`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
 specify conservative equality constraints by pairing corresponding wires in the
-gadget's canonical traversal. This is the raw fallback used where a gadget's
-invariants are *not* guaranteed to hold, so the contract is strict: it must
-constrain each pair of corresponding wires and do nothing else — no extra gates,
-no arbitrary constraints, and no invariant-aware equality shortcuts.
+gadget's canonical traversal. The contract is strict: it must constrain each
+pair of corresponding wires and do nothing else — no extra gates, no arbitrary
+constraints, and no gadget-specific shortcuts.
 
 To make that contract enforceable at the type level rather than by convention,
 the method does not receive a full [`Driver`][driver-trait]. Instead it is
@@ -68,10 +67,7 @@ macro generates exactly these calls.
 
 Most circuit code should avoid this path directly. Prefer
 [`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
-[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons — it may
-constrain fewer wires by relying on a gadget's invariants. Conservative equality
-is reserved for infrastructure such as consistency checks and wire-substitution
-paths, which must re-establish constraints without trusting any prior invariant.
+[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons.
 
 ## Safety
 

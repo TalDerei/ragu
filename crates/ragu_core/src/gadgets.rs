@@ -101,9 +101,7 @@ pub type Bound<'dr, D, K> = <K as GadgetKind<<D as Driver<'dr>>::F>>::Rebind<'dr
 /// Conservative gadget equality (see
 /// [`GadgetKind::enforce_conservative_equal_gadget`]) must constrain each pair
 /// of corresponding wires and do nothing else — it must not allocate gates, add
-/// arbitrary constraints, or take invariant-aware equality shortcuts, since it
-/// is the raw fallback used where a gadget's invariants are not guaranteed (for
-/// example consistency re-establishment and wire-substitution paths). Handing
+/// arbitrary constraints, or take gadget-specific shortcuts. Handing
 /// implementations this adapter instead of a full [`Driver`] enforces that
 /// contract at the type level rather than by documentation alone: the only
 /// operation it exposes is
@@ -157,11 +155,9 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     }
 
     /// Enforce that `self` and `other` are equal by constraining every
-    /// corresponding wire pair.
+    /// corresponding wire pair, taking no gadget-specific shortcuts.
     ///
-    /// This is the conservative equality used by consistency re-establishment
-    /// and wire-substitution paths; it relies on no gadget invariants. It builds
-    /// a restricted [`WireEqualizer`] over `dr` and delegates to
+    /// This builds a restricted [`WireEqualizer`] over `dr` and delegates to
     /// [`GadgetKind::enforce_conservative_equal_gadget`].
     fn enforce_conservative_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
         &self,
