@@ -289,31 +289,6 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         this: &Bound<'src, WM::Src, Self>,
         wm: &mut WM,
     ) -> Result<Bound<'dst, WM::Dst, Self>>;
-
-    /// Enforces equality between two instances of the same gadget by
-    /// constraining each pair of corresponding wires to be equal.
-    ///
-    /// This is deliberately conservative: it relies on no gadget-specific
-    /// invariants, so it is correct even on wires whose invariants have not been
-    /// established. The wire correspondence is defined by
-    /// [`map_gadget`](GadgetKind::map_gadget); the provided gadgets can be for
-    /// another driver, since the emitted constraints only require corresponding
-    /// wire assignments to be equal.
-    ///
-    /// The default implementation derives the pairwise check from the canonical
-    /// `map_gadget` traversal via [`Gadget::enforce_conservative_equal`].
-    /// Gadgets should not override it.
-    fn enforce_conservative_equal_gadget<
-        'dr,
-        D1: Driver<'dr, F = F>,
-        D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
-    >(
-        dr: &mut D1,
-        a: &Bound<'dr, D2, Self>,
-        b: &Bound<'dr, D2, Self>,
-    ) -> Result<()> {
-        a.enforce_conservative_equal(dr, b)
-    }
 }
 
 /// Automatically derives the [`Gadget`], [`GadgetKind`] and [`Clone`] traits
