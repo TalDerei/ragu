@@ -45,20 +45,26 @@ This traversal is part of the gadget's contract. It must visit wire fields in
 the same order for every instance of the same concrete gadget type, defining
 which wires correspond between instances. [Fungibility](index.md#fungibility)
 is stated in terms of this correspondence, and drivers and internal Ragu code
-use it to count, substitute, or extract wires.
+use it to count, substitute, or extract wires, and to pair wires for
+[conservative equality](#conservative-equal).
 
-## `enforce_conservative_equal_gadget`
+## Conservative equality {#conservative-equal}
 
-Gadgets offer the
-[`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
-specify conservative equality constraints by pairing corresponding wires in the
-gadget's canonical traversal.
+[`Gadget::enforce_conservative_equal`][enforce-equal] constrains two gadgets
+equal by pairing every corresponding wire in the canonical
+[`map_gadget`](#map-gadget) traversal and enforcing each pair equal. It is
+*derived* from that traversal rather than implemented per gadget: any gadget
+that defines `map_gadget` correctly gets conservative equality for free, and
+there is no per-gadget hook that could accidentally allocate gates, add
+arbitrary constraints, or lean on a gadget's invariants.
 
-Most circuit code should avoid using this method directly. Prefer
+Most circuit code should avoid this method directly. Prefer
 [`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
-[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons. Conservative
-equality is mainly useful for infrastructure such as consistency checks and
-wire-substitution paths that need canonical pairwise constraints.
+[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons — it may
+constrain fewer wires by relying on a gadget's invariants. Conservative
+equality is reserved for infrastructure such as consistency checks and
+wire-substitution paths, which must re-establish constraints without trusting
+any prior invariant.
 
 ## Safety
 
@@ -89,6 +95,6 @@ see it.
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
 [bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
-[enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_conservative_equal_gadget
+[enforce-equal]: ragu_core::gadgets::Gadget::enforce_conservative_equal
 [gadgetext-enforce-equal]: ragu_primitives::GadgetExt::enforce_equal
 [gadget-equals]: ragu_primitives::comparison::GadgetEquals
