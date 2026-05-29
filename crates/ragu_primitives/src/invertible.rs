@@ -232,21 +232,19 @@ impl<F: Field> Write<F> for Kind![F; @Invertible<'_, _>] {
     }
 }
 
-/// Batches deferred nonzero proofs so a chain of divisions can share one
-/// inversion at the end of a [`scope`](NonzeroBank::scope).
+/// Batches deferred nonzero proofs so several factors can share one final
+/// nonzero check.
 ///
 /// Folding an element into the bank multiplies it into a running product and
 /// trusts it nonzero; when the scope closes, the product is constrained
 /// nonzero, retroactively validating every factor.
 ///
-/// A `NonzeroBank` is only constructible by [`NonzeroBank::scope`] (which
-/// always discharges the proof) or by internal callers that assert every
-/// fold is nonzero by structural argument.
+/// [`NonzeroBank`] is only constructible by [`NonzeroBank::scope`] or by
+/// internal callers that assert every fold is nonzero by structural argument.
 pub struct NonzeroBank<'dr, D: Driver<'dr>> {
-    // `None` is unchecked mode: `fold` emits no constraint and the bank
-    // discharges to a no-op when dropped. `Some(p)` is discharging mode:
-    // `fold` multiplies the new factor into `p` and the closing scope
-    // constrains `p != 0`.
+    // `None` is unchecked mode: `fold` emits no constraint and `enforce` is a
+    // no-op. `Some(p)` is discharging mode: `fold` multiplies the new factor
+    // into `p` and the closing scope constrains `p != 0`.
     product: Option<Element<'dr, D>>,
 }
 
@@ -266,10 +264,11 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
         Self { product: None }
     }
 
-    /// Folds `elem` into the running product and returns it typed as
-    /// [`Nonzero`]. In discharging mode the returned [`Nonzero`] is sound
-    /// iff the enclosing scope reaches its end; in unchecked mode the
-    /// caller is asserting `elem != 0` by external argument.
+    /// Folds `elem` into the running product and returns it typed as [`Nonzero`].
+    ///
+    /// In discharging mode, the nonzero proof is deferred until the enclosing
+    /// [`scope`](Self::scope) succeeds. Errors from that scope must be
+    /// propagated.
     ///
     /// This costs one gate in discharging mode and zero gates in unchecked
     /// mode.
@@ -290,10 +289,13 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
         Ok(())
     }
 
-    /// Opens a scope in which nonzero proofs can be batched. The discharge
-    /// runs on the success path of `body`; on any `Err` the scope
-    /// short-circuits without discharging — but no [`Nonzero`] minted inside
-    /// the body can outlive the `Err` return, so soundness is preserved.
+    /// Opens a scope in which nonzero proofs can be batched.
+    ///
+    /// On success, the bank is discharged before returning. On error, the bank
+    /// is not discharged.
+    ///
+    /// Callers must propagate errors from this function. Swallowing an error
+    /// can skip deferred nonzero checks and lead to unsound circuit code.
     ///
     /// This costs one gate and two constraints for the final discharge,
     /// plus one gate per [`fold`](Self::fold) in discharging mode, on top
