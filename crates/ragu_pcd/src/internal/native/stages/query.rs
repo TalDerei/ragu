@@ -135,7 +135,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         b: &InternalCircuitValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &InternalCircuitIndex::ALL {
-            a.get(id).enforce_conservative_equal_with(eq, b.get(id))?;
+            eq.enforce_conservative_equal_gadget(a.get(id), b.get(id))?;
         }
         Ok(())
     }
@@ -173,7 +173,7 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         b: &RxValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &RxIndex::ALL {
-            a.get(id).enforce_conservative_equal_with(eq, b.get(id))?;
+            eq.enforce_conservative_equal_gadget(a.get(id), b.get(id))?;
         }
         Ok(())
     }

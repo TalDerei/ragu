@@ -185,7 +185,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
             Some(quote! { eq.enforce_conservative_equal(&a.#id, &b.#id)? })
         }
         FieldType::Gadget => {
-            Some(quote! { #ragu_core_path::gadgets::Gadget::enforce_conservative_equal_with(&a.#id, eq, &b.#id)? })
+            Some(quote! { eq.enforce_conservative_equal_gadget(&a.#id, &b.#id)? })
         }
         _ => None,
     });
@@ -535,7 +535,7 @@ fn test_gadget_derive() {
                     b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
                 ) -> ::ragu_core::Result<()> {
                     eq.enforce_conservative_equal(&a.wire_field, &b.wire_field)?;
-                    ::ragu_core::gadgets::Gadget::enforce_conservative_equal_with(&a.map_field, eq, &b.map_field)?;
+                    eq.enforce_conservative_equal_gadget(&a.map_field, &b.map_field)?;
                     Ok(())
                 }
             }
@@ -575,14 +575,14 @@ fn test_gadget_derive_default_gadget() {
     assert!(result_str.contains("Gadget :: map (& this . field_a"), "missing Gadget::map for field_a");
     assert!(result_str.contains("Gadget :: map (& this . field_b"), "missing Gadget::map for field_b");
 
-    // Both should recurse via Gadget::enforce_conservative_equal_with
+    // Both should recurse via WireEqualizer::enforce_conservative_equal_gadget
     assert!(
-        result_str.contains("Gadget :: enforce_conservative_equal_with (& a . field_a"),
-        "missing enforce_conservative_equal_with for field_a"
+        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_a"),
+        "missing enforce_conservative_equal_gadget for field_a"
     );
     assert!(
-        result_str.contains("Gadget :: enforce_conservative_equal_with (& a . field_b"),
-        "missing enforce_conservative_equal_with for field_b"
+        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_b"),
+        "missing enforce_conservative_equal_gadget for field_b"
     );
 
     // Wire should use the WireEqualizer adapter
