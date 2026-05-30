@@ -249,10 +249,12 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
+        let x_pow = self.x.pow_vartime([gate_start as u64]);
+        let x_inv_pow = self.x_inv.pow_vartime([gate_start as u64]);
         let init_scope = SxyScope {
-            current_a_x: self.base_a_x * self.x.pow_vartime([gate_start as u64]),
-            current_b_x: self.base_b_x * self.x_inv.pow_vartime([gate_start as u64]),
-            current_c_x: self.base_c_x * self.x_inv.pow_vartime([gate_start as u64]),
+            current_a_x: self.base_a_x * x_pow,
+            current_b_x: self.base_b_x * x_inv_pow,
+            current_c_x: self.base_c_x * x_inv_pow,
             gates: gate_start,
             constraints: constraint_start,
             result: F::ZERO,
