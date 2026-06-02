@@ -217,3 +217,31 @@ jobs:
           tool: mdbook@0.4.52,mdbook-katex@0.9.4,mdbook-mermaid@0.16.2,mdbook-admonish@1.20.0
       - name: Build book
         run: mdbook build ./book
+
+  # Aggregate gate: a single, stable required status check. It always runs —
+  # even on non-Rust PRs where every job below is skipped — and fails only if a
+  # needed job actually failed or was cancelled (skipped counts as success).
+  # Require THIS in the ruleset instead of the individual job names: a skipped
+  # matrix job (`test`) reports the un-expanded name `test (${{ matrix.os }})`,
+  # so `test (ubuntu-latest)` etc. never report and block lean-/docs-only PRs.
+  ci-required:
+    name: ci-required
+    if: always()
+    needs:
+      - changes
+      - fmt
+      - clippy
+      - proptests-fast
+      - test
+      - test-32-bit
+      - bitrot
+      - docs
+      - book
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "A required job failed or was cancelled:"
+          echo '${{ toJSON(needs) }}'
+          exit 1
