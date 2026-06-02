@@ -86,16 +86,26 @@ pub trait Header<F: Field>: Send + Sync + Any {
     /// headers.
     const SUFFIX: Suffix;
 
-    /// The data needed to encode a header.
+    /// The witness input needed to encode a header.
     type Data: Send + Clone;
 
     /// The output gadget that encodes the data for this header.
     type Output: Write<F>;
 
-    /// Encode some data into a gadget representing this header.
+    /// Encodes witness input into a gadget representing this header.
     ///
     /// Implementations should pass `allocator` through to all allocation
     /// calls rather than substituting a different allocator.
+    ///
+    /// # Constraints
+    ///
+    /// The header type's `Output` gadget and serialization determine the
+    /// emitted constraints.
+    ///
+    /// # Errors
+    ///
+    /// Implementations return method-specific errors for assignment generation,
+    /// input validation, or encoding failures in the header.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

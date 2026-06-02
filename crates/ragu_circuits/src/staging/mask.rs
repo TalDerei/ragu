@@ -672,7 +672,7 @@ mod tests {
     }
 
     // Hand-written because the derive only re-emits each field's own
-    // invariants, dropping the cross-field `a == b` constraint that
+    // wire contracts, dropping the cross-field `a == b` constraint that
     // `ConstrainedStage::witness` imposes.
     impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for TwoElements<'dr, D> {
         fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
