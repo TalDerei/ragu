@@ -55,8 +55,9 @@ where
     ///
     /// The circuit must declare `Output = ()`. Non-empty output would
     /// be serialized into output-binding constraints by the standard
-    /// synthesis path, contributing to $k(Y)$ and violating the bonding
-    /// invariant that $k(Y) \equiv 0$. This is enforced at the type level.
+    /// constraint-emission path, contributing to $k(Y)$ and violating the
+    /// bonding requirement that $k(Y) \equiv 0$. This is enforced at the type
+    /// level.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
@@ -72,7 +73,7 @@ where
         Self: 'a,
         S: MultiStageCircuit<F, R, Output = ()>,
     {
-        // Validate: run synthesis with a driver that rejects ONE usage
+        // Validate: run constraint emission with a driver that rejects ONE usage
         // and — after the stage builder finalizes — mul/gate.
         let mut validator = BondingValidator::<F>::new();
         self.circuit.witness(

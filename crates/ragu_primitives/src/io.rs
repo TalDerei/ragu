@@ -2,8 +2,8 @@
 //!
 //! The [`Write`] trait allows compatible [`Gadget`](crate::Gadget)s
 //! to write [`Element`]s to a [`Buffer`] for serialization purposes. Because
-//! gadgets are just containers for wires and witness data, they can usually
-//! reconstitute their encapsulated [`Element`]s via promotion.
+//! gadgets are just containers for wires and assignment-generation data, they
+//! can usually reconstitute their encapsulated [`Element`]s via promotion.
 //!
 //! The [`Buffer`] trait allows destination buffers to receive a [`Driver`] for
 //! processing the elements they receive. This is handy for streaming hash
@@ -37,8 +37,9 @@ use crate::Element;
 /// Gadgets that consist mainly of other gadgets are candidates for [automatic
 /// derivation](derive@Write) of this trait.
 pub trait Write<F: Field>: GadgetKind<F> {
-    /// Write this gadget into wires that are written the provided buffer,
-    /// using the driver to synthesize the elements if needed.
+    /// Writes this gadget into elements that are sent to the provided buffer,
+    /// using the driver to emit any constraints needed to construct those
+    /// elements.
     fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &Bound<'dr, D, Self>,
         dr: &mut D,
