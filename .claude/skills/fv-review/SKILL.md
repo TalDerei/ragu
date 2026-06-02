@@ -383,6 +383,13 @@ Proving a gadget's `soundness` doubles as an adversarial-prover audit: it asks *
 
 **A stuck goal is a lead; a proven negation is the conviction.** Failure-to-prove ≠ disproof — the same trap as "the constraint *exists*" ≠ "the constraint *suffices*." Don't let "I couldn't close it" masquerade as "it's broken," and **never `sorry` past the wedge** — the open hole *is* the finding, and `#print axioms` will expose a `sorryAx` if you try. To *convict*, exhibit a concrete assignment that satisfies every constraint but violates the `Spec` (the circuit is satisfiable yet admits a forged witness it should reject). Build that counterexample from exactly the fact the stuck goal said was missing.
 
+**Name the three statements — keep them distinct:**
+- *Unconditional soundness* — the spec holds for **all** inputs, no added hypothesis. This is what you attempt first. If the gadget is under-constrained the statement is **false**, so the proof can only wedge — you hit a stuck goal *precisely because* you're trying to prove a false statement (which is why you must never `sorry` it shut).
+- *Its negation* — some input satisfies every constraint yet violates the spec. Proving this is the **verdict** that convicts the under-constraint.
+- *Conditional soundness* — the spec holds **given** an explicit input precondition (an `Assumptions` antecedent). This statement is **true**, and proving it names the precondition that rescues the gadget.
+
+A clean audit of a suspect gadget therefore yields a *pair*: the negation (convicts the gap) **and** conditional soundness (names the precondition) — together saying "under-constrained in isolation, sound under this assumption." That pair is then the constraint-vs-document decision below.
+
 **The fix is one of two shapes, and the proof tells you which:**
 - **Add a constraint** — close the goal *from inside the circuit*. The gadget was genuinely under-constrained; the new constraint pins the witness, and unconditional soundness then proves with no hypothesis.
 - **Add a hypothesis** — the gadget legitimately assumes a caller precondition. Promote it to `Assumptions` (see "Specs are unconditional; caller obligations live in `Assumptions`") **and** verify the caller actually guarantees it. A precondition that holds only "in practice" (e.g. because the input is a hash output) is sound *in usage* but unsound *in isolation* — it must become an explicit, justified assumption, never a silent one.
