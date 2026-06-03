@@ -278,6 +278,42 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
     Ok(v)
 }
 
+/// Decomposes a field element into its little-endian bits.
+///
+/// Returns `D::F::CAPACITY` booleans constrained so that
+/// `b_0 + b_1*2 + b_2*4 + ... == elem`. This is the inverse of [`multipack`].
+///
+/// `CAPACITY` bits represent exactly the values in `[0, 2^CAPACITY)`, a subset
+/// of `[0, p)`, so the decomposition is canonical by construction: every
+/// in-range element has a unique bit string and no wrapped alias is
+/// representable, requiring no range check. The trade-off is that the
+/// constraints are only satisfiable when `elem < 2^CAPACITY`; for the Pasta
+/// fields the excluded range has negligible density (about `2^-128`).
+pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
+    dr: &mut D,
+    allocator: &mut impl Allocator<'dr, D>,
+    elem: &Element<'dr, D>,
+) -> Result<Vec<Boolean<'dr, D>>> {
+    let bits = (0..D::F::CAPACITY as usize)
+        .map(|i| {
+            let bit = elem
+                .value()
+                .map(move |v| (v.to_repr().as_ref()[i / 8] >> (i % 8)) & 1 == 1);
+            Boolean::alloc(dr, allocator, bit)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let recomposed = dr.add(|mut lc| {
+        for bit in &bits {
+            lc = lc.add(bit.wire()).gain(Coeff::Two);
+        }
+        lc
+    });
+    dr.enforce_equal(&recomposed, elem.wire())?;
+
+    Ok(bits)
+}
+
 impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         Self::alloc(dr, &mut (), self.value())?.enforce_conservative_equal(dr, self)
@@ -305,6 +341,51 @@ fn test_boolean_alloc() -> Result<()> {
 
     alloc(false)?;
     alloc(true)?;
+
+    Ok(())
+}
+
+/// Checks that `decompose` recomposes to the original element for in-range
+/// values, and rejects an out-of-range element (`>= 2^CAPACITY`).
+#[test]
+fn test_decompose() -> Result<()> {
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let check = |x: F| -> Result<()> {
+        Simulator::simulate(x, |dr, x| {
+            let allocator = &mut Standard::new();
+            let x = Element::alloc(dr, allocator, x)?;
+            let bits = decompose(dr, allocator, &x)?;
+
+            assert_eq!(bits.len(), F::CAPACITY as usize);
+
+            let mut acc = F::ZERO;
+            let mut gain = F::ONE;
+            for bit in &bits {
+                if bit.value().take() {
+                    acc += gain;
+                }
+                gain = gain.double();
+            }
+            assert_eq!(acc, *x.value().take());
+
+            Ok(())
+        })?;
+        Ok(())
+    };
+
+    check(F::ZERO)?;
+    check(F::ONE)?;
+    check(F::from(0x0123_4567_89ab_cdefu64))?;
+
+    let too_large = Simulator::simulate(-F::ONE, |dr, x| {
+        let allocator = &mut Standard::new();
+        let x = Element::alloc(dr, allocator, x)?;
+        decompose(dr, allocator, &x)?;
+        Ok(())
+    });
+    assert!(too_large.is_err());
 
     Ok(())
 }
