@@ -20,7 +20,7 @@ use ragu_arithmetic::{
     ff::{Field, PrimeField, WithSmallOrderMulGroup},
 };
 use ragu_core::{
-    Result,
+    Error, Result,
     drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
     gadgets::Gadget,
     maybe::Maybe,
@@ -28,7 +28,9 @@ use ragu_core::{
 
 use crate::{
     Boolean, Element, NonzeroBank, Point,
+    allocator::Allocator,
     promotion::Demoted,
+    util::InternalMaybe,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
 
@@ -86,11 +88,6 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let mut value = D::just(|| 0u128);
         let mut constant = D::F::ZERO;
 
-        let mut coeff_0 = D::F::ZERO;
-        let mut coeff_1 = D::F::ZERO;
-        let coeff_2 = D::F::MULTIPLICATIVE_GENERATOR;
-        let coeff_3 = D::F::ONE - D::F::MULTIPLICATIVE_GENERATOR;
-
         for i in 0..(u128::BITS as usize) {
             let (sqrt, bit) = D::try_just(|| {
                 let value = *elem.value().take() + constant;
@@ -113,34 +110,10 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                 }
             });
 
-            let bit = Boolean::alloc(dr, allocator, bit)?;
-            let (_, square) = Element::alloc_square(dr, sqrt)?;
-            let vb = elem.mul(dr, &bit.element())?;
-
-            // Enforce that the square is equal to
-            //     (elem + i) if bit == 1
-            //     (elem + i) * MULTIPLICATIVE_GENERATOR) if bit == 0
-            // This is done by enforcing the constraint:
-            //
-            //     square = bit * (elem + i)
-            //            + (1 - bit) * ((elem + i) * MULTIPLICATIVE_GENERATOR)
-            //
-            //            = i * MULTIPLICATIVE_GENERATOR
-            //            + bit * (i * (1 - MULTIPLICATIVE_GENERATOR))
-            //            + elem * MULTIPLICATIVE_GENERATOR
-            //            + vb * (1 - MULTIPLICATIVE_GENERATOR)
-            dr.enforce_zero(|lc| {
-                lc.add_term(&D::ONE, coeff_0.into())
-                    .add_term(bit.wire(), coeff_1.into())
-                    .add_term(elem.wire(), coeff_2.into())
-                    .add_term(vb.wire(), coeff_3.into())
-                    .sub(square.wire())
-            })?;
+            let bit = constrain_extraction_bit(dr, allocator, &elem, constant, sqrt, bit)?;
 
             bits.push(Demoted::new(&bit)?);
             constant += D::F::ONE;
-            coeff_0 += coeff_2;
-            coeff_1 += coeff_3;
         }
 
         Ok(Endoscalar {
@@ -231,6 +204,113 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 }
 
+/// Allocates and constrains a single endoscalar extraction bit.
+///
+/// Computes the `inverse` advice for [`constrain_extraction_bit_with_inverse`]
+/// (the inverse of `elem + constant`, or zero when `bit` is true) and delegates.
+/// Returns [`Error::InvalidWitness`] for a false `bit` at `elem + constant == 0`.
+fn constrain_extraction_bit<'dr, D: Driver<'dr>, A: Allocator<'dr, D>>(
+    dr: &mut D,
+    allocator: &mut A,
+    elem: &Element<'dr, D>,
+    constant: D::F,
+    sqrt: DriverValue<D, D::F>,
+    bit: DriverValue<D, bool>,
+) -> Result<Boolean<'dr, D>>
+where
+    D::F: WithSmallOrderMulGroup<3>,
+{
+    let inverse = D::try_just(|| {
+        let shifted = *elem.value().take() + constant;
+        if *bit.snag() {
+            Ok(D::F::ZERO)
+        } else {
+            shifted
+                .invert()
+                .into_option()
+                .ok_or_else(|| Error::InvalidWitness("endoscalar false bit at zero".into()))
+        }
+    })?;
+
+    constrain_extraction_bit_with_inverse(dr, allocator, elem, constant, sqrt, bit, inverse)
+}
+
+/// Constrains a single endoscalar extraction bit given the `inverse` advice,
+/// emitting the square and nonzero constraints and returning `bit`'s [`Boolean`].
+///
+/// `bit` records whether `elem + constant` is a quadratic residue, witnessed by
+/// `sqrt` (a root of `elem + constant`, or of
+/// `(elem + constant) * MULTIPLICATIVE_GENERATOR` when `bit` is false). The
+/// `inverse` forces a false `bit` to prove `elem + constant != 0`,
+/// disambiguating the zero case where both branches square to zero and the bit
+/// would otherwise be free.
+///
+/// Split from [`constrain_extraction_bit`] so tests can forge `inverse` and
+/// confirm the false-bit-at-zero witness is rejected.
+fn constrain_extraction_bit_with_inverse<'dr, D: Driver<'dr>, A: Allocator<'dr, D>>(
+    dr: &mut D,
+    allocator: &mut A,
+    elem: &Element<'dr, D>,
+    constant: D::F,
+    sqrt: DriverValue<D, D::F>,
+    bit: DriverValue<D, bool>,
+    inverse: DriverValue<D, D::F>,
+) -> Result<Boolean<'dr, D>>
+where
+    D::F: WithSmallOrderMulGroup<3>,
+{
+    let bit = Boolean::alloc(dr, allocator, bit)?;
+    let constant_elem = Element::constant(dr, constant);
+    let shifted = elem.add(dr, &constant_elem);
+    let (_, square) = Element::alloc_square(dr, sqrt)?;
+    let vb = elem.mul(dr, &bit.element())?;
+
+    // Force `bit = 1` when `elem + constant == 0`: there the square constraint
+    // below sends `square` to zero for either bit, so it cannot pin the bit and
+    // a prover could forge a non-residue claim (`bit = 0`). The inverse trick
+    // rules this out:
+    //
+    // - shifted * inverse = is_not_zero
+    // - is_not_zero = 1 - bit
+    //
+    // When `bit == 0` these force `shifted = elem + constant` to be nonzero,
+    // rejecting the zero case; when `bit == 1` they reduce to
+    // `shifted * inverse = 0`, which `inverse = 0` always satisfies (complete).
+    let (shifted_wire, _, is_not_zero) = dr.mul(|| {
+        Ok((
+            Coeff::Arbitrary(*shifted.value().take()),
+            Coeff::Arbitrary(*inverse.snag()),
+            bit.value().not().coeff().take(),
+        ))
+    })?;
+    dr.enforce_equal(&shifted_wire, shifted.wire())?;
+    dr.enforce_zero(|lc| lc.add(&is_not_zero).sub(&D::ONE).add(bit.wire()))?;
+
+    // Enforce that the square is equal to
+    //     (elem + constant) if bit == 1
+    //     (elem + constant) * MULTIPLICATIVE_GENERATOR if bit == 0
+    // This is done by enforcing the constraint:
+    //
+    //     square = bit * (elem + constant)
+    //            + (1 - bit) * ((elem + constant) * MULTIPLICATIVE_GENERATOR)
+    //
+    //            = constant * MULTIPLICATIVE_GENERATOR
+    //            + bit * (constant * (1 - MULTIPLICATIVE_GENERATOR))
+    //            + elem * MULTIPLICATIVE_GENERATOR
+    //            + vb * (1 - MULTIPLICATIVE_GENERATOR)
+    let coeff_2 = D::F::MULTIPLICATIVE_GENERATOR;
+    let coeff_3 = D::F::ONE - D::F::MULTIPLICATIVE_GENERATOR;
+    dr.enforce_zero(|lc| {
+        lc.add_term(&D::ONE, (constant * coeff_2).into())
+            .add_term(bit.wire(), (constant * coeff_3).into())
+            .add_term(elem.wire(), coeff_2.into())
+            .add_term(vb.wire(), coeff_3.into())
+            .sub(square.wire())
+    })?;
+
+    Ok(bit)
+}
+
 /// Lifts an endoscalar to a field element (computes the effective scalar).
 ///
 /// This implements [Algorithm 2, \[BGH19\]](https://eprint.iacr.org/2019/1021)
@@ -273,7 +353,7 @@ mod tests {
         group::{CurveAffine as _, Group},
         rand::RngExt,
     };
-    use ragu_core::Result;
+    use ragu_core::{Result, drivers::Driver};
     use ragu_pasta::{EpAffine, Fp};
 
     use super::{Element, Endoscalar, Maybe, Point};
@@ -314,6 +394,25 @@ mod tests {
         }
     }
 
+    /// Independent reference implementation of endoscalar extraction.
+    ///
+    /// Unlike [`super::extract_endoscalar`], which drives the gadget through the
+    /// emulator, this recomputes the bits directly from field arithmetic, so it
+    /// is unlikely to share a synthesis bug.
+    fn native_extract<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> u128 {
+        let mut endoscalar = 0u128;
+        let mut constant = F::ZERO;
+
+        for i in 0..(u128::BITS as usize) {
+            if (value + constant).sqrt().into_option().is_some() {
+                endoscalar |= 1u128 << i;
+            }
+            constant += F::ONE;
+        }
+
+        endoscalar
+    }
+
     #[test]
     #[allow(clippy::useless_conversion)]
     fn test_endoscaling_consistency() {
@@ -352,6 +451,68 @@ mod tests {
 
             Ok(())
         })?;
+
+        Ok(())
+    }
+
+    /// Regression test for the under-constrained zero case: at `elem + i == 0`
+    /// the extracted bit must be set, matching the native oracle.
+    #[test]
+    fn test_extract_exceptional_zero_bits_match_native() -> Result<()> {
+        for i in 0..(u128::BITS as usize) {
+            let r = -Fp::from(i as u64);
+            let expected = native_extract(r);
+
+            assert_eq!(
+                (expected >> i) & 1u128,
+                1u128,
+                "native extraction must set the zero bit for i={i}"
+            );
+
+            Simulator::<Fp>::simulate((r, expected), |dr, witness| {
+                let (r, expected) = witness.cast();
+                let allocator = &mut Standard::new();
+                let r = Element::alloc(dr, allocator, r)?;
+                let extracted = Endoscalar::extract(dr, allocator, r)?;
+
+                assert_eq!(*extracted.value.snag(), *expected.snag());
+
+                Ok(())
+            })?;
+        }
+
+        Ok(())
+    }
+
+    /// Regression test for the under-constrained zero case: a forged
+    /// `bit = false` witness at `elem + i == 0` must be rejected by the nonzero
+    /// constraint.
+    #[test]
+    fn test_extract_rejects_false_zero_bits() -> Result<()> {
+        for i in 0..(u128::BITS as usize) {
+            let r = -Fp::from(i as u64);
+            let result = Simulator::<Fp>::simulate(r, |dr, witness| {
+                let allocator = &mut Standard::new();
+                let elem = Element::alloc(dr, allocator, witness)?;
+
+                super::constrain_extraction_bit_with_inverse(
+                    dr,
+                    allocator,
+                    &elem,
+                    Fp::from(i as u64),
+                    Simulator::<Fp>::just(|| Fp::ZERO),
+                    Simulator::<Fp>::just(|| false),
+                    Simulator::<Fp>::just(|| Fp::ZERO),
+                )?;
+
+                Ok(())
+            });
+
+            assert!(
+                result.is_err(),
+                "false extraction bit at elem + i = 0 must be rejected for i={i}"
+            );
+        }
 
         Ok(())
     }
