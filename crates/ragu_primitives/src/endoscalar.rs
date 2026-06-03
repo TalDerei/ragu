@@ -78,6 +78,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// decomposition. The element is decomposed in full, so those 128 bits are
     /// uniquely determined by `elem` and the extraction is sound for every
     /// input.
+    ///
+    /// The decomposition only admits elements below `2^CAPACITY`, so for the
+    /// negligible (~2^-129) fraction of larger elements the constraint is
+    /// unsatisfiable and an honest prover cannot prove. This out-of-range abort
+    /// is intentional and acceptable for a transcript-derived challenge.
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
@@ -214,6 +219,12 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 ///
 /// Returns the low 128 bits of the element's canonical bit decomposition. This
 /// is the native counterpart to [`Endoscalar::extract`].
+///
+/// This computes only the witness value and does not enforce the decomposition,
+/// so callers must only pass values that have already passed the protocol's
+/// rejection-sampling check (`value < 2^CAPACITY`). For out-of-range values, the
+/// in-circuit constraint in [`Endoscalar::extract`] is unsatisfiable, and this
+/// helper may fail during emulation.
 pub fn extract_endoscalar<F: PrimeField>(value: F) -> u128 {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;

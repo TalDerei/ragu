@@ -288,7 +288,7 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// in-range element has a unique bit string and no wrapped alias is
 /// representable, requiring no range check. The trade-off is that the
 /// constraints are only satisfiable when `elem < 2^CAPACITY`; for the Pasta
-/// fields the excluded range has negligible density (about `2^-128`).
+/// fields the excluded range has negligible density (about `2^-129`).
 pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,
@@ -378,6 +378,13 @@ fn test_decompose() -> Result<()> {
     check(F::ZERO)?;
     check(F::ONE)?;
     check(F::from(0x0123_4567_89ab_cdefu64))?;
+
+    // Largest in-range value: 2^CAPACITY - 1 (all CAPACITY bits set).
+    let mut all_ones = F::ZERO;
+    for _ in 0..(F::CAPACITY as usize) {
+        all_ones = all_ones.double() + F::ONE;
+    }
+    check(all_ones)?;
 
     let too_large = Simulator::simulate(-F::ONE, |dr, x| {
         let allocator = &mut Standard::new();

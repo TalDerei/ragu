@@ -161,7 +161,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
         let allocator = &mut Standard::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
-        // Extract endoscalar early: each of the 128 Boolean gates has a
+        // Extract endoscalar early: each Boolean gate it allocates has a
         // spare D wire. Donating them to the pool lets subsequent reads
         // reuse those wires instead of allocating fresh gates.
         let pre_beta = unified_output.pre_beta.read(dr, allocator)?;
