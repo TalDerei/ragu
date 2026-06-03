@@ -1,6 +1,6 @@
-//! Multi-stage circuit witness execution with staged wire allocation.
+//! Multi-stage circuit witness generation with staged wire allocation.
 //!
-//! The staging system separates witness execution into explicit **stage
+//! The staging system separates witness generation into explicit **stage
 //! polynomials** ($a(X)$, $b(X)$, ...) that can be committed independently,
 //! and an implicit **final trace** ($r'(X)$) that consumes their outputs.
 //! Together these form the full trace polynomial:
@@ -23,7 +23,7 @@
 //!    wire positions without computing values yet, ensuring all provers agree
 //!    on wire layout.
 //!
-//! 2. **Witness execution** — Call [`finish`](StageBuilder::finish) to get the
+//! 2. **Witness generation** — Call [`finish`](StageBuilder::finish) to get the
 //!    driver, then populate each stage via [`StageGuard::enforced`] or
 //!    [`StageGuard::unenforced`]. The remaining code computes $r'(X)$.
 //!
@@ -119,7 +119,7 @@ impl<'dr, D: Driver<'dr>> WireMap<D::F> for StageWireInjector<'_, 'dr, D> {
 /// pre-allocated stage wires.
 ///
 /// The stage wires are allocated at the correct positions, but the actual
-/// witness execution is deferred until one of the consuming methods is called:
+/// witness generation is deferred until one of the consuming methods is called:
 ///
 /// - [`enforced`](Self::enforced) - run the stage witness body and re-emit
 ///   covered wire contracts
@@ -145,7 +145,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the stage witness body cannot
+    /// Returns a witness-generation error if the stage witness body cannot
     /// produce its output, a capacity error if wire rebinding needs more reserved
     /// stage wires than available, or a local-check error if `Consistent`
     /// enforcement fails under a checking driver.
@@ -191,7 +191,7 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the stage witness body cannot
+    /// Returns a witness-generation error if the stage witness body cannot
     /// produce its output, or a capacity error if wire rebinding needs more
     /// reserved stage wires than available.
     pub fn unenforced<'source: 'dr>(

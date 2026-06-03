@@ -104,7 +104,7 @@ pub trait Header<F: Field>: Send + Sync + Any {
     ///
     /// # Errors
     ///
-    /// Implementations return method-specific errors for assignment generation,
+    /// Implementations return method-specific errors for witness generation,
     /// input validation, or encoding failures in the header.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,

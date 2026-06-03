@@ -163,15 +163,14 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
     /// The header produced during this step.
     type Output: Header<C::CircuitField>;
 
-    /// Auxiliary information produced during witness execution that may be
-    /// used to pipeline witness input to future steps.
+    /// Auxiliary information produced during witness generation that may be
+    /// used to pipeline witness input to later steps.
     type Aux<'source>: Send;
 
     /// Emits the constraints that check the validity of this merging step.
     ///
     /// Returns the encoded headers (left, right, output), the data to be
-    /// carried in the resulting PCD, and any auxiliary assignment-generation
-    /// data.
+    /// carried in the resulting PCD, and any auxiliary witness data.
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,

@@ -9,19 +9,19 @@
 //! Drivers create wires, compute assignments when available, and enforce
 //! constraints. Circuit code that is generic over a driver must emit the same
 //! constraints independently of witness input. Drivers use a [`Maybe<T>`] type
-//! (via [`DriverValue`]) to statically gate assignment generation, and define
+//! (via [`DriverValue`]) to statically gate witness generation, and define
 //! their own opaque [`Driver::Wire`] type so that monomorphized code inherits
 //! driver-specific optimizations. Drivers can execute circuit code within
 //! [routines](crate::routines), which grant them flexibility for
 //! parallelization, memoization, and other optimizations via
 //! [`WireMap`](crate::convert::WireMap).
 //!
-//! * **Integration of assignment generation**: Constraints can be written
-//!   alongside assignment-generation logic, even though drivers tend to reason
+//! * **Integration of witness generation**: Constraints can be written
+//!   alongside witness-generation logic, even though drivers tend to reason
 //!   about one or the other. To reduce overhead, drivers specify a [`Maybe<T>`]
 //!   type (via the type alias [`DriverValue`]) which enables static analysis
 //!   and optimization of witness input handling for a specific driver context.
-//!   This coupling with assignment generation is a zero-cost abstraction.
+//!   This coupling with witness generation is a zero-cost abstraction.
 //! * **Integration of in-circuit and out-of-circuit code**: Recursive proofs
 //!   require many algorithms to be executed both within and outside of
 //!   circuits, and these implementations must remain consistent for
@@ -64,7 +64,7 @@ use crate::{
 
 /// Alias for the concrete [`Maybe<T>`] type for a driver `D`.
 ///
-/// Circuit APIs use this for witness input and assignment-generation data that
+/// Circuit APIs use this for witness input and witness data that
 /// may or may not be available in a particular driver context.
 pub type DriverValue<D, T> = Perhaps<<D as DriverTypes>::MaybeKind, T>;
 
@@ -191,12 +191,12 @@ pub trait DriverTypes {
 ///   existing wires. The [`constant`](Driver::constant) method is a helper for
 ///   creating a wire with a constant value.
 /// * Wires are assigned values upon their creation; the driver may or may not
-///   need to obtain these values depending on whether assignment generation is
+///   need to obtain these values depending on whether witness generation is
 ///   active.
 /// * Users keep track of wire assignments or related witness input using a
 ///   driver-specific [`DriverValue`] type. This type implements an
 ///   `Option`-like abstraction called [`Maybe`] which allows for compile-time
-///   optimization and static analysis of assignment-generation computation and
+///   optimization and static analysis of witness-generation computation and
 ///   memory.
 /// * Finally, and most importantly, wires can be constrained in two ways:
 ///     * The [`mul`](Driver::mul) method enforces a multiplicative constraint

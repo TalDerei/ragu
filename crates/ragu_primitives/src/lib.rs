@@ -81,7 +81,7 @@ pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
         <Self::Kind as Write<D::F>>::write_gadget(self, dr, buf)
     }
 
-    /// Demotes this gadget by stripping its assignment-generation data.
+    /// Demotes this gadget by stripping its witness data.
     fn demote(&self) -> Result<Demoted<'dr, D, Self>> {
         Demoted::new(self)
     }

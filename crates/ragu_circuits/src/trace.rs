@@ -278,7 +278,7 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
                 //
                 // Created when `predict()` returns [`Known`](Prediction::Known),
                 // allowing the main traversal to continue with the predicted
-                // output while deferring the actual assignment generation.
+                // output while deferring the actual witness generation.
                 let output = CloneWires::remap(&predicted_output)?;
                 let input = StripWires::remap(&input)?.sendable();
 

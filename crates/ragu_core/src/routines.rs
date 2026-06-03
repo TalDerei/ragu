@@ -4,7 +4,7 @@
 //! Routines are intended for portions of the circuit that are either invoked
 //! multiple times (and so drivers can memoize their emitted constraints) or have
 //! efficiently predictable outputs (and so drivers can parallelize their
-//! assignment generation).
+//! witness generation).
 //!
 //! See also the [book] for a user-oriented introduction to routines.
 //!
@@ -29,7 +29,7 @@ use crate::{
 ///
 /// The routine body is performed in the
 /// [`execute`](Routine::execute) method. Drivers can leverage predictions to
-/// execute routines in parallel for assignment generation or skip constraint
+/// execute routines in parallel for witness generation or skip constraint
 /// emission when the emitted constraints are memoized.
 pub trait Routine<F: Field>: Clone + Send {
     /// The kind of a gadget that this routine expects as input
@@ -63,7 +63,7 @@ pub trait Routine<F: Field>: Clone + Send {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the prediction cannot be
+    /// Returns a witness-generation error if the prediction cannot be
     /// computed from available witness input, or an input error if ordinary
     /// input to the routine is outside its domain. Use [`Prediction::Unknown`]
     /// instead when the routine simply cannot efficiently predict its output.
@@ -82,12 +82,12 @@ pub trait Routine<F: Field>: Clone + Send {
 ///
 /// # Design note
 ///
-/// [`Routine::predict`] is assignment-generation oriented, but constraint-only drivers
+/// [`Routine::predict`] is witness-generation oriented, but constraint-only drivers
 /// piggyback on it just for the auxiliary data. This bundles two concerns:
 ///
 /// - **Auxiliary data**: all drivers can benefit from avoiding redundant work.
 /// - **`Known` vs `Unknown`**: witness drivers can use this to short-circuit
-///   execution or parallelize assignment generation.
+///   execution or parallelize witness generation.
 ///
 /// Constraint-only drivers use [`into_aux`] to ignore this distinction.
 ///

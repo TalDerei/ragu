@@ -190,7 +190,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input falls into an
+    /// Returns a witness-generation error if witness input falls into an
     /// incomplete-addition exceptional case.
     pub fn group_scale<C: CurveAffine<Base = D::F>>(
         &self,

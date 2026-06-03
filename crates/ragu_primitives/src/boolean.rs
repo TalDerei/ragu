@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// Represents a wire constrained to be zero or one, along with its
-/// assignment-generation [`bool`] value.
+/// witness [`bool`] value.
 #[derive(Gadget, GadgetEquals)]
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
@@ -169,7 +169,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         Ok(())
     }
 
-    /// Returns the assignment-generation value of this boolean.
+    /// Returns the witness value of this boolean.
     pub fn value(&self) -> DriverValue<D, bool> {
         self.value.clone()
     }

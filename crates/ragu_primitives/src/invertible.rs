@@ -87,7 +87,7 @@ impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the quotient assignment cannot
+    /// Returns a witness-generation error if the quotient assignment cannot
     /// be computed from witness input.
     pub fn divide(&self, dr: &mut D, divisor: &Self) -> Result<Self> {
         Ok(Self::new_unchecked(self.element.divide(dr, divisor)?))
@@ -159,11 +159,11 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when `value` is nonzero.
+    /// Witness generation succeeds when `value` is nonzero.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if `value` is zero.
+    /// Returns a witness-generation error if `value` is zero.
     pub fn alloc(dr: &mut D, value: DriverValue<D, D::F>) -> Result<Self> {
         let inverse_value = D::try_just(|| {
             value
@@ -186,7 +186,7 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when `value` is nonzero and
+    /// Witness generation succeeds when `value` is nonzero and
     /// `inverse_value` matches its inverse.
     ///
     /// # Errors
@@ -371,12 +371,12 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for every folded
+    /// Witness generation succeeds when witness input for every folded
     /// element is nonzero and the body succeeds.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the final nonzero assignment
+    /// Returns a witness-generation error if the final nonzero assignment
     /// cannot be computed from witness input, or an error returned by the body.
     pub fn scope<T>(
         dr: &mut D,

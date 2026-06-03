@@ -3,7 +3,7 @@
 //!
 //! ## Design
 //!
-//! Gadgets are types that encapsulate wires and assignment-generation data.
+//! Gadgets are types that encapsulate wires and witness data.
 //! Because the underlying types are defined by drivers, gadget types are
 //! necessarily parameterized by a [`Driver`]. As with all circuit code, gadgets
 //! must emit constraints deterministically.
@@ -28,7 +28,7 @@
 //! * All gadgets are [`Clone`].
 //! * All gadgets are parameterized by a [`Driver`] type that outlives the
 //!   special lifetime `'dr`.
-//! * Gadgets can contain wires ([`D::Wire`](Driver::Wire)), assignment-generation data
+//! * Gadgets can contain wires ([`D::Wire`](Driver::Wire)), witness data
 //!   ([`DriverValue<D, T>`](crate::drivers::DriverValue)), other gadgets, and
 //!   otherwise can contain any other [`Send`] contents that are `'static`.
 //!
@@ -44,14 +44,14 @@
 //! always contain the same number of wires in every instance, and cannot carry
 //! any additional state that would influence emitted constraints. It also means
 //! that gadgets usually cannot be `enum`s. Fortunately, most gadgets only
-//! contain wires, assignment-generation data and other gadgets. These simple
+//! contain wires, witness data and other gadgets. These simple
 //! gadgets always qualify as fungible by definition.
 //!
 //! #### Transformations between Drivers
 //!
 //! Gadgets must define a canonical mapping between their instantiations over
 //! different [`Driver`] types. This mapping uses the [`WireMap`] trait to
-//! facilitate the transformation of wires and assignment-generation data from
+//! facilitate the transformation of wires and witness data from
 //! one driver to another.
 //!
 //! That mapping defines the wire correspondence used by fungibility. It must
@@ -128,7 +128,7 @@ impl<'a, 'dr, D: Driver<'dr>> WireEqualizer<'a, 'dr, D> {
 }
 
 /// A type that encapsulates wires allocated by a [`Driver`] along with any
-/// corresponding assignment-generation data, and satisfies **fungibility**.
+/// corresponding witness data, and satisfies **fungibility**.
 ///
 /// See the [module docs](self) for the wire/witness asymmetry.
 ///
@@ -140,7 +140,7 @@ impl<'a, 'dr, D: Driver<'dr>> WireEqualizer<'a, 'dr, D> {
 /// carrying the same wire contracts. This precludes dynamic-length
 /// collections, enum discriminants, and any other instance state that affects
 /// emitted constraints. Wires are fungible by definition, and
-/// assignment-generation data cannot affect emitted constraints, so gadgets
+/// witness data cannot affect emitted constraints, so gadgets
 /// containing only these automatically satisfy this requirement.
 ///
 /// The wire correspondence used here is defined by
