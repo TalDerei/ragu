@@ -68,11 +68,11 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input is not the identity.
+    /// Witness generation succeeds when witness input is not the identity.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input is the identity.
+    /// Returns a witness-generation error if witness input is the identity.
     pub fn alloc(dr: &mut D, p: DriverValue<D, C>) -> Result<Self> {
         let coordinates = D::try_just(|| {
             let coordinates = p.take().coordinates().into_option();
@@ -193,7 +193,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the slope assignment cannot be
+    /// Returns a witness-generation error if the slope assignment cannot be
     /// computed from witness input.
     pub fn double(&self, dr: &mut D) -> Result<Self> {
         // delta = 3x^2 / 2y
@@ -232,7 +232,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input falls into the
+    /// Returns a witness-generation error if witness input falls into the
     /// exceptional case.
     pub fn add_incomplete(
         &self,
@@ -274,7 +274,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input falls into an
+    /// Returns a witness-generation error if witness input falls into an
     /// exceptional case.
     pub fn double_and_add_incomplete(
         &self,

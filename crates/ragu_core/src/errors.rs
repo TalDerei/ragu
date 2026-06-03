@@ -7,7 +7,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// Represents errors that can occur while running circuit code or related
 /// protocol code.
 ///
-/// This type captures assignment-generation errors, input errors, encoding
+/// This type captures witness-generation errors, input errors, encoding
 /// errors, capacity errors, setup errors, and local check errors that can occur
 /// at various nesting levels of a protocol.
 ///
@@ -50,7 +50,7 @@ pub enum Error {
     /// Assignment-generation or local-check error.
     ///
     /// This variant is retained for compatibility. In new documentation, prefer
-    /// describing the concrete failure as an assignment-generation error or a
+    /// describing the concrete failure as a witness-generation error or a
     /// local check error.
     #[error("invalid witness: {0}")]
     InvalidWitness(#[source] Box<dyn error::Error + Send + Sync + 'static>),

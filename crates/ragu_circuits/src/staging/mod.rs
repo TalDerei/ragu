@@ -1,4 +1,4 @@
-//! Staging circuits for multi-stage witness execution.
+//! Staging circuits for multi-stage witness generation.
 //!
 //! ## Background
 //!
@@ -99,7 +99,7 @@
 //!
 //! The [`MultiStageCircuit`] trait implements the overall circuit witness
 //! (combining all stages), which is similar to the [`Circuit`] trait. The
-//! notable difference is that during witness execution the circuit has access
+//! notable difference is that during witness generation the circuit has access
 //! to a [`StageBuilder`] which is used to load stages into the circuit according
 //! to the implementation's hierarchy.
 //!
@@ -274,7 +274,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
 
     /// Auxiliary data produced during the computation of the
     /// [`witness`](MultiStageCircuit::witness) method that may be useful, such
-    /// as interstitial assignment-generation data needed by later steps.
+    /// as interstitial witness data needed by later computations.
     type Aux<'source>: Send;
 
     /// Given ordinary instance input for this circuit, uses the provided
@@ -289,7 +289,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
 
     /// Given witness input for this circuit, emits constraints using the
     /// provided [`StageBuilder`] and returns the verifier-visible `Self::Output`
-    /// gadget plus auxiliary assignment-generation data.
+    /// gadget plus auxiliary witness data.
     fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
@@ -380,7 +380,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// # Errors
     ///
     /// Returns a capacity error if the stage emits more wires than its
-    /// configured value count. Returns an assignment-generation error if the
+    /// configured value count. Returns a witness-generation error if the
     /// stage witness body cannot produce its output from witness input.
     fn rx_configured(
         &self,

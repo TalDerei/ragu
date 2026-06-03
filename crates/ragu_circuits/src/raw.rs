@@ -59,7 +59,7 @@ pub(crate) trait RawCircuit<F: Field>: Sized + Send + Sync {
     /// polynomial.
     type Output: Write<F>;
 
-    /// Auxiliary data produced during witness execution.
+    /// Auxiliary data produced during witness generation.
     type Aux<'source>: Send;
 
     /// Emits the circuit body's constraints and returns its public output.

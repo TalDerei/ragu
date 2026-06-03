@@ -21,7 +21,7 @@ const generics, configuration, iterator lengths, header types, and constants.
 Use **witness input** explicitly for data carried through
 [`DriverValue`](ragu_core::drivers::DriverValue).
 
-Input may determine emitted constraints. Witness input may determine assignment
+Input may determine emitted constraints. Witness input may determine witness
 generation and auxiliary values, but must not determine emitted constraints.
 
 Do not repeat this rule in every method. It is the default for all circuit code.
@@ -43,7 +43,7 @@ method that returns a contract-bearing gadget should enforce or derive that wire
 contract, unless the API explicitly says otherwise. Do not write ordinary docs as
 though wire contracts might be broken.
 
-The witness data inside a gadget is assignment-generation data. It should
+The witness data inside a gadget is used during witness generation. It should
 track the represented wire assignment, but a gadget cannot protect that fact
 directly. APIs that attach witness data to existing wires need caller-facing
 wording about that responsibility, but this is not the same as bypassing a wire
@@ -68,7 +68,7 @@ Use these verbs consistently.
 - **require**: an API or caller requirement.
 - **assume**: a cryptographic assumption, model assumption, or explicitly
   external invariant.
-- **compute**: local computation, including assignment generation.
+- **compute**: local computation, including witness generation.
 
 Avoid using **enforce** for ordinary Rust validation, witness computation, or
 requirements that are not represented by constraints.
@@ -120,7 +120,7 @@ For gadget constructors, the return type often carries enough meaning. Add
 
 ### Completeness
 
-Use `# Completeness` sparingly. It describes when honest assignment generation
+Use `# Completeness` sparingly. It describes when honest witness generation
 or honest proving is expected to succeed.
 
 Do not use `# Completeness` for incomplete mathematical formulas, because that
@@ -130,7 +130,7 @@ collides with the standard "complete formula" terminology. Use
 ```rust,ignore
 /// # Completeness
 ///
-/// Assignment generation succeeds when the witness input is nonzero.
+/// Witness generation succeeds when the witness input is nonzero.
 ```
 
 ### Exceptional Cases
@@ -183,19 +183,19 @@ with existing wires.
 /// # Witness Consistency
 ///
 /// If witness data is present, the value must match the represented wire
-/// assignment. If it does not, later assignment generation may compute values
+/// assignment. If it does not, later witness generation may compute values
 /// that violate the constraints.
 ```
 
-This section describes a best-effort assignment-generation responsibility. It is
+This section describes a best-effort witness-generation responsibility. It is
 not a soundness claim and it is not a substitute for an enforced wire contract.
 
 ### Errors
 
 Use `# Errors` for method-specific Rust `Err` cases: failures introduced by the
-method's own input domain, witness-assignment computation, encoding rules,
-setup requirements, bounded construction, or local checking behavior. The
-section should name the local condition that causes the error in terms of this
+method's own input domain, witness generation, encoding rules, setup
+requirements, bounded construction, or local checking behavior. The section
+should name the local condition that causes the error in terms of this
 convention.
 
 Do not add `# Errors` merely because the method calls driver APIs that can fail.
@@ -206,7 +206,7 @@ local-check errors from the driver."
 
 Common categories:
 
-- **assignment-generation error**: witness input does not support the assignment
+- **witness-generation error**: witness input does not support the witness
   values the method needs to compute.
 - **input error**: ordinary input is outside the API domain.
 - **encoding error**: serialized or encoded data is malformed or has the wrong
@@ -224,14 +224,14 @@ driver operation might return them.
 ```rust,ignore
 /// # Errors
 ///
-/// Returns an assignment-generation error if the quotient assignment cannot be
+/// Returns a witness-generation error if the quotient assignment cannot be
 /// computed from witness input.
 ```
 
-When an assignment-generation error corresponds to an exceptional value that
+When a witness-generation error corresponds to an exceptional value that
 the constraints also exclude, document both sides: the `# Soundness` or
 `# Exceptional Cases` section describes the enforced fact, and `# Errors`
-describes local assignment generation.
+describes local witness generation.
 
 ### Panics
 
@@ -253,15 +253,15 @@ truly internal.
 ///
 /// # Completeness
 ///
-/// Assignment generation succeeds when the witness input is nonzero.
+/// Witness generation succeeds when the witness input is nonzero.
 ///
 /// # Errors
 ///
-/// Returns an assignment-generation error if the witness input is zero.
+/// Returns a witness-generation error if the witness input is zero.
 ```
 
 This documents both the enforced fact about wire assignments and the local
-assignment-generation failure.
+witness-generation failure.
 
 ### Division By A Nonzero Gadget
 
@@ -275,7 +275,7 @@ assignment-generation failure.
 ///
 /// # Errors
 ///
-/// Returns an assignment-generation error if the quotient assignment cannot be
+/// Returns a witness-generation error if the quotient assignment cannot be
 /// computed from witness input.
 ```
 
@@ -291,7 +291,7 @@ witness-consistency problem, not a missing divisor precondition.
 /// # Witness Consistency
 ///
 /// If witness data is present, the value must match the represented wire
-/// assignment. If it does not, later assignment generation may compute values
+/// assignment. If it does not, later witness generation may compute values
 /// that violate the constraints.
 ```
 
@@ -328,7 +328,7 @@ ordinary input.
 ///
 /// # Errors
 ///
-/// Returns an assignment-generation error if witness input falls into the
+/// Returns a witness-generation error if witness input falls into the
 /// exceptional case.
 ```
 
@@ -359,8 +359,11 @@ Avoid these patterns:
 
 - "witness modes" for public API docs
 - "shape" when the actual constraints may differ
-- "synthesis" as a catch-all for execution, assignment generation, tracing,
+- "synthesis" as a catch-all for execution, witness generation, tracing,
   wiring evaluation, or verification
+- "witness execution" for witness generation
+- "assignment generation" or "assignment-generation data" when "witness
+  generation" or "witness data" is meant
 - "supplied value" when the distinction between input and witness input matters
 - "invalid witness" for structural circuit bugs, setup failures, or input errors
 - "enforce" for checks that are not represented by constraints
@@ -374,7 +377,8 @@ Prefer direct wording:
 
 - "input" for ordinary input
 - "witness input" for `DriverValue`
-- "assignment generation" for local witness computation
+- "witness generation" for local witness computation
+- "witness data" for gadget or auxiliary data used during witness generation
 - "constraints" for the emitted constraint system
 - "verification returns `Ok(false)`" for rejected public proof data
 
@@ -388,7 +392,7 @@ When documenting or reviewing circuit code, ask:
    yes, add `# Constraints`.
 3. Does the method establish a semantic relation not clear from the return type?
    If yes, add `# Soundness`.
-4. Does honest assignment generation have a meaningful domain restriction? If
+4. Does honest witness generation have a meaningful domain restriction? If
    yes, add `# Completeness` or `# Exceptional Cases`.
 5. Does the API construct a contract-bearing gadget without enforcing or deriving
    the corresponding wire contract? If yes, add `# Preconditions`.

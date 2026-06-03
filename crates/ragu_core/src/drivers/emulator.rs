@@ -13,7 +13,7 @@
 //! * `Wireless<Empty, F>`: used mostly for wire counting and other static
 //!   structure analyses. Driver still executes natively, but with `Empty`
 //!   witness. Constructed via [`Emulator::counter`].
-//! * `Wireless<Always<()>, F>`: used for native witness execution/generation,
+//! * `Wireless<Always<()>, F>`: used for native witness generation,
 //!   constructed via [`Emulator::execute`] or directly execute the logic with
 //!   [`Emulator::emulate_wireless`].
 //!

@@ -1,7 +1,7 @@
 //! # `ragu_circuits`
 //!
-//! This crate contains traits and utilities for turning arithmetic-circuit
-//! constraints into polynomials for the Ragu project. This API is re-exported
+//! This crate contains traits and utilities for reducing arithmetic-circuit
+//! constraints to polynomials for the Ragu project. This API is re-exported
 //! as necessary in other crates and so this crate is only intended to be used
 //! internally by Ragu.
 
@@ -55,7 +55,7 @@ use ragu_primitives::io::Write;
 /// Bundles a primary value with auxiliary data.
 ///
 /// Returned by [`Circuit::witness`] and [`CircuitExt::trace`] to pair the
-/// circuit's output with any auxiliary data produced during witness execution.
+/// circuit's output with any auxiliary data produced during witness generation.
 /// Most circuits set `Aux = ()` and callers can use [`into_output`] to
 /// discard the auxiliary component, [`into_aux`] to discard the output,
 /// or [`into_parts`] to destructure both.
@@ -117,7 +117,7 @@ pub(crate) trait DriverScope<S> {
 ///
 /// Implementations must emit constraints deterministically from ordinary input
 /// such as type parameters, constants, and iterator lengths. Witness input
-/// carried through [`DriverValue`] may determine assignment generation and
+/// carried through [`DriverValue`] may determine witness generation and
 /// auxiliary data, but not which constraints are emitted.
 pub trait Circuit<F: Field>: Sized + Send + Sync {
     /// The type of data that is needed to construct the expected output of this
@@ -134,14 +134,14 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
 
     /// Auxiliary data produced during the computation of the
     /// [`witness`](Circuit::witness) method that may be useful, such as
-    /// interstitial assignment-generation data needed by future steps.
+    /// interstitial witness data needed by later computations.
     type Aux<'source>: Send;
 
     /// Given ordinary instance input for this circuit, uses the provided
     /// [`Driver`] to return the verifier-visible `Self::Output` gadget.
     ///
     /// This method describes the public output that a corresponding
-    /// [`witness`](Circuit::witness) execution must produce, without requiring
+    /// [`witness`](Circuit::witness) call must produce, without requiring
     /// the witness input itself.
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
@@ -153,7 +153,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
 
     /// Given witness input for this circuit, emits constraints using the
     /// provided [`Driver`] and returns the verifier-visible `Self::Output`
-    /// gadget plus auxiliary assignment-generation data.
+    /// gadget plus auxiliary witness data.
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,

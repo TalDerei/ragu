@@ -1,4 +1,4 @@
-//! Strips assignment-generation data from a gadget while preserving its wire
+//! Strips witness data from a gadget while preserving its wire
 //! structure.
 
 use core::ops::Deref;
@@ -25,15 +25,15 @@ pub trait Promotion<F: Field>: GadgetKind<F> {
     /// # Witness Consistency
     ///
     /// If witness data is present, it must match the represented wire
-    /// assignments inside `demoted`. If it does not, later assignment
-    /// generation may compute values that violate the constraints.
+    /// assignments inside `demoted`. If it does not, later witness generation
+    /// may compute values that violate the constraints.
     fn promote<'dr, D: Driver<'dr, F = F>>(
         demoted: &Demoted<'dr, D, Bound<'dr, D, Self>>,
         witness: DriverValue<D, Self::Value>,
     ) -> Bound<'dr, D, Self>;
 }
 
-/// A driver that mimics another driver but strips assignment-generation data.
+/// A driver that mimics another driver but strips witness data.
 ///
 /// Bounded by [`DriverTypes`] rather than [`Driver<'dr>`](Driver) so the
 /// struct itself carries no lifetime parameter. The full [`Driver<'dr>`](Driver)
@@ -102,11 +102,11 @@ impl<F: Field, WM: WireMap<F>> WireMap<F> for Demoter<'_, WM> {
     }
 }
 
-/// A gadget that strips assignment-generation data from another gadget.
+/// A gadget that strips witness data from another gadget.
 ///
 /// All gadgets can be demoted using
 /// [`GadgetExt::demote`](crate::GadgetExt::demote), producing a [`Demoted`]
-/// version of the original gadget that has its assignment-generation data
+/// version of the original gadget that has its witness data
 /// stripped away. They can be recovered (promoted) from their demoted state;
 /// gadgets must opt into supporting this by implementing the [`Promotion`]
 /// trait so that users can then use the [`Demoted::promote`] method.
@@ -131,7 +131,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Deref for Demoted<'dr, D, G> {
 }
 
 impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
-    /// Strips a gadget of its assignment-generation data and returns a demoted
+    /// Strips a gadget of its witness data and returns a demoted
     /// version of it.
     pub fn new(gadget: &G) -> Result<Self> {
         Ok(Demoted {
@@ -144,7 +144,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
     /// # Witness Consistency
     ///
     /// If witness data is present, it must match the represented wire
-    /// assignments inside this demoted gadget. If it does not, later assignment
+    /// assignments inside this demoted gadget. If it does not, later witness
     /// generation may compute values that violate the constraints.
     pub fn promote(&self, witness: DriverValue<D, <G::Kind as Promotion<D::F>>::Value>) -> G
     where

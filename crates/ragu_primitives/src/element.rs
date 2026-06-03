@@ -22,7 +22,7 @@ use crate::{
     io::{Buffer, Write},
 };
 
-/// Represents a wire and its assignment-generation value.
+/// Represents a wire and its witness value.
 ///
 /// `Element` is a basic wire wrapper. It does not impose an additional wire
 /// contract beyond the wire assignment represented by the driver. It also
@@ -32,7 +32,7 @@ use crate::{
 /// ## Usage
 ///
 /// Elements can be allocated ([`Element::alloc`], [`Element::alloc_square`])
-/// with a provided witness assignment. Any constant field element can be turned
+/// with a provided witness value. Any constant field element can be turned
 /// into an [`Element`] without an allocation using [`Element::constant`] (or
 /// [`Element::one`] for the unitary case).
 ///
@@ -63,7 +63,7 @@ pub struct Element<'dr, D: Driver<'dr>> {
 }
 
 impl<'dr, D: Driver<'dr>> Element<'dr, D> {
-    /// Allocates an element with the provided witness assignment, using the
+    /// Allocates an element with the provided witness value, using the
     /// provided [`Allocator`] to create the underlying wire.
     ///
     /// This costs one allocation.
@@ -80,7 +80,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         })
     }
 
-    /// Allocates an element $a$ with the provided witness assignment and
+    /// Allocates an element $a$ with the provided witness value and
     /// squares it in a single step. Returns $(a, a^2)$.
     ///
     /// This costs one gate.
@@ -142,13 +142,13 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// # Witness Consistency
     ///
     /// If witness data is present, the value must match the represented wire
-    /// assignment. If it does not, later assignment generation may compute
+    /// assignment. If it does not, later witness generation may compute
     /// values that violate the constraints.
     pub fn promote(wire: D::Wire, value: DriverValue<D, D::F>) -> Self {
         Element { wire, value }
     }
 
-    /// Returns the assignment-generation value paired with this element.
+    /// Returns the witness value paired with this element.
     pub fn value(&self) -> DriverValue<D, &D::F> {
         self.value.as_ref()
     }
@@ -268,12 +268,12 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for this element is
+    /// Witness generation succeeds when witness input for this element is
     /// nonzero.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input for this element
+    /// Returns a witness-generation error if witness input for this element
     /// is zero.
     pub fn enforce_invertible(&self, dr: &mut D) -> Result<Invertible<'dr, D>> {
         let invertible = Invertible::alloc(dr, self.value.clone())?;
@@ -293,7 +293,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for this element is
+    /// Witness generation succeeds when witness input for this element is
     /// nonzero and `inverse_value` matches its inverse.
     ///
     /// # Errors
@@ -320,12 +320,12 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for this element is
+    /// Witness generation succeeds when witness input for this element is
     /// nonzero.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input for this element
+    /// Returns a witness-generation error if witness input for this element
     /// is zero.
     pub fn enforce_nonzero(self, dr: &mut D) -> Result<Nonzero<'dr, D>> {
         Ok(self.enforce_invertible(dr)?.into_element())
@@ -345,12 +345,12 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for this element is
+    /// Witness generation succeeds when witness input for this element is
     /// nonzero.
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if witness input for this element
+    /// Returns a witness-generation error if witness input for this element
     /// is zero.
     pub fn invert(&self, dr: &mut D) -> Result<Self> {
         self.enforce_invertible(dr)
@@ -372,7 +372,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Assignment generation succeeds when witness input for this element is
+    /// Witness generation succeeds when witness input for this element is
     /// nonzero and `inverse_value` matches its inverse.
     ///
     /// # Errors
@@ -395,7 +395,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// # Errors
     ///
-    /// Returns an assignment-generation error if the quotient assignment cannot
+    /// Returns a witness-generation error if the quotient assignment cannot
     /// be computed from witness input.
     pub fn divide(&self, dr: &mut D, divisor: &Nonzero<'dr, D>) -> Result<Self> {
         let quotient_value = D::try_just(|| {
