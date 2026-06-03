@@ -13,21 +13,20 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
-use alloc::vec::Vec;
-
 use ragu_arithmetic::{
     Coeff, CurveAffine,
     ff::{Field, PrimeField, WithSmallOrderMulGroup},
 };
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
+    drivers::{Driver, DriverValue, emulator::Emulator},
     gadgets::Gadget,
     maybe::Maybe,
 };
 
 use crate::{
     Boolean, Element, NonzeroBank, Point,
+    boolean::decompose,
     promotion::Demoted,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
@@ -75,89 +74,38 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
 
     /// Extracts an endoscalar from a random element in the field.
     ///
-    /// # Soundness
-    ///
-    /// A single extracted bit is under-constrained at the exceptional inputs
-    /// `elem = -i` (`0 <= i < 128`), where `elem + i == 0`: both quadratic-residue
-    /// branches are then zero, which is a square, so a malicious prover can flip
-    /// that bit. This is unreachable when `elem` is a transcript-derived challenge
-    /// (forcing `elem = -i` requires grinding ~`|F| / 128` hashes). [#765] tracks
-    /// the canonical bit-decomposition that closes the gap.
-    ///
-    /// [#765]: https://github.com/tachyon-zcash/ragu/issues/765
+    /// The endoscalar is the low 128 bits of the element's canonical bit
+    /// decomposition. The element is decomposed in full, so those 128 bits are
+    /// uniquely determined by `elem` and the extraction is sound for every
+    /// input.
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
         elem: Element<'dr, D>,
     ) -> Result<Self>
     where
-        D::F: WithSmallOrderMulGroup<3>,
+        D::F: PrimeField,
     {
-        let mut bits = Vec::with_capacity(u128::BITS as usize);
-        let mut value = D::just(|| 0u128);
-        let mut constant = D::F::ZERO;
+        let bits = decompose(dr, allocator, &elem)?;
 
-        let mut coeff_0 = D::F::ZERO;
-        let mut coeff_1 = D::F::ZERO;
-        let coeff_2 = D::F::MULTIPLICATIVE_GENERATOR;
-        let coeff_3 = D::F::ONE - D::F::MULTIPLICATIVE_GENERATOR;
-
-        for i in 0..(u128::BITS as usize) {
-            let (sqrt, bit) = D::try_just(|| {
-                let value = *elem.value().take() + constant;
-
-                if let Some(sqrt) = value.sqrt().into_option() {
-                    Ok((sqrt, true))
-                } else {
-                    let sqrt = (value * D::F::MULTIPLICATIVE_GENERATOR)
-                        .sqrt()
-                        .into_option()
-                        .expect("should produce a square if the other didn't");
-                    Ok((sqrt, false))
+        let value = elem.value().map(|v| {
+            let repr = v.to_repr();
+            let mut acc = 0u128;
+            for i in 0..(u128::BITS as usize) {
+                if (repr.as_ref()[i / 8] >> (i % 8)) & 1 == 1 {
+                    acc |= 1u128 << i;
                 }
-            })?
-            .cast();
+            }
+            acc
+        });
 
-            value.as_mut().map(|v| {
-                if *bit.snag() {
-                    *v |= 1u128 << i
-                }
-            });
+        let bits = bits
+            .iter()
+            .take(u128::BITS as usize)
+            .map(|bit| Demoted::new(bit))
+            .try_collect_fixed()?;
 
-            let bit = Boolean::alloc(dr, allocator, bit)?;
-            let (_, square) = Element::alloc_square(dr, sqrt)?;
-            let vb = elem.mul(dr, &bit.element())?;
-
-            // Enforce that the square is equal to
-            //     (elem + i) if bit == 1
-            //     (elem + i) * MULTIPLICATIVE_GENERATOR) if bit == 0
-            // This is done by enforcing the constraint:
-            //
-            //     square = bit * (elem + i)
-            //            + (1 - bit) * ((elem + i) * MULTIPLICATIVE_GENERATOR)
-            //
-            //            = i * MULTIPLICATIVE_GENERATOR
-            //            + bit * (i * (1 - MULTIPLICATIVE_GENERATOR))
-            //            + elem * MULTIPLICATIVE_GENERATOR
-            //            + vb * (1 - MULTIPLICATIVE_GENERATOR)
-            dr.enforce_zero(|lc| {
-                lc.add_term(&D::ONE, coeff_0.into())
-                    .add_term(bit.wire(), coeff_1.into())
-                    .add_term(elem.wire(), coeff_2.into())
-                    .add_term(vb.wire(), coeff_3.into())
-                    .sub(square.wire())
-            })?;
-
-            bits.push(Demoted::new(&bit)?);
-            constant += D::F::ONE;
-            coeff_0 += coeff_2;
-            coeff_1 += coeff_3;
-        }
-
-        Ok(Endoscalar {
-            bits: FixedVec::try_from(bits)?,
-            value,
-        })
+        Ok(Endoscalar { bits, value })
     }
 
     /// Scale a point by the endoscalar.
@@ -264,10 +212,9 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 
 /// Extracts an endoscalar from a random field element.
 ///
-/// Given a random output of a secure algebraic hash function, this extracts
-/// `k` bits of "randomness" from the value by checking whether `value + i`
-/// is a quadratic residue for each bit position `i`.
-pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> u128 {
+/// Returns the low 128 bits of the element's canonical bit decomposition. This
+/// is the native counterpart to [`Endoscalar::extract`].
+pub fn extract_endoscalar<F: PrimeField>(value: F) -> u128 {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
         let endo = Endoscalar::extract(dr, &mut (), elem)?;
