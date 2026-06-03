@@ -220,11 +220,10 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 /// Returns the low 128 bits of the element's canonical bit decomposition. This
 /// is the native counterpart to [`Endoscalar::extract`].
 ///
-/// This computes only the witness value and does not enforce the decomposition,
-/// so callers must only pass values that have already passed the protocol's
-/// rejection-sampling check (`value < 2^CAPACITY`). For out-of-range values, the
-/// in-circuit constraint in [`Endoscalar::extract`] is unsatisfiable, and this
-/// helper may fail during emulation.
+/// This helper is infallible under the protocol precondition that `value` has
+/// already passed rejection sampling (`value < 2^CAPACITY`). Callers must enforce
+/// that precondition before calling this function; out-of-range values make the
+/// corresponding in-circuit [`Endoscalar::extract`] constraint unsatisfiable.
 pub fn extract_endoscalar<F: PrimeField>(value: F) -> u128 {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
