@@ -241,11 +241,21 @@ mod tests {
         ff::Field,
         rand::{SeedableRng, rngs::StdRng},
     };
-    use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
+    use ragu_circuits::{
+        polynomials::{ProductionRank, sparse},
+        registry::CircuitIndex,
+    };
+    use ragu_core::{
+        drivers::{Driver, DriverValue},
+    };
     use ragu_pasta::Pasta;
+    use ragu_primitives::allocator::Standard;
 
     use super::*;
-    use crate::ApplicationBuilder;
+    use crate::{
+        ApplicationBuilder,
+        step::{Encoded, Index, Step},
+    };
 
     type TestR = ProductionRank;
     const HEADER_SIZE: usize = 4;
@@ -255,6 +265,53 @@ mod tests {
         ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
             .finalize(pasta)
             .expect("failed to create test application")
+    }
+
+    struct UnitStep<const I: usize>;
+
+    impl<const I: usize> Step<Pasta> for UnitStep<I> {
+        const INDEX: Index = Index::new(I);
+
+        type Witness<'source> = ();
+        type Aux<'source> = ();
+        type Left = ();
+        type Right = ();
+        type Output = ();
+
+        fn witness<
+            'dr,
+            'source: 'dr,
+            D: Driver<'dr, F = <Pasta as Cycle>::CircuitField>,
+            const HS: usize,
+        >(
+            &self,
+            dr: &mut D,
+            _: DriverValue<D, Self::Witness<'source>>,
+            left: DriverValue<D, ()>,
+            right: DriverValue<D, ()>,
+        ) -> Result<(
+            (
+                Encoded<'dr, D, Self::Left, HS>,
+                Encoded<'dr, D, Self::Right, HS>,
+                Encoded<'dr, D, Self::Output, HS>,
+            ),
+            DriverValue<D, ()>,
+            DriverValue<D, ()>,
+        )>
+        where
+            Self: 'dr,
+        {
+            let allocator = &mut Standard::new();
+            Ok((
+                (
+                    Encoded::new(dr, allocator, left)?,
+                    Encoded::new(dr, allocator, right)?,
+                    Encoded::from_gadget(()),
+                ),
+                D::unit(),
+                D::unit(),
+            ))
+        }
     }
 
     #[test]
@@ -303,5 +360,55 @@ mod tests {
         let pcd = proof.carry::<()>(());
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
         assert!(!result, "verify should reject wrong right_header size");
+    }
+
+    #[test]
+    fn exploit_unit_header_base_case_bypasses_child_revdot_soundness() {
+        let pasta = Pasta::baked();
+        let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
+            .register(UnitStep::<0>)
+            .expect("register seed step")
+            .register(UnitStep::<1>)
+            .expect("register exploit step")
+            .finalize(pasta)
+            .expect("failed to create test application");
+
+        let mut rng = StdRng::seed_from_u64(1);
+        let (valid_unit, ()) = app.seed(&mut rng, UnitStep::<0>, ()).expect("seed");
+        assert!(
+            app.verify(&valid_unit, StdRng::seed_from_u64(2))
+                .expect("valid child verify should not error"),
+            "honestly produced unit proof should verify"
+        );
+
+        let (mut invalid_child, ()) = valid_unit.into_parts();
+        invalid_child
+            .native_a_poly
+            .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
+                <Pasta as Cycle>::CircuitField::ONE,
+            ]));
+        let invalid_child = invalid_child.carry::<()>(());
+
+        assert!(
+            !app.verify(&invalid_child, StdRng::seed_from_u64(3))
+                .expect("invalid child verify should not error"),
+            "corrupted child proof should not verify on its own"
+        );
+
+        let (forged_parent, ()) = app
+            .fuse(
+                &mut rng,
+                UnitStep::<1>,
+                (),
+                invalid_child.clone(),
+                invalid_child,
+            )
+            .expect("fuse corrupted unit children");
+
+        assert!(
+            app.verify(&forged_parent, StdRng::seed_from_u64(4))
+                .expect("forged parent verify should not error"),
+            "parent proof verifies even though both child proofs are invalid"
+        );
     }
 }
