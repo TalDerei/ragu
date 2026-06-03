@@ -74,6 +74,17 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Extracts an endoscalar from a random element in the field.
+    ///
+    /// # Soundness
+    ///
+    /// A single extracted bit is under-constrained at the exceptional inputs
+    /// `elem = -i` (`0 <= i < 128`), where `elem + i == 0`: both quadratic-residue
+    /// branches are then zero, which is a square, so a malicious prover can flip
+    /// that bit. This is unreachable when `elem` is a transcript-derived challenge
+    /// (forcing `elem = -i` requires grinding ~`|F| / 128` hashes). [#765] tracks
+    /// the canonical bit-decomposition that closes the gap.
+    ///
+    /// [#765]: https://github.com/tachyon-zcash/ragu/issues/765
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
