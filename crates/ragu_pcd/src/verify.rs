@@ -245,9 +245,7 @@ mod tests {
         polynomials::{ProductionRank, sparse},
         registry::CircuitIndex,
     };
-    use ragu_core::{
-        drivers::{Driver, DriverValue},
-    };
+    use ragu_core::drivers::{Driver, DriverValue};
     use ragu_pasta::Pasta;
     use ragu_primitives::allocator::Standard;
 
