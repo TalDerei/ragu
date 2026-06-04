@@ -177,3 +177,29 @@ circuits $C$. This enables incremental circuit registration during
 compilation, where each circuit independently computes its domain
 point, and the registry is finalized only after all circuits are
 known.
+
+## Unregistered Domain Points
+
+The domain size $2^k$ is the smallest power of two that holds all $C$
+registered circuits, so whenever $C$ is not itself a power of two the
+domain has $2^k - C$ points with no circuit assigned to them. These
+points are not invalid: the registry interpolates the value $0$ at
+every unassigned domain point, so each one indexes the **zero wiring
+polynomial**. Every domain point is thus a wiring polynomial — a
+registered circuit's $s_i(X, Y)$ where a circuit was assigned, and the
+zero polynomial everywhere else.
+
+The zero polynomial is a degenerate but well-formed wiring polynomial.
+Because it encodes no constraints — in particular no `ONE` constraint
+against $\v{k}_0$ — it has $s(X, 0) = 0$, exactly the property that
+distinguishes a [bonding polynomial](../local/wiring.md#bonding-polynomials)
+from a circuit wiring polynomial, which has $s(X, 0) = 1$. A verifier
+that expects a circuit fixes $\v{k}_0 = 1$, so the zero polynomial can
+never satisfy a circuit claim: an unregistered domain point cannot
+stand in for a registered circuit.
+
+This is why selecting a circuit by domain membership alone is safe. A
+circuit index that lands on an unassigned point is still in the domain,
+but it selects the harmless zero polynomial rather than escaping the
+domain — there is no "out of bounds" index to guard against, only the
+inert zero wiring polynomial.
