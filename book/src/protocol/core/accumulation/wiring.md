@@ -77,7 +77,9 @@ m(W, X, Y) = \sum_{i=0}^{2^k-1} \ell_i(W) \cdot s_i(X, Y)
 $$
 
 where $\ell_i(W)$ is the Lagrange basis polynomials and $2^k$ is the domain size
-(namely total number of registered circuits in the registry).
+(the smallest power of two that fits all registered circuits; any unregistered
+domain points contribute the [zero wiring polynomial](../../extensions/registry.md#unregistered-domain-points),
+so the sum is unchanged).
 The $i$-th circuit is $s_i(X,Y)=m(\omega^i, X, Y)$ where $\omega$ is a $2^k$-th
 primitive root of unity that generates the entire Lagrange domain[^simplify].
 

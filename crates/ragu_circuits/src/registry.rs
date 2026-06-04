@@ -8,7 +8,9 @@
 //! Ragu's PCD construction, and so the [`Registry`] structure represents a larger
 //! polynomial $m(W, X, Y)$ that interpolates such that $m(\omega^i, X, Y) =
 //! s_i(X, Y)$ for some $\omega \in \mathbb{F}$ of sufficiently high $2^k$ order
-//! to encode all circuits for both PCD and for application circuits.
+//! to encode all circuits for both PCD and for application circuits. The book's
+//! [registry chapter] gives the full construction, including Lagrange
+//! interpolation at an arbitrary $W$ and the rolling domain extension.
 //!
 //! ## Every domain point is a wiring polynomial
 //!
@@ -19,11 +21,12 @@
 //! $\omega^i$ contributes its $s_i(X, Y)$, and every other domain point is
 //! *implicitly registered to the zero wiring polynomial* (the interpolation is
 //! zero there). A [`CircuitIndex`] is therefore never out of bounds within the
-//! domain — if its $\omega^j$ is in the domain, it selects a wiring polynomial.
+//! domain — if its $\omega^j$ (the bit-reversed exponent of its index $i$; see
+//! [`CircuitIndex::omega_j`]) is in the domain, it selects a wiring polynomial.
 //!
 //! The zero wiring polynomial is a genuine wiring polynomial, but because it has
 //! $s(X, 0) = 0$ it is bonding-shaped and cannot satisfy a circuit revdot claim
-//! (which fixes $k_0 = 1$). See [`BondingObject`] for how this $s(X, 0)$
+//! (which fixes $\mathbf{k}_0 = 1$). See [`BondingObject`] for how this $s(X, 0)$
 //! distinction keeps one wiring polynomial from standing in for another.
 //!
 //! Two properties of an index — whether its $\omega^j$ is in the domain, and
@@ -41,18 +44,19 @@
 //! it does *not* distinguish the first two rows (both are in the domain), which
 //! is why it is a domain-membership predicate and not a registration check.
 //!
-//! The third row is just the general behavior of [`at`](Registry::at), which
-//! evaluates $m(W, X, Y)$ at an arbitrary $W$: off the domain there is no stored
-//! value, so $m$ evaluates to the Lagrange interpolation of the domain points
-//! (registered circuits, padding zero). This is the normal case for a random
-//! challenge $W$. Reaching it from a [`CircuitIndex`] requires an index past the
-//! padded domain — its $\omega^j$ then has order exceeding the domain size, so
+//! The third row is the general behavior of [`at`](Registry::at): at a $W$
+//! outside the domain it returns the Lagrange interpolation of the domain points
+//! (registered circuits, padding zero), derived in the [registry chapter].
+//! Reaching this from a [`CircuitIndex`] requires an index past the padded domain
+//! — its $\omega^j$ then has order exceeding the domain size, so
 //! `circuit_in_domain` returns `false` for it.
 //!
 //! The [`RegistryBuilder`] structure is used to construct a new [`Registry`] by
 //! inserting circuits and performing a [`finalize`](RegistryBuilder::finalize) step
 //! to compile the added circuits into a registry polynomial representation that can
 //! be efficiently evaluated at different restrictions.
+//!
+//! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 
@@ -538,7 +542,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// `true` result means "in domain", not "explicitly registered".
     ///
     /// The zero wiring polynomial has $s(X, 0) = 0$, so it is bonding-shaped and
-    /// cannot satisfy a circuit revdot claim (which fixes $k_0 = 1$); see
+    /// cannot satisfy a circuit revdot claim (which fixes $\mathbf{k}_0 = 1$); see
     /// [`BondingObject`]. An index whose $\omega^j$ falls *outside* the domain
     /// (returns `false`) selects a Lagrange interpolation across the registered
     /// circuits instead.
