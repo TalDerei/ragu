@@ -77,6 +77,12 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Clone f
 }
 
 /// The [Poseidon](https://eprint.iacr.org/2019/458) sponge function.
+///
+/// Intended for fixed-length inputs only. The sponge never records how many
+/// elements it absorbed, so absorbing a trailing zero looks identical to
+/// absorbing nothing: feeding it `[x]` and `[x, 0]` produces the same output.
+/// Only use it where the number of absorbed elements is fixed by the protocol;
+/// to absorb variable-length data, absorb its length first.
 pub struct Sponge<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> {
     mode: Mode<'dr, D, P>,
     params: &'dr P,
