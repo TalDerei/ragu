@@ -445,6 +445,10 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     ///
     /// Wraps [`Registry::at`] and [`RegistryAt::y`].
     /// See [`CircuitIndex::omega_j`] for more details.
+    ///
+    /// `i` is not bounds-checked against the registry; an unregistered index
+    /// resolves to an empty or interpolated slot. See
+    /// [`circuit_in_domain`](Self::circuit_in_domain).
     pub fn circuit_y(&self, i: CircuitIndex, y: F) -> sparse::Polynomial<F, R> {
         let w: F = i.omega_j();
         self.at(w).y(y)
@@ -453,11 +457,27 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Evaluates $s_i(x, y)$ for circuit `i` at point $(x, y)$.
     ///
     /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
+    ///
+    /// `i` is not bounds-checked against the registry; see
+    /// [`circuit_in_domain`](Self::circuit_in_domain).
     pub fn circuit_xy(&self, i: CircuitIndex, x: F, y: F) -> F {
         self.wxy(i.omega_j(), x, y)
     }
 
-    /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
+    /// Returns true if the circuit's $\omega^j$ value lies in the registry's
+    /// (power-of-two padded) domain.
+    ///
+    /// This checks **domain membership**, not that a circuit is registered at
+    /// `i`. A non-power-of-two [`num_circuits`](Self::num_circuits) leaves
+    /// padded domain points with no circuit behind them, and `i` landing on one
+    /// of those still returns `true`.
+    ///
+    /// Such an index is safe by construction: [`circuit_y`](Self::circuit_y) /
+    /// [`circuit_xy`](Self::circuit_xy) resolve it to an *empty slot* (only the
+    /// registry key term, $s(X, 0) = 0$), which is bonding-shaped and so cannot
+    /// pass a circuit revdot claim that fixes $k_0 = 1$ — see [`BondingObject`].
+    /// An index whose $\omega^j$ falls outside the domain (returns `false`)
+    /// would instead interpolate across all circuits.
     ///
     /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
     pub fn circuit_in_domain(&self, i: CircuitIndex) -> bool {
