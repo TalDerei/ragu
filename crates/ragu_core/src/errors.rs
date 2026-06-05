@@ -49,6 +49,13 @@ pub enum Error {
         limit: usize,
     },
 
+    /// A floor plan does not match the expected segment layout.
+    #[error("malformed floor plan: {reason}")]
+    MalformedFloorPlan {
+        /// Why the floor plan is malformed.
+        reason: &'static str,
+    },
+
     /// Circuits may fail if they're asked to process, construct or verify
     /// witness data without (known) satisfiability.
     #[error("invalid witness: {0}")]
@@ -92,6 +99,15 @@ fn test_error_display() {
     assert_eq!(
         format!("{}", Error::DegreeBoundExceeded { limit: 64 }),
         "exceeded the maximum degree of a polynomial (64)"
+    );
+    assert_eq!(
+        format!(
+            "{}",
+            Error::MalformedFloorPlan {
+                reason: "root segment must be placed at the polynomial origin"
+            }
+        ),
+        "malformed floor plan: root segment must be placed at the polynomial origin"
     );
     assert_eq!(
         format!("{}", Error::InvalidWitness("division by zero".into())),
@@ -157,6 +173,11 @@ fn test_error_source() {
     assert!(err.source().is_none());
 
     let err = Error::DegreeBoundExceeded { limit: 1 };
+    assert!(err.source().is_none());
+
+    let err = Error::MalformedFloorPlan {
+        reason: "test reason",
+    };
     assert!(err.source().is_none());
 
     let err = Error::VectorLengthMismatch {
