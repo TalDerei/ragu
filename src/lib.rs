@@ -1,12 +1,35 @@
-//! # `ragu`
-//!
-//! This crate currently does not expose an API, as Ragu is under heavy
-//! development. Please see the [Ragu Book](https://tachyon.z.cash/ragu/) for
-//! more information.
-
+//! Mock Ragu PCD proof system — API-level mock of `ragu_pcd`.
+// Lints that don't apply to a mock crate mirroring an external API.
 #![no_std]
-#![allow(clippy::type_complexity)]
-#![deny(rustdoc::broken_intra_doc_links)]
-#![deny(missing_docs)]
-#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
-#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![expect(clippy::pub_use, reason = "crate public API re-exports")]
+#![expect(clippy::module_name_repetitions, reason = "names mirror real ragu API")]
+#![expect(clippy::missing_const_for_fn, reason = "mirrors non-const ragu API")]
+#![expect(
+    clippy::missing_trait_methods,
+    reason = "default impls are fine in a mock"
+)]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+extern crate alloc;
+
+pub use application::{Application, ApplicationBuilder};
+pub use error::{Error, Result};
+pub use gadgets::Multiset;
+pub use header::{Header, Suffix};
+pub use polynomial::{Commitment, Polynomial, poly_with_roots};
+pub use proof::{Pcd, Proof};
+pub use step::{Index, Step};
+
+pub mod application;
+pub mod error;
+pub mod gadgets;
+pub mod header;
+pub mod polynomial;
+pub mod proof;
+pub mod step;
+
+#[cfg(test)]
+mod tests;

@@ -866,11 +866,17 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 name = "ragu"
 version = "0.0.0"
 dependencies = [
+ "blake2b_simd",
+ "ff 0.13.1",
+ "lazy_static",
+ "pasta_curves 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ragu_arithmetic",
  "ragu_circuits",
  "ragu_core",
  "ragu_pcd",
  "ragu_primitives",
+ "rand 0.8.6",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
