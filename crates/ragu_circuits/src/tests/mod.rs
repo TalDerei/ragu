@@ -60,15 +60,15 @@ fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
     let y = Fp::random(&mut ragu_arithmetic::rand::rng());
     let plan = floor_planner::floor_plan(obj.segment_records());
 
-    let sxy_eval = obj.sxy(x, y, &plan);
-    let s0y_eval = obj.sxy(Fp::ZERO, y, &plan);
-    let sx0_eval = obj.sxy(x, Fp::ZERO, &plan);
-    let s00_eval = obj.sxy(Fp::ZERO, Fp::ZERO, &plan);
+    let sxy_eval = obj.sxy(x, y, &plan).unwrap();
+    let s0y_eval = obj.sxy(Fp::ZERO, y, &plan).unwrap();
+    let sx0_eval = obj.sxy(x, Fp::ZERO, &plan).unwrap();
+    let s00_eval = obj.sxy(Fp::ZERO, Fp::ZERO, &plan).unwrap();
 
-    let sxY_poly = obj.sx(x, &plan);
-    let sXy_poly = obj.sy(y, &plan);
-    let s0Y_poly = obj.sx(Fp::ZERO, &plan);
-    let sX0_poly = obj.sy(Fp::ZERO, &plan);
+    let sxY_poly = obj.sx(x, &plan).unwrap();
+    let sXy_poly = obj.sy(y, &plan).unwrap();
+    let s0Y_poly = obj.sx(Fp::ZERO, &plan).unwrap();
+    let sX0_poly = obj.sy(Fp::ZERO, &plan).unwrap();
 
     assert_eq!(sxy_eval, sXy_poly.eval(x));
     assert_eq!(sxy_eval, sxY_poly.eval(y));
@@ -78,6 +78,26 @@ fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
     assert_eq!(sx0_eval, sX0_poly.eval(x));
     assert_eq!(s00_eval, s0Y_poly.eval(Fp::ZERO));
     assert_eq!(s00_eval, sX0_poly.eval(Fp::ZERO));
+}
+
+#[test]
+fn sxy_rejects_malformed_root_offset() {
+    let circuit = SquareCircuit { times: 1 };
+    let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+    plan[0].constraint_start = 1;
+
+    let result = crate::wiring::sxy::eval::<_, _, TestRank>(
+        &crate::raw::CircuitAdapterRef(&circuit),
+        Fp::from(3u64),
+        Fp::from(5u64),
+        &plan,
+    );
+
+    assert!(matches!(
+        result,
+        Err(ragu_core::Error::MalformedFloorPlan { .. })
+    ));
 }
 
 #[test]
@@ -161,7 +181,7 @@ fn test_simple_circuit() {
     let a = assignment.clone();
     let mut b = assignment.clone();
     b.dilate(z);
-    b.add_assign(&obj.sy(y, &plan));
+    b.add_assign(&obj.sy(y, &plan).unwrap());
     b.add_assign(&MyRank::tz(z));
 
     let expected = MySimpleCircuit
@@ -216,6 +236,81 @@ impl Routine<Fp> for TestRoutine {
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
         Ok(Prediction::Unknown(D::just(|| Fp::from(10u64))))
     }
+}
+
+#[test]
+fn sxy_rejects_too_short_floor_plan() {
+    #[derive(Clone)]
+    struct PassthroughRoutine;
+
+    impl Routine<Fp> for PassthroughRoutine {
+        type Input = Kind![Fp; Element<'_, _>];
+        type Output = Kind![Fp; Element<'_, _>];
+        type Aux<'dr> = ();
+
+        fn execute<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            input: Bound<'dr, D, Self::Input>,
+            _aux: DriverValue<D, Self::Aux<'dr>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            Ok(input)
+        }
+
+        fn predict<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _input: &Bound<'dr, D, Self::Input>,
+        ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>>
+        {
+            Ok(Prediction::Unknown(D::unit()))
+        }
+    }
+
+    struct OneRoutineCircuit;
+
+    impl Circuit<Fp> for OneRoutineCircuit {
+        type Instance<'instance> = Fp;
+        type Output = Kind![Fp; Element<'_, _>];
+        type Witness<'witness> = Fp;
+        type Aux<'witness> = ();
+
+        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            instance: DriverValue<D, Self::Instance<'instance>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            let allocator = &mut Standard::new();
+            Element::alloc(dr, allocator, instance)
+        }
+
+        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            witness: DriverValue<D, Self::Witness<'witness>>,
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+        {
+            let allocator = &mut Standard::new();
+            let input = Element::alloc(dr, allocator, witness)?;
+            let output = dr.routine(PassthroughRoutine, input)?;
+            Ok(WithAux::new(output, D::unit()))
+        }
+    }
+
+    let obj = into_wiring_object::<_, _, TestRank>(OneRoutineCircuit).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+    assert!(
+        plan.len() > 1,
+        "test circuit must produce at least one routine segment"
+    );
+    plan.truncate(1);
+
+    let result = obj.sxy(Fp::from(3u64), Fp::from(5u64), &plan);
+
+    assert!(matches!(
+        result,
+        Err(ragu_core::Error::MalformedFloorPlan { .. })
+    ));
 }
 
 #[test]

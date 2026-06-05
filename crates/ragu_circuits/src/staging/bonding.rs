@@ -228,30 +228,30 @@ impl<'a, F: Field, R: Rank> Stripped<'a, F, R> {
 }
 
 impl<F: Field, R: Rank> WiringObject<F, R> for Stripped<'_, F, R> {
-    fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
+    fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> Result<F> {
         // Remove the ONE wire contribution: 1 at y^0 (d[0] maps to degree 0).
-        self.0.sxy(x, y, floor_plan) - F::ONE
+        Ok(self.0.sxy(x, y, floor_plan)? - F::ONE)
     }
 
-    fn sx(&self, x: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
-        let mut poly = self.0.sx(x, floor_plan);
+    fn sx(&self, x: F, floor_plan: &[ConstraintSegment]) -> Result<sparse::Polynomial<F, R>> {
+        let mut poly = self.0.sx(x, floor_plan)?;
         // Horner places the last constraint (enforce_one) at y^0 = coeffs[0].
         // TODO: sparse::Polynomial should support subtracting a field element
         // from the constant term directly.
         let coeff_0 = poly.iter_coeffs().next().unwrap();
         let correction = sparse::Polynomial::from_coeffs(alloc::vec![coeff_0]);
         poly.sub_assign(&correction);
-        poly
+        Ok(poly)
     }
 
-    fn sy(&self, y: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
-        let mut poly = self.0.sy(y, floor_plan);
+    fn sy(&self, y: F, floor_plan: &[ConstraintSegment]) -> Result<sparse::Polynomial<F, R>> {
+        let mut poly = self.0.sy(y, floor_plan)?;
         // The SYSTEM gate's d-wire holds the ONE wire; remove its y^0 contribution.
         // In the wiring perspective, d[0] maps to degree 0.
         let mut correction = sparse::View::<_, R, _>::wiring();
         correction.d.push(F::ONE);
         poly.sub_assign(&correction.build());
-        poly
+        Ok(poly)
     }
 
     // TODO(#614): revisit constraint_counts semantics — ambiguous with
@@ -596,9 +596,9 @@ mod tests {
         let y = Fp::random(&mut ragu_arithmetic::rand::rng());
 
         // s(0, y) = 0: no constraint on d_0 wires.
-        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan).unwrap(), Fp::ZERO);
         // s(x, 0) = 0: forces k(Y) = 0.
-        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan).unwrap(), Fp::ZERO);
     }
 
     /// sxy(x,y) = sx(x).eval(y) = sy(y).eval(x).
@@ -610,9 +610,9 @@ mod tests {
         let x = Fp::random(&mut ragu_arithmetic::rand::rng());
         let y = Fp::random(&mut ragu_arithmetic::rand::rng());
 
-        let sxy = obj.sxy(x, y, &floor_plan);
-        assert_eq!(sxy, obj.sx(x, &floor_plan).eval(y));
-        assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
+        let sxy = obj.sxy(x, y, &floor_plan).unwrap();
+        assert_eq!(sxy, obj.sx(x, &floor_plan).unwrap().eval(y));
+        assert_eq!(sxy, obj.sy(y, &floor_plan).unwrap().eval(x));
     }
 
     /// Build a trace with the SYSTEM gate zeroed and gates 1..n from (a, d)
@@ -641,7 +641,7 @@ mod tests {
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
 
         let y = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let sy = obj.sy(y, &floor_plan);
+        let sy = obj.sy(y, &floor_plan).unwrap();
 
         let v = Fp::random(&mut ragu_arithmetic::rand::rng());
         let w = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -665,17 +665,17 @@ mod tests {
         let x = Fp::random(&mut ragu_arithmetic::rand::rng());
         let y = Fp::random(&mut ragu_arithmetic::rand::rng());
 
-        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
-        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan).unwrap(), Fp::ZERO);
+        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan).unwrap(), Fp::ZERO);
 
-        let sxy = obj.sxy(x, y, &floor_plan);
-        assert_eq!(sxy, obj.sx(x, &floor_plan).eval(y));
-        assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
+        let sxy = obj.sxy(x, y, &floor_plan).unwrap();
+        assert_eq!(sxy, obj.sx(x, &floor_plan).unwrap().eval(y));
+        assert_eq!(sxy, obj.sy(y, &floor_plan).unwrap().eval(x));
 
         let rx = build_trace(&[(
             Fp::random(&mut ragu_arithmetic::rand::rng()),
             Fp::random(&mut ragu_arithmetic::rand::rng()),
         )]);
-        assert_eq!(rx.revdot(&obj.sy(y, &floor_plan)), Fp::ZERO);
+        assert_eq!(rx.revdot(&obj.sy(y, &floor_plan).unwrap()), Fp::ZERO);
     }
 }

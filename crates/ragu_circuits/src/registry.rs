@@ -421,7 +421,9 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
-            let mut v = circuit.sxy(x, y, &self.floor_plans[i]);
+            let mut v = circuit
+                .sxy(x, y, &self.floor_plans[i])
+                .expect("registry floor plans are generated and validated during finalization");
             if circuit.is_mask() {
                 v += global_xy;
             }
@@ -576,7 +578,9 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             &self.cache,
             sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sy(y, floor_plan);
+                let mut tmp = circuit
+                    .sy(y, floor_plan)
+                    .expect("registry floor plans are generated and validated during finalization");
                 tmp.scale(coeff);
                 poly.add_assign(&tmp);
             },
@@ -607,7 +611,9 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             &self.cache,
             sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sx(x, floor_plan);
+                let mut tmp = circuit
+                    .sx(x, floor_plan)
+                    .expect("registry floor plans are generated and validated during finalization");
                 tmp.scale(coeff);
                 poly.add_assign(&tmp);
             },
@@ -640,7 +646,10 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             &self.cache,
             || F::ZERO,
             |circuit, floor_plan, coeff, result| {
-                *result += circuit.sxy(x, y, floor_plan) * coeff;
+                *result += circuit
+                    .sxy(x, y, floor_plan)
+                    .expect("registry floor plans are generated and validated during finalization")
+                    * coeff;
             },
         );
 
