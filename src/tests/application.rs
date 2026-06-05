@@ -19,11 +19,11 @@ struct TestHeaderData {
 }
 
 impl Header for TestHeader {
-    type Data = TestHeaderData;
+    type Data<'source> = TestHeaderData;
 
     const SUFFIX: Suffix = Suffix::new(0);
 
-    fn encode(data: &Self::Data) -> Vec<u8> {
+    fn encode(data: &Self::Data<'_>) -> Vec<u8> {
         let bytes = data.value.to_le_bytes();
         bytes.to_vec()
     }
@@ -44,9 +44,9 @@ impl Step for SeedStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
-        _left: <Self::Left as Header>::Data,
-        _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        _left: <Self::Left as Header>::Data<'source>,
+        _right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: witness }, ()))
     }
 }
@@ -66,9 +66,9 @@ impl Step for MergeStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
-        left: <Self::Left as Header>::Data,
-        right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        left: <Self::Left as Header>::Data<'source>,
+        right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         Ok((
             TestHeaderData {
                 value: left.value + right.value,
@@ -271,9 +271,9 @@ impl Step for AuxSeedStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
-        _left: <Self::Left as Header>::Data,
-        _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        _left: <Self::Left as Header>::Data<'source>,
+        _right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         let squared = witness * witness;
         Ok((TestHeaderData { value: squared }, alloc::vec![squared]))
     }
@@ -294,9 +294,9 @@ impl Step for AuxMergeStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
-        left: <Self::Left as Header>::Data,
-        right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        left: <Self::Left as Header>::Data<'source>,
+        right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         let (left_aux, right_aux) = witness;
         let mut combined = left_aux;
         combined.extend(right_aux);
@@ -445,11 +445,11 @@ fn rerandomize_preserves_validity() {
 struct ConflictingHeader;
 
 impl Header for ConflictingHeader {
-    type Data = TestHeaderData;
+    type Data<'source> = TestHeaderData;
 
     const SUFFIX: Suffix = Suffix::new(0);
 
-    fn encode(data: &Self::Data) -> Vec<u8> {
+    fn encode(data: &Self::Data<'_>) -> Vec<u8> {
         data.value.to_le_bytes().to_vec()
     }
 }
@@ -470,9 +470,9 @@ impl Step for DuplicateIndexStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
-        _left: <Self::Left as Header>::Data,
-        _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        _left: <Self::Left as Header>::Data<'source>,
+        _right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: 0 }, ()))
     }
 }
@@ -494,9 +494,9 @@ impl Step for SuffixCollisionStep {
         &self,
         _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
-        _left: <Self::Left as Header>::Data,
-        _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        _left: <Self::Left as Header>::Data<'source>,
+        _right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: 0 }, ()))
     }
 }
@@ -559,9 +559,9 @@ fn internal_step_index_rejects_registration() {
             &self,
             _ctx: &mut StepCtx<'_>,
             _witness: Self::Witness<'source>,
-            _left: <Self::Left as Header>::Data,
-            _right: <Self::Right as Header>::Data,
-        ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+            _left: <Self::Left as Header>::Data<'source>,
+            _right: <Self::Right as Header>::Data<'source>,
+        ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)> {
             Ok((TestHeaderData { value: 0 }, ()))
         }
     }
@@ -588,7 +588,7 @@ fn verify_rejects_unregistered_step_index() {
         &encoded,
         b"unused-witness",
     );
-    let forged_pcd: Pcd<TestHeader> =
+    let forged_pcd: Pcd<'_, TestHeader> =
         forged_proof.carry::<TestHeader>(TestHeaderData { value: 42 });
 
     let valid = app
@@ -604,11 +604,11 @@ fn verify_rejects_unregistered_step_index() {
 fn verify_rejects_swapped_header_type() {
     struct SwappedHeader;
     impl Header for SwappedHeader {
-        type Data = TestHeaderData;
+        type Data<'source> = TestHeaderData;
 
         const SUFFIX: Suffix = Suffix::new(99);
 
-        fn encode(data: &Self::Data) -> Vec<u8> {
+        fn encode(data: &Self::Data<'_>) -> Vec<u8> {
             data.value.to_le_bytes().to_vec()
         }
     }
@@ -623,7 +623,7 @@ fn verify_rejects_swapped_header_type() {
         .seed(&mut thread_rng(), SeedStep, 42u64)
         .expect("seed should succeed");
 
-    let swapped_pcd: Pcd<SwappedHeader> = pcd
+    let swapped_pcd: Pcd<'_, SwappedHeader> = pcd
         .proof
         .carry::<SwappedHeader>(TestHeaderData { value: 42 });
 

@@ -161,6 +161,20 @@ impl Commitment {
         Self(acc.to_affine())
     }
 
+    /// The `i`-th coefficient generator `G_i` as a commitment.
+    ///
+    /// A public constant (no secret input).
+    #[must_use]
+    pub fn generator(i: usize) -> Self {
+        let generators = &*GENERATORS;
+        assert!(
+            i < generators.len(),
+            "generator index {i} exceeds max generators {}",
+            generators.len(),
+        );
+        Self(generators[i])
+    }
+
     /// The blinding generator `H` — the commit of the empty polynomial with
     /// blinding `1`. This is the other half of the homomorphic cm-shift
     /// basis (the H-side).

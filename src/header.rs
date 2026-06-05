@@ -4,13 +4,10 @@ use alloc::vec::Vec;
 
 /// Number of internal header suffixes reserved by mock_ragu.
 ///
-/// The mock reserves two internal header-suffix slots so that application
-/// suffixes (constructed via [`Suffix::new`]) begin above them, paralleling the
-/// way real ragu partitions internal vs. application header suffixes. Only slot
-/// 1 — the trivial header [`()`] — is used; slot 0 is reserved purely to keep
-/// the internal/application split aligned with the step-index layout in
-/// [`crate::step`]. (Header suffixes and step indexes are distinct namespaces;
-/// this is a layout convenience, not a claim that the two coincide.)
+/// Mirrors real ragu's `InternalStepIndex` layout:
+/// - Slot 0: `Rerandomize` (reserved; mock rerandomize is a transformation, not
+///   a Step, but the slot stays reserved for migration parity).
+/// - Slot 1: trivial header [`()`].
 pub(crate) const NUM_INTERNAL_SUFFIXES: usize = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -65,13 +62,13 @@ impl Suffix {
 /// Mirrors `ragu_pcd::Header`.
 pub trait Header: Send + Sync + 'static {
     const SUFFIX: Suffix;
-    type Data: Send + Clone;
-    fn encode(data: &Self::Data) -> Vec<u8>;
+    type Data<'source>: Send + Clone;
+    fn encode(data: &Self::Data<'_>) -> Vec<u8>;
 }
 
 /// Trivial header for seed steps.
 impl Header for () {
-    type Data = ();
+    type Data<'source> = ();
 
     const SUFFIX: Suffix = Suffix::internal(1);
 

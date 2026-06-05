@@ -26,7 +26,7 @@ pub use header::{Header, Suffix};
 pub use hooks::FrameworkHooks;
 pub use polynomial::{Commitment, Polynomial, poly_with_roots};
 pub use proof::{Pcd, Proof};
-pub use relations::{enforce_poly_product, enforce_poly_shifted_sum};
+pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice};
 pub use step::{Index, Step};
 
 pub mod application;

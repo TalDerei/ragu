@@ -30,7 +30,7 @@ fn tampered_fails() {
 fn carry_creates_pcd() {
     let proof = Proof::new(TEST_SUFFIX, TEST_INDEX, b"header", b"witness");
     let expected = proof.clone();
-    let pcd: Pcd<()> = proof.carry(());
+    let pcd: Pcd<'_, ()> = proof.carry(());
     assert_eq!(pcd.proof.serialize(), expected.serialize());
 }
 

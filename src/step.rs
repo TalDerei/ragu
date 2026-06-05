@@ -109,7 +109,7 @@ pub trait Step: Sized + Send + Sync {
         &self,
         ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
-        left: <Self::Left as Header>::Data,
-        right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)>;
+        left: <Self::Left as Header>::Data<'source>,
+        right: <Self::Right as Header>::Data<'source>,
+    ) -> Result<(<Self::Output as Header>::Data<'source>, Self::Aux<'source>)>;
 }
