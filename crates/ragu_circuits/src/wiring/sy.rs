@@ -597,7 +597,12 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         input: Bound<'table, Self, Ro::Input>,
     ) -> Result<Bound<'table, Self, Ro::Output>> {
         self.current_routine += 1;
-        let seg = &self.floor_plan[self.current_routine];
+        let seg = self
+            .floor_plan
+            .get(self.current_routine)
+            .ok_or(Error::MalformedFloorPlan {
+                reason: "floor plan routine count must match synthesis",
+            })?;
 
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
@@ -620,16 +625,16 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
             let result = routine.execute(this, input, aux)?;
 
             // Verify this routine consumed exactly the expected constraints.
-            assert_eq!(
-                this.scope.gates,
-                seg.gate_start + seg.num_gates,
-                "routine gate count must match floor plan"
-            );
-            assert_eq!(
-                this.scope.constraints,
-                seg.constraint_start + seg.num_constraints,
-                "routine constraint count must match floor plan"
-            );
+            if this.scope.gates != seg.gate_start + seg.num_gates {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "routine gate count must match floor plan",
+                });
+            }
+            if this.scope.constraints != seg.constraint_start + seg.num_constraints {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "routine constraint count must match floor plan",
+                });
+            }
 
             Ok(result)
         })
@@ -655,7 +660,18 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     y: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<sparse::Polynomial<F, R>> {
+    crate::floor_planner::validate(floor_plan)?;
+
     let mut view = sparse::View::wiring();
+
+    // Circuit-scope segment's constraint count (for initial current_y).
+    // This segment always has at least the ONE constraint.
+    let root_constraints = floor_plan[0].num_constraints;
+    if root_constraints == 0 {
+        return Err(Error::MalformedFloorPlan {
+            reason: "root segment must have at least one constraint",
+        });
+    }
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
@@ -665,14 +681,6 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     }
 
     let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
-
-    // Circuit-scope segment's constraint count (for initial current_y).
-    // This segment always has at least the ONE constraint.
-    let root_constraints = floor_plan[0].num_constraints;
-    assert!(
-        root_constraints > 0,
-        "root segment must have at least one constraint"
-    );
 
     {
         let virtual_table = RefCell::new(VirtualTable::<F, R> {
@@ -713,19 +721,21 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
             crate::raw::orchestrate(&mut evaluator, circuit, Empty)?;
 
             // Verify all floor plan segments were consumed and counts match.
-            assert_eq!(
-                evaluator.current_routine + 1,
-                evaluator.floor_plan.len(),
-                "floor plan routine count must match synthesis"
-            );
-            assert_eq!(
-                evaluator.scope.gates, evaluator.floor_plan[0].num_gates,
-                "root gate count must match floor plan"
-            );
-            assert_eq!(
-                evaluator.scope.constraints, evaluator.floor_plan[0].num_constraints,
-                "root constraint count must match floor plan"
-            );
+            if evaluator.current_routine + 1 != evaluator.floor_plan.len() {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "floor plan routine count must match synthesis",
+                });
+            }
+            if evaluator.scope.gates != evaluator.floor_plan[0].num_gates {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "root gate count must match floor plan",
+                });
+            }
+            if evaluator.scope.constraints != evaluator.floor_plan[0].num_constraints {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "root constraint count must match floor plan",
+                });
+            }
         }
 
         // Invariant: all virtual wires must have been freed during synthesis,

@@ -88,15 +88,12 @@ impl<F: Field> Trace<F> {
         floor_plan: &[ConstraintSegment],
         alpha: F,
     ) -> Result<sparse::Polynomial<F, R>> {
-        assert_eq!(
-            floor_plan.len(),
-            self.segments.len(),
-            "floor plan and trace must have the same number of segment entries"
-        );
-        assert_eq!(
-            floor_plan[0].gate_start, 0,
-            "root segment must be placed at the polynomial origin"
-        );
+        super::floor_planner::validate(floor_plan)?;
+        if floor_plan.len() != self.segments.len() {
+            return Err(Error::MalformedFloorPlan {
+                reason: "floor plan and trace must have the same number of segment entries",
+            });
+        }
 
         let total_gates = self
             .segments
@@ -122,12 +119,11 @@ impl<F: Field> Trace<F> {
             let segment = &floor_plan[seg_idx];
 
             // Verify segment size matches floor plan expectation.
-            assert_eq!(
-                seg.a.len(),
-                segment.num_gates,
-                "segment {} size must match floor plan",
-                seg_idx
-            );
+            if seg.a.len() != segment.num_gates {
+                return Err(Error::MalformedFloorPlan {
+                    reason: "segment size must match floor plan",
+                });
+            }
 
             let offset = segment.gate_start;
             view.a[offset..offset + seg.a.len()].copy_from_slice(&seg.a);
