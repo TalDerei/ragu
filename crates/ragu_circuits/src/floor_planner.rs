@@ -9,8 +9,10 @@
 //! The floor plan is indexed by DFS synthesis order: `floor_plan[i]` describes
 //! where the *i*-th segment (in DFS order) is placed in the polynomial.
 //! Currently, offsets must also be the DFS-order prefix sums of the segment
-//! sizes. All consumers — the three `s(X, Y)` evaluators, the `rx` evaluator,
-//! and `assemble` — depend on this convention.
+//! sizes. The consumers that read these offsets — the three `s(X, Y)`
+//! evaluators and `assemble` — depend on this convention and call `validate`
+//! before using any offset. (The staging `rx` extractor builds a flat
+//! per-stage trace in synthesis order and does not read the floor plan.)
 //!
 //! The root segment (index 0) is always pinned at offset 0; see the
 //! [`floor_plan`] function for details.

@@ -101,6 +101,28 @@ fn sxy_rejects_malformed_root_offset() {
 }
 
 #[test]
+fn sxy_rejects_count_mismatch_that_passes_validate() {
+    // A floor plan can pass `validate`'s structural checks (prefix-sum offsets,
+    // root at the origin) yet still claim different segment sizes than the
+    // circuit synthesizes — a case only the in-`eval` count checks catch. We
+    // inflate a root-only plan's constraint count, which still passes
+    // `validate`, and confirm `eval` rejects it via the root count check.
+    let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+
+    assert_eq!(plan.len(), 1, "SquareCircuit must produce a single root segment");
+    plan[0].num_constraints += 1;
+    floor_planner::validate(&plan).expect("inflated single-segment plan still passes validate");
+
+    let result = obj.sxy(Fp::from(3u64), Fp::from(5u64), &plan);
+
+    assert!(matches!(
+        result,
+        Err(ragu_core::Error::MalformedFloorPlan { .. })
+    ));
+}
+
+#[test]
 fn test_simple_circuit() {
     // Simple circuit: prove knowledge of a and b such that a^5 = b^2 and a + b = c
     // and a - b = d where c and d are public inputs.
