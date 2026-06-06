@@ -665,16 +665,18 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     }
 
     let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
+    let total_constraints: usize = floor_plan.iter().map(|s| s.num_constraints).sum();
 
-    // Reject plans that demand more gates than the rank allows *before* sizing
-    // the wiring-view allocation from them, and before any value-independent
-    // fast path returns. `validate` only checks that offsets are contiguous
-    // prefix sums, not that the total fits the rank, so without this guard an
-    // over-large (but internally consistent) plan would drive the `resize`
-    // below to an unbounded allocation. Mirrors the equivalent check in
-    // [`Trace::assemble`](crate::trace::Trace::assemble).
+    // Reject plans that exceed rank limits before sizing allocations, and
+    // before any value-independent fast path returns. `validate` only checks
+    // that offsets are contiguous prefix sums, not that the totals fit the rank.
     if total_gates > R::n() {
         return Err(Error::GateBoundExceeded { limit: R::n() });
+    }
+    if total_constraints >= R::num_coeffs() {
+        return Err(Error::ConstraintBoundExceeded {
+            limit: R::num_coeffs() - 1,
+        });
     }
 
     if y == F::ZERO {
