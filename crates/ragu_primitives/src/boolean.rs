@@ -286,9 +286,14 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// `CAPACITY` bits represent exactly the values in `[0, 2^CAPACITY)`, a subset
 /// of `[0, p)`, so the decomposition is canonical by construction: every
 /// in-range element has a unique bit string and no wrapped alias is
-/// representable, requiring no range check. The trade-off is that the
-/// constraints are only satisfiable when `elem < 2^CAPACITY`; for the Pasta
-/// fields the excluded range has negligible density (about `2^-129`).
+/// representable, requiring no range check.
+///
+/// # Completeness
+///
+/// Honest proving succeeds only when `elem < 2^CAPACITY`; a larger element has
+/// no `CAPACITY`-bit decomposition, so the constraints are unsatisfiable. Over
+/// the Pasta fields a uniformly random element falls outside this range with
+/// negligible probability (about `2^-129`).
 pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,

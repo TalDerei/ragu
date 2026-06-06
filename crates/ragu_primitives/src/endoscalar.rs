@@ -158,15 +158,16 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
 
     /// Extracts an endoscalar from a validated challenge.
     ///
-    /// The endoscalar is the low 128 bits of the element's canonical bit
+    /// The endoscalar is the low 128 bits of the challenge's canonical bit
     /// decomposition. The element is decomposed in full, so those 128 bits are
-    /// uniquely determined by `elem` and the extraction is sound for every
-    /// accepted input.
+    /// uniquely determined by it.
     ///
-    /// The decomposition only admits elements below `2^CAPACITY`, so for the
-    /// negligible (~2^-129) fraction of larger elements the constraint is
-    /// unsatisfiable and an honest prover cannot prove. This out-of-range abort
-    /// is intentional and acceptable for a transcript-derived challenge.
+    /// # Completeness
+    ///
+    /// The decomposition is satisfiable only for values below `2^CAPACITY`.
+    /// [`EndoscalarChallenge`] establishes exactly that precondition, so every
+    /// validated challenge extracts; an out-of-range value would make the
+    /// constraints unsatisfiable.
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
