@@ -20,7 +20,7 @@ use claims::FuseProofSource;
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{EndoscalarChallenge, GadgetExt, Point, vec::CollectFixed};
+use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 
 use crate::{
     Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
@@ -177,36 +177,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let eval_witness =
             self.compute_eval_witness(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
 
-        // Rejection-sample only the eval-stage blinding. This is the final
-        // commitment before `pre_beta`, so changing it gives a fresh challenge
-        // without rebuilding the preceding fuse state. The grind lives inside
-        // `EndoscalarChallenge::sample`, which (re)derives `pre_beta` from each
-        // fresh blinding and retries until it lands in range — so the challenge
-        // cannot be produced without having been ground.
-        let (pre_beta, (eval_rx, accepted_transcript)) =
-            EndoscalarChallenge::sample(&mut dr, |dr| {
-                let eval_rx = self.sample_eval_rx(rng, &eval_witness)?;
-                let native_eval_commitment =
-                    eval_rx.commit_to_affine(C::host_generators(self.params));
-                let bridge_eval_commitment =
-                    builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
+        let (pre_beta, eval_rx, _accepted_transcript) =
+            self.sample_pre_beta(rng, &mut dr, transcript, &eval_witness, &builder)?;
 
-                let mut candidate_transcript = transcript.clone();
-                let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
-                eval_commitment.write(dr, &mut candidate_transcript)?;
-                let pre_beta = candidate_transcript.challenge(dr)?;
-
-                Ok((pre_beta, (eval_rx, candidate_transcript)))
-            })?;
-
-        // Commit the accepted candidate's side state: record its blinding and
-        // advance the local transcript to the accepted state so future
-        // transcript uses do not resume from a rejected prefix.
         builder.set_native_eval_rx(eval_rx);
-        transcript = accepted_transcript;
-        // `pre_beta` is currently the last fuse challenge; the line above keeps
-        // the transcript advanced for any subsequent use.
-        let _ = &transcript;
 
         self.compute_p(
             rng,
