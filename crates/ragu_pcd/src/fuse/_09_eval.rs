@@ -89,7 +89,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         Transcript<'dr, D, C::CircuitPoseidon>,
     )>
     where
-        D: Driver<'dr, F = C::CircuitField>,
+        D: Driver<'dr, F = C::CircuitField, Wire = ()>,
         D: DriverTypes<MaybeKind = Always<()>>,
         RNG: CryptoRngCore,
     {

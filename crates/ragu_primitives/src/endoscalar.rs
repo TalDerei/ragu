@@ -37,6 +37,13 @@ use crate::{
 /// Carries the precondition required by [`Endoscalar::extract`]: the element's
 /// canonical representative is below `2^CAPACITY`, so it admits a canonical
 /// `CAPACITY`-bit decomposition with no separate in-circuit canonicity check.
+///
+/// Holding an `EndoscalarChallenge` is a witness-time guarantee: construction
+/// runs an emulated range check (aborting an out-of-range prover) but emits no
+/// in-circuit constraint. The binding range constraint is emitted only when the
+/// challenge is consumed by [`Endoscalar::extract`]; reading
+/// [`element`](Self::element) alone does not establish an in-circuit range
+/// proof.
 #[derive(Gadget)]
 pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
     #[ragu(gadget)]
@@ -135,7 +142,7 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
         mut produce: impl FnMut(&mut D) -> Result<(Element<'dr, D>, T)>,
     ) -> Result<(Self, T)>
     where
-        D: DriverTypes<MaybeKind = Always<()>>,
+        D: Driver<'dr, Wire = ()> + DriverTypes<MaybeKind = Always<()>>,
         D::F: PrimeField,
     {
         loop {
@@ -170,6 +177,10 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     }
 
     /// Returns the underlying field element.
+    ///
+    /// This element carries an in-circuit range constraint only after the
+    /// challenge is consumed by [`Endoscalar::extract`]; the challenge alone
+    /// does not emit one.
     pub fn element(&self) -> &Element<'dr, D> {
         &self.elem
     }
@@ -483,10 +494,10 @@ mod tests {
         group::{CurveAffine as _, Group},
         rand::RngExt,
     };
-    use ragu_core::Result;
+    use ragu_core::{Result, drivers::emulator::Wireless};
     use ragu_pasta::{EpAffine, Fp};
 
-    use super::{Element, Endoscalar, EndoscalarChallenge, Maybe, Point};
+    use super::{Always, Element, Emulator, Endoscalar, EndoscalarChallenge, Maybe, Point};
     use crate::{Simulator, allocator::Standard};
 
     pub struct EndoscalarTest {
@@ -631,14 +642,13 @@ mod tests {
     /// in-circuit extraction.
     #[test]
     fn test_sample_grinds_until_in_range() -> Result<()> {
-        use ragu_core::drivers::Driver;
-
         // Feed one out-of-range candidate followed by an in-range one. `sample`
         // must reject the first, accept the second, and thread the payload
-        // through unchanged.
+        // through unchanged. The wireless emulator is the only driver `sample`
+        // accepts (native witness execution, `Wire = ()`).
         let in_range = Fp::from(0x0123_4567_89ab_cdefu64);
 
-        Simulator::<Fp>::simulate(in_range, |dr, in_range| {
+        Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(in_range, |dr, in_range| {
             let in_range = in_range.take();
             let candidates = [(-Fp::ONE, 7u32), (in_range, 9u32)];
             let mut attempt = 0usize;
@@ -646,7 +656,7 @@ mod tests {
             let (challenge, payload) = EndoscalarChallenge::sample(dr, |dr| {
                 let (value, tag) = candidates[attempt];
                 attempt += 1;
-                let elem = Element::alloc(dr, &mut (), Simulator::<Fp>::just(|| value))?;
+                let elem = Element::alloc(dr, &mut (), Always::<Fp>::just(|| value))?;
                 Ok((elem, tag))
             })?;
 
@@ -668,7 +678,9 @@ mod tests {
     /// outcome, never on a real synthesis failure.
     #[test]
     fn test_sample_propagates_produce_error() -> Result<()> {
-        Simulator::<Fp>::simulate((), |dr, _| {
+        // The wireless emulator is the sole driver `sample` accepts; the
+        // witness is unused here.
+        Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless((), |dr, _| {
             let mut calls = 0usize;
             let outcome = EndoscalarChallenge::sample(dr, |_dr| {
                 calls += 1;
