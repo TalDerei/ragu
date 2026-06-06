@@ -24,7 +24,7 @@ use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{
     Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, Simulator,
-    allocator::Standard, extract_endoscalar, lift_endoscalar, validate_endoscalar_challenge,
+    allocator::Standard, endoscalar_in_range, extract_endoscalar, lift_endoscalar,
 };
 
 use std::sync::LazyLock;
@@ -113,8 +113,9 @@ fuzz_target!(|input: Input| {
 
     // Model protocol rejection sampling: a challenge outside the canonical
     // decomposition range would make the circuit validation fail, so the prover
-    // must retry the sampled transcript state instead of extracting it.
-    if validate_endoscalar_challenge(r).is_err() {
+    // must retry the sampled transcript state instead of extracting it. This is
+    // the same range predicate `EndoscalarChallenge::sample` grinds on.
+    if !endoscalar_in_range(r) {
         return;
     }
 

@@ -37,10 +37,12 @@ pub mod vec;
 
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
-pub use endoscalar::{
-    Endoscalar, EndoscalarChallenge, extract_endoscalar, lift_endoscalar,
-    validate_endoscalar_challenge,
-};
+pub use endoscalar::{Endoscalar, EndoscalarChallenge, extract_endoscalar, lift_endoscalar};
+// `endoscalar_in_range` is an internal predicate; it is re-exported only for the
+// fuzz harness (which models challenge rejection) under `unstable-fuzzing`, so it
+// does not widen the normal public API.
+#[cfg(feature = "unstable-fuzzing")]
+pub use endoscalar::endoscalar_in_range;
 pub use invertible::{Invertible, Nonzero, NonzeroBank};
 use io::{Buffer, Write};
 pub use point::Point;

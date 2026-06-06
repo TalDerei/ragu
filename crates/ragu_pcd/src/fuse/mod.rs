@@ -179,27 +179,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Rejection-sample only the eval-stage blinding. This is the final
         // commitment before `pre_beta`, so changing it gives a fresh challenge
-        // without rebuilding the preceding fuse state.
-        let pre_beta = loop {
-            let eval_rx = self.sample_eval_rx(rng, &eval_witness)?;
-            let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
-            let bridge_eval_commitment =
-                builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
+        // without rebuilding the preceding fuse state. The grind lives inside
+        // `EndoscalarChallenge::sample`, which (re)derives `pre_beta` from each
+        // fresh blinding and retries until it lands in range — so the challenge
+        // cannot be produced without having been ground.
+        let (pre_beta, (eval_rx, accepted_transcript)) =
+            EndoscalarChallenge::sample(&mut dr, |dr| {
+                let eval_rx = self.sample_eval_rx(rng, &eval_witness)?;
+                let native_eval_commitment =
+                    eval_rx.commit_to_affine(C::host_generators(self.params));
+                let bridge_eval_commitment =
+                    builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
 
-            let mut candidate_transcript = transcript.clone();
-            let eval_commitment = Point::constant(&mut dr, bridge_eval_commitment)?;
-            eval_commitment.write(&mut dr, &mut candidate_transcript)?;
-            let pre_beta = candidate_transcript.challenge(&mut dr)?;
+                let mut candidate_transcript = transcript.clone();
+                let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
+                eval_commitment.write(dr, &mut candidate_transcript)?;
+                let pre_beta = candidate_transcript.challenge(dr)?;
 
-            if let Ok(pre_beta) = EndoscalarChallenge::from_element(&mut dr, pre_beta) {
-                builder.set_native_eval_rx(eval_rx);
-                transcript = candidate_transcript;
-                break pre_beta;
-            }
-        };
-        // `pre_beta` is currently the last fuse challenge, but keep the local
-        // transcript advanced to the accepted candidate state so future
-        // transcript uses do not accidentally resume from the rejected prefix.
+                Ok((pre_beta, (eval_rx, candidate_transcript)))
+            })?;
+
+        // Commit the accepted candidate's side state: record its blinding and
+        // advance the local transcript to the accepted state so future
+        // transcript uses do not resume from a rejected prefix.
+        builder.set_native_eval_rx(eval_rx);
+        transcript = accepted_transcript;
+        // `pre_beta` is currently the last fuse challenge; the line above keeps
+        // the transcript advanced for any subsequent use.
         let _ = &transcript;
 
         self.compute_p(

@@ -32,6 +32,7 @@ default = ["alloc", "modern-deps"]
 legacy-deps = ["ragu_arithmetic/legacy-deps", "ragu_core/legacy-deps"]
 modern-deps = ["ragu_arithmetic/modern-deps", "ragu_core/modern-deps"]
 std = []
+unstable-fuzzing = []
 
 [lib]
 bench = false

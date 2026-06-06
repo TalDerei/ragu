@@ -34,7 +34,7 @@ group = { version = "0.14", default-features = false }
 pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
 ragu_testing = { path = "../../crates/ragu_testing" }
 ragu_arithmetic = { path = "../../crates/ragu_arithmetic" }
-ragu_primitives = { path = "../../crates/ragu_primitives" }
+ragu_primitives = { path = "../../crates/ragu_primitives", features = ["unstable-fuzzing"] }
 ragu_pasta = { path = "../../crates/ragu_pasta", features = ["baked"] }
 ragu_core = { path = "../../crates/ragu_core" }
 ragu_circuits = { path = "../../crates/ragu_circuits" }

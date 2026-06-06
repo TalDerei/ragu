@@ -64,12 +64,11 @@ pub fn alloc_endoscalar_challenge(
     emu: &mut BenchEmu,
     rng: &mut StdRng,
 ) -> EndoscalarChallenge<'static, BenchEmu> {
-    loop {
-        let elem = alloc_elem(emu, rng);
-        if let Ok(challenge) = EndoscalarChallenge::from_element(emu, elem) {
-            break challenge;
-        }
-    }
+    // Grind a fresh in-range challenge through the typed sampler, which owns the
+    // rejection loop.
+    let (challenge, ()) =
+        EndoscalarChallenge::sample(emu, |emu| Ok((alloc_elem(emu, rng), ()))).unwrap();
+    challenge
 }
 
 pub fn alloc_point(emu: &mut BenchEmu, rng: &mut StdRng) -> Point<'static, BenchEmu, EpAffine> {
