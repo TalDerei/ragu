@@ -9,14 +9,10 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging::StageExt,
 };
-use ragu_core::{
-    Result,
-    drivers::{Driver, DriverTypes},
-    maybe::{Always, Maybe},
-};
+use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, EndoscalarChallenge, GadgetExt, Point};
 
-use super::{NativeSPrime, RegistryWy};
+use super::{NativeFuseEmulator, NativeSPrime, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{native, transcript::Transcript},
@@ -76,21 +72,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// matching `eval_rx` and advanced transcript are returned together. The old
     /// prefix is therefore unavailable to callers after sampling, so subsequent
     /// transcript use must explicitly continue from the accepted transcript.
-    pub(super) fn sample_pre_beta<'dr, D, RNG>(
+    pub(super) fn sample_pre_beta<'dr, RNG>(
         &self,
         rng: &mut RNG,
-        dr: &mut D,
-        transcript_prefix: Transcript<'dr, D, C::CircuitPoseidon>,
+        dr: &mut NativeFuseEmulator<C>,
+        transcript_prefix: Transcript<'dr, NativeFuseEmulator<C>, C::CircuitPoseidon>,
         eval_witness: &native::stages::eval::Witness<C::CircuitField>,
         builder: &ProofBuilder<'_, C, R>,
     ) -> Result<(
-        EndoscalarChallenge<'dr, D>,
+        EndoscalarChallenge<'dr, NativeFuseEmulator<C>>,
         sparse::Polynomial<C::CircuitField, R>,
-        Transcript<'dr, D, C::CircuitPoseidon>,
+        Transcript<'dr, NativeFuseEmulator<C>, C::CircuitPoseidon>,
     )>
     where
-        D: Driver<'dr, F = C::CircuitField, Wire = ()>,
-        D: DriverTypes<MaybeKind = Always<()>>,
         RNG: CryptoRngCore,
     {
         // Rejection-sample only the eval-stage blinding. This is the final

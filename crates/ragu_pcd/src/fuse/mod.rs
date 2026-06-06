@@ -19,7 +19,11 @@ pub(crate) mod claims;
 use claims::FuseProofSource;
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{
+    Result,
+    drivers::emulator::{Emulator, Wireless},
+    maybe::{Always, Maybe},
+};
 use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 
 use crate::{
@@ -45,6 +49,8 @@ struct NativeSPrime<C: Cycle, R: Rank> {
     registry_wx1_poly: sparse::Polynomial<C::CircuitField, R>,
     registry_wx1_commitment: C::HostCurve,
 }
+
+type NativeFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::CircuitField>>;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].

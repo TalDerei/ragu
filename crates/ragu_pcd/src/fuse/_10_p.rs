@@ -16,14 +16,10 @@ use core::ops::AddAssign;
 
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::{
-    Result,
-    drivers::{Driver, DriverTypes},
-    maybe::Always,
-};
+use ragu_core::Result;
 use ragu_primitives::{EndoscalarChallenge, lift_endoscalar};
 
-use super::{NativeF, NativeSPrime, RegistryWy};
+use super::{NativeF, NativeFuseEmulator, NativeSPrime, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{
@@ -52,21 +48,17 @@ impl<C: Cycle, R: Rank> Accumulator<'_, C, R> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_p<'dr, D, RNG: ragu_arithmetic::CryptoRngCore>(
+    pub(super) fn compute_p<'dr, RNG: ragu_arithmetic::CryptoRngCore>(
         &self,
         rng: &mut RNG,
-        pre_beta: &EndoscalarChallenge<'dr, D>,
+        pre_beta: &EndoscalarChallenge<'dr, NativeFuseEmulator<C>>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
         f: &NativeF<C, R>,
         builder: &mut ProofBuilder<'_, C, R>,
-    ) -> Result<()>
-    where
-        D: Driver<'dr, F = C::CircuitField>,
-        D: DriverTypes<MaybeKind = Always<()>>,
-    {
+    ) -> Result<()> {
         let mut poly = f.poly.clone();
 
         // Collect commitments for PointsWitness construction.

@@ -19,7 +19,10 @@ use ragu_arithmetic::{
 };
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverTypes, DriverValue, emulator::Emulator},
+    drivers::{
+        Driver, DriverValue,
+        emulator::{Emulator, Wireless},
+    },
     gadgets::{Gadget, Kind},
     maybe::{Always, Maybe},
     routines::{Prediction, Routine},
@@ -78,6 +81,19 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
         dr.routine(ValidateEndoscalarChallenge, elem)
     }
 
+    /// Returns the underlying field element.
+    ///
+    /// This element carries an in-circuit range constraint only after the
+    /// challenge is consumed by [`Endoscalar::extract`]; the challenge alone
+    /// does not emit one.
+    pub fn element(&self) -> &Element<'dr, D> {
+        &self.elem
+    }
+}
+
+type NativeEmulator<F> = Emulator<Wireless<Always<()>, F>>;
+
+impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// Attempts to validate an element as an endoscalar challenge, reporting an
     /// out-of-range element as `Ok(None)` rather than an error.
     ///
@@ -89,8 +105,8 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Requires the element's witness, enforced by the `MaybeKind = Always<()>`
-    /// bound; it is the prover-side counterpart to [`from_element`].
+    /// Requires native wireless witness execution; it is the prover-side
+    /// counterpart to [`from_element`].
     ///
     /// # Errors
     ///
@@ -99,11 +115,10 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     ///
     /// [`sample`]: EndoscalarChallenge::sample
     /// [`from_element`]: EndoscalarChallenge::from_element
-    pub(crate) fn try_from_element(dr: &mut D, elem: Element<'dr, D>) -> Result<Option<Self>>
-    where
-        D: DriverTypes<MaybeKind = Always<()>>,
-        D::F: PrimeField,
-    {
+    pub(crate) fn try_from_element(
+        dr: &mut NativeEmulator<F>,
+        elem: Element<'dr, NativeEmulator<F>>,
+    ) -> Result<Option<Self>> {
         // Classify the candidate by value first, so an out-of-range challenge
         // never reaches the decomposition routine (which would conflate it with
         // a genuine synthesis error). Only in-range challenges are validated.
@@ -138,13 +153,9 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     /// candidate propagates immediately; the loop retries only on the expected
     /// out-of-range condition and so cannot spin on a real error.
     pub fn sample<T>(
-        dr: &mut D,
-        mut produce: impl FnMut(&mut D) -> Result<(Element<'dr, D>, T)>,
-    ) -> Result<(Self, T)>
-    where
-        D: Driver<'dr, Wire = ()> + DriverTypes<MaybeKind = Always<()>>,
-        D::F: PrimeField,
-    {
+        dr: &mut NativeEmulator<F>,
+        mut produce: impl FnMut(&mut NativeEmulator<F>) -> Result<(Element<'dr, NativeEmulator<F>>, T)>,
+    ) -> Result<(Self, T)> {
         loop {
             let (elem, payload) = produce(dr)?;
             if let Some(challenge) = Self::try_from_element(dr, elem)? {
@@ -163,26 +174,12 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     ///
     /// # Completeness
     ///
-    /// Requires the challenge's witness, enforced by the
-    /// `MaybeKind = Always<()>` bound; intended for native provers that
-    /// constructed the challenge via [`sample`].
+    /// Requires native wireless witness execution; intended for native provers
+    /// that constructed the challenge via [`sample`].
     ///
     /// [`sample`]: EndoscalarChallenge::sample
-    pub fn extract_native(&self) -> u128
-    where
-        D: DriverTypes<MaybeKind = Always<()>>,
-        D::F: PrimeField,
-    {
+    pub fn extract_native(&self) -> u128 {
         extract_endoscalar(**self.elem.value().snag())
-    }
-
-    /// Returns the underlying field element.
-    ///
-    /// This element carries an in-circuit range constraint only after the
-    /// challenge is consumed by [`Endoscalar::extract`]; the challenge alone
-    /// does not emit one.
-    pub fn element(&self) -> &Element<'dr, D> {
-        &self.elem
     }
 }
 
@@ -712,7 +709,7 @@ mod tests {
         };
 
         let check = |value: Fp, expect_in_range: bool| -> Result<()> {
-            Simulator::<Fp>::simulate(value, |dr, value| {
+            Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(value, |dr, value| {
                 let elem = Element::alloc(dr, &mut (), value)?;
                 let classified = EndoscalarChallenge::try_from_element(dr, elem)?;
                 assert_eq!(classified.is_some(), expect_in_range);
