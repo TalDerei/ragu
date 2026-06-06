@@ -11,8 +11,8 @@ use ragu_primitives::{
     poseidon::Sponge,
 };
 use setup::{
-    BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo, alloc_point,
-    alloc_sponge, setup_emu,
+    BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo,
+    alloc_endoscalar_challenge, alloc_point, alloc_sponge, setup_emu,
 };
 
 #[library_benchmark(setup = setup_emu)]
@@ -159,9 +159,8 @@ fn endoscalar_group_scale(
 }
 
 #[library_benchmark(setup = setup_emu)]
-#[bench::endoscalar_extract((alloc_elem,))]
-fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    let elem = EndoscalarChallenge::from_element(&mut emu, elem).unwrap();
+#[bench::endoscalar_extract((alloc_endoscalar_challenge,))]
+fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (EndoscalarChallenge<'static, BenchEmu>,))) {
     black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
 }
 

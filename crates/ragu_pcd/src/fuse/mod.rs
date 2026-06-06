@@ -193,9 +193,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             if let Ok(pre_beta) = EndoscalarChallenge::from_element(&mut dr, pre_beta) {
                 builder.set_native_eval_rx(eval_rx);
+                transcript = candidate_transcript;
                 break pre_beta;
             }
         };
+        // `pre_beta` is currently the last fuse challenge, but keep the local
+        // transcript advanced to the accepted candidate state so future
+        // transcript uses do not accidentally resume from the rejected prefix.
+        let _ = &transcript;
 
         self.compute_p(
             rng,

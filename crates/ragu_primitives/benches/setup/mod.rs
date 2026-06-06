@@ -9,7 +9,7 @@ use ragu_core::{
     maybe::Always,
 };
 use ragu_pasta::{EpAffine, Fp, Fq, Pasta, PoseidonFp};
-use ragu_primitives::{Boolean, Element, Endoscalar, Point, poseidon::Sponge};
+use ragu_primitives::{Boolean, Element, Endoscalar, EndoscalarChallenge, Point, poseidon::Sponge};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 pub type BenchEmu = Emulator<Wireless<Always<()>, Fp>>;
@@ -58,6 +58,18 @@ pub fn setup_emu<Fns: SetupEmu<T>, T>(fns: Fns) -> (BenchEmu, T) {
 pub fn alloc_elem(emu: &mut BenchEmu, rng: &mut StdRng) -> Element<'static, BenchEmu> {
     let v = Fp::random(rng);
     Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
+}
+
+pub fn alloc_endoscalar_challenge(
+    emu: &mut BenchEmu,
+    rng: &mut StdRng,
+) -> EndoscalarChallenge<'static, BenchEmu> {
+    loop {
+        let elem = alloc_elem(emu, rng);
+        if let Ok(challenge) = EndoscalarChallenge::from_element(emu, elem) {
+            break challenge;
+        }
+    }
 }
 
 pub fn alloc_point(emu: &mut BenchEmu, rng: &mut StdRng) -> Point<'static, BenchEmu, EpAffine> {
