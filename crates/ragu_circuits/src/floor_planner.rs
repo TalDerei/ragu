@@ -142,12 +142,16 @@ pub fn floor_plan(segment_records: &[SegmentRecord]) -> Vec<ConstraintSegment> {
         constraint_start += record.num_constraints();
     }
 
-    // Every circuit has a root segment, so `segment_records` (and therefore
-    // `result`) is always non-empty; an empty plan is a caller bug. The
-    // prefix-sum construction above is valid by construction, so this is a
-    // defensive self-check that also guards future floor planners that reorder
-    // or pack segments.
-    validate(&result).expect("floor planner must produce a valid floor plan");
+    // Hand-optimized mask `WiringObject`s (e.g. `StageMask`) have no segments
+    // and ignore the floor plan, so the registry legitimately calls this with
+    // empty `segment_records`; return the empty plan rather than tripping
+    // `validate`'s root-segment requirement. For non-empty plans the prefix-sum
+    // construction above is valid by construction, so this self-check is
+    // defensive and also guards future floor planners that reorder or pack
+    // segments.
+    if !result.is_empty() {
+        validate(&result).expect("floor planner must produce a valid floor plan");
+    }
 
     result
 }
