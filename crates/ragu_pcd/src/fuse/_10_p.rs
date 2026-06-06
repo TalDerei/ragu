@@ -17,7 +17,9 @@ use core::ops::AddAssign;
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar};
+use ragu_primitives::{
+    Element, extract_endoscalar, lift_endoscalar, validate_endoscalar_challenge,
+};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
 use crate::{
@@ -75,6 +77,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Extract endoscalar from pre_beta and compute effective beta
         let pre_beta_value = *pre_beta.value().take();
+        // TODO: When fuse rejection sampling is wired in, retry by resampling
+        // the eval-stage commitment randomness if this validation fails. That
+        // keeps the transcript challenge below 2^CAPACITY before the native
+        // extractor and the in-circuit EndoscalarChallenge validation consume it.
+        validate_endoscalar_challenge(pre_beta_value)?;
         let beta_endo = extract_endoscalar(pre_beta_value);
         let effective_beta = lift_endoscalar(beta_endo);
 

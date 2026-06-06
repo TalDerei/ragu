@@ -7,7 +7,8 @@ use std::hint::black_box;
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_pasta::{EpAffine, Fp, PoseidonFp};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, NonzeroBank, Point, multiadd, multipack, poseidon::Sponge,
+    Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, multiadd, multipack,
+    poseidon::Sponge,
 };
 use setup::{
     BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo, alloc_point,
@@ -160,6 +161,7 @@ fn endoscalar_group_scale(
 #[library_benchmark(setup = setup_emu)]
 #[bench::endoscalar_extract((alloc_elem,))]
 fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
+    let elem = EndoscalarChallenge::from_element(&mut emu, elem).unwrap();
     black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
 }
 

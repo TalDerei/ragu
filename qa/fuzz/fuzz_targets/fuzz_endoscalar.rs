@@ -1,12 +1,13 @@
 //! Fuzz endoscalar extract, lift, group_scale, and point operations.
 //!
 //! Invariants:
-//! - `extract_endoscalar` never panics for any valid field element.
+//! - `extract_endoscalar` is only called after endoscalar challenge validation.
+//! - Out-of-range field elements model transcript rejection and are discarded.
 //! - `lift_endoscalar(extract_endoscalar(r))` is deterministic.
 //! - In-circuit lift agrees with native `lift_endoscalar`.
 //! - `group_scale(p)` agrees with `p * lift_endoscalar::<Fq>(endo)`.
 //! - Point endo/negate/conditional ops agree with native curve arithmetic.
-//! - Edge scalars (0, 1, -1, roots of unity) don't cause panics.
+//! - Edge scalars exercise both accepted and rejected challenge paths.
 
 #![no_main]
 
@@ -14,16 +15,16 @@ use arbitrary::Arbitrary;
 use ff::Field;
 use ff::PrimeField;
 use ff::WithSmallOrderMulGroup;
-use group::{Curve, Group};
 use group::CurveAffine as _;
-use pasta_curves::arithmetic::CurveAffine;
+use group::{Curve, Group};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
+use pasta_curves::arithmetic::CurveAffine;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, NonzeroBank, Point, Simulator, allocator::Standard,
-    extract_endoscalar, lift_endoscalar,
+    Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, Simulator,
+    allocator::Standard, extract_endoscalar, lift_endoscalar, validate_endoscalar_challenge,
 };
 
 use std::sync::LazyLock;
@@ -33,11 +34,11 @@ fn special_scalar(idx: u8) -> Fp {
     match idx % 10 {
         0 => Fp::ZERO,
         1 => Fp::ONE,
-        2 => -Fp::ONE,                     // p - 1
-        3 => Fp::TWO_INV,                  // (p + 1) / 2
-        4 => Fp::ROOT_OF_UNITY,            // 2-adic root of unity
+        2 => -Fp::ONE,          // p - 1
+        3 => Fp::TWO_INV,       // (p + 1) / 2
+        4 => Fp::ROOT_OF_UNITY, // 2-adic root of unity
         5 => Fp::MULTIPLICATIVE_GENERATOR,
-        6 => Fp::ZETA,                     // cube root of unity (endomorphism scalar)
+        6 => Fp::ZETA, // cube root of unity (endomorphism scalar)
         7 => -Fp::ZETA,
         8 => Fp::ROOT_OF_UNITY.square(),
         _ => Fp::from(u64::MAX),
@@ -110,6 +111,13 @@ fuzz_target!(|input: Input| {
         None => Fp::from(input.scalar_seed),
     };
 
+    // Model protocol rejection sampling: a challenge outside the canonical
+    // decomposition range would make the circuit validation fail, so the prover
+    // must retry the sampled transcript state instead of extracting it.
+    if validate_endoscalar_challenge(r).is_err() {
+        return;
+    }
+
     // Native extract/lift
     let extracted = extract_endoscalar::<Fp>(r);
     let lifted_native: Fp = lift_endoscalar(extracted);
@@ -141,113 +149,113 @@ fuzz_target!(|input: Input| {
         })
         .collect();
 
-    let result = Simulator::<Fp>::simulate((r, extracted, p, p2, cond_bools.clone()), |dr, witness| {
-        let allocator = &mut Standard::new();
-        let (r_val, _endo_val, p_val, p2_val, bool_vals) = witness.cast();
-        let r_elem = Element::alloc(dr, allocator, r_val)?;
-        let endo = Endoscalar::extract(dr, allocator, r_elem)?;
+    let result =
+        Simulator::<Fp>::simulate((r, extracted, p, p2, cond_bools.clone()), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let (r_val, _endo_val, p_val, p2_val, bool_vals) = witness.cast();
+            let r_elem = Element::alloc(dr, allocator, r_val)?;
+            let r_elem = EndoscalarChallenge::from_element(dr, r_elem)?;
+            let endo = Endoscalar::extract(dr, allocator, r_elem)?;
 
-        // Circuit lift must match native lift
-        let lifted_circuit = endo.lift(dr)?;
-        assert_eq!(
-            *lifted_circuit.value().take(),
-            lifted_native,
-            "circuit lift != native lift"
-        );
+            // Circuit lift must match native lift
+            let lifted_circuit = endo.lift(dr)?;
+            assert_eq!(
+                *lifted_circuit.value().take(),
+                lifted_native,
+                "circuit lift != native lift"
+            );
 
-        // Circuit group_scale must match native
-        let point = Point::alloc(dr, p_val)?;
-        let scaled = endo.group_scale(dr, &point)?;
-        assert_eq!(
-            scaled.value().take(),
-            expected_scaled,
-            "circuit group_scale != native scaling"
-        );
+            // Circuit group_scale must match native
+            let point = Point::alloc(dr, p_val)?;
+            let scaled = endo.group_scale(dr, &point)?;
+            assert_eq!(
+                scaled.value().take(),
+                expected_scaled,
+                "circuit group_scale != native scaling"
+            );
 
-        // --- Point operation tests ---
-        let mut current = Point::<'_, _, EpAffine>::constant(dr, p)?;
-        let mut current_native = p;
-        let mut bool_idx = 0;
+            // --- Point operation tests ---
+            let mut current = Point::<'_, _, EpAffine>::constant(dr, p)?;
+            let mut current_native = p;
+            let mut bool_idx = 0;
 
-        for op in &input.point_ops {
-            match op {
-                PointOp::Endo => {
-                    current = current.endo(dr);
-                    let coords = current_native.coordinates().unwrap();
-                    let new_x = *coords.x() * Fp::ZETA;
-                    current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
-                }
-                PointOp::Negate => {
-                    current = current.negate(dr);
-                    current_native = (-current_native.to_curve()).to_affine();
-                }
-                PointOp::Double => {
-                    match current.double(dr) {
+            for op in &input.point_ops {
+                match op {
+                    PointOp::Endo => {
+                        current = current.endo(dr);
+                        let coords = current_native.coordinates().unwrap();
+                        let new_x = *coords.x() * Fp::ZETA;
+                        current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
+                    }
+                    PointOp::Negate => {
+                        current = current.negate(dr);
+                        current_native = (-current_native.to_curve()).to_affine();
+                    }
+                    PointOp::Double => match current.double(dr) {
                         Ok(doubled) => {
                             current = doubled;
                             current_native = current_native.to_curve().double().to_affine();
                         }
                         Err(_) => break,
-                    }
-                }
-                PointOp::ConditionalEndo(cond) => {
-                    let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
-                    bool_idx += 1;
-                    match current.conditional_endo(dr, &b) {
-                        Ok(result) => {
-                            current = result;
-                            if *cond {
-                                let coords = current_native.coordinates().unwrap();
-                                let new_x = *coords.x() * Fp::ZETA;
-                                current_native =
-                                    EpAffine::from_xy(new_x, *coords.y()).unwrap();
+                    },
+                    PointOp::ConditionalEndo(cond) => {
+                        let b =
+                            Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
+                        bool_idx += 1;
+                        match current.conditional_endo(dr, &b) {
+                            Ok(result) => {
+                                current = result;
+                                if *cond {
+                                    let coords = current_native.coordinates().unwrap();
+                                    let new_x = *coords.x() * Fp::ZETA;
+                                    current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
+                                }
                             }
+                            Err(_) => break,
                         }
-                        Err(_) => break,
                     }
-                }
-                PointOp::ConditionalNegate(cond) => {
-                    let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
-                    bool_idx += 1;
-                    match current.conditional_negate(dr, &b) {
-                        Ok(result) => {
-                            current = result;
-                            if *cond {
-                                current_native =
-                                    (-current_native.to_curve()).to_affine();
+                    PointOp::ConditionalNegate(cond) => {
+                        let b =
+                            Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
+                        bool_idx += 1;
+                        match current.conditional_negate(dr, &b) {
+                            Ok(result) => {
+                                current = result;
+                                if *cond {
+                                    current_native = (-current_native.to_curve()).to_affine();
+                                }
                             }
+                            Err(_) => break,
                         }
-                        Err(_) => break,
                     }
                 }
             }
-        }
 
-        // After all ops, circuit point must match native
-        let circuit_point = current.value().take();
-        assert_eq!(
-            circuit_point, current_native,
-            "point ops: circuit != native after {:?}",
-            input.point_ops
-        );
-
-        // --- add_incomplete test (distinct points) ---
-        let q = Point::<'_, _, EpAffine>::alloc(dr, p2_val)?;
-        let p_coords = p.coordinates().unwrap();
-        let p2_coords = p2.coordinates().unwrap();
-        if p_coords.x() != p2_coords.x() {
-            let p_again = Point::<'_, _, EpAffine>::constant(dr, p)?;
-            let sum = NonzeroBank::scope(dr, |dr, bank| p_again.add_incomplete(dr, &q, bank))?;
-            let expected_sum: EpAffine = (p.to_curve() + p2.to_curve()).to_affine();
+            // After all ops, circuit point must match native
+            let circuit_point = current.value().take();
             assert_eq!(
-                sum.value().take(),
-                expected_sum,
-                "add_incomplete != native addition"
+                circuit_point, current_native,
+                "point ops: circuit != native after {:?}",
+                input.point_ops
             );
-        }
 
-        Ok(())
-    });
+            // --- add_incomplete test (distinct points) ---
+            let q = Point::<'_, _, EpAffine>::alloc(dr, p2_val)?;
+            let p_coords = p.coordinates().unwrap();
+            let p2_coords = p2.coordinates().unwrap();
+            if p_coords.x() != p2_coords.x() {
+                let p_again = Point::<'_, _, EpAffine>::constant(dr, p)?;
+                let sum = NonzeroBank::scope(dr, |dr, bank| p_again.add_incomplete(dr, &q, bank))?;
+                let expected_sum: EpAffine = (p.to_curve() + p2.to_curve()).to_affine();
+                assert_eq!(
+                    sum.value().take(),
+                    expected_sum,
+                    "add_incomplete != native addition"
+                );
+            }
+
+            Ok(())
+        });
 
     assert!(
         result.is_ok(),

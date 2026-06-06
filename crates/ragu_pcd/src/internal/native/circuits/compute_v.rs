@@ -59,7 +59,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::Standard};
+use ragu_primitives::{Element, Endoscalar, EndoscalarChallenge, GadgetExt, allocator::Standard};
 
 use super::super::{
     InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
@@ -165,6 +165,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
         // spare D wire. Donating them to the pool lets subsequent reads
         // reuse those wires instead of allocating fresh gates.
         let pre_beta = unified_output.pre_beta.read(dr, allocator)?;
+        let pre_beta = EndoscalarChallenge::from_element(dr, pre_beta)?;
         let beta_endo = Endoscalar::extract(dr, allocator, pre_beta)?;
 
         // Retrieve Fiat-Shamir challenges from the unified instance.

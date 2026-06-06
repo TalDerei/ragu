@@ -20,16 +20,100 @@ use ragu_arithmetic::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
-    gadgets::Gadget,
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
+    routines::{Prediction, Routine},
 };
 
 use crate::{
-    Boolean, Element, NonzeroBank, Point,
+    Boolean, Element, NonzeroBank, Point, Simulator,
     boolean::decompose,
     promotion::Demoted,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
+
+/// A transcript challenge that has been pre-validated for endoscalar extraction.
+///
+/// This type represents the protocol precondition required by
+/// [`Endoscalar::extract`]: the underlying element's canonical representative is
+/// below `2^CAPACITY`, so it admits a canonical `CAPACITY`-bit decomposition
+/// without a separate in-circuit canonicity check.
+#[derive(Gadget)]
+pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
+    #[ragu(gadget)]
+    elem: Element<'dr, D>,
+}
+
+impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
+    /// Validates an element as an endoscalar challenge.
+    ///
+    /// The validation is performed through a [`Routine`], so proving drivers
+    /// emulate the decomposition before handing callers this typed challenge.
+    /// If the challenge is out of range, callers can retry the randomness that
+    /// produced it before attempting to build the dependent circuit state.
+    pub fn from_element(dr: &mut D, elem: Element<'dr, D>) -> Result<Self>
+    where
+        D::F: PrimeField,
+    {
+        dr.routine(ValidateEndoscalarChallenge, elem)
+    }
+
+    /// Returns the underlying field element.
+    pub fn element(&self) -> &Element<'dr, D> {
+        &self.elem
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ValidateEndoscalarChallenge;
+
+impl<F: PrimeField> Routine<F> for ValidateEndoscalarChallenge {
+    type Input = Kind![F; Element<'_, _>];
+    type Output = Kind![F; EndoscalarChallenge<'_, _>];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = F>>(
+        &self,
+        _dr: &mut D,
+        input: Element<'dr, D>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<EndoscalarChallenge<'dr, D>> {
+        Ok(EndoscalarChallenge { elem: input })
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = F, Wire = ()>>(
+        &self,
+        _dr: &mut D,
+        input: &Element<'dr, D>,
+    ) -> Result<Prediction<EndoscalarChallenge<'dr, D>, DriverValue<D, Self::Aux<'dr>>>> {
+        let value = input.value();
+        let aux = D::try_just(|| validate_endoscalar_challenge(**value.snag()))?;
+
+        Ok(Prediction::Known(
+            EndoscalarChallenge {
+                elem: input.clone(),
+            },
+            aux,
+        ))
+    }
+}
+
+/// Validates the native precondition for an endoscalar challenge.
+///
+/// This runs the same canonical decomposition used by
+/// [`EndoscalarChallenge::from_element`] under the simulator. It succeeds
+/// exactly when `value` is in the range admitted by [`Endoscalar::extract`],
+/// and is intended as the native rejection-sampling hook for transcript
+/// challenges.
+pub fn validate_endoscalar_challenge<F: PrimeField>(value: F) -> Result<()> {
+    Simulator::simulate(value, |dr, value| {
+        let elem = Element::alloc(dr, &mut (), value)?;
+        decompose(dr, &mut (), &elem)?;
+        Ok(())
+    })?;
+
+    Ok(())
+}
 
 /// Represents a challenge used to scale elliptic curve points.
 #[derive(Gadget)]
@@ -72,12 +156,12 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         })
     }
 
-    /// Extracts an endoscalar from a random element in the field.
+    /// Extracts an endoscalar from a validated challenge.
     ///
     /// The endoscalar is the low 128 bits of the element's canonical bit
     /// decomposition. The element is decomposed in full, so those 128 bits are
     /// uniquely determined by `elem` and the extraction is sound for every
-    /// input.
+    /// accepted input.
     ///
     /// The decomposition only admits elements below `2^CAPACITY`, so for the
     /// negligible (~2^-129) fraction of larger elements the constraint is
@@ -86,11 +170,12 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
-        elem: Element<'dr, D>,
+        challenge: EndoscalarChallenge<'dr, D>,
     ) -> Result<Self>
     where
         D::F: PrimeField,
     {
+        let elem = challenge.elem;
         let bits = decompose(dr, allocator, &elem)?;
 
         let value = elem.value().map(|v| {
@@ -215,7 +300,7 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
     acc
 }
 
-/// Extracts an endoscalar from a random field element.
+/// Extracts an endoscalar from a validated field element.
 ///
 /// Returns the low 128 bits of the element's canonical bit decomposition. This
 /// is the native counterpart to [`Endoscalar::extract`].
@@ -223,14 +308,20 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 /// This helper is infallible under the protocol precondition that `value` has
 /// already passed rejection sampling (`value < 2^CAPACITY`). Callers must enforce
 /// that precondition before calling this function; out-of-range values make the
-/// corresponding in-circuit [`Endoscalar::extract`] constraint unsatisfiable.
+/// corresponding in-circuit [`EndoscalarChallenge`] validation fail before
+/// [`Endoscalar::extract`] is reachable.
+///
+/// # Panics
+///
+/// Panics if `value` has not passed endoscalar challenge validation.
 pub fn extract_endoscalar<F: PrimeField>(value: F) -> u128 {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
-        let endo = Endoscalar::extract(dr, &mut (), elem)?;
+        let challenge = EndoscalarChallenge::from_element(dr, elem)?;
+        let endo = Endoscalar::extract(dr, &mut (), challenge)?;
         Ok(*endo.value.snag())
     })
-    .expect("wireless emulation should not fail")
+    .expect("endoscalar challenge should satisfy value < 2^CAPACITY")
 }
 
 #[cfg(test)]
@@ -244,7 +335,7 @@ mod tests {
     use ragu_core::Result;
     use ragu_pasta::{EpAffine, Fp};
 
-    use super::{Element, Endoscalar, Maybe, Point};
+    use super::{Element, Endoscalar, EndoscalarChallenge, Maybe, Point};
     use crate::{Simulator, allocator::Standard};
 
     pub struct EndoscalarTest {
@@ -301,7 +392,12 @@ mod tests {
     #[test]
     fn test_extract() -> Result<()> {
         let p = EpAffine::generator();
-        let r = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let r = loop {
+            let r = Fp::random(&mut ragu_arithmetic::rand::rng());
+            if super::validate_endoscalar_challenge(r).is_ok() {
+                break r;
+            }
+        };
         let extracted = extract(r).value;
 
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
@@ -309,6 +405,7 @@ mod tests {
             let p = Point::alloc(dr, p)?;
             let allocator = &mut Standard::new();
             let r = Element::alloc(dr, allocator, r)?;
+            let r = EndoscalarChallenge::from_element(dr, r)?;
             let my_extracted = Endoscalar::extract(dr, &mut (), r)?;
             let allocated = Endoscalar::alloc(dr, extracted)?;
 
@@ -322,6 +419,19 @@ mod tests {
         })?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_endoscalar_challenge_rejects_out_of_range() {
+        assert!(super::validate_endoscalar_challenge(-Fp::ONE).is_err());
+
+        let result = Simulator::<Fp>::simulate(-Fp::ONE, |dr, witness| {
+            let elem = Element::alloc(dr, &mut (), witness)?;
+            EndoscalarChallenge::from_element(dr, elem)?;
+            Ok(())
+        });
+
+        assert!(result.is_err());
     }
 
     #[test]
