@@ -340,6 +340,73 @@ fn sxy_rejects_too_short_floor_plan() {
     ));
 }
 
+/// `sy(0)` returns the plan-independent closed form `s(X, 0) = d[0] = 1` via a
+/// fast path that skips the per-segment checks `sx`/`sxy` run, so it accepts a
+/// count-mismatched plan they reject yet yields the same correct result.
+#[test]
+fn sy_at_zero_is_plan_independent() {
+    let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+    assert_eq!(
+        plan.len(),
+        1,
+        "SquareCircuit must produce a single root segment"
+    );
+
+    plan[0].num_constraints += 1;
+    floor_planner::validate(&plan).expect("inflated single-segment plan still passes validate");
+
+    assert!(matches!(
+        obj.sxy(Fp::ZERO, Fp::ZERO, &plan),
+        Err(ragu_core::Error::MalformedFloorPlan { .. })
+    ));
+    assert!(matches!(
+        obj.sx(Fp::ZERO, &plan),
+        Err(ragu_core::Error::MalformedFloorPlan { .. })
+    ));
+
+    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+    let sX0 = obj.sy(Fp::ZERO, &plan).expect("sy(0) is plan-independent");
+    let honest = floor_planner::floor_plan(obj.segment_records());
+    assert_eq!(
+        sX0.eval(x),
+        obj.sy(Fp::ZERO, &honest).unwrap().eval(x),
+        "sy(0) must equal the closed form regardless of the (count-mismatched) plan"
+    );
+}
+
+/// `sy::eval` sizes the wiring-view allocation from the plan's gate total, so it
+/// must reject `total_gates > R::n()` before the resize (mirroring
+/// `Trace::assemble`); otherwise a `validate`-passing oversized plan drives an
+/// unbounded allocation.
+#[test]
+fn sy_rejects_oversized_gate_plan() {
+    use crate::polynomials::Rank;
+
+    let circuit = SquareCircuit { times: 1 };
+    let obj = into_wiring_object::<_, _, TestRank>(circuit.clone()).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+    assert_eq!(
+        plan.len(),
+        1,
+        "SquareCircuit must produce a single root segment"
+    );
+
+    let oversized = TestRank::n() + 1000;
+    plan[0].num_gates = oversized;
+    floor_planner::validate(&plan).expect("oversized single-segment plan still passes validate");
+
+    assert!(obj.sx(Fp::from(5u64), &plan).is_err());
+
+    let sy_result = obj.sy(Fp::from(5u64), &plan);
+    assert!(
+        matches!(sy_result, Err(ragu_core::Error::GateBoundExceeded { .. })),
+        "sy must reject total_gates > R::n() with a pre-allocation \
+         GateBoundExceeded guard, but returned {:?}",
+        sy_result.map(|_| "Ok(poly)")
+    );
+}
+
 #[test]
 fn test_element() {
     let mut simulator = Simulator::<Fp>::new();
