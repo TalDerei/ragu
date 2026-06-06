@@ -664,23 +664,24 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
         });
     }
 
+    let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
+
+    // Reject plans that demand more gates than the rank allows *before* sizing
+    // the wiring-view allocation from them, and before any value-independent
+    // fast path returns. `validate` only checks that offsets are contiguous
+    // prefix sums, not that the total fits the rank, so without this guard an
+    // over-large (but internally consistent) plan would drive the `resize`
+    // below to an unbounded allocation. Mirrors the equivalent check in
+    // [`Trace::assemble`](crate::trace::Trace::assemble).
+    if total_gates > R::n() {
+        return Err(Error::GateBoundExceeded { limit: R::n() });
+    }
+
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
         // wire coefficient (d[0] at monomial x^0).
         view.d.push(F::ONE);
         return Ok(view.build());
-    }
-
-    let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
-
-    // Reject plans that demand more gates than the rank allows *before* sizing
-    // the wiring-view allocation from them. `validate` only checks that offsets
-    // are contiguous prefix sums, not that the total fits the rank, so without
-    // this guard an over-large (but internally consistent) plan would drive the
-    // `resize` below to an unbounded allocation. Mirrors the equivalent check
-    // in [`Trace::assemble`](crate::trace::Trace::assemble).
-    if total_gates > R::n() {
-        return Err(Error::GateBoundExceeded { limit: R::n() });
     }
 
     {
