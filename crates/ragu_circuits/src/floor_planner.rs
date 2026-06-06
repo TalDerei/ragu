@@ -134,13 +134,20 @@ pub fn floor_plan(segment_records: &[SegmentRecord]) -> Vec<ConstraintSegment> {
             num_gates: record.num_gates(),
             num_constraints: record.num_constraints(),
         });
+        // Plain addition: per-segment counts are bounded by `R::n()` /
+        // `R::num_coeffs()` (enforced in `into_wiring_object`), so these prefix
+        // sums cannot overflow. `validate` below still uses `checked_add` as a
+        // defensive boundary for externally-supplied plans.
         gate_start += record.num_gates();
         constraint_start += record.num_constraints();
     }
 
-    if !result.is_empty() {
-        validate(&result).expect("floor planner must produce a valid floor plan");
-    }
+    // Every circuit has a root segment, so `segment_records` (and therefore
+    // `result`) is always non-empty; an empty plan is a caller bug. The
+    // prefix-sum construction above is valid by construction, so this is a
+    // defensive self-check that also guards future floor planners that reorder
+    // or pack segments.
+    validate(&result).expect("floor planner must produce a valid floor plan");
 
     result
 }

@@ -274,16 +274,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         let output = exec_result?;
 
         // Verify this routine consumed exactly the expected constraints.
-        if child_scope.gates != seg.gate_start + seg.num_gates {
-            return Err(Error::MalformedFloorPlan {
-                reason: "routine gate count must match floor plan",
-            });
-        }
-        if child_scope.constraints != seg.constraint_start + seg.num_constraints {
-            return Err(Error::MalformedFloorPlan {
-                reason: "routine constraint count must match floor plan",
-            });
-        }
+        super::verify_routine_consumed(child_scope.gates, child_scope.constraints, seg)?;
 
         // Position the routine's local Horner result at its absolute Y offset,
         // then combine with any nested child contributions.
@@ -356,21 +347,12 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     crate::raw::orchestrate(&mut evaluator, circuit, Empty)?;
 
     // Verify all floor plan segments were consumed and counts match.
-    if evaluator.current_routine + 1 != evaluator.floor_plan.len() {
-        return Err(Error::MalformedFloorPlan {
-            reason: "floor plan routine count must match synthesis",
-        });
-    }
-    if evaluator.scope.gates != evaluator.floor_plan[0].num_gates {
-        return Err(Error::MalformedFloorPlan {
-            reason: "root gate count must match floor plan",
-        });
-    }
-    if evaluator.scope.constraints != evaluator.floor_plan[0].num_constraints {
-        return Err(Error::MalformedFloorPlan {
-            reason: "root constraint count must match floor plan",
-        });
-    }
+    super::verify_root_consumed(
+        evaluator.scope.gates,
+        evaluator.scope.constraints,
+        evaluator.current_routine,
+        evaluator.floor_plan,
+    )?;
 
     // The root's local Horner result plus any child contributions.
     Ok(evaluator.scope.result + evaluator.scope.sum)

@@ -296,16 +296,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             let result = routine.execute(this, input, aux)?;
 
             // Verify this routine consumed exactly the expected constraints.
-            if this.scope.gates != seg.gate_start + seg.num_gates {
-                return Err(Error::MalformedFloorPlan {
-                    reason: "routine gate count must match floor plan",
-                });
-            }
-            if this.scope.constraints != seg.constraint_start + seg.num_constraints {
-                return Err(Error::MalformedFloorPlan {
-                    reason: "routine constraint count must match floor plan",
-                });
-            }
+            super::verify_routine_consumed(this.scope.gates, this.scope.constraints, seg)?;
 
             Ok(result)
         })
@@ -375,21 +366,12 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     crate::raw::orchestrate(&mut evaluator, circuit, Empty)?;
 
     // Verify all floor plan segments were consumed and counts match.
-    if evaluator.current_routine + 1 != evaluator.floor_plan.len() {
-        return Err(Error::MalformedFloorPlan {
-            reason: "floor plan routine count must match synthesis",
-        });
-    }
-    if evaluator.scope.gates != evaluator.floor_plan[0].num_gates {
-        return Err(Error::MalformedFloorPlan {
-            reason: "root gate count must match floor plan",
-        });
-    }
-    if evaluator.scope.constraints != evaluator.floor_plan[0].num_constraints {
-        return Err(Error::MalformedFloorPlan {
-            reason: "root constraint count must match floor plan",
-        });
-    }
+    super::verify_root_consumed(
+        evaluator.scope.gates,
+        evaluator.scope.constraints,
+        evaluator.current_routine,
+        evaluator.floor_plan,
+    )?;
 
     // Reverse to canonical coefficient order within each routine's constraint
     // range.

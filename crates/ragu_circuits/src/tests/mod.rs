@@ -20,6 +20,7 @@ use crate::{
 };
 
 /// Dummy circuit.
+#[derive(Clone)]
 pub struct SquareCircuit {
     pub times: usize,
 }
@@ -83,7 +84,7 @@ fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
 #[test]
 fn sxy_rejects_malformed_root_offset() {
     let circuit = SquareCircuit { times: 1 };
-    let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
+    let obj = into_wiring_object::<_, _, TestRank>(circuit.clone()).unwrap();
     let mut plan = floor_planner::floor_plan(obj.segment_records());
     plan[0].constraint_start = 1;
 
@@ -110,7 +111,11 @@ fn sxy_rejects_count_mismatch_that_passes_validate() {
     let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
     let mut plan = floor_planner::floor_plan(obj.segment_records());
 
-    assert_eq!(plan.len(), 1, "SquareCircuit must produce a single root segment");
+    assert_eq!(
+        plan.len(),
+        1,
+        "SquareCircuit must produce a single root segment"
+    );
     plan[0].num_constraints += 1;
     floor_planner::validate(&plan).expect("inflated single-segment plan still passes validate");
 

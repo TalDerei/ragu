@@ -89,6 +89,64 @@
 //! [`floor_plan`]: crate::floor_planner::floor_plan
 //! [wiring polynomials]: http://TODO
 
+use ragu_core::{Error, Result};
+
+use crate::floor_planner::ConstraintSegment;
+
 pub mod sx;
 pub mod sxy;
 pub mod sy;
+
+/// Verifies that a routine consumed exactly the gates and constraints reserved
+/// by its floor-plan segment.
+///
+/// Shared by the [`sx`], [`sxy`], and [`sy`] evaluators, which differ only in
+/// where the realized counts come from (the live scope for `sx`/`sy`, the
+/// restored child scope for `sxy`).
+fn verify_routine_consumed(
+    gates: usize,
+    constraints: usize,
+    seg: &ConstraintSegment,
+) -> Result<()> {
+    if gates != seg.gate_start + seg.num_gates {
+        return Err(Error::MalformedFloorPlan {
+            reason: "routine gate count must match floor plan",
+        });
+    }
+    if constraints != seg.constraint_start + seg.num_constraints {
+        return Err(Error::MalformedFloorPlan {
+            reason: "routine constraint count must match floor plan",
+        });
+    }
+    Ok(())
+}
+
+/// Verifies that synthesis consumed every floor-plan segment and that the root
+/// segment's gate and constraint counts match the realized root scope.
+///
+/// `floor_plan` must be non-empty; every evaluator runs
+/// [`floor_planner::validate`](crate::floor_planner::validate) first, which
+/// guarantees a root segment at index 0.
+fn verify_root_consumed(
+    root_gates: usize,
+    root_constraints: usize,
+    current_routine: usize,
+    floor_plan: &[ConstraintSegment],
+) -> Result<()> {
+    if current_routine + 1 != floor_plan.len() {
+        return Err(Error::MalformedFloorPlan {
+            reason: "floor plan routine count must match synthesis",
+        });
+    }
+    if root_gates != floor_plan[0].num_gates {
+        return Err(Error::MalformedFloorPlan {
+            reason: "root gate count must match floor plan",
+        });
+    }
+    if root_constraints != floor_plan[0].num_constraints {
+        return Err(Error::MalformedFloorPlan {
+            reason: "root constraint count must match floor plan",
+        });
+    }
+    Ok(())
+}
