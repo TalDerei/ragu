@@ -5,30 +5,32 @@
 //! $f(u)$ is derived from the aforementioned evaluations.
 
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
-use ragu_circuits::{polynomials::Rank, staging::StageExt};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    staging::StageExt,
+};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 
 use super::{NativeSPrime, RegistryWy};
-use crate::{Application, Proof, internal::native, proof::ProofBuilder};
+use crate::{Application, Proof, internal::native};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_eval<'dr, D, RNG: CryptoRngCore>(
+    pub(super) fn compute_eval_witness<'dr, D>(
         &self,
-        rng: &mut RNG,
         u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
-    ) -> Result<native::stages::eval::Witness<C::CircuitField>>
+        builder: &crate::proof::ProofBuilder<'_, C, R>,
+    ) -> native::stages::eval::Witness<C::CircuitField>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
         let u = *u.value().take();
 
-        let eval_witness = native::stages::eval::Witness {
+        native::stages::eval::Witness {
             left: native::stages::eval::ChildEvaluationsWitness::from_proof(left, u),
             right: native::stages::eval::ChildEvaluationsWitness::from_proof(right, u),
             current: native::stages::eval::CurrentStepWitness {
@@ -43,14 +45,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 b_poly: builder.native_b_poly().eval(u),
                 registry_xy: builder.native_registry_xy_poly().eval(u),
             },
-        };
-        let rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
+        }
+    }
+
+    pub(super) fn sample_eval_rx<RNG: CryptoRngCore>(
+        &self,
+        rng: &mut RNG,
+        eval_witness: &native::stages::eval::Witness<C::CircuitField>,
+    ) -> Result<sparse::Polynomial<C::CircuitField, R>> {
+        native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
             C::CircuitField::random(&mut *rng),
-            &eval_witness,
-        )?;
-
-        builder.set_native_eval_rx(rx);
-
-        Ok(eval_witness)
+            eval_witness,
+        )
     }
 }

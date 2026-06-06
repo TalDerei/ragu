@@ -566,6 +566,20 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         { native_eval: native_eval_commitment() }
     );
 
+    /// Computes the bridge eval commitment for a candidate native eval
+    /// commitment without populating the builder's cached eval cells.
+    pub(crate) fn candidate_bridge_eval_commitment(
+        &self,
+        native_eval: C::HostCurve,
+    ) -> Result<C::NestedCurve> {
+        let rx = nested::stages::eval::Stage::<C::HostCurve, R>::rx(
+            self.bridge_alpha_power(nested::RxIndex::BridgeEval),
+            &nested::stages::eval::Witness { native_eval },
+        )?;
+
+        Ok(rx.commit_to_affine(C::nested_generators(self.params)))
+    }
+
     setter!(
         set_nested_endoscaling_step_rxs,
         nested_endoscaling_step_rxs,

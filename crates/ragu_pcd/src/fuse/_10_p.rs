@@ -17,9 +17,7 @@ use core::ops::AddAssign;
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{
-    Element, extract_endoscalar, lift_endoscalar, validate_endoscalar_challenge,
-};
+use ragu_primitives::{EndoscalarChallenge, extract_endoscalar, lift_endoscalar};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
 use crate::{
@@ -53,7 +51,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     pub(super) fn compute_p<'dr, D, RNG: ragu_arithmetic::CryptoRngCore>(
         &self,
         rng: &mut RNG,
-        pre_beta: &Element<'dr, D>,
+        pre_beta: &EndoscalarChallenge<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
@@ -75,13 +73,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // We accumulate polynomials while collecting MSM terms for the
         // commitment computation.
 
-        // Extract endoscalar from pre_beta and compute effective beta
-        let pre_beta_value = *pre_beta.value().take();
-        // TODO: When fuse rejection sampling is wired in, retry by resampling
-        // the eval-stage commitment randomness if this validation fails. That
-        // keeps the transcript challenge below 2^CAPACITY before the native
-        // extractor and the in-circuit EndoscalarChallenge validation consume it.
-        validate_endoscalar_challenge(pre_beta_value)?;
+        // Extract endoscalar from pre_beta and compute effective beta.
+        let pre_beta_value = *pre_beta.element().value().take();
         let beta_endo = extract_endoscalar(pre_beta_value);
         let effective_beta = lift_endoscalar(beta_endo);
 

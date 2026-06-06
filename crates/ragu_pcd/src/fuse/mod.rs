@@ -20,7 +20,7 @@ use claims::FuseProofSource;
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
+use ragu_primitives::{EndoscalarChallenge, GadgetExt, Point, vec::CollectFixed};
 
 use crate::{
     Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
@@ -174,18 +174,28 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         f_commitment.write(&mut dr, &mut transcript)?;
         let u = transcript.challenge(&mut dr)?;
 
-        let eval_witness = self.compute_eval(
-            rng,
-            &u,
-            &left,
-            &right,
-            &native_s_prime,
-            &registry_wy,
-            &mut builder,
-        )?;
-        let eval_commitment = Point::constant(&mut dr, builder.bridge_eval_commitment()?)?;
-        eval_commitment.write(&mut dr, &mut transcript)?;
-        let pre_beta = transcript.challenge(&mut dr)?;
+        let eval_witness =
+            self.compute_eval_witness(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
+
+        // Rejection-sample only the eval-stage blinding. This is the final
+        // commitment before `pre_beta`, so changing it gives a fresh challenge
+        // without rebuilding the preceding fuse state.
+        let pre_beta = loop {
+            let eval_rx = self.sample_eval_rx(rng, &eval_witness)?;
+            let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
+            let bridge_eval_commitment =
+                builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
+
+            let mut candidate_transcript = transcript.clone();
+            let eval_commitment = Point::constant(&mut dr, bridge_eval_commitment)?;
+            eval_commitment.write(&mut dr, &mut candidate_transcript)?;
+            let pre_beta = candidate_transcript.challenge(&mut dr)?;
+
+            if let Ok(pre_beta) = EndoscalarChallenge::from_element(&mut dr, pre_beta) {
+                builder.set_native_eval_rx(eval_rx);
+                break pre_beta;
+            }
+        };
 
         self.compute_p(
             rng,
@@ -209,7 +219,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         builder.set_x(*x.value().take());
         builder.set_alpha(*alpha.value().take());
         builder.set_u(*u.value().take());
-        builder.set_pre_beta(*pre_beta.value().take());
+        builder.set_pre_beta(*pre_beta.element().value().take());
 
         // Store children's stage rx polynomials for copying circuit claims.
         builder.set_child_left_stage_rx(left.as_child_stage_rx());
