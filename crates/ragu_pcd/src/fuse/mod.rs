@@ -183,6 +183,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let eval_witness =
             self.compute_eval_witness(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
 
+        // `pre_beta` is the terminal fuse challenge — nothing after this point
+        // squeezes or absorbs — so the transcript advanced past the eval
+        // commitment is intentionally dropped rather than threaded onward.
         let (pre_beta, eval_rx, _accepted_transcript) =
             self.sample_pre_beta(rng, &mut dr, transcript, &eval_witness, &builder)?;
 

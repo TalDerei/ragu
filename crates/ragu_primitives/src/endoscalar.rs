@@ -312,6 +312,12 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// decomposition. The element is decomposed in full, so those 128 bits are
     /// uniquely determined by it.
     ///
+    /// This is the call that emits the challenge's binding in-circuit range
+    /// constraint: decomposing the element pins its `CAPACITY`-bit
+    /// representation, and because `CAPACITY` bits cannot represent a value
+    /// `>= 2^CAPACITY` this also constrains the challenge in range. An
+    /// [`EndoscalarChallenge`] carries no such constraint until consumed here.
+    ///
     /// # Completeness
     ///
     /// The decomposition is satisfiable only for values below `2^CAPACITY`.
