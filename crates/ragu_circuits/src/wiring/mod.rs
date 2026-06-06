@@ -91,7 +91,7 @@
 
 use ragu_core::{Error, Result};
 
-use crate::floor_planner::ConstraintSegment;
+use crate::{floor_planner::ConstraintSegment, polynomials::Rank};
 
 pub mod sx;
 pub mod sxy;
@@ -146,6 +146,26 @@ fn verify_root_consumed(
     if root_constraints != floor_plan[0].num_constraints {
         return Err(Error::MalformedFloorPlan {
             reason: "root constraint count must match floor plan",
+        });
+    }
+    Ok(())
+}
+
+/// Verifies that a validated floor plan fits within the rank's gate and
+/// constraint limits.
+///
+/// The final constraint slot is reserved for the registry key, so circuit floor
+/// plans must use strictly fewer than [`Rank::num_coeffs`] constraints.
+fn verify_rank_bounds<R: Rank>(floor_plan: &[ConstraintSegment]) -> Result<()> {
+    let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
+    let total_constraints: usize = floor_plan.iter().map(|s| s.num_constraints).sum();
+
+    if total_gates > R::n() {
+        return Err(Error::GateBoundExceeded { limit: R::n() });
+    }
+    if total_constraints >= R::num_coeffs() {
+        return Err(Error::ConstraintBoundExceeded {
+            limit: R::num_coeffs() - 1,
         });
     }
     Ok(())

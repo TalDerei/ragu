@@ -75,6 +75,13 @@ pub struct ConstraintSegment {
     pub(crate) num_constraints: usize,
 }
 
+/// Checks that a floor plan has a root segment at the origin and that gate and
+/// constraint ranges are contiguous DFS-order prefix sums.
+///
+/// Every evaluator and [`Trace::assemble`](crate::trace::Trace::assemble) calls
+/// this before trusting any offset, returning [`Error::MalformedFloorPlan`] on
+/// violation. It does not check rank-dependent bounds (e.g. total gates against
+/// `R::n()`); callers that allocate from the plan guard those separately.
 pub(crate) fn validate(floor_plan: &[ConstraintSegment]) -> Result<()> {
     if floor_plan.is_empty() {
         return Err(Error::MalformedFloorPlan {

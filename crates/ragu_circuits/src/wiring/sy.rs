@@ -664,20 +664,10 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
         });
     }
 
-    let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
-    let total_constraints: usize = floor_plan.iter().map(|s| s.num_constraints).sum();
-
     // Reject plans that exceed rank limits before sizing allocations, and
     // before any value-independent fast path returns. `validate` only checks
     // that offsets are contiguous prefix sums, not that the totals fit the rank.
-    if total_gates > R::n() {
-        return Err(Error::GateBoundExceeded { limit: R::n() });
-    }
-    if total_constraints >= R::num_coeffs() {
-        return Err(Error::ConstraintBoundExceeded {
-            limit: R::num_coeffs() - 1,
-        });
-    }
+    super::verify_rank_bounds::<R>(floor_plan)?;
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
@@ -698,6 +688,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
         });
 
         // Pre-allocate wiring view slots for all gates.
+        let total_gates: usize = floor_plan.iter().map(|s| s.num_gates).sum();
         {
             let mut table = virtual_table.borrow_mut();
             table.a.resize(total_gates, F::ZERO);
