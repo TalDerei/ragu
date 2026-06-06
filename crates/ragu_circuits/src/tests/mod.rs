@@ -407,6 +407,36 @@ fn sy_rejects_oversized_gate_plan() {
     );
 }
 
+/// `sy::eval` must also reject floor plans whose claimed constraint total
+/// occupies the registry-key slot, including before the `y == 0` fast path.
+#[test]
+fn sy_rejects_oversized_constraint_plan() {
+    let obj = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 1 }).unwrap();
+    let mut plan = floor_planner::floor_plan(obj.segment_records());
+    assert_eq!(
+        plan.len(),
+        1,
+        "SquareCircuit must produce a single root segment"
+    );
+
+    plan[0].num_constraints = TestRank::num_coeffs();
+    floor_planner::validate(&plan)
+        .expect("oversized single-segment constraint plan still passes validate");
+
+    for y in [Fp::from(5u64), Fp::ZERO] {
+        let sy_result = obj.sy(y, &plan);
+        assert!(
+            matches!(
+                sy_result,
+                Err(ragu_core::Error::ConstraintBoundExceeded { .. })
+            ),
+            "sy({y:?}) must reject total_constraints >= R::num_coeffs(), \
+             but returned {:?}",
+            sy_result.map(|_| "Ok(poly)")
+        );
+    }
+}
+
 #[test]
 fn test_element() {
     let mut simulator = Simulator::<Fp>::new();
