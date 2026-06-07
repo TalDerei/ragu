@@ -4,20 +4,13 @@
 //! of every element that was also queried in the `query` stage. The evaluation
 //! $f(u)$ is derived from the aforementioned evaluations.
 
-use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
-use ragu_circuits::{
-    polynomials::{Rank, sparse},
-    staging::StageExt,
-};
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{Element, EndoscalarChallenge, GadgetExt, Point};
+use ragu_arithmetic::Cycle;
+use ragu_circuits::polynomials::Rank;
+use ragu_core::{drivers::Driver, maybe::Maybe};
+use ragu_primitives::Element;
 
-use super::{NativeFuseEmulator, NativeSPrime, RegistryWy};
-use crate::{
-    Application, Proof,
-    internal::{native, transcript::Transcript},
-    proof::ProofBuilder,
-};
+use super::{NativeSPrime, RegistryWy};
+use crate::{Application, Proof, internal::native, proof::ProofBuilder};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_eval<'dr, D>(
@@ -50,57 +43,5 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_xy: builder.native_registry_xy_poly().eval(u),
             },
         }
-    }
-
-    /// Rejection-samples the eval-stage blinding until the derived `pre_beta`
-    /// is an in-range endoscalar challenge.
-    ///
-    /// This consumes the transcript prefix immediately before the eval
-    /// commitment. Each attempt clones that prefix, absorbs a candidate eval
-    /// commitment, and squeezes a candidate `pre_beta`; on acceptance, the
-    /// matching `eval_rx` and advanced transcript are returned together. The old
-    /// prefix is therefore unavailable to callers after sampling, so subsequent
-    /// transcript use must explicitly continue from the accepted transcript.
-    pub(super) fn sample_pre_beta<'dr, RNG>(
-        &self,
-        rng: &mut RNG,
-        dr: &mut NativeFuseEmulator<C>,
-        transcript_prefix: Transcript<'dr, NativeFuseEmulator<C>, C::CircuitPoseidon>,
-        eval_witness: &native::stages::eval::Witness<C::CircuitField>,
-        builder: &ProofBuilder<'_, C, R>,
-    ) -> Result<(
-        EndoscalarChallenge<'dr, NativeFuseEmulator<C>>,
-        sparse::Polynomial<C::CircuitField, R>,
-        Transcript<'dr, NativeFuseEmulator<C>, C::CircuitPoseidon>,
-    )>
-    where
-        RNG: CryptoRngCore,
-    {
-        // Rejection-sample only the eval-stage blinding. This is the final
-        // commitment before `pre_beta`, so changing it gives a fresh challenge
-        // without rebuilding the preceding fuse state. The grind lives inside
-        // `EndoscalarChallenge::sample`, which (re)derives `pre_beta` from each
-        // fresh blinding and retries until it lands in range.
-        let (pre_beta, (eval_rx, accepted_transcript)) = EndoscalarChallenge::sample(dr, |dr| {
-            // Fresh eval-stage blinding each attempt: this draw is the
-            // per-attempt entropy that makes `pre_beta` independent across
-            // retries.
-            let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
-                C::CircuitField::random(&mut *rng),
-                eval_witness,
-            )?;
-            let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
-            let bridge_eval_commitment =
-                builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
-
-            let mut candidate_transcript = transcript_prefix.clone();
-            let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
-            eval_commitment.write(dr, &mut candidate_transcript)?;
-            let pre_beta = candidate_transcript.challenge(dr)?;
-
-            Ok((pre_beta, (eval_rx, candidate_transcript)))
-        })?;
-
-        Ok((pre_beta, eval_rx, accepted_transcript))
     }
 }

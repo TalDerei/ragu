@@ -18,16 +18,22 @@ pub(crate) mod claims;
 
 use claims::FuseProofSource;
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
-use ragu_circuits::polynomials::{Rank, sparse};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    staging::StageExt,
+};
 use ragu_core::{
     Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe},
 };
-use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
+use ragu_primitives::{EndoscalarChallenge, GadgetExt, Point, vec::CollectFixed};
 
 use crate::{
-    Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
+    Application, Pcd, RAGU_TAG,
+    internal::{native, transcript::Transcript},
+    proof::ProofBuilder,
+    step::Step,
 };
 
 /// Ephemeral native-field data for $f(X)$, used only during the fuse step.
@@ -183,16 +189,36 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let eval_witness =
             self.compute_eval(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
 
-        // `pre_beta` is the terminal native Fiat-Shamir challenge — nothing
-        // after this point squeezes or absorbs on the prover-side transcript
-        // (`v` is computed, not squeezed), so the advanced transcript returned
-        // by `sample_pre_beta` is intentionally dropped. The internal circuits
-        // do not consume it: they re-derive every challenge in-circuit from the
-        // values recorded on the builder (`set_w` … `set_pre_beta`), not from
-        // this object.
-        let (pre_beta, eval_rx, _accepted_transcript) =
-            self.sample_pre_beta(rng, &mut dr, transcript, &eval_witness, &builder)?;
+        // Rejection-sample the eval-stage blinding until the squeezed `pre_beta`
+        // lands in range as an endoscalar challenge. Unlike the single-shot
+        // challenges above, `pre_beta` must be ground: each attempt re-blinds the
+        // eval commitment and re-derives `pre_beta` from a fresh transcript
+        // clone, retrying until `EndoscalarChallenge::sample` accepts. Baking the
+        // grind into `sample` means a challenge cannot be produced without it.
+        //
+        // `pre_beta` is the terminal native Fiat-Shamir challenge (`v` is
+        // computed, not squeezed), so the accepted transcript clone is dropped
+        // rather than threaded onward; the internal circuits re-derive every
+        // challenge in-circuit from the values recorded on the builder.
+        let (pre_beta, eval_rx) = EndoscalarChallenge::sample(&mut dr, |dr| {
+            // Fresh eval-stage blinding each attempt: this draw is the
+            // per-attempt entropy that makes `pre_beta` independent across
+            // retries.
+            let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
+                C::CircuitField::random(&mut *rng),
+                &eval_witness,
+            )?;
+            let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
+            let bridge_eval_commitment =
+                builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
 
+            let mut transcript = transcript.clone();
+            let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
+            eval_commitment.write(dr, &mut transcript)?;
+            let pre_beta = transcript.challenge(dr)?;
+
+            Ok((pre_beta, eval_rx))
+        })?;
         builder.set_native_eval_rx(eval_rx);
 
         self.compute_p(
