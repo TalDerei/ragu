@@ -18,10 +18,7 @@ pub(crate) mod claims;
 
 use claims::FuseProofSource;
 use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
-use ragu_circuits::{
-    polynomials::{Rank, sparse},
-    staging::StageExt,
-};
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{
     Result,
     drivers::emulator::{Emulator, Wireless},
@@ -30,10 +27,7 @@ use ragu_core::{
 use ragu_primitives::{EndoscalarChallenge, GadgetExt, Point, vec::CollectFixed};
 
 use crate::{
-    Application, Pcd, RAGU_TAG,
-    internal::{native, transcript::Transcript},
-    proof::ProofBuilder,
-    step::Step,
+    Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
 };
 
 /// Ephemeral native-field data for $f(X)$, used only during the fuse step.
@@ -201,16 +195,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // rather than threaded onward; the internal circuits re-derive every
         // challenge in-circuit from the values recorded on the builder.
         let (pre_beta, eval_rx) = EndoscalarChallenge::sample(&mut dr, |dr| {
-            // Fresh eval-stage blinding each attempt: this draw is the
-            // per-attempt entropy that makes `pre_beta` independent across
-            // retries.
-            let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
-                C::CircuitField::random(&mut *rng),
-                &eval_witness,
-            )?;
-            let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
-            let bridge_eval_commitment =
-                builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
+            // Fresh eval-stage blinding each attempt: re-deriving the eval
+            // commitment is what makes `pre_beta` independent across retries.
+            let (eval_rx, bridge_eval_commitment) =
+                self.sample_eval_commitment(rng, &eval_witness, &builder)?;
 
             let mut transcript = transcript.clone();
             let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
