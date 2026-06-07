@@ -199,6 +199,25 @@ macro_rules! cached_bridge {
             }))
         }
     };
+    // As above, plus a non-caching `$candidate` variant that takes the native
+    // witness commitments explicitly instead of reading the builder's cached
+    // cells. Used for rejection sampling: each attempt commits to a fresh
+    // candidate whose rx must not be memoized and whose native commitment is not
+    // yet stored on the builder. Shares the rx derivation with the cached path
+    // above, so the candidate and final commitments cannot drift.
+    ($rx:ident, $commitment:ident,
+     $idx:expr, $stage:ident, { $($wit_field:ident : $getter:ident()),* },
+     candidate: $candidate:ident) => {
+        cached_bridge!($rx, $commitment, $idx, $stage, { $($wit_field : $getter()),* });
+
+        pub(crate) fn $candidate(&self, $($wit_field: C::HostCurve),*) -> Result<C::NestedCurve> {
+            let rx = nested::stages::$stage::Stage::<C::HostCurve, R>::rx(
+                self.bridge_alpha_power($idx),
+                &nested::stages::$stage::Witness { $($wit_field),* },
+            )?;
+            Ok(rx.commit_to_affine(C::nested_generators(self.params)))
+        }
+    };
 }
 
 /// Builder for incremental [`Proof`] construction.
@@ -563,22 +582,9 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         bridge_eval_commitment,
         nested::RxIndex::BridgeEval,
         eval,
-        { native_eval: native_eval_commitment() }
+        { native_eval: native_eval_commitment() },
+        candidate: candidate_bridge_eval_commitment
     );
-
-    /// Computes the bridge eval commitment for a candidate native eval
-    /// commitment without populating the builder's cached eval cells.
-    pub(crate) fn candidate_bridge_eval_commitment(
-        &self,
-        native_eval: C::HostCurve,
-    ) -> Result<C::NestedCurve> {
-        let rx = nested::stages::eval::Stage::<C::HostCurve, R>::rx(
-            self.bridge_alpha_power(nested::RxIndex::BridgeEval),
-            &nested::stages::eval::Witness { native_eval },
-        )?;
-
-        Ok(rx.commit_to_affine(C::nested_generators(self.params)))
-    }
 
     setter!(
         set_nested_endoscaling_step_rxs,

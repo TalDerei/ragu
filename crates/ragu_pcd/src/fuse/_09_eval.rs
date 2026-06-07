@@ -20,14 +20,14 @@ use crate::{
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_eval_witness<'dr, D>(
+    pub(super) fn compute_eval<'dr, D>(
         &self,
         u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
-        builder: &crate::proof::ProofBuilder<'_, C, R>,
+        builder: &ProofBuilder<'_, C, R>,
     ) -> native::stages::eval::Witness<C::CircuitField>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -50,17 +50,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_xy: builder.native_registry_xy_poly().eval(u),
             },
         }
-    }
-
-    pub(super) fn sample_eval_rx<RNG: CryptoRngCore>(
-        &self,
-        rng: &mut RNG,
-        eval_witness: &native::stages::eval::Witness<C::CircuitField>,
-    ) -> Result<sparse::Polynomial<C::CircuitField, R>> {
-        native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
-            C::CircuitField::random(&mut *rng),
-            eval_witness,
-        )
     }
 
     /// Rejection-samples the eval-stage blinding until the derived `pre_beta`
@@ -93,7 +82,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // `EndoscalarChallenge::sample`, which (re)derives `pre_beta` from each
         // fresh blinding and retries until it lands in range.
         let (pre_beta, (eval_rx, accepted_transcript)) = EndoscalarChallenge::sample(dr, |dr| {
-            let eval_rx = self.sample_eval_rx(rng, eval_witness)?;
+            // Fresh eval-stage blinding each attempt: this draw is the
+            // per-attempt entropy that makes `pre_beta` independent across
+            // retries.
+            let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
+                C::CircuitField::random(&mut *rng),
+                eval_witness,
+            )?;
             let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
             let bridge_eval_commitment =
                 builder.candidate_bridge_eval_commitment(native_eval_commitment)?;

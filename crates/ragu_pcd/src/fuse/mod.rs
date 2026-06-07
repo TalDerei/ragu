@@ -181,11 +181,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let u = transcript.challenge(&mut dr)?;
 
         let eval_witness =
-            self.compute_eval_witness(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
+            self.compute_eval(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
 
-        // `pre_beta` is the terminal fuse challenge — nothing after this point
-        // squeezes or absorbs — so the transcript advanced past the eval
-        // commitment is intentionally dropped rather than threaded onward.
+        // `pre_beta` is the terminal native Fiat-Shamir challenge — nothing
+        // after this point squeezes or absorbs on the prover-side transcript
+        // (`v` is computed, not squeezed), so the advanced transcript returned
+        // by `sample_pre_beta` is intentionally dropped. The internal circuits
+        // do not consume it: they re-derive every challenge in-circuit from the
+        // values recorded on the builder (`set_w` … `set_pre_beta`), not from
+        // this object.
         let (pre_beta, eval_rx, _accepted_transcript) =
             self.sample_pre_beta(rng, &mut dr, transcript, &eval_witness, &builder)?;
 
