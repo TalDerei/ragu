@@ -1,43 +1,56 @@
-//! Mock Ragu PCD proof system — API-level mock of `ragu_pcd`.
-// Lints that don't apply to a mock crate mirroring an external API.
+//! # `ragu`
+//!
+//! Proof-carrying data (PCD) framework for Rust.
+//!
+//! Ragu is under heavy development and does not yet expose a stable API. Enable
+//! the `mock` feature to instead expose an API-level mock of `ragu_pcd`
+//! (re-exported at the crate root), used to integrate downstream consumers
+//! (e.g. Zebra) against the eventual interface ahead of the real
+//! implementation. The mock is built against the modern crypto stack (enabled
+//! by default) and cannot be combined with `legacy-deps`. See the
+//! [Ragu Book](https://tachyon.z.cash/ragu/) for more information.
+// The lints below apply to the `mock` surface, which mirrors an external API.
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 #![deny(rustdoc::broken_intra_doc_links)]
+#![cfg_attr(not(feature = "mock"), deny(missing_docs))]
 #![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
-#![expect(clippy::pub_use, reason = "crate public API re-exports")]
-#![expect(clippy::module_name_repetitions, reason = "names mirror real ragu API")]
-#![expect(clippy::missing_const_for_fn, reason = "mirrors non-const ragu API")]
-#![expect(
-    clippy::missing_trait_methods,
-    reason = "default impls are fine in a mock"
+#![cfg_attr(
+    feature = "mock",
+    expect(clippy::pub_use, reason = "crate public API re-exports")
 )]
+#![cfg_attr(
+    feature = "mock",
+    expect(clippy::module_name_repetitions, reason = "names mirror real ragu API")
+)]
+#![cfg_attr(
+    feature = "mock",
+    expect(clippy::missing_const_for_fn, reason = "mirrors non-const ragu API")
+)]
+#![cfg_attr(
+    feature = "mock",
+    expect(
+        clippy::missing_trait_methods,
+        reason = "default impls are fine in a mock"
+    )
+)]
+
+// The mock uses the modern crypto stack (ff 0.14 / ebfull pasta_curves /
+// rand_core 0.10) unconditionally, so it cannot be built against `legacy-deps`.
+#[cfg(all(feature = "mock", feature = "legacy-deps"))]
+compile_error!(
+    "the `mock` feature requires the modern crypto stack and is incompatible with `legacy-deps`"
+);
 
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "mock")]
 extern crate alloc;
 
-pub use application::{Application, ApplicationBuilder};
-pub use ctx::StepCtx;
-pub use error::{Error, Result};
-pub use header::{Header, Suffix};
-pub use hooks::FrameworkHooks;
-pub use polynomial::{Commitment, Polynomial, generators, poly_with_roots};
-pub use proof::{Pcd, Proof};
-pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice};
-pub use step::{Index, Step};
-
-pub mod application;
-pub mod ctx;
-pub mod error;
-pub mod header;
-pub mod hooks;
-pub mod polynomial;
-pub mod proof;
-pub mod relations;
-pub mod step;
-
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "mock")]
+mod mock;
+#[cfg(feature = "mock")]
+pub use mock::*;

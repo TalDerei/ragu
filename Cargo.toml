@@ -18,10 +18,22 @@ keywords = []
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
 no-default-features = true
-features = ["modern-deps", "multicore"]
+features = ["modern-deps", "multicore", "mock"]
 
 [features]
 default = ["modern-deps", "multicore"]
+# Opt-in API-level mock of `ragu_pcd` (see the crate docs). Off by default:
+# without it the crate exposes no API and pulls none of the mock-only deps
+# below. The mock is built against the modern crypto stack (the default), and is
+# guarded against `legacy-deps` (compile_error in lib.rs) so legacy builds stay
+# legacy-pure.
+mock = [
+  "dep:blake2b_simd",
+  "dep:ff",
+  "dep:lazy_static",
+  "dep:pasta_curves",
+  "dep:rand_core",
+]
 modern-deps = [
   "ragu_arithmetic/modern-deps",
   "ragu_circuits/modern-deps",
@@ -53,12 +65,12 @@ ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-
 ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"] }
 
-# mock dependencies
-blake2b_simd = { workspace = true }
-ff = { workspace = true }
-lazy_static = { workspace = true }
-pasta_curves = { workspace = true }
-rand_core = { workspace = true }
+# mock dependencies (pulled in only by the `mock` feature)
+blake2b_simd = { workspace = true, optional = true }
+ff = { workspace = true, optional = true }
+lazy_static = { workspace = true, optional = true }
+pasta_curves = { workspace = true, optional = true }
+rand_core = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand = { workspace = true }

@@ -81,6 +81,10 @@ jobs:
           components: clippy
       - name: Run clippy
         run: cargo clippy --workspace --lib --tests --benches --locked -- -D warnings
+      # The `mock` feature is off by default, so the workspace run above does not
+      # lint the mock surface. Lint it explicitly.
+      - name: Run clippy (mock)
+        run: cargo clippy -p ragu --features mock --lib --tests --locked -- -D warnings
 
   legacy-check:
     name: legacy dependency check
@@ -137,6 +141,10 @@ jobs:
           cache-suffix: release
       - name: Run tests
         run: cargo test --release --all --locked
+      # The `mock` feature is off by default, so the run above does not build the
+      # mock or its tests. Exercise them explicitly.
+      - name: Run tests (mock)
+        run: cargo test --release -p ragu --features mock --locked
 
   test-32-bit:
     name: test (i686-unknown-linux-gnu)
