@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use rand::rng;
+use rand::thread_rng as rng;
 
 use crate::{
     application::*,

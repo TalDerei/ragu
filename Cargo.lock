@@ -867,16 +867,16 @@ name = "ragu"
 version = "0.0.0"
 dependencies = [
  "blake2b_simd",
- "ff 0.14.0",
+ "ff 0.13.1",
  "lazy_static",
- "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5)",
+ "pasta_curves 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ragu_arithmetic",
  "ragu_circuits",
  "ragu_core",
  "ragu_pcd",
  "ragu_primitives",
- "rand 0.10.1",
- "rand_core 0.10.0",
+ "rand 0.8.6",
+ "rand_core 0.6.4",
 ]
 
 [[package]]

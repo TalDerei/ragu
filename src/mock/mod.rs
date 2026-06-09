@@ -4,8 +4,8 @@
 //! so downstream consumers (e.g. Zebra) can integrate against it ahead of the
 //! real implementation. The contents are re-exported at the crate root.
 //!
-//! The mock is built against the modern crypto stack only and is incompatible
-//! with `legacy-deps`.
+//! The mock is built against the legacy crypto stack only and is incompatible
+//! with `modern-deps`.
 
 pub use application::{Application, ApplicationBuilder};
 pub use ctx::StepCtx;

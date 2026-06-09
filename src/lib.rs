@@ -6,8 +6,9 @@
 //! the `mock` feature to instead expose an API-level mock of `ragu_pcd`
 //! (re-exported at the crate root), used to integrate downstream consumers
 //! (e.g. Zebra) against the eventual interface ahead of the real
-//! implementation. The mock is built against the modern crypto stack (enabled
-//! by default) and cannot be combined with `legacy-deps`. See the
+//! implementation. The mock is built against the legacy crypto stack, so it
+//! requires `legacy-deps` and cannot be combined with the default
+//! `modern-deps`. See the
 //! [Ragu Book](https://tachyon.z.cash/ragu/) for more information.
 // The lints below apply to the `mock` surface, which mirrors an external API.
 #![no_std]
@@ -37,11 +38,13 @@
     )
 )]
 
-// The mock uses the modern crypto stack (ff 0.14 / ebfull pasta_curves /
-// rand_core 0.10) unconditionally, so it cannot be built against `legacy-deps`.
-#[cfg(all(feature = "mock", feature = "legacy-deps"))]
+// The mock uses the legacy crypto stack (ff 0.13 / pasta_curves 0.5 /
+// rand_core 0.6) unconditionally, so it requires `legacy-deps` and cannot be
+// built against the default `modern-deps`.
+#[cfg(all(feature = "mock", not(feature = "legacy-deps")))]
 compile_error!(
-    "the `mock` feature requires the modern crypto stack and is incompatible with `legacy-deps`"
+    "the `mock` feature requires the legacy crypto stack; build with \
+     `--no-default-features --features \"mock legacy-deps\"`"
 );
 
 #[cfg(feature = "std")]
