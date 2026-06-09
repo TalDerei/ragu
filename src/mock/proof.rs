@@ -48,6 +48,23 @@ impl<H: Header> Pcd<H> {
     pub fn data(&self) -> &H::Data {
         &self.data
     }
+
+    /// Returns a reference to the recursive proof.
+    ///
+    /// Mirrors `ragu_pcd::Pcd::proof`.
+    #[must_use]
+    pub fn proof(&self) -> &Proof {
+        &self.proof
+    }
+
+    /// Consumes the proof-carrying data and returns the proof and data
+    /// separately.
+    ///
+    /// Mirrors `ragu_pcd::Pcd::into_parts`.
+    #[must_use]
+    pub fn into_parts(self) -> (Proof, H::Data) {
+        (self.proof, self.data)
+    }
 }
 
 impl<H: Header> Clone for Pcd<H> {
