@@ -3,7 +3,10 @@ use core::marker::PhantomData;
 use ff::{Field, PrimeField};
 use ragu_core::{convert::WireMap, gadgets::Gadget};
 
-use crate::{driver::ExtractionDriver, expr::Expr};
+use crate::{
+    driver::ExtractionDriver,
+    expr::{Expr, Op},
+};
 
 /// A [`WireMap`] that collects all physical wires from a gadget by cloning
 /// them into a flat [`Vec`].
@@ -112,14 +115,21 @@ pub trait CircuitInstance {
     fn circuit(dr: &mut ExtractionDriver<Self::Field>)
     -> ragu_core::Result<Vec<Expr<Self::Field>>>;
 
+    /// Run the circuit on a fresh driver and return its extracted trace:
+    /// `(input wire count, operations, output wires)`.
+    fn extracted_trace() -> (usize, Vec<Op<Self::Field>>, Vec<Expr<Self::Field>>) {
+        let mut dr = ExtractionDriver::<Self::Field>::new();
+        let wires = Self::circuit(&mut dr).expect("circuit failed");
+        (dr.input_wire_count(), dr.ops, wires)
+    }
+
     /// Compute the canonical fingerprint of this instance's extracted trace.
     ///
     /// See [`crate::fingerprint`] for the encoding specification. The same
     /// digest is computed in Lean from the `Clean` reimplementation, and CI
     /// compares the two outputs.
     fn fingerprint() -> String {
-        let mut dr = ExtractionDriver::<Self::Field>::new();
-        let wires = Self::circuit(&mut dr).expect("circuit failed");
-        crate::fingerprint::digest_hex::<Self::Field>(dr.input_wire_count(), &dr.ops, &wires)
+        let (input_len, ops, outputs) = Self::extracted_trace();
+        crate::fingerprint::digest_hex::<Self::Field>(input_len, &ops, &outputs)
     }
 }
