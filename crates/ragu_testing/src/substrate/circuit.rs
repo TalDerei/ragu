@@ -132,8 +132,10 @@ mod tests {
     use ragu_circuits::{CircuitExt, polynomials::TestRank, registry::RegistryBuilder};
     use ragu_pasta::Fp;
 
-    use super::super::{Limits, OpSet, program_strategy};
-    use super::*;
+    use super::{
+        super::{Limits, OpSet, program_strategy},
+        *,
+    };
 
     fn test_preamble() -> Preamble {
         Preamble {

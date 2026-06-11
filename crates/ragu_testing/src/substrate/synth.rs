@@ -43,6 +43,15 @@ pub struct Stacks<'dr, D: Driver<'dr>> {
     /// Number of [`Op::Anchor`]s that emitted a pinning constraint (anchors
     /// beyond the supplied constants are skipped).
     pub anchors_emitted: usize,
+    /// Every *free-advice* wire allocated during synthesis, in creation
+    /// order: non-constant preamble slots, `AllocSpecial`/`AllocRaw`/
+    /// `AllocSquare`-root elements, `Fold` scales, and `BoolAlloc`
+    /// booleans. These are the prover's genuine degrees of freedom — the
+    /// wires a constraint-graph solver must hold fixed (everything else is
+    /// derived). Gadget-internal hints that *are* pinned (a multiplication
+    /// gate's output, an `invert` inverse, a `divide` quotient) are
+    /// excluded, because constraints determine them.
+    pub advice_wires: Vec<D::Wire>,
 }
 
 /// Synthesizes `program` through `dr`.
@@ -90,18 +99,25 @@ where
 {
     let structure: [D::F; super::Preamble::LEN] = program.preamble.values();
     let mut elems: Vec<Element<'dr, D>> = Vec::with_capacity(structure.len());
+    let mut advice_wires: Vec<D::Wire> = Vec::new();
     for (i, v) in structure.into_iter().enumerate() {
         if program.preamble.is_constant(i) {
             elems.push(Element::constant(dr, v));
         } else {
-            elems.push(Element::alloc(
-                dr,
-                allocator,
-                witness.as_ref().map(move |w| w[i]),
-            )?);
+            let e = Element::alloc(dr, allocator, witness.as_ref().map(move |w| w[i]))?;
+            advice_wires.push(e.wire().clone());
+            elems.push(e);
         }
     }
-    synthesize_ops(dr, allocator, program, elems, anchors, |_, _, _, _| Ok(()))
+    synthesize_ops(
+        dr,
+        allocator,
+        program,
+        elems,
+        advice_wires,
+        anchors,
+        |_, _, _, _| Ok(()),
+    )
 }
 
 /// [`synthesize`] with a hook invoked before every op.
@@ -123,14 +139,17 @@ where
 {
     let values: [D::F; super::Preamble::LEN] = program.preamble.values();
     let mut elems: Vec<Element<'dr, D>> = Vec::with_capacity(values.len());
+    let mut advice_wires: Vec<D::Wire> = Vec::new();
     for (i, v) in values.into_iter().enumerate() {
         if program.preamble.is_constant(i) {
             elems.push(Element::constant(dr, v));
         } else {
-            elems.push(Element::alloc(dr, allocator, D::just(move || v))?);
+            let e = Element::alloc(dr, allocator, D::just(move || v))?;
+            advice_wires.push(e.wire().clone());
+            elems.push(e);
         }
     }
-    synthesize_ops(dr, allocator, program, elems, anchors, hook)
+    synthesize_ops(dr, allocator, program, elems, advice_wires, anchors, hook)
 }
 
 /// Executes `program.ops` over an already-built initial element stack.
@@ -140,6 +159,7 @@ fn synthesize_ops<'dr, D: Driver<'dr>>(
     allocator: &mut impl Allocator<'dr, D>,
     program: &Program,
     mut elems: Vec<Element<'dr, D>>,
+    mut advice_wires: Vec<D::Wire>,
     anchors: &[D::F],
     mut hook: impl FnMut(
         &mut D,
@@ -224,6 +244,7 @@ where
             Op::Fold(a, b, s) => {
                 let (a, b) = (a as usize % elen, b as usize % elen);
                 let scale = Element::alloc(dr, allocator, D::just(move || D::F::from(s)))?;
+                advice_wires.push(scale.wire().clone());
                 if let Ok(r) = Element::fold(dr, [&elems[a], &elems[b]], &scale) {
                     elems.push(r);
                 }
@@ -235,6 +256,7 @@ where
             Op::AllocSpecial(idx) => {
                 let v = special_value::<D::F>(idx);
                 let r = Element::alloc(dr, allocator, D::just(move || v))?;
+                advice_wires.push(r.wire().clone());
                 elems.push(r);
             }
             Op::AllocRaw(bytes) => {
@@ -242,17 +264,22 @@ where
                 if let Some(fp) = v
                     && let Ok(r) = Element::alloc(dr, allocator, D::just(move || fp))
                 {
+                    advice_wires.push(r.wire().clone());
                     elems.push(r);
                 }
             }
             Op::AllocSquare(v) => {
                 if let Ok((root, sq)) = Element::alloc_square(dr, D::just(move || D::F::from(v))) {
+                    // The root is free advice; the square is derived (pinned
+                    // by the alloc_square gate to root²).
+                    advice_wires.push(root.wire().clone());
                     elems.push(root);
                     elems.push(sq);
                 }
             }
             Op::BoolAlloc(v) => {
                 if let Ok(b) = Boolean::alloc(dr, allocator, D::just(move || v)) {
+                    advice_wires.push(b.wire().clone());
                     bools.push(b);
                 }
             }
@@ -302,6 +329,7 @@ where
         elems,
         bools,
         anchors_emitted: anchor_idx.min(anchors.len()),
+        advice_wires,
     })
 }
 

@@ -33,8 +33,10 @@
 
 use ff::PrimeField;
 
-use super::synth::{BOOL_STACK_CAP, BOOL_TRUNCATE_TO, ELEM_STACK_CAP, ELEM_TRUNCATE_TO};
-use super::{Op, Program, special_value};
+use super::{
+    Op, Program, special_value,
+    synth::{BOOL_STACK_CAP, BOOL_TRUNCATE_TO, ELEM_STACK_CAP, ELEM_TRUNCATE_TO},
+};
 
 /// A free advice site discovered during shadow evaluation, identified
 /// stably enough for a consumer to name it in [`Overrides`].
@@ -290,8 +292,10 @@ mod tests {
     use ragu_pasta::Fp;
     use ragu_primitives::{Simulator, allocator::Standard};
 
-    use super::super::{Capabilities, Limits, OpSet, Preamble, program_strategy, synthesize};
-    use super::*;
+    use super::{
+        super::{Capabilities, Limits, OpSet, Preamble, program_strategy, synthesize},
+        *,
+    };
 
     fn preamble() -> Preamble {
         Preamble {
