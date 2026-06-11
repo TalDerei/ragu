@@ -17,26 +17,19 @@
 //! indexing, and arithmetic faults in the gadget API when fed adversarial
 //! inputs — not under-constrained gadgets.
 //!
-//! # Intended behavior (post-patcher)
+//! # The constraint-side oracle lives in `fuzz_witness_pinning`
 //!
-//! Becoming a true under-constrained-gadget oracle requires two changes,
-//! both tracked in the patcher follow-up issue:
-//!
-//! 1. A patcher pass that, after the cheat is injected, walks the
-//!    recorded constraint graph forward from the cheated slot and adjusts
-//!    other downstream witness slots so the constraint system stays
-//!    satisfied. Without this, the cheat is either rejected by the first
-//!    downstream constraint that compares it against a honest-derived
-//!    value, or it propagates only through gates that self-satisfy
-//!    (`c = a*b` recomputed from the cheat).
-//!
-//! 2. Excluding the cheated slot from the comparison fingerprint, so the
-//!    `honest != cheat` check reflects downstream observable behavior
-//!    rather than the cheat injection itself.
-//!
-//! With both in place, the assertion becomes: "the Simulator accepted two
-//! genuinely different witnesses producing the same observable behavior"
-//! — the canonical under-constrained-gadget signal.
+//! The originally planned "patcher" pass cannot turn this target into an
+//! under-constrained-gadget oracle: every downstream gadget recomputes
+//! honestly from the cheated value, so gates self-satisfy by construction
+//! and the constraint matrix is never consulted — Simulator-side
+//! perturbation, with or without a patcher, observes only witness
+//! generation. The true oracle is `fuzz_witness_pinning`, which mutates
+//! one occupied coefficient of the *assembled trace polynomial* and
+//! requires the revdot constraint identity to reject the mutated witness.
+//! This target remains in the rotation for what it demonstrably catches:
+//! panics, OOB indexing, and arithmetic faults in the gadget API under
+//! adversarial mid-stream value substitution.
 //!
 //! # Why this is the witness-mutation pattern, adapted to Ragu
 //!
