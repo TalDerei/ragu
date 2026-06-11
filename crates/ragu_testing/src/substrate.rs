@@ -27,8 +27,8 @@
 //! 5. **Circuit wrapper**: a generated program as a registerable
 //!    `Circuit`, with a satisfying-witness mode for constraint-level oracles.
 //!
-//! Layers 2–5 are introduced by their respective consumers' migrations; this
-//! file currently provides layer 1.
+//! Layers 3–5 are introduced by their respective consumers' migrations; this
+//! file currently provides layers 1 and 2.
 //!
 //! # Oracle policy is not generator policy
 //!
@@ -43,6 +43,20 @@
 //! [`Driver`]: ragu_core::drivers::Driver
 
 use ff::PrimeField;
+use proptest::{prelude::*, sample::select, strategy::BoxedStrategy};
+
+mod circuit;
+#[cfg(test)]
+mod integration_tests;
+mod shadow;
+mod synth;
+
+pub use circuit::{ProgramCircuit, steer};
+pub use shadow::{AdviceSlot, Overrides, ShadowStacks, native_satisfied, shadow_eval};
+pub use synth::{
+    BOOL_STACK_CAP, BOOL_TRUNCATE_TO, ELEM_STACK_CAP, ELEM_TRUNCATE_TO, Stacks, synthesize,
+    synthesize_with_hook, synthesize_with_witness,
+};
 
 /// One instruction of a generated gadget program.
 ///
@@ -385,7 +399,7 @@ impl OpSet {
 /// four robustness targets: plain `u64` seeds, multi-limb large values,
 /// special-value entries, and a mask choosing constant vs. witness
 /// allocation per slot.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Preamble {
     /// Plain seeds, each becoming one initial element.
     pub seeds: [u64; 4],
@@ -432,6 +446,224 @@ impl Preamble {
     }
 }
 
+/// A complete generated program: the initial stack recipe plus the op
+/// stream.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Program {
+    /// Recipe for the initial element stack.
+    pub preamble: Preamble,
+    /// The instruction stream, executed in order.
+    pub ops: Vec<Op>,
+}
+
+/// Decoding limits, owned by each consumer.
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    /// Maximum number of ops to decode; further bytes are ignored.
+    pub max_ops: usize,
+}
+
+impl Default for Limits {
+    /// The historical bound shared by the existing fuzz targets.
+    fn default() -> Self {
+        Limits { max_ops: 48 }
+    }
+}
+
+/// Cursor over the input bytes. Reads past the end yield zeros, which makes
+/// decoding *total*: every byte slice is a valid program for every mask.
+struct Cursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Cursor { data, pos: 0 }
+    }
+
+    /// Whether any real (non-padding) bytes remain.
+    fn has_bytes(&self) -> bool {
+        self.pos < self.data.len()
+    }
+
+    fn u8(&mut self) -> u8 {
+        let v = self.data.get(self.pos).copied().unwrap_or(0);
+        self.pos += 1;
+        v
+    }
+
+    fn u64(&mut self) -> u64 {
+        let mut bytes = [0u8; 8];
+        for b in &mut bytes {
+            *b = self.u8();
+        }
+        u64::from_le_bytes(bytes)
+    }
+
+    fn bytes32(&mut self) -> [u8; 32] {
+        let mut bytes = [0u8; 32];
+        for b in &mut bytes {
+            *b = self.u8();
+        }
+        bytes
+    }
+}
+
+impl Program {
+    /// Decodes a program from raw bytes — typically libFuzzer's input —
+    /// restricted to the consumer's [`OpSet`].
+    ///
+    /// # Wire format
+    ///
+    /// A fixed-size preamble, then ops until the bytes run out or
+    /// [`Limits::max_ops`] is reached:
+    ///
+    /// * preamble: 4 × `u64` seeds, 2 × 4 × `u64` large seeds (all
+    ///   little-endian), 2 special-value bytes, 1 constant-mask byte;
+    /// * each op: one kind byte `k`, then that kind's payload (`u8` operands
+    ///   one byte each, `u64` seeds little-endian, booleans one byte, raw
+    ///   values 32 bytes).
+    ///
+    /// The kind byte resolves as `OpKind::ALL[k % 20]`; when the mask
+    /// disallows that kind it is *clamped* to `allowed[k % allowed.len()]`
+    /// instead of rejected. Decoding is total — reads past the end of the
+    /// input yield zero bytes (though no new op starts once the input is
+    /// exhausted) — so every byte stream is a valid program under every
+    /// non-empty mask, and corpora transfer between consumers with different
+    /// masks. Payload widths follow the clamped kind, so the same bytes may
+    /// decode to different op counts under different masks: corpus transfer
+    /// is semantic (interesting byte patterns carry over), not positional.
+    /// The kind table is append-only (see [`OpKind::ALL`]), which keeps old
+    /// corpora meaningful as the vocabulary grows.
+    ///
+    /// An empty `set` yields a program with no ops.
+    pub fn decode(data: &[u8], set: OpSet, limits: Limits) -> Program {
+        let mut cur = Cursor::new(data);
+
+        let mut seeds = [0u64; 4];
+        for s in &mut seeds {
+            *s = cur.u64();
+        }
+        let mut large_seeds = [[0u64; 4]; 2];
+        for ls in &mut large_seeds {
+            for l in ls.iter_mut() {
+                *l = cur.u64();
+            }
+        }
+        let special_seeds = [cur.u8(), cur.u8()];
+        let constant_mask = cur.u8();
+        let preamble = Preamble {
+            seeds,
+            large_seeds,
+            special_seeds,
+            constant_mask,
+        };
+
+        let allowed: Vec<OpKind> = set.allowed_kinds().collect();
+        let mut ops = Vec::new();
+        while cur.has_bytes() && ops.len() < limits.max_ops && !allowed.is_empty() {
+            let k = cur.u8();
+            let mut kind = OpKind::ALL[k as usize % OpKind::ALL.len()];
+            if !set.allows(kind) {
+                kind = allowed[k as usize % allowed.len()];
+            }
+            ops.push(match kind {
+                OpKind::Add => Op::Add(cur.u8(), cur.u8()),
+                OpKind::Sub => Op::Sub(cur.u8(), cur.u8()),
+                OpKind::Mul => Op::Mul(cur.u8(), cur.u8()),
+                OpKind::Square => Op::Square(cur.u8()),
+                OpKind::Double => Op::Double(cur.u8()),
+                OpKind::Negate => Op::Negate(cur.u8()),
+                OpKind::Invert => Op::Invert(cur.u8()),
+                OpKind::IsZero => Op::IsZero(cur.u8()),
+                OpKind::Divide => Op::Divide(cur.u8(), cur.u8()),
+                OpKind::Scale => Op::Scale(cur.u8(), cur.u64()),
+                OpKind::Fold => Op::Fold(cur.u8(), cur.u8(), cur.u64()),
+                OpKind::AllocConst => Op::AllocConst(cur.u64()),
+                OpKind::AllocSpecial => Op::AllocSpecial(cur.u8()),
+                OpKind::AllocSquare => Op::AllocSquare(cur.u64()),
+                OpKind::AllocRaw => Op::AllocRaw(cur.bytes32()),
+                OpKind::BoolAlloc => Op::BoolAlloc(cur.u8() & 1 == 1),
+                OpKind::BoolNot => Op::BoolNot(cur.u8()),
+                OpKind::BoolAnd => Op::BoolAnd(cur.u8(), cur.u8()),
+                OpKind::ConditionalSelect => Op::ConditionalSelect(cur.u8(), cur.u8(), cur.u8()),
+                OpKind::Anchor => Op::Anchor(cur.u8()),
+            });
+        }
+
+        Program { preamble, ops }
+    }
+
+    /// Encodes this program into the wire format accepted by
+    /// [`Program::decode`]. Useful for writing seed corpora and for
+    /// round-trip testing.
+    ///
+    /// `decode(encode(p), set, limits)` reproduces `p` exactly whenever
+    /// every op kind in `p` is allowed by `set` and `p.ops.len()` is within
+    /// `limits` (kind bytes are written as positions in [`OpKind::ALL`], so
+    /// they survive any mask that allows them).
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for s in self.preamble.seeds {
+            out.extend_from_slice(&s.to_le_bytes());
+        }
+        for ls in self.preamble.large_seeds {
+            for l in ls {
+                out.extend_from_slice(&l.to_le_bytes());
+            }
+        }
+        out.extend_from_slice(&self.preamble.special_seeds);
+        out.push(self.preamble.constant_mask);
+
+        for op in &self.ops {
+            let kind_byte = OpKind::ALL
+                .iter()
+                .position(|k| *k == op.kind())
+                .expect("OpKind::ALL is exhaustive") as u8;
+            out.push(kind_byte);
+            match *op {
+                Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Divide(a, b) => {
+                    out.push(a);
+                    out.push(b);
+                }
+                Op::Square(a)
+                | Op::Double(a)
+                | Op::Negate(a)
+                | Op::Invert(a)
+                | Op::IsZero(a)
+                | Op::AllocSpecial(a)
+                | Op::BoolNot(a)
+                | Op::Anchor(a) => out.push(a),
+                Op::Scale(a, c) => {
+                    out.push(a);
+                    out.extend_from_slice(&c.to_le_bytes());
+                }
+                Op::Fold(a, b, s) => {
+                    out.push(a);
+                    out.push(b);
+                    out.extend_from_slice(&s.to_le_bytes());
+                }
+                Op::AllocConst(v) | Op::AllocSquare(v) => {
+                    out.extend_from_slice(&v.to_le_bytes());
+                }
+                Op::AllocRaw(bytes) => out.extend_from_slice(&bytes),
+                Op::BoolAlloc(v) => out.push(v as u8),
+                Op::BoolAnd(a, b) => {
+                    out.push(a);
+                    out.push(b);
+                }
+                Op::ConditionalSelect(c, a, b) => {
+                    out.push(c);
+                    out.push(a);
+                    out.push(b);
+                }
+            }
+        }
+        out
+    }
+}
+
 /// Structurally interesting field values, indexed by a fuzzer-chosen byte.
 ///
 /// The 16-variant superset used by the robustness targets (the patcher
@@ -455,6 +687,94 @@ pub fn special_value<F: PrimeField>(idx: u8) -> F {
         14 => F::from(1u64 << 48), // 2^48 boundary
         _ => F::from(u64::MAX),    // large value near 2^64
     }
+}
+
+/// Proptest strategy for one op drawn from `set`.
+///
+/// The deterministic in-tree counterpart of [`Program::decode`]: properties
+/// over generated programs run under plain `cargo test`, while the byte
+/// decoder serves coverage-guided fuzzing.
+///
+/// # Panics
+///
+/// Panics if `set` is empty.
+pub fn op_strategy(set: OpSet) -> BoxedStrategy<Op> {
+    let kinds: Vec<OpKind> = set.allowed_kinds().collect();
+    assert!(!kinds.is_empty(), "op_strategy requires a non-empty OpSet");
+    select(kinds)
+        .prop_flat_map(|kind| match kind {
+            OpKind::Add => (any::<u8>(), any::<u8>())
+                .prop_map(|(a, b)| Op::Add(a, b))
+                .boxed(),
+            OpKind::Sub => (any::<u8>(), any::<u8>())
+                .prop_map(|(a, b)| Op::Sub(a, b))
+                .boxed(),
+            OpKind::Mul => (any::<u8>(), any::<u8>())
+                .prop_map(|(a, b)| Op::Mul(a, b))
+                .boxed(),
+            OpKind::Square => any::<u8>().prop_map(Op::Square).boxed(),
+            OpKind::Double => any::<u8>().prop_map(Op::Double).boxed(),
+            OpKind::Negate => any::<u8>().prop_map(Op::Negate).boxed(),
+            OpKind::Invert => any::<u8>().prop_map(Op::Invert).boxed(),
+            OpKind::IsZero => any::<u8>().prop_map(Op::IsZero).boxed(),
+            OpKind::Divide => (any::<u8>(), any::<u8>())
+                .prop_map(|(a, b)| Op::Divide(a, b))
+                .boxed(),
+            OpKind::Scale => (any::<u8>(), any::<u64>())
+                .prop_map(|(a, c)| Op::Scale(a, c))
+                .boxed(),
+            OpKind::Fold => (any::<u8>(), any::<u8>(), any::<u64>())
+                .prop_map(|(a, b, s)| Op::Fold(a, b, s))
+                .boxed(),
+            OpKind::AllocConst => any::<u64>().prop_map(Op::AllocConst).boxed(),
+            OpKind::AllocSpecial => any::<u8>().prop_map(Op::AllocSpecial).boxed(),
+            OpKind::AllocSquare => any::<u64>().prop_map(Op::AllocSquare).boxed(),
+            OpKind::AllocRaw => any::<[u8; 32]>().prop_map(Op::AllocRaw).boxed(),
+            OpKind::BoolAlloc => any::<bool>().prop_map(Op::BoolAlloc).boxed(),
+            OpKind::BoolNot => any::<u8>().prop_map(Op::BoolNot).boxed(),
+            OpKind::BoolAnd => (any::<u8>(), any::<u8>())
+                .prop_map(|(a, b)| Op::BoolAnd(a, b))
+                .boxed(),
+            OpKind::ConditionalSelect => (any::<u8>(), any::<u8>(), any::<u8>())
+                .prop_map(|(c, a, b)| Op::ConditionalSelect(c, a, b))
+                .boxed(),
+            OpKind::Anchor => any::<u8>().prop_map(Op::Anchor).boxed(),
+        })
+        .boxed()
+}
+
+/// Proptest strategy for a [`Preamble`], mixing edge-biased and broad seeds.
+pub fn preamble_strategy() -> BoxedStrategy<Preamble> {
+    (
+        any::<[u64; 4]>(),
+        any::<[[u64; 4]; 2]>(),
+        any::<[u8; 2]>(),
+        any::<u8>(),
+    )
+        .prop_map(
+            |(seeds, large_seeds, special_seeds, constant_mask)| Preamble {
+                seeds,
+                large_seeds,
+                special_seeds,
+                constant_mask,
+            },
+        )
+        .boxed()
+}
+
+/// Proptest strategy for a whole [`Program`] over `set`, with up to
+/// `max_ops` ops.
+///
+/// # Panics
+///
+/// Panics if `set` is empty.
+pub fn program_strategy(set: OpSet, max_ops: usize) -> BoxedStrategy<Program> {
+    (
+        preamble_strategy(),
+        proptest::collection::vec(op_strategy(set), 0..=max_ops),
+    )
+        .prop_map(|(preamble, ops)| Program { preamble, ops })
+        .boxed()
 }
 
 #[cfg(test)]
@@ -564,6 +884,161 @@ mod tests {
                 OpKind::BoolAlloc,
             ],
         );
+    }
+
+    /// One op of every kind, for encode/decode and kind-table tests.
+    fn one_of_each() -> [Op; 20] {
+        [
+            Op::Add(0, 1),
+            Op::Sub(2, 3),
+            Op::Mul(4, 5),
+            Op::Square(6),
+            Op::Double(7),
+            Op::Negate(8),
+            Op::Invert(9),
+            Op::IsZero(10),
+            Op::Divide(11, 12),
+            Op::Scale(13, 0xdead_beef_dead_beef),
+            Op::Fold(14, 15, 42),
+            Op::AllocConst(7),
+            Op::AllocSpecial(3),
+            Op::AllocSquare(u64::MAX),
+            Op::AllocRaw([0xab; 32]),
+            Op::BoolAlloc(true),
+            Op::BoolNot(16),
+            Op::BoolAnd(17, 18),
+            Op::ConditionalSelect(19, 20, 21),
+            Op::Anchor(22),
+        ]
+    }
+
+    #[test]
+    fn encode_decode_round_trip() {
+        let program = Program {
+            preamble: Preamble {
+                seeds: [1, 2, u64::MAX, 0],
+                large_seeds: [[5, 6, 7, 8], [9, 10, 11, 12]],
+                special_seeds: [13, 14],
+                constant_mask: 0b1010_1010,
+            },
+            ops: one_of_each().to_vec(),
+        };
+        let decoded = Program::decode(
+            &program.encode(),
+            OpSet::ALL,
+            Limits {
+                max_ops: program.ops.len(),
+            },
+        );
+        assert_eq!(decoded, program);
+    }
+
+    #[test]
+    fn decode_clamps_to_mask() {
+        let program = Program {
+            preamble: Preamble {
+                seeds: [0; 4],
+                large_seeds: [[0; 4]; 2],
+                special_seeds: [0; 2],
+                constant_mask: 0,
+            },
+            ops: one_of_each().to_vec(),
+        };
+        let bytes = program.encode();
+
+        let linear_only = OpSet::filtered(|k| {
+            matches!(
+                k,
+                OpKind::Add | OpKind::Sub | OpKind::Double | OpKind::Negate
+            )
+        });
+        // Payload widths follow the *clamped* kind, so the op count may
+        // differ from the original under a restricting mask; what must hold
+        // is that decoding stays total and emits only allowed kinds.
+        let decoded = Program::decode(&bytes, linear_only, Limits::default());
+        assert!(!decoded.ops.is_empty());
+        for op in &decoded.ops {
+            assert!(
+                linear_only.allows(op.kind()),
+                "decoder emitted disallowed op {op:?}",
+            );
+        }
+
+        // The same bytes under the full mask reproduce the original kinds.
+        let full = Program::decode(&bytes, OpSet::ALL, Limits::default());
+        assert_eq!(full.ops, program.ops);
+    }
+
+    #[test]
+    fn decode_is_total() {
+        // Arbitrary junk, truncated payloads, and the empty input all decode
+        // without panicking and respect limits.
+        for data in [
+            &[][..],
+            &[0xff][..],
+            &[9][..],           // Scale kind byte, payload truncated
+            &[14, 1, 2, 3][..], // AllocRaw kind byte, payload truncated
+            &[1, 2, 3, 4, 5, 6, 7][..],
+        ] {
+            let p = Program::decode(data, OpSet::ALL, Limits::default());
+            assert!(p.ops.len() <= Limits::default().max_ops);
+        }
+        let junk: Vec<u8> = (0..=255).cycle().take(4096).collect();
+        let p = Program::decode(&junk, OpSet::ALL, Limits { max_ops: 7 });
+        assert_eq!(p.ops.len(), 7);
+
+        // Truncated payload bytes read as zero: a lone Scale kind byte (after
+        // a full preamble) decodes to Scale(0, 0).
+        let mut bytes = vec![0u8; 99];
+        bytes.push(9); // OpKind::ALL[9] == Scale
+        let p = Program::decode(&bytes, OpSet::ALL, Limits::default());
+        assert_eq!(p.ops, vec![Op::Scale(0, 0)]);
+
+        // The empty mask decodes to no ops.
+        let p = Program::decode(&junk, OpSet::filtered(|_| false), Limits::default());
+        assert!(p.ops.is_empty());
+    }
+
+    proptest::proptest! {
+        /// Every byte stream decodes to allowed-only ops under any mask
+        /// drawn from a few representative masks.
+        #[test]
+        fn proptest_decode_total_and_masked(
+            data in proptest::collection::vec(any::<u8>(), 0..2048),
+            mask_choice in 0u8..4,
+        ) {
+            let set = match mask_choice {
+                0 => OpSet::ALL,
+                1 => OpSet::ALL.without(Capabilities::BOOLEAN),
+                2 => OpSet::ALL.without(Capabilities::VALUE_FALLIBLE),
+                _ => OpSet::filtered(|k| matches!(k, OpKind::Add | OpKind::Mul | OpKind::Anchor)),
+            };
+            let p = Program::decode(&data, set, Limits::default());
+            proptest::prop_assert!(p.ops.len() <= Limits::default().max_ops);
+            for op in &p.ops {
+                proptest::prop_assert!(set.allows(op.kind()));
+            }
+        }
+
+        /// Strategy-generated programs round-trip through the wire format.
+        #[test]
+        fn proptest_strategy_encode_decode(
+            program in program_strategy(OpSet::ALL, 48),
+        ) {
+            let decoded = Program::decode(&program.encode(), OpSet::ALL, Limits::default());
+            proptest::prop_assert_eq!(decoded, program);
+        }
+
+        /// Masked strategies only generate allowed ops.
+        #[test]
+        fn proptest_strategy_respects_mask(
+            program in program_strategy(OpSet::ALL.without(Capabilities::BOOLEAN), 32),
+        ) {
+            let set = OpSet::ALL.without(Capabilities::BOOLEAN);
+            for op in &program.ops {
+                proptest::prop_assert!(set.allows(op.kind()));
+            }
+        }
     }
 
     #[test]
