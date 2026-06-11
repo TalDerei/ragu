@@ -1,11 +1,12 @@
 import Ragu.Circuits.Point.ConditionalNegate
-import Ragu.Instances.Autogen.Point.ConditionalNegate
 import Ragu.Core
 
 namespace Ragu.Instances.Point.ConditionalNegate
-open Ragu.Instances.Autogen.Point.ConditionalNegate
 
-def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var Circuits.Point.ConditionalNegate.Input (F p) :=
+@[reducible]
+def p := Core.Primes.p
+
+def deserializeInput (input : Vector (Expression (F p)) 3) : Var Circuits.Point.ConditionalNegate.Input (F p) :=
   { cond := input[0], x := input[1], y := input[2] }
 
 def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) 2 :=
@@ -13,50 +14,9 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Exp
 
 def formal_instance : Core.Statements.FormalInstance where
   p
-  exportedOperations
-  exportedOutput
-
   deserializeInput
   serializeOutput
 
   reimplementation := Circuits.Point.ConditionalNegate.circuit.isGeneralFormalCircuit.toWithHint
-
-  same_constraints := by
-    intro input
-    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm,
-      FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toWithHint,
-      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-      deserializeInput, exportedOperations,
-      Circuits.Point.ConditionalNegate.circuit,
-      Circuits.Point.ConditionalNegate.elaborated,
-      Circuits.Point.ConditionalNegate.main,
-      Circuits.Boolean.ConditionalSelect.circuit,
-      Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main,
-      Circuits.Element.Mul.circuit,
-      Circuits.Element.Mul.elaborated,
-      Circuits.Element.Mul.main,
-      Circuits.Core.Mul.main]
-    repeat (constructor; rfl)
-    constructor
-  same_output := by
-    intro input
-    simp [circuit_norm,
-      FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toWithHint,
-      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-      deserializeInput, serializeOutput,
-      Circuits.Point.ConditionalNegate.circuit,
-      Circuits.Point.ConditionalNegate.elaborated,
-      Circuits.Point.ConditionalNegate.main,
-      Circuits.Boolean.ConditionalSelect.circuit,
-      Circuits.Boolean.ConditionalSelect.elaborated,
-      Circuits.Boolean.ConditionalSelect.main,
-      Circuits.Element.Mul.circuit,
-      Circuits.Element.Mul.elaborated,
-      Circuits.Element.Mul.main,
-      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Point.ConditionalNegate
