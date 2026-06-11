@@ -12,7 +12,7 @@ def deserializeInput (input : Vector (Expression (F p)) 3) : Var Circuits.Boolea
 def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
   #v[]
 
-noncomputable def formal_instance : Core.Statements.FormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   deserializeInput
   serializeOutput

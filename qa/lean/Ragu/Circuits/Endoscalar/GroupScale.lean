@@ -92,32 +92,45 @@ foldl's `circuit_norm` lemmas. -/
 namespace Step
 
 /-- One iteration's inputs: the 2-bit pair `(n, e)`, the base point `pt`,
-the running accumulator `acc`, and the prover-side inverse hint for the
-DAA's bank discharge. -/
+and the running accumulator `acc`. No hint input: the DAA's inverse hint is
+computed *inside* `main` from the prover environment, so callers (the foldl
+in `GroupScale.main`) stay hint-free. -/
 structure Input (F : Type) where
   n : F
   e : F
   pt : Point.Spec.Point F
   acc : Point.Spec.Point F
-  inverse : UnconstrainedDep field F
-deriving CircuitType
+deriving ProvableStruct
 
 /-- ConditionalNegate + ConditionalEndo build `s` from `(n, e)` and `pt`;
 DoubleAndAddIncomplete computes `2·acc + s`; the two trailing
 `Element.Mul ⟨_, 1⟩` calls freshen both output coordinates so the chained
 accumulator stays a bare wire pair across foldl iterations (without this the
-symbolic Expression tree grows exponentially over 64 iterations). -/
+symbolic Expression tree grows exponentially over 64 iterations).
+
+The DAA's `inverse` hint is the inverse of its bank's running product
+`(x_q - x_p)·(x_p - x_r)` (P1 = acc, P2 = s in DAA's naming), computed here
+from the prover environment — both factors are determined by `acc` and `s`,
+including the intermediate `x_r = λ₁² - x_p - x_q`. -/
 def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
     : Circuit (F p) (Var Point.Spec.Point (F p)) := do
   let s_neg ← Point.ConditionalNegate.circuit ⟨input.n, input.pt.x, input.pt.y⟩
   let s ← Point.ConditionalEndo.circuit curveParams ⟨input.e, s_neg.x, s_neg.y⟩
-  let acc' ← Point.DoubleAndAddIncomplete.circuit curveParams ⟨input.acc, s, input.inverse⟩
+  let acc' ← Point.DoubleAndAddIncomplete.circuit curveParams
+    ⟨input.acc, s, fun env =>
+      let x_p := env input.acc.x
+      let y_p := env input.acc.y
+      let x_q := env s.x
+      let y_q := env s.y
+      let lambda_1 := (y_q - y_p) / (x_q - x_p)
+      let x_r := lambda_1 ^ 2 - x_p - x_q
+      ((x_q - x_p) * (x_p - x_r))⁻¹⟩
   let fresh_x ← Element.Mul.circuit ⟨acc'.x, 1⟩
   let fresh_y ← Element.Mul.circuit ⟨acc'.y, 1⟩
   return ⟨fresh_x, fresh_y⟩
 
 def Assumptions (curveParams : Point.Spec.CurveParams p)
-    (input : Value Input (F p)) (_data : ProverData (F p)) :=
+    (input : Input (F p)) (_data : ProverData (F p)) :=
   input.pt.isOnCurve curveParams ∧
   input.acc.isOnCurve curveParams ∧
   IsBool input.n ∧
@@ -127,24 +140,31 @@ def Assumptions (curveParams : Point.Spec.CurveParams p)
 forces the distinct-x conditions, so the constraints can only be satisfied
 when the native step succeeds. -/
 def Spec (curveParams : Point.Spec.CurveParams p)
-    (input : Value Input (F p)) (output : Value Point.Spec.Point (F p))
+    (input : Input (F p)) (output : Point.Spec.Point (F p))
     (_data : ProverData (F p)) :=
   stepNative curveParams input.pt input.acc input.n input.e = some output ∧
   output.isOnCurve curveParams
 
 /-- Prover side: the native step must be non-degenerate (distinct
-x-coordinates at both internal additions) and the inverse hint must invert
-the bank's running product. Stated via the native model; the precise
-algebraic unfolding happens in the completeness proof. -/
+x-coordinates at both internal additions). Stated via the native model; the
+completeness proof unfolds it into the two distinct-x facts and shows the
+internally computed inverse hint satisfies the bank-product condition
+(`mul_inv_cancel₀` on the nonzero product). -/
 def ProverAssumptions (curveParams : Point.Spec.CurveParams p)
-    (input : ProverValue Input (F p)) (_data : ProverData (F p))
-    (_hint : ProverHint (F p)) :=
-  let n : F p := input.n
-  let e : F p := input.e
+    (input : Input (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
   input.pt.isOnCurve curveParams ∧
   input.acc.isOnCurve curveParams ∧
-  IsBool n ∧ IsBool e ∧
-  stepNative curveParams input.pt input.acc n e ≠ none
+  IsBool input.n ∧ IsBool input.e ∧
+  stepNative curveParams input.pt input.acc input.n input.e ≠ none
+
+/-- Prover-side conclusion: witness generation lands exactly on the native
+step. `GroupScale.completeness` uses this to thread the accumulator
+correspondence (and curve membership) from one iteration to the next. -/
+def ProverSpec (curveParams : Point.Spec.CurveParams p)
+    (input : Input (F p)) (out : Point.Spec.Point (F p))
+    (_hint : ProverHint (F p)) :=
+  stepNative curveParams input.pt input.acc input.n input.e = some out ∧
+  out.isOnCurve curveParams
 
 instance elaborated (curveParams : Point.Spec.CurveParams p)
     : ElaboratedCircuit (F p) Input Point.Spec.Point where
@@ -171,7 +191,7 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
       Point.DoubleAndAddIncomplete.circuit, Element.Mul.circuit]
 
 theorem soundness (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint.Soundness (F p) (elaborated curveParams)
+    GeneralFormalCircuit.Soundness (F p) (elaborated curveParams)
       (Assumptions curveParams) (Spec curveParams) := by
   -- Compose CondNegate/CondEndo specs (selecting s's coordinates from the
   -- boolean bits) with DAA's unconditional spec, then bridge the two
@@ -179,18 +199,20 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
   sorry
 
 theorem completeness (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint.Completeness (F p) (elaborated curveParams)
-      (ProverAssumptions curveParams) (fun _ _ _ => True) := by
+    GeneralFormalCircuit.Completeness (F p) (elaborated curveParams)
+      (ProverAssumptions curveParams) (ProverSpec curveParams) := by
   -- Unfold `stepNative ≠ none` into the two distinct-x facts; discharge
-  -- DAA's ProverAssumptions with them. Checklist item.
+  -- DAA's ProverAssumptions with them (the internally computed inverse
+  -- satisfies the bank condition via `mul_inv_cancel₀`). Checklist item.
   sorry
 
 def circuit (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint (F p) Input Point.Spec.Point where
+    GeneralFormalCircuit (F p) Input Point.Spec.Point where
   elaborated := elaborated curveParams
   Assumptions := Assumptions curveParams
   Spec := Spec curveParams
   ProverAssumptions := ProverAssumptions curveParams
+  ProverSpec := ProverSpec curveParams
   soundness := soundness curveParams
   completeness := completeness curveParams
 
@@ -208,18 +230,22 @@ def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
     : Circuit (F p) (Var Point.Spec.Point (F p)) := do
   -- p_endo = (ζ·p.x, p.y) — pure scale, no constraints.
   let p_endo : Var Point.Spec.Point (F p) := ⟨curveParams.ζ * input.pt.x, input.pt.y⟩
-  -- acc_pre = p_endo + p; inverse hint defaulted (prover-only data).
+  -- acc_pre = p_endo + p. The AddIncomplete bank folds `P2.x - P1.x`
+  -- (= pt.x - ζ·pt.x), so its inverse hint is that difference's inverse,
+  -- computed from the prover environment.
   let acc_pre ← Point.AddIncomplete.circuit curveParams
-    ⟨p_endo, input.pt, fun _ => 0⟩
+    ⟨p_endo, input.pt,
+     fun env => (env input.pt.x - curveParams.ζ * env input.pt.x)⁻¹⟩
   -- acc₀ = acc_pre.double()
   let acc_0 ← Point.Double.circuit curveParams acc_pre
   -- 64 iterations, each a single `Step.circuit` subcircuit (so the foldl
-  -- body's ConstantOutput/ConstantLength synthesize cheaply).
+  -- body's ConstantOutput/ConstantLength synthesize cheaply). Step computes
+  -- its own DAA inverse hint internally — no hint plumbing here.
   Circuit.foldl (.finRange 64) acc_0 fun acc i =>
     Step.circuit curveParams
       ⟨input.bits[2 * i.val]'(by have := i.isLt; omega),
        input.bits[2 * i.val + 1]'(by have := i.isLt; omega),
-       input.pt, acc, fun _ => 0⟩
+       input.pt, acc⟩
 
 def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=
   input.pt.isOnCurve curveParams ∧

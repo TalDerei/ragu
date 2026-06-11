@@ -13,7 +13,7 @@ def deserializeInput (input : Vector (Expression (F p)) 2) :
 def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
   #v[]
 
-noncomputable def formal_instance : Core.Statements.FormalInstance where
+def formal_instance : Core.Statements.FormalInstance where
   p
   deserializeInput
   serializeOutput
