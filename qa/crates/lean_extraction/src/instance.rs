@@ -104,6 +104,14 @@ impl<F: Field> WireMap<F> for WireDeserializer<F> {
     }
 }
 
+/// A circuit's extracted trace: its input wire count, recorded operations,
+/// and output wires.
+pub struct ExtractedTrace<F: Field> {
+    pub input_len: usize,
+    pub ops: Vec<Op<F>>,
+    pub outputs: Vec<Expr<F>>,
+}
+
 /// A trait for circuit instances that can be extracted by the driver.
 pub trait CircuitInstance {
     type Field: PrimeField;
@@ -115,12 +123,15 @@ pub trait CircuitInstance {
     fn circuit(dr: &mut ExtractionDriver<Self::Field>)
     -> ragu_core::Result<Vec<Expr<Self::Field>>>;
 
-    /// Run the circuit on a fresh driver and return its extracted trace:
-    /// `(input wire count, operations, output wires)`.
-    fn extracted_trace() -> (usize, Vec<Op<Self::Field>>, Vec<Expr<Self::Field>>) {
+    /// Run the circuit on a fresh driver and return its extracted trace.
+    fn extracted_trace() -> ExtractedTrace<Self::Field> {
         let mut dr = ExtractionDriver::<Self::Field>::new();
-        let wires = Self::circuit(&mut dr).expect("circuit failed");
-        (dr.input_wire_count(), dr.ops, wires)
+        let outputs = Self::circuit(&mut dr).expect("circuit failed");
+        ExtractedTrace {
+            input_len: dr.input_wire_count(),
+            ops: dr.ops,
+            outputs,
+        }
     }
 
     /// Compute the canonical fingerprint of this instance's extracted trace.
@@ -129,7 +140,7 @@ pub trait CircuitInstance {
     /// digest is computed in Lean from the `Clean` reimplementation, and CI
     /// compares the two outputs.
     fn fingerprint() -> String {
-        let (input_len, ops, outputs) = Self::extracted_trace();
-        crate::fingerprint::digest_hex::<Self::Field>(input_len, &ops, &outputs)
+        let trace = Self::extracted_trace();
+        crate::fingerprint::digest_hex::<Self::Field>(trace.input_len, &trace.ops, &trace.outputs)
     }
 }

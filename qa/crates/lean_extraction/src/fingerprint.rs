@@ -230,14 +230,8 @@ mod tests {
                 super::push_field_element(&mut buf, c.value());
                 AstExpr::Const(buf.try_into().unwrap())
             }
-            Expr::Add(l, r) => AstExpr::Add(
-                Box::new(expected_expr(l)),
-                Box::new(expected_expr(r)),
-            ),
-            Expr::Mul(l, r) => AstExpr::Mul(
-                Box::new(expected_expr(l)),
-                Box::new(expected_expr(r)),
-            ),
+            Expr::Add(l, r) => AstExpr::Add(Box::new(expected_expr(l)), Box::new(expected_expr(r))),
+            Expr::Mul(l, r) => AstExpr::Mul(Box::new(expected_expr(l)), Box::new(expected_expr(r))),
         }
     }
 
@@ -246,22 +240,27 @@ mod tests {
     /// encoding is uniquely decodable — and therefore injective — over the
     /// exported corpus.
     fn assert_roundtrip<I: CircuitInstance>() {
-        let (input_len, ops, outputs) = I::extracted_trace();
-        let decoded = decode_trace(&encode_trace::<I::Field>(input_len, &ops, &outputs));
+        let trace = I::extracted_trace();
+        let decoded = decode_trace(&encode_trace::<I::Field>(
+            trace.input_len,
+            &trace.ops,
+            &trace.outputs,
+        ));
 
         let mut modulus = Vec::new();
         super::push_modulus::<I::Field>(&mut modulus);
         let expected = AstTrace {
             modulus: modulus.try_into().unwrap(),
-            input_len: input_len as u64,
-            ops: ops
+            input_len: trace.input_len as u64,
+            ops: trace
+                .ops
                 .iter()
                 .map(|op| match op {
                     Op::Witness { count } => AstOp::Witness(*count as u64),
                     Op::Assert(expr) => AstOp::Assert(expected_expr(expr)),
                 })
                 .collect(),
-            outputs: outputs.iter().map(expected_expr).collect(),
+            outputs: trace.outputs.iter().map(expected_expr).collect(),
         };
         assert_eq!(decoded, expected);
     }
