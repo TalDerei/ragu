@@ -232,14 +232,23 @@ enum Op {
     Anchor(u8),
 }
 
+/// A coordinated cheat: which free advice wire (mod advice count) and the
+/// nonzero delta to add. A run may apply several at once.
+#[derive(Arbitrary, Debug, Clone, Copy)]
+struct Cheat {
+    advice: u16,
+    delta: u64,
+}
+
 #[derive(Arbitrary, Debug)]
 struct Input {
     seeds: [u64; NUM_INPUTS],
     special: [Option<u8>; NUM_INPUTS],
     ops: Vec<Op>,
-    /// Which free advice wire to mutate (mod the advice count).
-    cheat_advice: u16,
-    cheat_delta: u64,
+    /// One or more advice wires to mutate simultaneously. Coordinated
+    /// multi-wire cheats catch under-constraint that no single-wire change
+    /// exposes (e.g. two wires whose product is pinned but neither is).
+    cheats: Vec<Cheat>,
 }
 
 fn build_inputs(input: &Input) -> [Fp; NUM_INPUTS] {
@@ -546,28 +555,49 @@ fuzz_target!(|input: Input| {
         "honest native oracle disagreed with itself (harness bug): {input:?}"
     );
 
-    // Pick a free advice slot to cheat on, and its wire id.
-    let cheat_slot = advice[input.cheat_advice as usize % advice.len()];
-    let cheat_wire = slot_wires[cheat_slot];
-    let mut delta = Fp::from(input.cheat_delta);
-    if delta == Fp::ZERO {
-        delta = Fp::ONE;
+    // Resolve the coordinated cheat into (advice slot, delta) pairs,
+    // deduplicated by slot so a wire is mutated at most once. A run with no
+    // cheats is degenerate; default to a single cheat on the first advice
+    // wire so every input does some work.
+    let raw_cheats = if input.cheats.is_empty() {
+        vec![Cheat { advice: 0, delta: 0 }]
+    } else {
+        input.cheats.clone()
+    };
+    let mut slot_delta: Vec<(usize, Fp)> = Vec::new();
+    for ch in &raw_cheats {
+        let slot = advice[ch.advice as usize % advice.len()];
+        if slot_delta.iter().any(|(s, _)| *s == slot) {
+            continue;
+        }
+        let mut delta = Fp::from(ch.delta);
+        if delta == Fp::ZERO {
+            delta = Fp::ONE;
+        }
+        slot_delta.push((slot, delta));
     }
 
-    // ragu side: mutate the advice wire, repair through captured constraints.
+    // ragu side: mutate every cheated advice wire, freeze them all, and
+    // repair the rest through the captured constraints.
     let mut ragu_values = rec.values.clone();
-    ragu_values[cheat_wire] += delta;
-    repair(&rec.events, &mut ragu_values, &[cheat_wire]);
+    let frozen: Vec<usize> = slot_delta.iter().map(|(s, _)| slot_wires[*s]).collect();
+    for (slot, delta) in &slot_delta {
+        ragu_values[slot_wires[*slot]] += delta;
+    }
+    repair(&rec.events, &mut ragu_values, &frozen);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
 
-    // native side: mutate the same advice slot, recompute the full chain.
-    let overrides = [(cheat_slot, honest[cheat_slot] + delta)];
+    // native side: apply the same cheats and recompute the full chain.
+    let overrides: Vec<(usize, Fp)> = slot_delta
+        .iter()
+        .map(|(slot, delta)| (*slot, honest[*slot] + delta))
+        .collect();
     let native_ok = native_satisfied(&input.ops, &honest, &honest_anchors, &overrides);
 
     assert_eq!(
         ragu_accepts, native_ok,
-        "PATCHER SOUNDNESS SIGNAL: cheating advice slot {cheat_slot} (wire {cheat_wire}) \
-         by {delta:?} and repairing through the captured constraints, ragu {} the witness \
+        "PATCHER SOUNDNESS SIGNAL: cheating advice {slot_delta:?} \
+         and repairing through the captured constraints, ragu {} the witness \
          but the native oracle says it is {}. {}. Input: {input:?}",
         if ragu_accepts { "ACCEPTED" } else { "REJECTED" },
         if native_ok { "satisfied" } else { "VIOLATED" },
