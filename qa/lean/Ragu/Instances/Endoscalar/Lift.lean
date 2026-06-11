@@ -9,9 +9,6 @@ import Mathlib.Tactic.IntervalCases
 namespace Ragu.Instances.Endoscalar.Lift
 open Ragu.Instances.Autogen.Endoscalar.Lift
 
-set_option maxHeartbeats 1000000000
-set_option maxRecDepth 100000
-
 def deserializeInput (input : Vector (Expression (F p)) inputLen)
     : Var Circuits.Endoscalar.Lift.Input (F p) :=
   { bits := input }

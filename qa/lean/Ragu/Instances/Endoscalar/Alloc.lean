@@ -8,8 +8,6 @@ import Mathlib.Tactic.IntervalCases
 namespace Ragu.Instances.Endoscalar.Alloc
 open Ragu.Instances.Autogen.Endoscalar.Alloc
 
-set_option maxHeartbeats 16000000
-
 def deserializeInput (_input : Vector (Expression (F p)) inputLen)
     : Var (Unconstrained (BitVec 128)) (F p) :=
   fun _ => 0#128
