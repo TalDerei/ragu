@@ -13,4 +13,9 @@ lean_lib Ragu where
   -- a `.lean` that no aggregator imports cannot silently escape CI.
   globs := #[`Ragu.*]
 
+-- Prints the canonical digest of every formal instance's reimplementation;
+-- CI compares the output against `cargo run -p lean_extraction -- fingerprint`.
+lean_exe fingerprints where
+  root := `Ragu.Fingerprint.Main
+
 require clean from git "https://github.com/Verified-zkEVM/clean" @ "main"

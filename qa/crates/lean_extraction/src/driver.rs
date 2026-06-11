@@ -34,8 +34,8 @@ use crate::{
 /// - [`Driver::constant`] — returns an [`Expr::Const`] without any
 ///   allocation or constraint.
 ///
-/// Wire index 0 is reserved for the constant-1 wire ([`Driver::ONE`]).
-/// Fresh allocations begin from index 1.
+/// [`Driver::ONE`] is represented as the constant expression `1`, not as a
+/// wire. Fresh allocations begin at index 0.
 ///
 /// After synthesis, the collected [`Op`]s are available via [`Self::ops`].
 pub struct ExtractionDriver<F: Field> {
@@ -49,9 +49,7 @@ pub struct ExtractionDriver<F: Field> {
 }
 
 impl<F: Field> ExtractionDriver<F> {
-    /// Creates a new extraction driver.
-    ///
-    /// Wire 0 is pre-reserved as the constant-1 wire; allocations begin at 1.
+    /// Creates a new extraction driver. Wire allocations begin at index 0.
     pub fn new() -> Self {
         ExtractionDriver {
             next_wire: 0,

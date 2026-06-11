@@ -32,15 +32,17 @@ end Ragu.Core.Primes
 
 namespace Ragu.Core.Statements
 
-/-- Erase witness computation functions from flat operations,
-    replacing them with `default`. This allows comparing circuit
-    structure (constraints) while ignoring witness generation,
-    which is not faithfully reproduced in the circuit export. -/
-def FlatOperation.eraseCompute {F : Type} [Field F] :
-    FlatOperation F → FlatOperation F
-  | .witness m _ => .witness m (fun _ => default)
-  | op => op
+/-- A concrete circuit instance subject to formal verification.
 
+Bundles the concrete prime field, the structured `Clean` `reimplementation`
+that the soundness/completeness proofs are about, and the serialization glue
+that maps between the extractor's flat input/output vectors and the
+reimplementation's structured types.
+
+The reimplementation is tied to the Rust circuit by the fingerprint
+equivalence check: `Ragu.Fingerprint` computes a canonical digest of the
+operations and outputs the reimplementation emits, and CI compares it against
+the digest the Rust extractor computes from the extracted trace. -/
 structure FormalInstance where
   p : ℕ
   [pPrime : Fact p.Prime]
@@ -52,21 +54,10 @@ structure FormalInstance where
   {Output : TypeMap}
   [OutputProvable : ProvableType Output]
 
-  exportedOperations : Vector (Expression (F p)) (size (Value Input)) → Operations (F p)
-  exportedOutput : Vector (Expression (F p)) (size (Value Input)) → Vector (Expression (F p)) (size Output)
-
   deserializeInput : Vector (Expression (F p)) (size (Value Input)) → Var Input (F p)
   serializeOutput : Var Output (F p) → Vector (Expression (F p)) (size Output)
 
   reimplementation : GeneralFormalCircuit.WithHint (F p) Input Output
-
-  -- Compare circuit constraints, ignoring witness generation.
-  same_constraints : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
-    (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
-    = (exportedOperations input).toFlat.map FlatOperation.eraseCompute
-
-  same_output : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
-    (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
 
 end Statements
 

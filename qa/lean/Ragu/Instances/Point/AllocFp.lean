@@ -1,9 +1,10 @@
 import Ragu.Circuits.Point.Alloc
-import Ragu.Instances.Autogen.Point.AllocFp
 import Ragu.Core
 
 namespace Ragu.Instances.Point.AllocFp
-open Ragu.Instances.Autogen.Point.AllocFp
+
+@[reducible]
+def p := Core.Primes.p
 
 set_option linter.unusedVariables false in
 def deserializeInput (input : Vector (Expression (F p)) 0) :
@@ -15,23 +16,9 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Exp
 
 def formal_instance : Core.Statements.FormalInstance where
   p
-  exportedOperations
-  exportedOutput
-
   deserializeInput
   serializeOutput
 
   reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams
-
-  same_constraints := by
-    intro input
-    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-      Circuits.Point.Alloc.circuit, Circuits.Point.Alloc.elaborated, Circuits.Point.Alloc.main,
-      Circuits.Element.AllocSquare.circuit, Circuits.Element.AllocSquare.elaborated, Circuits.Element.AllocSquare.main,
-      Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    rfl
-  same_output := by intro input; rfl
 
 end Ragu.Instances.Point.AllocFp

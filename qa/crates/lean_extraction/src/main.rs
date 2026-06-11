@@ -1,9 +1,10 @@
-mod codegen;
 mod driver;
 mod expr;
+mod fingerprint;
 mod instance;
 mod instances;
 mod linexp;
+mod sha256;
 
 use std::{
     fs,
@@ -45,161 +46,128 @@ use crate::instances::{
 };
 
 struct ExportTarget {
+    /// Lean module name of the (handwritten) formal instance.
     name: &'static str,
-    export: fn(&str, &Path) -> std::io::Result<PathBuf>,
-    generated_file: fn(&str, &Path) -> (PathBuf, String),
+    /// Computes the canonical digest of the instance's extracted trace.
+    fingerprint: fn() -> String,
 }
 
-/// Single source of truth for every exported instance: both `export` and `check`
+/// Single source of truth for every exported instance: `export`, `check` and
+/// `fingerprint` all enumerate this table.
 static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AllocFp",
-        export: export_instance::<PointAllocInstanceFp>,
-        generated_file: generated_file_instance::<PointAllocInstanceFp>,
+        name: "Ragu.Instances.Point.AllocFp",
+        fingerprint: fingerprint_instance::<PointAllocInstanceFp>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AllocFq",
-        export: export_instance::<PointAllocInstanceFq>,
-        generated_file: generated_file_instance::<PointAllocInstanceFq>,
+        name: "Ragu.Instances.Point.AllocFq",
+        fingerprint: fingerprint_instance::<PointAllocInstanceFq>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.Double",
-        export: export_instance::<PointDoubleInstance>,
-        generated_file: generated_file_instance::<PointDoubleInstance>,
+        name: "Ragu.Instances.Point.Double",
+        fingerprint: fingerprint_instance::<PointDoubleInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.DoubleAndAddIncomplete",
-        export: export_instance::<PointDoubleAndAddIncompleteInstance>,
-        generated_file: generated_file_instance::<PointDoubleAndAddIncompleteInstance>,
+        name: "Ragu.Instances.Point.DoubleAndAddIncomplete",
+        fingerprint: fingerprint_instance::<PointDoubleAndAddIncompleteInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AddIncomplete",
-        export: export_instance::<PointAddIncompleteInstance>,
-        generated_file: generated_file_instance::<PointAddIncompleteInstance>,
+        name: "Ragu.Instances.Point.AddIncomplete",
+        fingerprint: fingerprint_instance::<PointAddIncompleteInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.ConditionalEndo",
-        export: export_instance::<PointConditionalEndoInstance>,
-        generated_file: generated_file_instance::<PointConditionalEndoInstance>,
+        name: "Ragu.Instances.Point.ConditionalEndo",
+        fingerprint: fingerprint_instance::<PointConditionalEndoInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.ConditionalNegate",
-        export: export_instance::<PointConditionalNegateInstance>,
-        generated_file: generated_file_instance::<PointConditionalNegateInstance>,
+        name: "Ragu.Instances.Point.ConditionalNegate",
+        fingerprint: fingerprint_instance::<PointConditionalNegateInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.Mul",
-        export: export_instance::<ElementMulInstance>,
-        generated_file: generated_file_instance::<ElementMulInstance>,
+        name: "Ragu.Instances.Element.Mul",
+        fingerprint: fingerprint_instance::<ElementMulInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.Square",
-        export: export_instance::<ElementSquareInstance>,
-        generated_file: generated_file_instance::<ElementSquareInstance>,
+        name: "Ragu.Instances.Element.Square",
+        fingerprint: fingerprint_instance::<ElementSquareInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.Alloc",
-        export: export_instance::<ElementAllocInstance>,
-        generated_file: generated_file_instance::<ElementAllocInstance>,
+        name: "Ragu.Instances.Element.Alloc",
+        fingerprint: fingerprint_instance::<ElementAllocInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.AllocSquare",
-        export: export_instance::<ElementAllocSquareInstance>,
-        generated_file: generated_file_instance::<ElementAllocSquareInstance>,
+        name: "Ragu.Instances.Element.AllocSquare",
+        fingerprint: fingerprint_instance::<ElementAllocSquareInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.DivNonzero",
-        export: export_instance::<ElementDivNonzeroInstance>,
-        generated_file: generated_file_instance::<ElementDivNonzeroInstance>,
+        name: "Ragu.Instances.Element.DivNonzero",
+        fingerprint: fingerprint_instance::<ElementDivNonzeroInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.FoldN3",
-        export: export_instance::<ElementFoldInstanceN3>,
-        generated_file: generated_file_instance::<ElementFoldInstanceN3>,
+        name: "Ragu.Instances.Element.FoldN3",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN3>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.FoldN7",
-        export: export_instance::<ElementFoldInstanceN7>,
-        generated_file: generated_file_instance::<ElementFoldInstanceN7>,
+        name: "Ragu.Instances.Element.FoldN7",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN7>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.EnforceRootOfUnityK2",
-        export: export_instance::<ElementEnforceRootOfUnityInstanceK2>,
-        generated_file: generated_file_instance::<ElementEnforceRootOfUnityInstanceK2>,
+        name: "Ragu.Instances.Element.EnforceRootOfUnityK2",
+        fingerprint: fingerprint_instance::<ElementEnforceRootOfUnityInstanceK2>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.EnforceRootOfUnityK5",
-        export: export_instance::<ElementEnforceRootOfUnityInstanceK5>,
-        generated_file: generated_file_instance::<ElementEnforceRootOfUnityInstanceK5>,
+        name: "Ragu.Instances.Element.EnforceRootOfUnityK5",
+        fingerprint: fingerprint_instance::<ElementEnforceRootOfUnityInstanceK5>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.EnforceZero",
-        export: export_instance::<ElementEnforceZeroInstance>,
-        generated_file: generated_file_instance::<ElementEnforceZeroInstance>,
+        name: "Ragu.Instances.Element.EnforceZero",
+        fingerprint: fingerprint_instance::<ElementEnforceZeroInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.Invert",
-        export: export_instance::<ElementInvertInstance>,
-        generated_file: generated_file_instance::<ElementInvertInstance>,
+        name: "Ragu.Instances.Element.Invert",
+        fingerprint: fingerprint_instance::<ElementInvertInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.InvertWith",
-        export: export_instance::<ElementInvertWithInstance>,
-        generated_file: generated_file_instance::<ElementInvertWithInstance>,
+        name: "Ragu.Instances.Element.InvertWith",
+        fingerprint: fingerprint_instance::<ElementInvertWithInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.EnforceNonzero",
-        export: export_instance::<ElementEnforceNonzeroInstance>,
-        generated_file: generated_file_instance::<ElementEnforceNonzeroInstance>,
+        name: "Ragu.Instances.Element.EnforceNonzero",
+        fingerprint: fingerprint_instance::<ElementEnforceNonzeroInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.NonzeroBank.ScopeK2",
-        export: export_instance::<NonzeroBankScopeInstanceK2>,
-        generated_file: generated_file_instance::<NonzeroBankScopeInstanceK2>,
+        name: "Ragu.Instances.NonzeroBank.ScopeK2",
+        fingerprint: fingerprint_instance::<NonzeroBankScopeInstanceK2>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.IsEqual",
-        export: export_instance::<ElementIsEqualInstance>,
-        generated_file: generated_file_instance::<ElementIsEqualInstance>,
+        name: "Ragu.Instances.Element.IsEqual",
+        fingerprint: fingerprint_instance::<ElementIsEqualInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.IsZero",
-        export: export_instance::<ElementIsZeroInstance>,
-        generated_file: generated_file_instance::<ElementIsZeroInstance>,
+        name: "Ragu.Instances.Element.IsZero",
+        fingerprint: fingerprint_instance::<ElementIsZeroInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Core.Mul",
-        export: export_instance::<CoreMulInstance>,
-        generated_file: generated_file_instance::<CoreMulInstance>,
+        name: "Ragu.Instances.Core.Mul",
+        fingerprint: fingerprint_instance::<CoreMulInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.Alloc",
-        export: export_instance::<BooleanAllocInstance>,
-        generated_file: generated_file_instance::<BooleanAllocInstance>,
+        name: "Ragu.Instances.Boolean.Alloc",
+        fingerprint: fingerprint_instance::<BooleanAllocInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.And",
-        export: export_instance::<BooleanAndInstance>,
-        generated_file: generated_file_instance::<BooleanAndInstance>,
+        name: "Ragu.Instances.Boolean.And",
+        fingerprint: fingerprint_instance::<BooleanAndInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.ConditionalSelect",
-        export: export_instance::<BooleanConditionalSelectInstance>,
-        generated_file: generated_file_instance::<BooleanConditionalSelectInstance>,
+        name: "Ragu.Instances.Boolean.ConditionalSelect",
+        fingerprint: fingerprint_instance::<BooleanConditionalSelectInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Boolean.ConditionalEnforceEqual",
-        export: export_instance::<BooleanConditionalEnforceEqualInstance>,
-        generated_file: generated_file_instance::<BooleanConditionalEnforceEqualInstance>,
+        name: "Ragu.Instances.Boolean.ConditionalEnforceEqual",
+        fingerprint: fingerprint_instance::<BooleanConditionalEnforceEqualInstance>,
     },
 ];
-
-impl ExportTarget {
-    fn root_import_name(&self) -> String {
-        // Drop only the first namespace marker
-        self.name.replacen(".Autogen", "", 1)
-    }
-}
 
 fn default_autogen_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../lean")
@@ -207,7 +175,7 @@ fn default_autogen_root() -> PathBuf {
 
 #[derive(Parser)]
 #[command(name = "lean_extraction")]
-#[command(about = "Export generated Lean instance files or check them for exact equality")]
+#[command(about = "Export/check generated Lean files and fingerprint extracted circuit traces")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -219,51 +187,76 @@ struct Cli {
 
 #[derive(Subcommand, Clone, Copy)]
 enum Command {
-    /// Write all generated Lean files to disk.
+    /// Write the generated Lean files (the instance import root and the
+    /// fingerprint instance list) to disk.
     Export,
     /// Compare the generated Lean files with the files already on disk.
     Check,
+    /// Print the canonical fingerprint digest of every exported instance.
+    ///
+    /// CI compares this output against the same digests computed in Lean from
+    /// the Clean reimplementations.
+    Fingerprint,
 }
 
-/// Monomorphized helper used by the static export table below.
-fn export_instance<I: CircuitInstance>(
-    module_name: &str,
-    autogen_root: &Path,
-) -> std::io::Result<PathBuf> {
-    I::export(module_name, autogen_root)
-}
-
-/// Monomorphized helper used by `check` to compute the expected file contents.
-fn generated_file_instance<I: CircuitInstance>(
-    module_name: &str,
-    autogen_root: &Path,
-) -> (PathBuf, String) {
-    I::generated_file(module_name, autogen_root)
+/// Monomorphized helper used by the static export target table.
+fn fingerprint_instance<I: CircuitInstance>() -> String {
+    I::fingerprint()
 }
 
 fn generated_instances_root(autogen_root: &Path) -> (PathBuf, String) {
     let path = autogen_root.join("Ragu/Instances.lean");
     let mut contents = EXPORT_TARGETS
         .iter()
-        .map(|target| target.root_import_name())
-        .map(|name| format!("import {name}"))
+        .map(|target| format!("import {}", target.name))
         .collect::<Vec<_>>()
         .join("\n");
     contents.push('\n');
     (path, contents)
 }
 
-fn export_all(autogen_root: &Path) -> std::io::Result<()> {
-    for target in EXPORT_TARGETS {
-        let path = (target.export)(target.name, autogen_root)?;
-        println!("wrote {} to {}", target.name, path.display());
-    }
+/// Generated list pairing every formal instance with its module name, used by
+/// the `fingerprints` executable on the Lean side.
+fn generated_fingerprint_instances(autogen_root: &Path) -> (PathBuf, String) {
+    let path = autogen_root.join("Ragu/Fingerprint/Instances.lean");
+    let entries = EXPORT_TARGETS
+        .iter()
+        .map(|target| target.name)
+        .map(|name| format!("  (\"{name}\", {name}.formal_instance)"))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let contents = format!(
+        "import Ragu.Fingerprint\nimport Ragu.Instances\n\nnamespace Ragu.Fingerprint\n\n\
+         /-- Every exported circuit instance, paired with its Lean module name.\n\n\
+         Autogenerated by `lean_extraction`; do not edit. Used by the `fingerprints`\n\
+         executable, whose output CI compares against\n\
+         `cargo run -p lean_extraction -- fingerprint`. -/\n\
+         def instances : List (String × Ragu.Core.Statements.FormalInstance) := [\n{entries}\n]\n\n\
+         end Ragu.Fingerprint\n"
+    );
+    (path, contents)
+}
 
+fn export_all(autogen_root: &Path) -> std::io::Result<()> {
     let (path, contents) = generated_instances_root(autogen_root);
     fs::write(&path, contents)?;
     println!("wrote Ragu.Instances to {}", path.display());
 
+    let (path, contents) = generated_fingerprint_instances(autogen_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, contents)?;
+    println!("wrote Ragu.Fingerprint.Instances to {}", path.display());
+
     Ok(())
+}
+
+/// Print `<module name> <digest>` for every exported instance.
+fn fingerprint_all() {
+    for target in EXPORT_TARGETS {
+        println!("{} {}", target.name, (target.fingerprint)());
+    }
 }
 
 fn check_file(
@@ -293,13 +286,16 @@ fn check_file(
 fn check_all(autogen_root: &Path) -> std::io::Result<bool> {
     let mut mismatches = 0;
 
-    for target in EXPORT_TARGETS {
-        let (path, expected) = (target.generated_file)(target.name, autogen_root);
-        check_file(target.name, path, expected, &mut mismatches)?;
-    }
-
     let (path, expected) = generated_instances_root(autogen_root);
     check_file("Ragu.Instances", path, expected, &mut mismatches)?;
+
+    let (path, expected) = generated_fingerprint_instances(autogen_root);
+    check_file(
+        "Ragu.Fingerprint.Instances",
+        path,
+        expected,
+        &mut mismatches,
+    )?;
 
     if mismatches > 0 {
         eprintln!(
@@ -323,6 +319,10 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         }),
+        Command::Fingerprint => {
+            fingerprint_all();
+            Ok(ExitCode::SUCCESS)
+        }
     };
 
     match result {

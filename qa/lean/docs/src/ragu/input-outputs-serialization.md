@@ -5,14 +5,10 @@ This section describes the boundary between structured Ragu gadgets and the flat
 ## Input variables
 
 The extracted operations are parameterized by symbolic inputs.
-At extraction time, input wires are introduced as formal placeholders, which appear as arguments in the exported Lean code.
+At extraction time, input wires are introduced as formal placeholders, kept distinct from ordinary witness wires.
 
-```lean
-input_var : Var Inputs CircuitField
-```
-
-When an extracted expression refers to an input wire, the printer emits a projection such as `input_var.get i`.
-The exported operations array does not contain concrete input values, but is a function of symbolic inputs, exactly like ordinary `Clean` circuits.
+When an extracted expression refers to the `i`-th input wire, the [fingerprint encoding](./fingerprint.md) maps it to a variable in the reserved input index region (`2³² + i`), and the Lean side instantiates the reimplementation at the matching canonical input vector.
+The extracted operations do not contain concrete input values, but are a function of symbolic inputs, exactly like ordinary `Clean` circuits.
 
 ## Example: incomplete point addition
 
@@ -49,7 +45,7 @@ structure Inputs (F : Type) where
 deriving ProvableStruct
 ```
 
-The exported operations, however, are parameterized over a flat vector of five elements:
+The extracted operations, however, are parameterized over a flat vector of five elements:
 
 ```lean
 input_var : Var (ProvableVector field 5) (F p)
@@ -92,7 +88,7 @@ def serializeOutput (outputs: Var Circuits.Point.AddIncomplete.Outputs (F p)) :
 
 ## Trust boundary
 
-The correctness of serialization is currently assumed: the statements for the extracted circuit reason about the exported operations under the assumption that the chosen serialization of inputs and outputs is the right one.
+The correctness of serialization is currently assumed: the statements for the extracted circuit reason about the extracted operations under the assumption that the chosen serialization of inputs and outputs is the right one.
 If the serialization is wrong, that mismatch is not ruled out by the soundness and completeness statements.
 
 > [!NOTE]
