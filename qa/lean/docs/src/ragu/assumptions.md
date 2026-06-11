@@ -4,16 +4,21 @@
 The Ragu Formal Verification relies on some assumptions.
 
 - The extraction is correct
-    - The semantics of the Ragu Driver operations are correctly captured, and are correctly translated into Clean operations (i.e., the exported operations and the Ragu circuit are semantically equivalent)
+    - The semantics of the Ragu Driver operations are correctly captured, and are correctly translated into Clean operations (i.e., the extracted operations and the Ragu circuit are semantically equivalent)
     - The inputs/outputs serialization is done correctly and done deterministically
     - The Rust extraction and Lean extraction use the same ordering of elements during serialization of structures
     - The circuit instance is defined correctly and is coherent with the goal of the FV
 
+- The fingerprint equivalence check is meaningful
+    - Equality of operation traces and output expressions suffices to fully characterize semantic equivalence of circuits
+    - The Rust and Lean implementations of the canonical encoding both realize the documented encoding, and the encoding is injective
+    - SHA-256 is collision resistant
+    - Agreement of the traces at the canonical input vector implies agreement at all inputs (the reimplementations do not special-case the canonical input)
+
 - The assumptions and specification properties suffice to fully characterize the circuit within the scope of the FV (e.g., we could prove a Spec that does not imply some real-world broader property we care about)
 
 - The lean "core" statements are correct
-    - The same circuit/same output theorem statements suffice to fully characterize semantic equivalence of circuits
-    - more generally, the formal instance in lean is correct
+    - the formal instance in lean is correct
     - the Clean core statements about circuit semantics and subcircuit composition are correct
     - the Lean elaborater creates an internal representation of the statement (to be checked together with the proof term by the Lean kernel) in a way that keeps the correct intention
 

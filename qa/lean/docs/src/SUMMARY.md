@@ -23,6 +23,7 @@
 - [Introduction](./ragu/introduction.md)
 - [Extraction of Ragu circuits](./ragu/extraction.md)
 - [Inputs, outputs, and serialization](./ragu/input-outputs-serialization.md)
+- [Fingerprint equivalence check](./ragu/fingerprint.md)
 - [Assumptions](./ragu/assumptions.md)
 - [CI integration](./ragu/ci.md)
 - [Adding more instances]()

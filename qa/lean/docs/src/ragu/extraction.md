@@ -1,11 +1,11 @@
 # Extraction of Ragu circuits
 
-This section describes how Ragu circuits are exported into `Clean` operations.
+This section describes how Ragu circuits are extracted into `Clean` operations.
 Intuitively, the extractor runs the circuit we want to formalize using the exporter driver, which logs every operation that the circuit emits.
-The result is a symbolic trace of witness allocations and assertions, printed as Lean definitions in the same low-level language used by `Clean`.
+The result is a symbolic trace of witness allocations and assertions, expressed in the same low-level operation language used by `Clean`.
 
 By directly recording driver calls, and not directly interacting with any higher-level structure of the Rust code, the exporter is able to maintain a minimal trust surface.
-Every exported circuit is completely concretized, except for input variables, which we will explain in a later section.
+Every extracted circuit is completely concretized, except for input variables, which we will explain in a later section.
 
 ## The extraction driver
 
@@ -41,19 +41,13 @@ Variables are allocated contiguously, mimicking the circuit model of `Clean`.
 ## Mapping into `Clean` operation semantics
 
 After synthesis, the driver holds a flat list of `Op::Witness` and `Op::Assert`.
-The exporter translates that list directly into `Clean` `Operation`s.
+These correspond exactly to `Clean`'s flat operations:
 
-- `Op::Witness { count }` translates to `Operation.witness count (fun _env => default)`.
-- `Op::Assert e` translates to `Operation.assert e`.
+- `Op::Witness { count }` corresponds to `FlatOperation.witness count _`.
+- `Op::Assert e` corresponds to `FlatOperation.assert e`.
 
-The witness computation function is replaced by `default`, because the extracted artifact is used to reason about the allocated variables and asserted relations, not to recover the original Rust witness-generation code.
+Witness computation functions are not part of the correspondence, because the extracted artifact is used to reason about the allocated variables and asserted relations, not to recover the original Rust witness-generation code.
 
-The exported Lean code therefore has the form:
-
-```lean
-def exported_operations (input_var : Var Inputs CircuitField) : Operations CircuitField := [
-  Operation.witness count (fun _env => default),
-  Operation.assert expr,
-  ...
-]
-```
+The extracted trace is not rendered into Lean source code.
+Instead, the extractor encodes the trace and output expressions into a canonical byte string and hashes it; the Lean side computes the same digest from the operations emitted by the `Clean` reimplementation, and CI compares the two.
+This is described in the [fingerprint equivalence check](./fingerprint.md) section.
