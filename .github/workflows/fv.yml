@@ -83,3 +83,19 @@ jobs:
         shell: bash
         working-directory: qa/lean
         run: lake build --wfail
+
+      # The vk-style equivalence check tying the Lean reimplementations to the
+      # Rust circuits: compare the canonical trace digests computed by the Rust
+      # extractor against the ones computed in Lean from the reimplementations.
+      # `lean --run` interprets the entry point against the oleans built above,
+      # avoiding the native-code build that `lake exe` would trigger.
+      - name: Fingerprint equivalence check
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked -p lean_extraction -- fingerprint \
+            | sort > "$RUNNER_TEMP/fingerprints-rust.txt"
+          (cd qa/lean && lake env lean --run Ragu/Fingerprint/Main.lean) \
+            | sort > "$RUNNER_TEMP/fingerprints-lean.txt"
+          diff -u "$RUNNER_TEMP/fingerprints-rust.txt" "$RUNNER_TEMP/fingerprints-lean.txt"
+          echo "all fingerprints match"
