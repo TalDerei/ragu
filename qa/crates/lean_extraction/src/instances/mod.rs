@@ -17,6 +17,7 @@ pub mod element_is_zero;
 pub mod element_mul;
 pub mod element_square;
 pub mod endoscalar_alloc;
+pub mod endoscalar_group_scale;
 pub mod endoscalar_lift;
 pub mod nonzero_bank_scope;
 pub mod point_add_incomplete;

@@ -13,7 +13,7 @@ def inputLen := 0
 def outputLen := 128
 
 set_option linter.unusedVariables false in
-def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operations (F p) := [
+noncomputable def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operations (F p) := [
   Operation.witness 3 (fun _env => default),
   Operation.assert ((((var ⟨0⟩) * (var ⟨1⟩)) + (((-1 : F p) : Expression (F p)) * (var ⟨2⟩)))),
   Operation.assert ((var ⟨2⟩)),

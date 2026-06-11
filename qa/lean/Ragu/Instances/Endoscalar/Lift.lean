@@ -254,7 +254,7 @@ private lemma mapM_boolean_and_ops
       omega
     rw [rhs_eq]
 
-def formal_instance : Core.Statements.FormalInstance where
+noncomputable def formal_instance : Core.Statements.FormalInstance where
   p
   exportedOperations
   exportedOutput
