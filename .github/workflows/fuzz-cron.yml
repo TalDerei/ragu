@@ -65,6 +65,8 @@ jobs:
           - fuzz_fold_revdot
           - fuzz_sxy_agreement
           - fuzz_verify_reject
+          - fuzz_witness_pinning
+          - fuzz_circuit_cheat
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
