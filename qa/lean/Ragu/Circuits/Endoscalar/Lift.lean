@@ -27,14 +27,13 @@ The circuit-side `main` separates the two phases of the loop:
   with no constraint emission. The final answer adds a closed-form constant
   capturing the initial `2·(ζ+1)` and the 64 implicit `+1` shifts.
 
-Extraction instance: `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust
-side uses an inlined `Boolean::and` (gate + 2 `enforce_equal`s, same pattern as
-`boolean_and.rs`) so the autogen Expression tree shape matches this reimpl's
-`stepCircuit` form verbatim. `same_constraints` proves byte-equivalence of the
-256-op constraint trace via the same `mapM`-induction pattern as
-`Endoscalar.Alloc`. `same_output` proves the output-expression equality via a
-recursive `lift_acc_aux` helper + induction on the foldl, with `circuit_norm`
-substituting the mapM's output element-wise into the foldl body. -/
+Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_lift.rs`,
+tied to this reimpl by the fingerprint equivalence check via the formal instance
+in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance uses an
+inlined `Boolean::and` (gate + 2 `enforce_equal`s, same pattern as
+`boolean_and.rs`) and shapes its output Expression tree to match this reimpl's
+`stepCircuit` form verbatim, so the structural output encoding in the
+fingerprint digests agrees. -/
 structure Input (F : Type) where
   bits : Vector F 128
 deriving ProvableStruct

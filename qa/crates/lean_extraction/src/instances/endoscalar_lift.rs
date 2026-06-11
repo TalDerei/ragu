@@ -3,11 +3,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::CircuitInstance,
-};
+use crate::{driver::ExtractionDriver, expr::Expr, instance::CircuitInstance};
 
 pub struct EndoscalarLiftInstance;
 
@@ -57,18 +53,14 @@ impl CircuitInstance for EndoscalarLiftInstance {
             // Inline `Boolean::and(n, e)`: one mul gate (`a * b = c`) plus two
             // `enforce_equal`s binding the gate's `a`/`b` wires to `n` and `e`.
             // The output `ne` is the gate's `c` wire.
-            let (mul_a, mul_b, mul_c) =
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            let (mul_a, mul_b, mul_c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             dr.enforce_equal(&mul_a, n_wire)?;
             dr.enforce_equal(&mul_b, e_wire)?;
             let ne_wire = mul_c;
 
             // Build the Lean-shaped `stepCircuit` update:
             //   acc' = (Const 2 * acc) + ((Const coeff_n * n + Const coeff_e * e) + Const coeff_ne * ne)
-            let term_acc = Expr::Mul(
-                Box::new(Expr::Const(Coeff::Two)),
-                Box::new(acc),
-            );
+            let term_acc = Expr::Mul(Box::new(Expr::Const(Coeff::Two)), Box::new(acc));
             let term_n = Expr::Mul(
                 Box::new(Expr::Const(Coeff::Arbitrary(coeff_n))),
                 Box::new(n_wire.clone()),

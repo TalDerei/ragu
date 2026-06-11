@@ -14,9 +14,10 @@ in `crates/ragu_primitives/src/endoscalar.rs::Endoscalar::alloc`.
 so `Uendo::BITS = u128::BITS = 128`. This Lean reimpl is monomorphic at 128 —
 no polymorphism needed.
 
-Extraction instance: `qa/lean/Ragu/Instances/Endoscalar/Alloc.lean` proves
-byte-equivalence to the autogen op list via an inductive helper that peels one
-`Boolean.Alloc` iteration at a time from the `Vector.mapM` over `Vector.finRange 128`. -/
+Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_alloc.rs`
+(which drives the real `Endoscalar::alloc` directly). Tied to this reimpl by the
+fingerprint equivalence check via the formal instance in
+`qa/lean/Ragu/Instances/Endoscalar/Alloc.lean`. -/
 def main (value : ProverEnvironment (F p) → BitVec 128)
     : Circuit (F p) (Vector (Expression (F p)) 128) :=
   Circuit.mapFinRange 128 fun (i : Fin 128) =>

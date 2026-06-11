@@ -65,43 +65,40 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
 
         // Init: AddIncomplete in its own scope (mirrors the Lean reimpl's
         // per-subcircuit scope discharge).
-        let acc_pre = NonzeroBank::scope(dr, |dr, bank| {
-            p_endo.add_incomplete(dr, &p, bank)
-        })?;
+        let acc_pre = NonzeroBank::scope(dr, |dr, bank| p_endo.add_incomplete(dr, &p, bank))?;
         let mut acc = acc_pre.double(dr)?;
 
         for i in 0..64usize {
-                let n_wire = &bit_wires[2 * i];
-                let e_wire = &bit_wires[2 * i + 1];
+            let n_wire = &bit_wires[2 * i];
+            let e_wire = &bit_wires[2 * i + 1];
 
-                // Inline ConditionalNegate (Boolean.ConditionalSelect on y / -y).
-                let neg_y = p_y.scale(dr, Coeff::Arbitrary(-Fp::ONE));
-                let diff_y = neg_y.sub(dr, &p_y);
-                let (mul_a_n, mul_b_n, mul_c_n) =
-                    dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_equal(&mul_a_n, n_wire)?;
-                let diff_y_wire = WireCollector::collect_from(&diff_y)?[0].clone();
-                dr.enforce_equal(&mul_b_n, &diff_y_wire)?;
-                let s_y_wire = dr.add(|lc| lc.add(&p_y_wire).add(&mul_c_n));
+            // Inline ConditionalNegate (Boolean.ConditionalSelect on y / -y).
+            let neg_y = p_y.scale(dr, Coeff::Arbitrary(-Fp::ONE));
+            let diff_y = neg_y.sub(dr, &p_y);
+            let (mul_a_n, mul_b_n, mul_c_n) =
+                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.enforce_equal(&mul_a_n, n_wire)?;
+            let diff_y_wire = WireCollector::collect_from(&diff_y)?[0].clone();
+            dr.enforce_equal(&mul_b_n, &diff_y_wire)?;
+            let s_y_wire = dr.add(|lc| lc.add(&p_y_wire).add(&mul_c_n));
 
-                // Inline ConditionalEndo (Boolean.ConditionalSelect on x / ζ·x).
-                let endo_x = p_x.scale(dr, Coeff::Arbitrary(Fp::ZETA));
-                let diff_x = endo_x.sub(dr, &p_x);
-                let (mul_a_e, mul_b_e, mul_c_e) =
-                    dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_equal(&mul_a_e, e_wire)?;
-                let diff_x_wire = WireCollector::collect_from(&diff_x)?[0].clone();
-                dr.enforce_equal(&mul_b_e, &diff_x_wire)?;
-                let s_x_wire = dr.add(|lc| lc.add(&p_x_wire).add(&mul_c_e));
+            // Inline ConditionalEndo (Boolean.ConditionalSelect on x / ζ·x).
+            let endo_x = p_x.scale(dr, Coeff::Arbitrary(Fp::ZETA));
+            let diff_x = endo_x.sub(dr, &p_x);
+            let (mul_a_e, mul_b_e, mul_c_e) =
+                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+            dr.enforce_equal(&mul_a_e, e_wire)?;
+            let diff_x_wire = WireCollector::collect_from(&diff_x)?[0].clone();
+            dr.enforce_equal(&mul_b_e, &diff_x_wire)?;
+            let s_x_wire = dr.add(|lc| lc.add(&p_x_wire).add(&mul_c_e));
 
-                let s_wires = vec![s_x_wire, s_y_wire];
-                let s: Point<'_, _, EpAffine> =
-                    WireDeserializer::new(s_wires).into_gadget(&point_template)?;
+            let s_wires = vec![s_x_wire, s_y_wire];
+            let s: Point<'_, _, EpAffine> =
+                WireDeserializer::new(s_wires).into_gadget(&point_template)?;
 
             // acc' = acc.double_and_add_incomplete(s, bank), each DAA in its own scope
-            let acc_sym = NonzeroBank::scope(dr, |dr, bank| {
-                acc.double_and_add_incomplete(dr, &s, bank)
-            })?;
+            let acc_sym =
+                NonzeroBank::scope(dr, |dr, bank| acc.double_and_add_incomplete(dr, &s, bank))?;
 
             // Freshen acc'.x and acc'.y by multiplying each by 1.
             let acc_sym_wires = WireCollector::collect_from(&acc_sym)?;

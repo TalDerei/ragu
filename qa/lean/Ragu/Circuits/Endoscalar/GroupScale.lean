@@ -36,9 +36,10 @@ discharging `product ≠ 0` via a trailing `enforce_nonzero` — so the
 constraints themselves force the distinct-x conditions; no conditional spec
 or threaded nonzero wire. The sub-gadget `Inputs` carry an
 `UnconstrainedDep field` inverse hint for the prover-side discharge; this
-reimpl passes a default closure (`fun _ => 0`) since hints don't affect the
-verifier-side constraint trace. The extraction mirrors this by wrapping each
-call in `NonzeroBank::scope`. -/
+reimpl computes the real inverses from the prover environment (the init add's
+`(pt.x - ζ·pt.x)⁻¹` here, the DAA bank product's inverse inside `Step.main`),
+which the completeness proofs discharge via `mul_inv_cancel₀`. The extraction
+instance mirrors the scoping by wrapping each call in `NonzeroBank::scope`. -/
 structure Input (F : Type) where
   bits : Vector F 128
   pt : Point.Spec.Point F
