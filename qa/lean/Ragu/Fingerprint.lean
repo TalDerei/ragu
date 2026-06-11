@@ -4,59 +4,18 @@ import Ragu.Fingerprint.Sha256
 /-!
 # Canonical circuit fingerprints
 
-A fingerprint is the SHA-256 digest of a canonical byte encoding of a
-circuit's operation trace and output expressions. This module computes the
-digest of a `FormalInstance`'s **reimplementation** — the structured `Clean`
-circuit — instantiated at a canonical input vector.
+Computes the SHA-256 digest of a canonical byte encoding of the operation
+trace and output expressions a `FormalInstance`'s reimplementation emits,
+instantiated at the canonical input vector `#v[var ⟨2³² + 0⟩, ...]`. The
+Rust extractor computes the same digest from its in-memory extracted trace,
+and CI compares the two: a match means the reimplementation emits exactly
+the operations and outputs of the Rust circuit.
 
-The Rust extractor computes the same digest directly from its in-memory
-extracted trace (`cargo run -p lean_extraction -- fingerprint`), and CI
-compares the two outputs. A match shows that the reimplementation emits
-exactly the operations and outputs of the Rust circuit, so the
-soundness/completeness theorems proved about the reimplementation apply to
-the circuit the proof system actually verifies. This is the "verification
-key comparison" style of equivalence check.
-
-## Encoding
-
-All integers are unsigned 64-bit little-endian; field elements and the
-modulus are 32-byte little-endian. The digest preimage is:
-
-```text
-"ragu-fv-fingerprint-v1"      (22 raw ASCII bytes, domain separator)
-modulus                       (32 bytes)
-inputLen                      (u64)
-outputLen                     (u64)
-opCount                       (u64)
-op*                           (opCount operations)
-output*                       (outputLen expressions)
-```
-
-Operations (`FlatOperation`, after flattening subcircuits):
-
-```text
-witness: 0x01 ++ count (u64)
-assert:  0x02 ++ expr
-```
-
-Expressions:
-
-```text
-var:   0x01 ++ index (u64)
-const: 0x02 ++ value (32 bytes)
-add:   0x03 ++ expr ++ expr
-mul:   0x04 ++ expr ++ expr
-```
-
-Witness computation functions are not encoded: the digest captures
-allocations, constraints, and outputs, not witness generation. Lookup
-operations are not supported and produce an error.
-
-`Expression` has no constructor for input variables, so the circuit is
-instantiated at the canonical input vector `#v[var ⟨2³² + 0⟩, ...]`; the
-Rust encoder maps its `InputVar i` to a `var` with index `2³² + i`, and both
-sides reject other variable indices in or beyond the input region, so the
-two regions cannot collide.
+The byte-level encoding, the input-variable index convention, and the trust
+assumptions of the check are specified in the FV book
+(`qa/lean/docs/src/ragu/fingerprint.md`); this module and
+`qa/crates/lean_extraction/src/fingerprint.rs` implement that spec and must
+stay in lockstep.
 -/
 
 namespace Ragu.Fingerprint
@@ -64,7 +23,10 @@ namespace Ragu.Fingerprint
 /-- Wire index at which canonical input variables start (`2³²`). -/
 def inputVarOffset : ℕ := 2 ^ 32
 
-/-- Append `n` to `buf` as `bytes` little-endian bytes. -/
+/-- Append `n` to `buf` as `bytes` little-endian bytes.
+
+Truncates if `n ≥ 2^(8 * bytes)`; callers must bound-check first, or the
+encoding loses injectivity. -/
 def pushNatLE (bytes : ℕ) (buf : ByteArray) (n : ℕ) : ByteArray :=
   (List.range bytes).foldl (fun acc i => acc.push (UInt8.ofNat ((n >>> (8 * i)) &&& 0xff))) buf
 
@@ -93,7 +55,11 @@ def pushExpr (bound : ℕ) (buf : ByteArray) : Expression (F p) → Except Strin
 /-- Append the canonical encoding of a flat operation. Witness computation
 functions are not encoded; lookups are unsupported. -/
 def pushFlatOp (bound : ℕ) (buf : ByteArray) : FlatOperation (F p) → Except String ByteArray
-  | .witness m _ => pure (pushNat64 (buf.push 0x01) m)
+  | .witness m _ =>
+    if m < 2 ^ 64 then
+      pure (pushNat64 (buf.push 0x01) m)
+    else
+      throw s!"witness count {m} does not fit in 64 bits"
   | .assert e => pushExpr bound (buf.push 0x02) e
   | .lookup _ => throw "lookup operations are not supported by the fingerprint encoding"
 
@@ -120,6 +86,11 @@ def Ragu.Core.Statements.FormalInstance.fingerprint
   let ops := (circuit.operations 0).toFlat
   let outputs := inst.serializeOutput (circuit.output 0)
   do
+    -- `pushNatLE` truncates out-of-range values, so reject them up front.
+    if inst.p ≥ 2 ^ 256 then
+      throw s!"modulus does not fit in 256 bits"
+    if inputLen ≥ inputVarOffset then
+      throw s!"input length {inputLen} overflows the input variable region"
     let mut buf := "ragu-fv-fingerprint-v1".toUTF8
     buf := pushNat256 buf inst.p
     buf := pushNat64 buf inputLen

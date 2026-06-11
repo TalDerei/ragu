@@ -1,28 +1,16 @@
 //! Canonical fingerprints of extracted circuit traces.
 //!
-//! A fingerprint is the SHA-256 digest of a canonical byte encoding of a
-//! circuit's extracted operation trace and output expressions. The same
-//! digest is computed independently in Lean from the `Clean` reimplementation
-//! (see `qa/lean/Ragu/Fingerprint.lean`), and CI compares the two outputs.
-//! A match shows that the reimplementation emits exactly the operations and
-//! outputs of the Rust circuit, so the soundness/completeness theorems proved
-//! about the reimplementation apply to the circuit the proof system actually
-//! verifies. This is the "verification key comparison" style of equivalence
-//! check.
+//! Computes the SHA-256 digest of a canonical byte encoding of a circuit's
+//! extracted operation trace and output expressions. The Lean side computes
+//! the same digest from the `Clean` reimplementation, and CI compares the
+//! two: a match means the reimplementation emits exactly the operations and
+//! outputs of the Rust circuit.
 //!
-//! Witness computation functions are not encoded: the digest captures
-//! allocations, constraints, and outputs, not witness generation.
-//!
-//! `Clean`'s `Expression` type has no constructor for input variables, so the
-//! Lean side instantiates the circuit at the canonical input vector
-//! `#v[var ⟨2³² + 0⟩, var ⟨2³² + 1⟩, ...]`. Correspondingly, this encoder maps
-//! [`Expr::InputVar`] `i` to a `var` with index `2³² + i`, and rejects regular
-//! wire indices at or above `2³²` so the two regions cannot collide.
-//!
-//! The encoding is injective: every token is either fixed-width or
-//! tag-prefixed with fixed arity, so a decoder could unambiguously recover the
-//! trace from the preimage. Distinct traces therefore produce distinct
-//! digests, up to SHA-256 collisions.
+//! The byte-level encoding, the input-variable index convention, and the
+//! trust assumptions of the check are specified in the FV book
+//! (`qa/lean/docs/src/ragu/fingerprint.md`); this module and
+//! `qa/lean/Ragu/Fingerprint.lean` implement that spec and must stay in
+//! lockstep.
 
 use ff::PrimeField;
 

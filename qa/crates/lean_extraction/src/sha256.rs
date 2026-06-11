@@ -1,10 +1,7 @@
-//! Minimal SHA-256 (FIPS 180-4) implementation used for circuit fingerprints.
-//!
-//! This is deliberately hand-rolled instead of pulling in a crates.io
-//! dependency: the digest is a CI consistency check rather than a security
-//! boundary, and the Lean side mirrors this implementation byte for byte in
-//! `qa/lean/Ragu/Fingerprint/Sha256.lean`. Both sides are validated against
-//! the FIPS 180-2 test vectors.
+//! Minimal SHA-256 (FIPS 180-4) over byte slices, used for circuit
+//! fingerprints. Hand-rolled to avoid a dependency; mirrored by
+//! `qa/lean/Ragu/Fingerprint/Sha256.lean` and validated against the
+//! FIPS 180-2 test vectors on both sides.
 
 /// The 64 SHA-256 round constants.
 const K: [u32; 64] = [

@@ -34,9 +34,8 @@ It mirrors the shape of `Clean`'s `Expression` type:
 - `Expr::Const` represents a constant field element,
 - `Expr::Add` and `Expr::Mul` build expression trees for addition and multiplication.
 
-Variables are referenced by their index, starting at `1`.
-The index `0` has special meaning, and is always reserved for the `ONE` wire, containing the constant field element `1`.
-Variables are allocated contiguously, mimicking the circuit model of `Clean`.
+Variables are referenced by their index, allocated contiguously starting at `0`, mimicking the circuit model of `Clean`.
+The driver's `ONE` wire is represented as the constant expression `1` rather than as a variable.
 
 ## Mapping into `Clean` operation semantics
 

@@ -1,10 +1,9 @@
 /-!
 # SHA-256
 
-A minimal SHA-256 (FIPS 180-4) implementation over `ByteArray`, used to
-compute circuit fingerprints. It mirrors the hand-rolled Rust implementation
-in `qa/crates/lean_extraction/src/sha256.rs` byte for byte; both sides are
-validated against the FIPS 180-2 test vectors.
+Minimal SHA-256 (FIPS 180-4) over `ByteArray`, used for circuit
+fingerprints. Mirrors `qa/crates/lean_extraction/src/sha256.rs` and is
+validated against the FIPS 180-2 test vectors on both sides.
 -/
 
 namespace Ragu.Fingerprint.Sha256

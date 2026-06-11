@@ -96,9 +96,13 @@ mul:   0x04 ++ expr ++ expr
 `Clean`'s `Expression` type has no constructor for input variables, so the
 Lean side instantiates the reimplementation at the canonical input vector
 `#v[var ⟨2³² + 0⟩, var ⟨2³² + 1⟩, ...]`. Correspondingly, the Rust encoder
-maps `Expr::InputVar(i)` to a `var` with index `2³² + i`. Both sides reject
-ordinary variable indices that reach the input region, so the two index
-regions cannot collide.
+maps `Expr::InputVar(i)` to a `var` with index `2³² + i`. The Rust encoder
+rejects ordinary wire indices at or above `2³²`, and the Lean encoder
+rejects indices beyond the input region (`≥ 2³² + inputLen`). Inside the
+input region the Lean encoder cannot tell a substituted input apart from a
+raw `var` with the same index — `Clean` allocates variable indices
+structurally from offsets, so such an index cannot arise from a well-formed
+reimplementation; a contrived one falls under the trust assumptions above.
 
 ## Maintenance
 
