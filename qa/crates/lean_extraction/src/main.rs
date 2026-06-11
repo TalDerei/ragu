@@ -171,19 +171,16 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         fingerprint: fingerprint_instance::<BooleanConditionalEnforceEqualInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Endoscalar.Alloc",
-        export: export_instance::<EndoscalarAllocInstance>,
-        generated_file: generated_file_instance::<EndoscalarAllocInstance>,
+        name: "Ragu.Instances.Endoscalar.Alloc",
+        fingerprint: fingerprint_instance::<EndoscalarAllocInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Endoscalar.GroupScale",
-        export: export_instance::<EndoscalarGroupScaleInstance>,
-        generated_file: generated_file_instance::<EndoscalarGroupScaleInstance>,
+        name: "Ragu.Instances.Endoscalar.GroupScale",
+        fingerprint: fingerprint_instance::<EndoscalarGroupScaleInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Endoscalar.Lift",
-        export: export_instance::<EndoscalarLiftInstance>,
-        generated_file: generated_file_instance::<EndoscalarLiftInstance>,
+        name: "Ragu.Instances.Endoscalar.Lift",
+        fingerprint: fingerprint_instance::<EndoscalarLiftInstance>,
     },
 ];
 

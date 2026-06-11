@@ -190,21 +190,125 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
       Point.DoubleAndAddIncomplete.circuit, Element.Mul.circuit]
 
+omit [NeZero (2 : F p)] in
 theorem soundness (curveParams : Point.Spec.CurveParams p) :
     GeneralFormalCircuit.Soundness (F p) (elaborated curveParams)
       (Assumptions curveParams) (Spec curveParams) := by
-  -- Compose CondNegate/CondEndo specs (selecting s's coordinates from the
-  -- boolean bits) with DAA's unconditional spec, then bridge the two
-  -- freshening Muls. Single-iteration proof, DAA-sized. Checklist item.
-  sorry
+  circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
+    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
+    Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
+    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
+    Boolean.ConditionalSelect.circuit,
+    Point.DoubleAndAddIncomplete.circuit, Point.DoubleAndAddIncomplete.Assumptions,
+    Point.DoubleAndAddIncomplete.Spec, Point.DoubleAndAddIncomplete.main,
+    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool⟩ := h_assumptions
+  obtain ⟨h_neg, h_endo, h_daa, h_fx, h_fy⟩ := h_holds
+  have h_sy := h_neg h_n_bool
+  have h_sx := h_endo h_e_bool
+  -- s is on the curve: y² is invariant under negation, x³ under ζ-scaling.
+  have h_s_curve : (⟨input_pt_x + env.get (i₀ + 3 + 2),
+      input_pt_y + env.get (i₀ + 2)⟩ : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
+    rw [h_sx, h_sy]
+    rcases h_n_bool with hn | hn <;> rcases h_e_bool with he | he <;>
+      simp only [hn, he, zero_ne_one, if_false, if_true, neg_sq, mul_pow,
+        curveParams.h_small_order, one_mul] <;>
+      exact h_pt_curve
+  obtain ⟨r, h_add1, h_add2, h_out_curve⟩ := h_daa ⟨h_acc_curve, h_s_curve⟩
+  -- The freshened output wires equal DAA's output coordinates.
+  rw [mul_one] at h_fx h_fy
+  rw [h_fx, h_fy]
+  refine ⟨?_, h_out_curve⟩
+  simp only [stepNative]
+  rw [← h_sx, ← h_sy, h_add1]
+  exact h_add2
 
+omit [NeZero (2 : F p)] in
 theorem completeness (curveParams : Point.Spec.CurveParams p) :
     GeneralFormalCircuit.Completeness (F p) (elaborated curveParams)
       (ProverAssumptions curveParams) (ProverSpec curveParams) := by
-  -- Unfold `stepNative ≠ none` into the two distinct-x facts; discharge
-  -- DAA's ProverAssumptions with them (the internally computed inverse
-  -- satisfies the bank condition via `mul_inv_cancel₀`). Checklist item.
-  sorry
+  circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
+    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
+    Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
+    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
+    Boolean.ConditionalSelect.circuit,
+    Point.DoubleAndAddIncomplete.circuit, Point.DoubleAndAddIncomplete.Assumptions,
+    Point.DoubleAndAddIncomplete.Spec, Point.DoubleAndAddIncomplete.ProverAssumptions,
+    Point.DoubleAndAddIncomplete.main,
+    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
+  obtain ⟨h_neg_env, h_endo_env, h_daa_env, h_fx, h_fy⟩ := h_env
+  have h_sy := h_neg_env h_n_bool
+  have h_sx := h_endo_env h_e_bool
+  -- Rewrite the native-step hypothesis in terms of the s wires.
+  simp only [stepNative] at h_step_ne
+  rw [← h_sx, ← h_sy] at h_step_ne
+  -- First addition is non-degenerate: acc.x ≠ s.x.
+  have h_add1_ne : (⟨input_acc_x, input_acc_y⟩ : Point.Spec.Point (F p)).add_incomplete
+      ⟨input_pt_x + env.get (i₀ + 3 + 2), input_pt_y + env.get (i₀ + 2)⟩ ≠ none := by
+    intro h
+    rw [h] at h_step_ne
+    exact h_step_ne rfl
+  have h_x_ne : input_acc_x ≠ input_pt_x + env.get (i₀ + 3 + 2) := by
+    intro h
+    exact h_add1_ne (by simp only [Point.Spec.Point.add_incomplete, if_pos h])
+  have h_sub_ne : input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x ≠ 0 :=
+    sub_ne_zero.mpr (Ne.symm h_x_ne)
+  have h_add1_eq : (⟨input_acc_x, input_acc_y⟩ : Point.Spec.Point (F p)).add_incomplete
+      ⟨input_pt_x + env.get (i₀ + 3 + 2), input_pt_y + env.get (i₀ + 2)⟩ =
+      some ⟨((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+               (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
+               (input_pt_x + env.get (i₀ + 3 + 2)),
+             ((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+               (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) *
+               (input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+                 (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
+                 (input_pt_x + env.get (i₀ + 3 + 2)))) - input_acc_y⟩ := by
+    simp only [Point.Spec.Point.add_incomplete, if_neg h_x_ne]
+  -- Second addition is non-degenerate: x_r ≠ acc.x.
+  rw [h_add1_eq] at h_step_ne
+  have h_xr_ne : (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+      (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
+      (input_pt_x + env.get (i₀ + 3 + 2))) ≠ input_acc_x := by
+    intro h
+    exact h_step_ne (by simp only [Point.Spec.Point.add_incomplete, if_pos h])
+  have h_sub2_ne : input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+      (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
+      (input_pt_x + env.get (i₀ + 3 + 2))) ≠ 0 :=
+    sub_ne_zero.mpr (Ne.symm h_xr_ne)
+  -- s is on the curve: y² is invariant under negation, x³ under ζ-scaling.
+  have h_s_curve : (⟨input_pt_x + env.get (i₀ + 3 + 2),
+      input_pt_y + env.get (i₀ + 2)⟩ : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
+    rw [h_sx, h_sy]
+    rcases h_n_bool with hn | hn <;> rcases h_e_bool with he | he <;>
+      simp only [hn, he, zero_ne_one, if_false, if_true, neg_sq, mul_pow,
+        curveParams.h_small_order, one_mul] <;>
+      exact h_pt_curve
+  -- The bank-product equation for DAA's internally computed inverse.
+  have h_lam_eq : (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x) *
+      ((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+       (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) =
+      input_pt_y + env.get (i₀ + 2) - input_acc_y := by
+    rw [mul_comm, div_mul_cancel₀ _ h_sub_ne]
+  have h_prod_ne : (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x) *
+      (input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
+        (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
+        (input_pt_x + env.get (i₀ + 3 + 2)))) ≠ 0 :=
+    mul_ne_zero h_sub_ne h_sub2_ne
+  obtain ⟨r, h_add1', h_add2', h_out_curve⟩ :=
+    h_daa_env ⟨h_acc_curve, h_s_curve, _, _, h_lam_eq, rfl, mul_inv_cancel₀ h_prod_ne⟩
+      ⟨h_acc_curve, h_s_curve⟩
+  rw [mul_one] at h_fx h_fy
+  rw [h_fx, h_fy]
+  refine ⟨⟨h_n_bool, h_e_bool, h_acc_curve, h_s_curve, _, _, h_lam_eq, rfl,
+    mul_inv_cancel₀ h_prod_ne⟩, ?_, h_out_curve⟩
+  simp only [stepNative]
+  rw [← h_sx, ← h_sy, h_add1']
+  exact h_add2'
 
 def circuit (curveParams : Point.Spec.CurveParams p) :
     GeneralFormalCircuit (F p) Input Point.Spec.Point where
@@ -317,7 +421,24 @@ private lemma all_accAfter_ne (curveParams : Point.Spec.CurveParams p)
   apply h
   exact accAfter_none_persists curveParams pt bits m 64 hm hm_none
 
+-- One-step unfolding of `accAfter` at a known `some` accumulator. Avoids
+-- `simp only [accAfter]` in the inductive proofs, which would recursively
+-- unfold the scrutinee all the way down to `initAcc`.
+omit [NeZero (2 : F p)] in
+private lemma accAfter_succ_of_some (curveParams : Point.Spec.CurveParams p)
+    (pt : Point.Spec.Point (F p)) (bits : Vector (F p) 128) (m : ℕ)
+    (prev : Point.Spec.Point (F p))
+    (h : accAfter curveParams pt bits m = some prev) (hm : 2 * m + 1 < 128) :
+    accAfter curveParams pt bits (m + 1) =
+      stepNative curveParams pt prev (bits[2 * m]'(by omega)) (bits[2 * m + 1]'hm) := by
+  simp only [accAfter, h]
+  rw [dif_pos hm]
+
 /-! ## Soundness and completeness. -/
+
+/-- The `circuit_norm` foldl lemmas require `[NeZero m]` for the iteration
+count; provide it for the loop's 64 once, instance-locally. -/
+private instance : NeZero (64 : ℕ) := ⟨by norm_num⟩
 
 theorem soundness (curveParams : Point.Spec.CurveParams p)
     : Soundness (F p) (elaborated curveParams)
@@ -335,7 +456,68 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   --      `Step.Spec`, i.e. `stepNative ... = some next`).
   --   4. `groupScaleNative = some output` falls out at m = 64 — the
   --      constraints themselves force every non-degeneracy.
-  sorry
+  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
+    Point.AddIncomplete.circuit, Point.AddIncomplete.Assumptions, Point.AddIncomplete.Spec,
+    Point.AddIncomplete.main,
+    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
+    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
+    Element.Mul.circuit]
+  obtain ⟨h_pt_curve, h_no2, h_bits, h_px_ne, h_zeta_ne, h_native_ne⟩ := h_assumptions
+  obtain ⟨h_add, h_double, h_step0, h_steps⟩ := h_holds
+  obtain ⟨h_bits_eval, _, _⟩ := h_input
+  -- Value-level bit lookups.
+  have h_bit : ∀ (j : ℕ) (hj : j < 128),
+      Expression.eval env (input_var_bits[j]'hj) = input_bits[j]'hj := by
+    intro j hj
+    have := congrArg (fun v => v[j]'hj) h_bits_eval
+    simpa [Vector.getElem_map] using this
+  -- p.endo is on the curve (ζ³ = 1).
+  have h_endo_curve : (⟨curveParams.ζ * input_pt_x, input_pt_y⟩
+      : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
+    rw [mul_pow, curveParams.h_small_order, one_mul]
+    exact h_pt_curve
+  obtain ⟨h_add_eq, h_pre_curve⟩ := h_add ⟨h_endo_curve, h_pt_curve⟩
+  obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double ⟨h_pre_curve, h_no2⟩
+  -- The native init chain lands on the circuit's acc₀ wires.
+  have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
+      some ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩ := by
+    simp only [accAfter, initAcc, Point.Spec.Point.endo]
+    rw [h_add_eq]
+    exact h_double_eq
+  -- Inductive invariant: the accumulator wires after iteration m hold
+  -- `accAfter (m+1)`, which in particular is `some` and on the curve.
+  have h_inv : ∀ m : ℕ, m < 64 →
+      accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits (m + 1) =
+        some ⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩ ∧
+      (⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩
+        : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    intro m
+    induction m with
+    | zero =>
+      intro _
+      obtain ⟨h_s0, h_c0⟩ := h_step0 ⟨h_pt_curve, h_acc0_curve,
+        (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
+        (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩)⟩
+      refine ⟨?_, by simpa using h_c0⟩
+      rw [accAfter_succ_of_some _ _ _ 0 _ h_acc0 (by omega)]
+      rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)] at h_s0
+      simpa using h_s0
+    | succ k ih =>
+      intro hm
+      obtain ⟨h_prev, h_prev_curve⟩ := ih (by omega)
+      obtain ⟨h_sk, h_ck⟩ := h_steps k (by omega) ⟨h_pt_curve, h_prev_curve,
+        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1), by omega⟩),
+        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1) + 1, by omega⟩)⟩
+      refine ⟨?_, h_ck⟩
+      rw [accAfter_succ_of_some _ _ _ (k + 1) _ h_prev (by omega)]
+      rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)] at h_sk
+      exact h_sk
+  obtain ⟨h_64, h_64_curve⟩ := h_inv 63 (by omega)
+  exact ⟨h_64, h_64_curve⟩
 
 theorem completeness (curveParams : Point.Spec.CurveParams p)
     : Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
@@ -344,10 +526,123 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   -- Assumptions), and per-step `stepNative ≠ none` extracted from
   -- `groupScaleNative ≠ none` via the `accAfter` helpers above. The init
   -- AddIncomplete needs `(ζ-1)·p.x ≠ 0` (from `h_zeta_ne_one` + `h_px_ne`).
-  -- Note: the `fun _ => 0` placeholder inverse hints in `main` likely make
-  -- the bank discharges unsatisfiable prover-side — resolve (thread real
-  -- hints or restate) when this proof is attempted.
-  sorry
+  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
+    Step.ProverAssumptions, Step.ProverSpec,
+    Point.AddIncomplete.circuit, Point.AddIncomplete.Assumptions, Point.AddIncomplete.Spec,
+    Point.AddIncomplete.ProverAssumptions, Point.AddIncomplete.main,
+    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
+    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
+    Element.Mul.circuit]
+  obtain ⟨h_pt_curve, h_no2, h_bits, h_px_ne, h_zeta_ne, h_native_ne⟩ := h_assumptions
+  obtain ⟨h_add_env, h_double_env, h_step0_env, h_steps_env⟩ := h_env
+  obtain ⟨h_bits_eval, _, _⟩ := h_input
+  -- Value-level bit lookups.
+  have h_bit : ∀ (j : ℕ) (hj : j < 128),
+      Expression.eval env.toEnvironment (input_var_bits[j]'hj) = input_bits[j]'hj := by
+    intro j hj
+    have := congrArg (fun v => v[j]'hj) h_bits_eval
+    simpa [Vector.getElem_map] using this
+  -- p.endo is on the curve (ζ³ = 1).
+  have h_endo_curve : (⟨curveParams.ζ * input_pt_x, input_pt_y⟩
+      : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
+    rw [mul_pow, curveParams.h_small_order, one_mul]
+    exact h_pt_curve
+  -- The init AddIncomplete denominator: pt.x - ζ·pt.x = pt.x·(1 - ζ) ≠ 0.
+  have h_x_ne : input_pt_x - curveParams.ζ * input_pt_x ≠ 0 := by
+    have h_factor : input_pt_x - curveParams.ζ * input_pt_x =
+        input_pt_x * (1 - curveParams.ζ) := by ring
+    rw [h_factor]
+    exact mul_ne_zero h_px_ne (sub_ne_zero.mpr (Ne.symm h_zeta_ne))
+  obtain ⟨h_add_eq, h_pre_curve⟩ :=
+    h_add_env ⟨h_endo_curve, h_pt_curve, mul_inv_cancel₀ h_x_ne⟩ ⟨h_endo_curve, h_pt_curve⟩
+  obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double_env ⟨h_pre_curve, h_no2⟩
+  -- The native init chain lands on the prover's acc₀ wires.
+  have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
+      some ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩ := by
+    simp only [accAfter, initAcc, Point.Spec.Point.endo]
+    rw [h_add_eq]
+    exact h_double_eq
+  -- Iteration 0's non-degeneracy: accAfter 1 ≠ none and accAfter 1 IS this step.
+  have h_acc1 := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
+    input_bits 0 _ h_acc0 (by omega)
+  have h_ne0 : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
+      ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩
+      (input_bits[2 * 0]'(by omega)) (input_bits[2 * 0 + 1]'(by omega)) ≠ none := by
+    rw [← h_acc1]
+    exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits h_native_ne 1 (by omega)
+  -- Inductive invariant: the prover's accumulator wires after iteration m
+  -- hold `accAfter (m+1)`, which is `some` and on the curve.
+  have h_inv : ∀ m : ℕ, m < 64 →
+      accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits (m + 1) =
+        some ⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩ ∧
+      (⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩
+        : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    intro m
+    induction m with
+    | zero =>
+      intro _
+      obtain ⟨_, h_s0, h_c0⟩ := h_step0_env ⟨h_pt_curve, h_acc0_curve,
+        (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
+        (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩),
+        (by rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)]; exact h_ne0)⟩
+      refine ⟨?_, by simpa using h_c0⟩
+      rw [h_acc1]
+      rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)] at h_s0
+      simpa using h_s0
+    | succ k ih =>
+      intro hm
+      obtain ⟨h_prev, h_prev_curve⟩ := ih (by omega)
+      have h_acck := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
+        input_bits (k + 1) _ h_prev (by omega)
+      have h_nek : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
+          ⟨env.get (i₀ + 15 + 12 + k * 36 + 32), env.get (i₀ + 15 + 12 + k * 36 + 35)⟩
+          (input_bits[2 * (k + 1)]'(by omega)) (input_bits[2 * (k + 1) + 1]'(by omega)) ≠
+          none := by
+        rw [← h_acck]
+        exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits h_native_ne
+          (k + 1 + 1) (by omega)
+      obtain ⟨_, h_sk, h_ck⟩ := h_steps_env k (by omega) ⟨h_pt_curve, h_prev_curve,
+        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1), by omega⟩),
+        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1) + 1, by omega⟩),
+        (by
+          rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)]
+          exact h_nek)⟩
+      refine ⟨?_, h_ck⟩
+      rw [h_acck]
+      rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)] at h_sk
+      exact h_sk
+  -- Assemble: init prover assumptions, Double assumptions, and per-iteration
+  -- Step prover assumptions.
+  refine ⟨⟨h_endo_curve, h_pt_curve, mul_inv_cancel₀ h_x_ne⟩, ⟨h_pre_curve, h_no2⟩,
+    ⟨h_pt_curve, h_acc0_curve,
+      (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
+      (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩),
+      (by rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)]; exact h_ne0)⟩,
+    ?_⟩
+  intro i hi
+  obtain ⟨h_prev, h_prev_curve⟩ := h_inv i (by omega)
+  have h_acci := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
+    input_bits (i + 1) _ h_prev (by omega)
+  have h_nei : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
+      ⟨env.get (i₀ + 15 + 12 + i * 36 + 32), env.get (i₀ + 15 + 12 + i * 36 + 35)⟩
+      (input_bits[2 * (i + 1)]'(by omega)) (input_bits[2 * (i + 1) + 1]'(by omega)) ≠
+      none := by
+    rw [← h_acci]
+    exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits h_native_ne
+      (i + 1 + 1) (by omega)
+  exact ⟨h_pt_curve, h_prev_curve,
+    (by rw [h_bit]; exact h_bits ⟨2 * (i + 1), by omega⟩),
+    (by rw [h_bit]; exact h_bits ⟨2 * (i + 1) + 1, by omega⟩),
+    (by
+      rw [h_bit (2 * (i + 1)) (by omega), h_bit (2 * (i + 1) + 1) (by omega)]
+      exact h_nei)⟩
 
 def circuit (curveParams : Point.Spec.CurveParams p) : FormalCircuit (F p) Input Point.Spec.Point :=
   { elaborated curveParams with
