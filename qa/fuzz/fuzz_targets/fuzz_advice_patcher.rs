@@ -1,17 +1,18 @@
 //! The "patcher" technique with a real repair engine (issues #728, #793).
 //!
-//! `fuzz_circuit_cheat` is a patcher whose "repair" is re-running
-//! `circuit.trace(mutated_witness)`: every wire — including advice — is
+//! `fuzz_circuit_cheat` is a patcher whose "repair" is re-tracing the
+//! circuit on the mutated witness: every wire — including advice — is
 //! recomputed by the gadget's own witness logic. That can never expose an
 //! under-constrained *advice* wire, because the gadget always recomputes
 //! the *correct* advice on a re-run, masking a missing constraint.
 //!
-//! This target closes that gap. It runs the circuit through a **recording
-//! driver** that captures the constraint graph ragu actually emits — every
-//! multiplication gate `a·b=c`, every linear-combination wire, every
-//! `enforce_zero` — together with the honest wire values. The patcher then
-//! mutates one *free advice* wire and **repairs through the captured
-//! constraints**, not through the gadget logic:
+//! This target closes that gap. It synthesizes a [`ragu_testing::substrate`]
+//! program through a **recording driver** that captures the constraint
+//! graph ragu actually emits — every multiplication gate `a·b=c`, every
+//! linear-combination wire, every `enforce_zero` — together with the honest
+//! wire values. The patcher then mutates one or more *free advice* wires
+//! and **repairs through the captured constraints**, not through the gadget
+//! logic:
 //!
 //! * a multiplication gate forces `c := a·b`,
 //! * a linear-combination wire is recomputed from its terms,
@@ -24,11 +25,24 @@
 //! result is the witness a malicious prover could submit: it satisfies
 //! exactly the constraints ragu emitted, and *only* those.
 //!
+//! # Vocabulary
+//!
+//! The repair engine only models `{Lin, Gate, 2-term copy, ≤1-term check}`
+//! constraint shapes, so the vocabulary is restricted to the substrate ops
+//! that emit *only* those: `OpSet::ALL` minus the boolean ops (which emit
+//! 3-term `a + b = 1` enforces and gates the repair engine does not model)
+//! and the value-fallible ops (`Invert`/`Divide`/`AllocRaw`, whose
+//! inverse-hint constraints are likewise out of model). The free advice the
+//! patcher mutates is the element-stack advice (witness inputs,
+//! `AllocSpecial`, and `AllocSquare` roots). This is a genuine widening
+//! over the historical Add/Sub/Mul/Scale/AllocSquare/Anchor set —
+//! `Square`, `Double`, `Negate`, `Fold`, and `AllocConst` now participate.
+//!
 //! # The differential
 //!
-//! Alongside the captured graph the harness keeps a native `Fp` shadow
-//! that knows each gadget's true semantics (the oracle), independent of
-//! ragu. For the mutated witness:
+//! Alongside the captured graph the substrate's native `Fp` shadow knows
+//! each gadget's true semantics (the oracle), independent of ragu. For the
+//! mutated witness:
 //!
 //! * `ragu_accepts` — do all captured constraints hold after repair?
 //! * `native_satisfied` — does the native shadow, recomputing the full
@@ -42,15 +56,15 @@
 //! shadow — which knows the true relation — reports the anchor violated.
 //! That disagreement is the under-constrained-advice signal.
 //!
-//! Mutating a free advice wire that no anchor depends on leaves both
-//! verdicts satisfied — correctly no signal, since unconstrained advice is
-//! free to change.
+//! `PATCHER_SELFTEST=1` builds a deliberately under-constrained circuit
+//! directly in the recorder (a root and a "square" allocated as independent
+//! free wires, with the `square = root²` gate omitted) and confirms the
+//! oracle fires — proof the soundness direction is not vacuous.
 
 #![no_main]
 
 use arbitrary::Arbitrary;
 use ff::Field;
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_arithmetic::Coeff;
@@ -58,10 +72,13 @@ use ragu_core::{
     Result as RaguResult,
     drivers::{Driver, DriverTypes, LinearExpression},
     gadgets::Bound,
-    maybe::{Always, Maybe},
+    maybe::Always,
     routines::Routine,
 };
-use ragu_primitives::Element;
+use ragu_testing::substrate::{
+    AdviceSlot, Capabilities, Limits, OpSet, Overrides, Program, native_satisfied, shadow_eval,
+    synthesize,
+};
 
 // ---------------------------------------------------------------------------
 // Recording driver: captures the constraint graph ragu emits.
@@ -200,241 +217,6 @@ impl<'dr> Driver<'dr> for Recorder {
 }
 
 // ---------------------------------------------------------------------------
-// Substrate: a fuzz-generated circuit over a stack of elements.
-// ---------------------------------------------------------------------------
-
-const NUM_INPUTS: usize = 4;
-
-fn special_value(idx: u8) -> Fp {
-    match idx % 8 {
-        0 => Fp::ZERO,
-        1 => Fp::ONE,
-        2 => -Fp::ONE,
-        3 => Fp::TWO_INV,
-        4 => Fp::ROOT_OF_UNITY,
-        5 => Fp::MULTIPLICATIVE_GENERATOR,
-        6 => Fp::from(1u64 << 32),
-        _ => Fp::from(u64::MAX),
-    }
-}
-
-#[derive(Arbitrary, Debug, Clone, Copy)]
-enum Op {
-    Add(u8, u8),
-    Sub(u8, u8),
-    Mul(u8, u8),
-    Scale(u8, u64),
-    /// Allocate `(root, square)` where `root` is *free advice* whose honest
-    /// value is `stack[a]`, and `square = root²` via `Element::alloc_square`.
-    /// The root is the mutation target the patcher cares about.
-    AllocSquare(u8),
-    /// Pin `stack[a]` to its honest value via `enforce_zero(elem - const)`.
-    Anchor(u8),
-}
-
-/// A coordinated cheat: which free advice wire (mod advice count) and the
-/// nonzero delta to add. A run may apply several at once.
-#[derive(Arbitrary, Debug, Clone, Copy)]
-struct Cheat {
-    advice: u16,
-    delta: u64,
-}
-
-#[derive(Arbitrary, Debug)]
-struct Input {
-    seeds: [u64; NUM_INPUTS],
-    special: [Option<u8>; NUM_INPUTS],
-    ops: Vec<Op>,
-    /// One or more advice wires to mutate simultaneously. Coordinated
-    /// multi-wire cheats catch under-constraint that no single-wire change
-    /// exposes (e.g. two wires whose product is pinned but neither is).
-    cheats: Vec<Cheat>,
-}
-
-fn build_inputs(input: &Input) -> [Fp; NUM_INPUTS] {
-    core::array::from_fn(|i| match input.special[i] {
-        Some(idx) => special_value(idx),
-        None => Fp::from(input.seeds[i]),
-    })
-}
-
-/// Honest native shadow: every advice wire takes its honest value, derived
-/// wires are computed from operands, and each `AllocSquare` root is seeded
-/// from `stack[a]` (its only honest coupling to the rest of the circuit).
-fn honest_stack(ops: &[Op], inputs: &[Fp; NUM_INPUTS]) -> Vec<Fp> {
-    let mut stack: Vec<Fp> = inputs.to_vec();
-    for op in ops {
-        let len = stack.len();
-        match *op {
-            Op::Add(a, b) => stack.push(stack[a as usize % len] + stack[b as usize % len]),
-            Op::Sub(a, b) => stack.push(stack[a as usize % len] - stack[b as usize % len]),
-            Op::Mul(a, b) => stack.push(stack[a as usize % len] * stack[b as usize % len]),
-            Op::Scale(a, c) => stack.push(stack[a as usize % len] * Fp::from(c)),
-            Op::AllocSquare(a) => {
-                let r = stack[a as usize % len];
-                stack.push(r);
-                stack.push(r.square());
-            }
-            Op::Anchor(_) => {}
-        }
-    }
-    stack
-}
-
-/// Native shadow with cheats applied. Advice wires (inputs and `AllocSquare`
-/// roots) are *independent* free wires: each takes its honest value unless
-/// its own slot is overridden — cheating an upstream input does **not** move
-/// a downstream root, mirroring ragu, where the root is decoupled advice.
-/// Derived wires are recomputed from operands.
-fn eval_with_advice(ops: &[Op], honest: &[Fp], overrides: &[(usize, Fp)]) -> Vec<Fp> {
-    let ov = |slot: usize, base: Fp| -> Fp {
-        overrides
-            .iter()
-            .find(|(s, _)| *s == slot)
-            .map(|(_, v)| *v)
-            .unwrap_or(base)
-    };
-    let mut stack: Vec<Fp> = (0..NUM_INPUTS).map(|i| ov(i, honest[i])).collect();
-    for op in ops {
-        let len = stack.len();
-        match *op {
-            Op::Add(a, b) => stack.push(stack[a as usize % len] + stack[b as usize % len]),
-            Op::Sub(a, b) => stack.push(stack[a as usize % len] - stack[b as usize % len]),
-            Op::Mul(a, b) => stack.push(stack[a as usize % len] * stack[b as usize % len]),
-            Op::Scale(a, c) => stack.push(stack[a as usize % len] * Fp::from(c)),
-            Op::AllocSquare(_) => {
-                let root_slot = stack.len();
-                let root = ov(root_slot, honest[root_slot]);
-                stack.push(root);
-                stack.push(root.square());
-            }
-            Op::Anchor(_) => {}
-        }
-    }
-    stack
-}
-
-/// Returns the stack-slot indices that are *free advice*: the inputs and
-/// every `AllocSquare` root. Stack growth is value-independent, so these
-/// indices are identical for the native and recording runs.
-fn advice_slots(ops: &[Op]) -> Vec<usize> {
-    let mut slots: Vec<usize> = (0..NUM_INPUTS).collect();
-    let mut len = NUM_INPUTS;
-    for op in ops {
-        match *op {
-            Op::Add(..) | Op::Sub(..) | Op::Mul(..) | Op::Scale(..) => len += 1,
-            Op::AllocSquare(_) => {
-                slots.push(len); // root
-                len += 2; // root, square
-            }
-            Op::Anchor(_) => {}
-        }
-    }
-    slots
-}
-
-/// The stack slot each `Anchor` op pins, in encounter order. Stack growth
-/// is value-independent, so these are stable across honest and cheat runs.
-fn anchor_targets(ops: &[Op]) -> Vec<usize> {
-    let mut len = NUM_INPUTS;
-    let mut targets = Vec::new();
-    for op in ops {
-        match *op {
-            Op::Anchor(a) => targets.push(a as usize % len),
-            Op::Add(..) | Op::Sub(..) | Op::Mul(..) | Op::Scale(..) => len += 1,
-            Op::AllocSquare(_) => len += 2,
-        }
-    }
-    targets
-}
-
-/// Honest anchor values, in encounter order.
-fn anchor_values(ops: &[Op], inputs: &[Fp; NUM_INPUTS]) -> Vec<Fp> {
-    let stack = honest_stack(ops, inputs);
-    anchor_targets(ops).iter().map(|s| stack[*s]).collect()
-}
-
-/// Native oracle verdict: with `overrides` applied, do all anchors still
-/// equal their honest values?
-fn native_satisfied(
-    ops: &[Op],
-    honest: &[Fp],
-    honest_anchors: &[Fp],
-    overrides: &[(usize, Fp)],
-) -> bool {
-    let stack = eval_with_advice(ops, honest, overrides);
-    anchor_targets(ops)
-        .iter()
-        .zip(honest_anchors)
-        .all(|(slot, want)| stack[*slot] == *want)
-}
-
-/// Synthesize the op stack through driver `D`, emitting the same anchors
-/// (pinned to `honest_anchors`). Returns the per-slot wires so callers can
-/// align advice slots with wire ids.
-fn synthesize<'dr, D: Driver<'dr, F = Fp>>(
-    dr: &mut D,
-    ops: &[Op],
-    inputs: &[Fp; NUM_INPUTS],
-    honest_anchors: &[Fp],
-    buggy: bool,
-) -> RaguResult<Vec<D::Wire>> {
-    let mut elems: Vec<Element<'dr, D>> = (0..NUM_INPUTS)
-        .map(|i| {
-            let v = inputs[i];
-            Element::alloc(dr, &mut (), D::just(move || v))
-        })
-        .collect::<RaguResult<_>>()?;
-    let mut anchor_idx = 0usize;
-    for op in ops {
-        let len = elems.len();
-        match *op {
-            Op::Add(a, b) => {
-                let r = elems[a as usize % len].add(dr, &elems[b as usize % len]);
-                elems.push(r);
-            }
-            Op::Sub(a, b) => {
-                let r = elems[a as usize % len].sub(dr, &elems[b as usize % len]);
-                elems.push(r);
-            }
-            Op::Mul(a, b) => {
-                let r = elems[a as usize % len].mul(dr, &elems[b as usize % len])?;
-                elems.push(r);
-            }
-            Op::Scale(a, c) => {
-                let r = elems[a as usize % len].scale(dr, Coeff::Arbitrary(Fp::from(c)));
-                elems.push(r);
-            }
-            Op::AllocSquare(a) => {
-                let v = *elems[a as usize % len].value().take();
-                if buggy {
-                    // Self-test: a deliberately under-constrained `alloc_square`
-                    // that allocates the root and its "square" as independent
-                    // free wires, omitting the `square = root²` gate. The
-                    // patcher must catch this when the square is anchored.
-                    let sq = v.square();
-                    let root = Element::alloc(dr, &mut (), D::just(move || v))?;
-                    let square = Element::alloc(dr, &mut (), D::just(move || sq))?;
-                    elems.push(root);
-                    elems.push(square);
-                } else {
-                    let (root, square) = Element::alloc_square(dr, D::just(move || v))?;
-                    elems.push(root);
-                    elems.push(square);
-                }
-            }
-            Op::Anchor(a) => {
-                let slot = a as usize % len;
-                let pin = Element::constant(dr, honest_anchors[anchor_idx]);
-                anchor_idx += 1;
-                elems[slot].sub(dr, &pin).enforce_zero(dr)?;
-            }
-        }
-    }
-    Ok(elems.iter().map(|e| e.wire().clone()).collect())
-}
-
-// ---------------------------------------------------------------------------
 // Repair engine: propagate a mutation through the *captured* constraints.
 // ---------------------------------------------------------------------------
 
@@ -510,42 +292,136 @@ fn constraints_hold(events: &[Ev], values: &[Fp]) -> bool {
     })
 }
 
-fuzz_target!(|input: Input| {
-    if std::env::var("DEBUG_INPUT").is_ok() {
-        eprintln!("{:#?}", input);
-        return;
-    }
-    if input.ops.is_empty() || input.ops.len() > 48 {
-        return;
-    }
+// ---------------------------------------------------------------------------
+// Harness.
+// ---------------------------------------------------------------------------
 
-    let inputs = build_inputs(&input);
-    let honest = honest_stack(&input.ops, &inputs);
-    let honest_anchors = anchor_values(&input.ops, &inputs);
-    let advice = advice_slots(&input.ops);
-    if advice.is_empty() {
-        return;
-    }
+/// A coordinated cheat: which free advice wire (mod advice count) and the
+/// nonzero delta to add. A run may apply several at once.
+#[derive(Arbitrary, Debug, Clone, Copy)]
+struct Cheat {
+    advice: u16,
+    delta: u64,
+}
 
-    // PATCHER_SELFTEST=1 swaps in a deliberately under-constrained
-    // `alloc_square` to confirm the oracle fires (the soundness direction).
-    let buggy = std::env::var("PATCHER_SELFTEST").is_ok();
+#[derive(Arbitrary, Debug)]
+struct Input {
+    /// One or more advice wires to mutate simultaneously. Coordinated
+    /// multi-wire cheats catch under-constraint that no single-wire change
+    /// exposes (e.g. two wires whose product is pinned but neither is).
+    cheats: Vec<Cheat>,
+    /// Raw program bytes, decoded via [`Program::decode`]. Last field, so
+    /// `arbitrary_take_rest` hands it the remainder of the input.
+    program: Vec<u8>,
+}
 
-    // Record the honest constraint graph and the per-slot wire ids.
+/// The repair-safe vocabulary: ops emitting only `{Lin, Gate, 2-term copy,
+/// ≤1-term check}` constraints. Booleans (3-term `a+b=1` enforces) and
+/// value-fallible ops (inverse-hint constraints) are out of the repair
+/// engine's model.
+fn opset() -> OpSet {
+    OpSet::ALL
+        .without(Capabilities::BOOLEAN)
+        .without(Capabilities::VALUE_FALLIBLE)
+}
+
+/// `PATCHER_SELFTEST=1`: build a deliberately under-constrained circuit in
+/// the recorder and confirm the patcher's soundness assertion fires.
+///
+/// The circuit allocates `root` and `square` as independent free wires and
+/// anchors `square` to its honest value `root²`, but omits the
+/// `square = root²` gate. Mutating `root` and repairing through the
+/// captured constraints leaves `square` untouched (no rule carries the
+/// change), so ragu accepts — while the true semantics say `square` must
+/// move, violating the anchor. The mismatch is the signal.
+fn run_selftest() {
+    let root_honest = Fp::from(7u64);
+
     let mut rec = Recorder::new();
-    let slot_wires = match synthesize(&mut rec, &input.ops, &inputs, &honest_anchors, buggy) {
-        Ok(w) => w,
-        Err(_) => return,
-    };
+    let root = rec.push_wire(root_honest); // free advice
+    let square = rec.push_wire(root_honest.square()); // free advice — BUG: not gated to root²
 
-    // Completeness: the honest witness satisfies the captured constraints.
+    // Anchor `square` to its honest value via `enforce_zero(square - 49)`,
+    // exactly as the substrate's `Op::Anchor` would: a constant wire, a
+    // difference Lin, and a 1-term check.
+    let pin = rec.add(|lc| lc.add_term(&Recorder::ONE, Coeff::Arbitrary(root_honest.square())));
+    let diff = rec.add(|lc| lc.add(&square).add_term(&pin, Coeff::NegativeOne));
+    rec.enforce_zero(|lc| lc.add(&diff)).unwrap();
+
     assert!(
         constraints_hold(&rec.events, &rec.values),
-        "honest witness violated a captured constraint (harness bug): {input:?}"
+        "self-test honest circuit must satisfy its own constraints",
+    );
+
+    // Cheat the root; repair cannot reach `square` (no gate links them).
+    let mut values = rec.values.clone();
+    let delta = Fp::from(3u64);
+    values[root] += delta;
+    repair(&rec.events, &mut values, &[root]);
+    let ragu_accepts = constraints_hold(&rec.events, &values);
+
+    // True semantics: square must be root²; after the cheat it isn't 49.
+    let native_ok = (root_honest + delta).square() == root_honest.square();
+
+    assert_eq!(
+        ragu_accepts, native_ok,
+        "PATCHER SELF-TEST: the oracle failed to fire on a known \
+         under-constrained alloc_square (ragu_accepts={ragu_accepts}, \
+         native_ok={native_ok}). The soundness direction is vacuous — the \
+         engine would miss real bugs.",
+    );
+}
+
+fuzz_target!(|input: Input| {
+    if std::env::var("PATCHER_SELFTEST").is_ok() {
+        run_selftest();
+        return;
+    }
+
+    let program = Program::decode(&input.program, opset(), Limits::default());
+
+    if std::env::var("DEBUG_INPUT").is_ok() {
+        eprintln!("cheats = {:?}\n{program:#?}", input.cheats);
+        return;
+    }
+    if program.ops.is_empty() {
+        return;
+    }
+
+    // Honest native shadow: correct semantics, anchor observations, and the
+    // free-advice inventory. Element-stack advice (witness inputs,
+    // AllocSpecial, AllocSquare roots) are the mutation targets.
+    let shadow = shadow_eval::<Fp>(&program, Overrides::none());
+    let honest_anchors = shadow.anchors.clone();
+    let advice_slots: Vec<usize> = shadow
+        .advice
+        .iter()
+        .filter_map(|a| match a {
+            AdviceSlot::Elem(i) => Some(*i),
+            _ => None,
+        })
+        .collect();
+    if advice_slots.is_empty() {
+        return;
+    }
+
+    // Capture the honest constraint graph and per-slot wire ids.
+    let mut rec = Recorder::new();
+    let stacks = match synthesize(&mut rec, &mut (), &program, &honest_anchors) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let slot_wires: Vec<usize> = stacks.elems.iter().map(|e| *e.wire()).collect();
+
+    // Completeness: the honest witness satisfies the captured constraints
+    // and the native oracle agrees. Both hold by construction.
+    assert!(
+        constraints_hold(&rec.events, &rec.values),
+        "honest witness violated a captured constraint (harness bug): {program:?}"
     );
     assert!(
-        native_satisfied(&input.ops, &honest, &honest_anchors, &[]),
-        "honest native oracle disagreed with itself (harness bug): {input:?}"
+        native_satisfied(&program, &honest_anchors, Overrides::none()),
+        "honest native oracle disagreed with itself (harness bug): {program:?}"
     );
 
     // Resolve the coordinated cheat into (advice slot, delta) pairs,
@@ -562,7 +438,7 @@ fuzz_target!(|input: Input| {
     };
     let mut slot_delta: Vec<(usize, Fp)> = Vec::new();
     for ch in &raw_cheats {
-        let slot = advice[ch.advice as usize % advice.len()];
+        let slot = advice_slots[ch.advice as usize % advice_slots.len()];
         if slot_delta.iter().any(|(s, _)| *s == slot) {
             continue;
         }
@@ -586,16 +462,23 @@ fuzz_target!(|input: Input| {
     // native side: apply the same cheats and recompute the full chain.
     let overrides: Vec<(usize, Fp)> = slot_delta
         .iter()
-        .map(|(slot, delta)| (*slot, honest[*slot] + delta))
+        .map(|(slot, delta)| (*slot, shadow.elems[*slot] + delta))
         .collect();
-    let native_ok = native_satisfied(&input.ops, &honest, &honest_anchors, &overrides);
+    let native_ok = native_satisfied(
+        &program,
+        &honest_anchors,
+        Overrides {
+            elems: &overrides,
+            ..Overrides::none()
+        },
+    );
 
     assert_eq!(
         ragu_accepts,
         native_ok,
         "PATCHER SOUNDNESS SIGNAL: cheating advice {slot_delta:?} \
          and repairing through the captured constraints, ragu {} the witness \
-         but the native oracle says it is {}. {}. Input: {input:?}",
+         but the native oracle says it is {}. {}. Program: {program:?}",
         if ragu_accepts { "ACCEPTED" } else { "REJECTED" },
         if native_ok { "satisfied" } else { "VIOLATED" },
         if ragu_accepts && !native_ok {
