@@ -16,11 +16,15 @@ The driver also sets the wire type to be a symbolic expression, that is, `ImplWi
 
 The important driver methods map Ragu synthesis steps into operations as follows:
 
-- `alloc` allocates one fresh wire and records `Op::Witness { count: 1 }`.
-- `mul` allocates three fresh wires, records `Op::Witness { count: 3 }`, and then adds a constraint for `a * b - c = 0`.
+- `gate`, and therefore `mul`, allocates three fresh wire indices, records `Op::Witness { count: 3 }`, and then adds a constraint for `a * b - c = 0`.
+- `assign_extra` allocates one fresh wire and records `Op::Witness { count: 1 }`.
 - `add` does not allocate any wire and does not emit any operation. It returns a symbolic expression only.
 - `enforce_zero` builds a symbolic expression and adds a constraint, enforcing it to be zero.
 - `constant` returns a constant expression and does not emit any operation.
+
+Production drivers treat a gate as four wires `(A, B, C, D)`, constrained by `A * B = C` and `C * D = 0`; the `D` wire can be assigned through `assign_extra` when `C` is known to be zero.
+The extractor intentionally keeps the older three-wire model: it does not allocate the auxiliary `D` wire or emit the `C * D = 0` constraint, and `assign_extra` becomes a standalone one-wire allocation.
+This shim is part of the extraction trust boundary, so the fingerprint check proves equivalence with the trace emitted by this extractor model.
 
 This driver implementation provides the core mapping from Ragu driver operations to `Clean` operations, so it is crucial that Ragu driver semantics is correctly converted into `Clean` circuit semantics.
 

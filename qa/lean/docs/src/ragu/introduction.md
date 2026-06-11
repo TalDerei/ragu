@@ -51,7 +51,8 @@ We argue that this is a reasonable approach:
 The key observation is that one can keep the low-level extracted representation while recovering high-level structure separately in Lean.
 For each extracted instance, the Lean side provides a `reimplementation`: this is an ordinary `FormalCircuit` in `Clean`, written compositionally out of smaller gadgets, and it can remain parameterized in the usual Lean style.
 
-The formal verification statements do not trust the reimplementation: instead, the [fingerprint equivalence check](./fingerprint.md) establishes that the concrete instantiation of the `Clean` reimplementation **emits exactly the same operations and output expressions as the extracted circuit instance**.
+The Lean soundness and completeness theorems are proved about this reimplementation.
+Applying those theorems to the Rust circuit relies on the [fingerprint equivalence check](./fingerprint.md): the concrete instantiation of the `Clean` reimplementation must **emit exactly the same operations and output expressions as the extracted circuit instance**.
 Both the Rust extractor and the Lean side compute a canonical digest over the operation trace and output expressions of their respective sides, and CI compares the two — in the style of comparing verification keys.
 
 This gives the best of both approaches:
