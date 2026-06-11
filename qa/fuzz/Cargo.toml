@@ -99,10 +99,11 @@ doc = false
 bench = false
 
 # The "patcher" technique (issue #728): mutate one witness input, repair
-# every downstream wire, and assert the assembled constraint identity
-# matches an independent native oracle over a circuit substrate with real
-# enforce_zero constraints. Also cross-checks the Simulator verdict against
-# the identity to catch driver-vs-wiring disagreements.
+# every downstream wire by re-tracing, and assert the assembled constraint
+# identity matches an independent native oracle over a ragu_testing::substrate
+# program (real enforce_zero anchors, full grammar minus value-fallible ops).
+# Also cross-checks the Simulator verdict against the identity to catch
+# driver-vs-wiring disagreements.
 [[bin]]
 name = "fuzz_circuit_cheat"
 path = "fuzz_targets/fuzz_circuit_cheat.rs"
@@ -111,10 +112,12 @@ doc = false
 bench = false
 
 # The patcher with a real repair engine (issues #728, #793): a recording
-# Driver captures the constraint graph ragu emits, then a mutation to a free
-# advice wire is repaired by propagating through the *captured* constraints
-# (not by re-running gadget logic). Disagreement with the native oracle is
-# the under-constrained-advice signal that re-trace-based repair cannot see.
+# Driver captures the constraint graph ragu emits for a ragu_testing::substrate
+# program (repair-safe vocabulary: no booleans, no value-fallible ops), then a
+# coordinated mutation to free advice wires is repaired by propagating through
+# the *captured* constraints (not by re-running gadget logic). Disagreement
+# with the substrate's native oracle is the under-constrained-advice signal
+# that re-trace-based repair cannot see.
 [[bin]]
 name = "fuzz_advice_patcher"
 path = "fuzz_targets/fuzz_advice_patcher.rs"

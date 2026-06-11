@@ -104,12 +104,13 @@ where
     synthesize_ops(dr, allocator, program, elems, anchors, |_, _, _, _| Ok(()))
 }
 
-/// [`synthesize`] with a hook invoked after every executed op.
+/// [`synthesize`] with a hook invoked before every op.
 ///
-/// The hook receives the op's index in `program.ops` and mutable access to
-/// both stacks; `fuzz_witness_cheat`-style harnesses use it to swap a stack
-/// element mid-stream. The hook runs after the op's own pushes and before
-/// stack-cap truncation.
+/// The hook receives the index of the op about to execute and mutable
+/// access to both stacks; `fuzz_witness_cheat`-style harnesses use it to
+/// swap a stack element mid-stream ("replace `elems[target]` *before*
+/// `ops[cheat_at]` runs"). Returning an error aborts synthesis, which
+/// harnesses use to discard degenerate runs.
 pub fn synthesize_with_hook<'dr, D: Driver<'dr>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,
@@ -154,6 +155,8 @@ where
     let mut anchor_idx = 0usize;
 
     for (idx, op) in program.ops.iter().enumerate() {
+        hook(dr, idx, &mut elems, &mut bools)?;
+
         let elen = elems.len();
         let blen = bools.len();
         if elen == 0 {
@@ -287,8 +290,6 @@ where
             }
         }
 
-        hook(dr, idx, &mut elems, &mut bools)?;
-
         if elems.len() > ELEM_STACK_CAP {
             elems.truncate(ELEM_TRUNCATE_TO);
         }
@@ -374,7 +375,7 @@ mod tests {
         assert!(cheat.is_err(), "wrong anchor constant must be rejected");
     }
 
-    /// The mid-stream hook can observe and mutate the stacks.
+    /// The pre-op hook observes the stack state before each op executes.
     #[test]
     fn hook_runs_per_op() {
         let program = Program {
@@ -396,7 +397,7 @@ mod tests {
             Ok(())
         });
         assert!(sim.is_ok());
-        assert_eq!(seen, vec![(0, Preamble::LEN + 1), (1, Preamble::LEN + 2)]);
+        assert_eq!(seen, vec![(0, Preamble::LEN), (1, Preamble::LEN + 1)]);
     }
 
     proptest! {
