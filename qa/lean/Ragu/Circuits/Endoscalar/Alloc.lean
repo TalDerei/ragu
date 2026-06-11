@@ -32,6 +32,12 @@ def ProverAssumptions (_input : BitVec 128) (_data : ProverData (F p))
 def Spec (_input : Unit) (out : Vector (F p) 128) (_data : ProverData (F p)) :=
   ∀ i : Fin 128, IsBool out[i]
 
+/-- The honest prover's wire `i` holds bit `i` of the 128-bit hint
+(LSB-first, matching the Rust `(value >> i) & 1`). Callers use this to chain
+the allocated endoscalar's value through composed completeness proofs. -/
+def ProverSpec (input : BitVec 128) (out : Vector (F p) 128) (_hint : ProverHint (F p)) :=
+  ∀ i : Fin 128, out[i] = if input[i.val] then 1 else 0
+
 instance elaborated
     : ElaboratedCircuit (F p) (Unconstrained (BitVec 128)) (fields 128) where
   main
@@ -48,15 +54,18 @@ theorem soundness
 
 theorem completeness
     : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
-        ProverAssumptions (fun _ _ _ => True) := by
+        ProverAssumptions ProverSpec := by
   circuit_proof_start [Boolean.Alloc.circuit, Boolean.Alloc.Assumptions, Boolean.Alloc.Spec,
-    Boolean.Alloc.ProverAssumptions]
+    Boolean.Alloc.ProverAssumptions, Boolean.Alloc.ProverSpec]
+  intro i
+  exact (h_env i).2
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (BitVec 128)) (fields 128) :=
   { elaborated with
     Assumptions := Assumptions,
     Spec := Spec,
     ProverAssumptions := ProverAssumptions,
+    ProverSpec := ProverSpec,
     soundness := soundness,
     completeness := completeness }
 

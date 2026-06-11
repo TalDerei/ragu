@@ -38,7 +38,17 @@ system. This reimpl models exactly that via the `*Unchecked` point
 sub-gadgets, and carries the non-degeneracy as the explicit caller
 obligation `groupScaleNative ≠ none` in `Assumptions` — soundness is
 *conditional* on it, which is the honest statement about the circuit that
-ships. The extraction instance mirrors the unchecked bank. -/
+ships. The extraction instance mirrors the unchecked bank.
+
+**Known modeling divergence (freshening).** The deployed gadget chains each
+DAA output's symbolic linear expressions directly; this model (and the
+extraction instance) inserts two `Element.Mul ⟨_, 1⟩` gates per iteration to
+re-materialize the accumulator as fresh wires, because tree-shaped symbolic
+representations otherwise grow exponentially over 64 iterations. The extra
+gates are definitional aliases (`c = x·1` restricts nothing), so the modeled
+and deployed circuits are equisatisfiable with identical input/output
+relations — an equivalence that is verified by inspection, not by the
+fingerprint. A DAG-aware trace encoding would remove the divergence. -/
 structure Input (F : Type) where
   bits : Vector F 128
   pt : Point.Spec.Point F
