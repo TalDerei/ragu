@@ -23,12 +23,12 @@
 //! # The substrate and the oracle
 //!
 //! A fuzzer-chosen program runs over a stack of field elements with real
-//! Ragu gadgets through the `Simulator` (which checks every gate and
-//! `enforce_zero` inline; `simulate` returns `Err` iff some constraint is
-//! violated). Alongside it the harness keeps a *native* `Fp` shadow of the
-//! same stack — this shadow is simultaneously the constraint graph (it
-//! records every wire's value) and the oracle (it defines the true
-//! semantics independently of Ragu).
+//! Ragu gadgets in two ways: first through the `Simulator` as a fast
+//! synthesis sanity check, then as a temporary `Circuit` whose trace is
+//! assembled and checked with the revdot constraint identity. Alongside it
+//! the harness keeps a *native* `Fp` shadow of the same stack — this shadow
+//! is simultaneously the constraint graph (it records every wire's value)
+//! and the oracle (it defines the true semantics independently of Ragu).
 //!
 //! `Op::Anchor(i)` is the constraint primitive: at honest-build time it
 //! captures the native value `v` at stack slot `i`, and in the Ragu
@@ -48,13 +48,16 @@
 //!    still reference the *honest* constants, so any anchor downstream of
 //!    the cheat now reads a changed value.
 //! 4. Compute the native verdict — do all anchors still hold under the
-//!    repaired shadow? — and run the mutated witness through the Simulator.
-//! 5. Assert `simulator_accepts == native_satisfied`. The load-bearing
-//!    direction is **Simulator accepts while the oracle says violated**:
-//!    Ragu accepted a witness that changed a pinned wire — an
-//!    under-constrained `enforce_zero`/gadget, i.e. a soundness bug. The
-//!    converse (Simulator rejects while the oracle is satisfied) is a
-//!    completeness bug and is equally caught.
+//!    repaired shadow? — and assemble the mutated trace under the same
+//!    circuit wiring.
+//! 5. Assert the revdot identity verdict matches `native_satisfied`. The
+//!    load-bearing direction is **constraint identity accepts while the
+//!    oracle says violated**: Ragu accepted a witness that changed a
+//!    pinned wire — an under-constrained `enforce_zero`/gadget, i.e. a
+//!    soundness bug. The converse (identity rejects while the oracle is
+//!    satisfied) is a completeness bug and is equally caught. The
+//!    Simulator verdict is also compared to the identity to catch
+//!    Simulator-vs-wiring disagreements.
 //!
 //! Inputs where the cheat reaches no anchor leave both verdicts
 //! `satisfied` — correctly no signal, since an unconstrained input is free
@@ -79,7 +82,17 @@ use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_arithmetic::Coeff;
-use ragu_core::maybe::Maybe;
+use ragu_circuits::{
+    Circuit, CircuitExt, WithAux,
+    polynomials::{Rank, TestRank, sparse},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
+};
+use ragu_core::{
+    Result as RaguResult,
+    drivers::{Driver, DriverValue},
+    gadgets::{Bound, Kind},
+    maybe::Maybe,
+};
 use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 /// Number of free witness inputs the program starts with. The stack only
@@ -168,61 +181,170 @@ fn native_anchor_values(ops: &[Op], inputs: &[Fp; NUM_INPUTS]) -> Vec<Fp> {
 /// recomputed from `inputs`, with each anchor compared against the honest
 /// constant in `honest_anchors`?
 fn native_satisfied(ops: &[Op], inputs: &[Fp; NUM_INPUTS], honest_anchors: &[Fp]) -> bool {
-    native_anchor_values(ops, inputs)
-        .iter()
-        .zip(honest_anchors)
-        .all(|(got, want)| got == want)
+    let anchors = native_anchor_values(ops, inputs);
+    anchors.as_slice() == honest_anchors
+}
+
+fn synthesize_stack<'dr, D: Driver<'dr, F = Fp>>(
+    dr: &mut D,
+    witness: DriverValue<D, [Fp; NUM_INPUTS]>,
+    ops: &[Op],
+    honest_anchors: &[Fp],
+) -> RaguResult<()> {
+    let allocator = &mut Standard::new();
+    let mut elems: Vec<Element<'dr, D>> = (0..NUM_INPUTS)
+        .map(|i| Element::alloc(dr, allocator, witness.as_ref().map(|wv| wv[i])))
+        .collect::<RaguResult<_>>()?;
+    let mut anchor_idx = 0usize;
+    for op in ops {
+        let len = elems.len();
+        match *op {
+            Op::Add(a, b) => {
+                let r = elems[a as usize % len].add(dr, &elems[b as usize % len]);
+                elems.push(r);
+            }
+            Op::Sub(a, b) => {
+                let r = elems[a as usize % len].sub(dr, &elems[b as usize % len]);
+                elems.push(r);
+            }
+            Op::Mul(a, b) => {
+                let r = elems[a as usize % len].mul(dr, &elems[b as usize % len])?;
+                elems.push(r);
+            }
+            Op::Double(a) => {
+                let r = elems[a as usize % len].double(dr);
+                elems.push(r);
+            }
+            Op::Negate(a) => {
+                let r = elems[a as usize % len].negate(dr);
+                elems.push(r);
+            }
+            Op::Scale(a, c) => {
+                let r = elems[a as usize % len].scale(dr, Coeff::Arbitrary(Fp::from(c)));
+                elems.push(r);
+            }
+            Op::Anchor(a) => {
+                let slot = a as usize % len;
+                let pin = Element::constant(dr, honest_anchors[anchor_idx]);
+                anchor_idx += 1;
+                elems[slot].sub(dr, &pin).enforce_zero(dr)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct StackCircuit<'a> {
+    ops: &'a [Op],
+    honest_anchors: &'a [Fp],
+}
+
+impl<'a> Circuit<Fp> for StackCircuit<'a> {
+    type Instance<'instance> = ();
+    type Output = Kind![Fp; ()];
+    type Witness<'witness> = [Fp; NUM_INPUTS];
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> RaguResult<Bound<'dr, D, Self::Output>>
+    where
+        Self: 'dr,
+    {
+        Ok(())
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> RaguResult<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+    where
+        Self: 'dr,
+    {
+        synthesize_stack(dr, witness, self.ops, self.honest_anchors)?;
+        Ok(WithAux::new((), D::unit()))
+    }
 }
 
 /// Replay the program through the Ragu `Simulator` with the given inputs,
 /// emitting each `Anchor` as `enforce_zero(elem - honest_const)`. Returns
 /// whether the Simulator accepted (all gates and constraints held).
 fn simulator_accepts(ops: &[Op], inputs: &[Fp; NUM_INPUTS], honest_anchors: &[Fp]) -> bool {
-    let honest = honest_anchors.to_vec();
-    let sim = Simulator::<Fp>::simulate(inputs.to_vec(), |dr, w| {
-        let allocator = &mut Standard::new();
-        let mut elems: Vec<Element<'_, _>> = (0..NUM_INPUTS)
-            .map(|i| Element::alloc(dr, allocator, w.as_ref().map(|wv| wv[i])))
-            .collect::<Result<_, _>>()?;
-        let mut anchor_idx = 0usize;
-        for op in ops {
-            let len = elems.len();
-            match *op {
-                Op::Add(a, b) => {
-                    let r = elems[a as usize % len].add(dr, &elems[b as usize % len]);
-                    elems.push(r);
-                }
-                Op::Sub(a, b) => {
-                    let r = elems[a as usize % len].sub(dr, &elems[b as usize % len]);
-                    elems.push(r);
-                }
-                Op::Mul(a, b) => {
-                    let r = elems[a as usize % len].mul(dr, &elems[b as usize % len])?;
-                    elems.push(r);
-                }
-                Op::Double(a) => {
-                    let r = elems[a as usize % len].double(dr);
-                    elems.push(r);
-                }
-                Op::Negate(a) => {
-                    let r = elems[a as usize % len].negate(dr);
-                    elems.push(r);
-                }
-                Op::Scale(a, c) => {
-                    let r = elems[a as usize % len].scale(dr, Coeff::Arbitrary(Fp::from(c)));
-                    elems.push(r);
-                }
-                Op::Anchor(a) => {
-                    let slot = a as usize % len;
-                    let pin = Element::constant(dr, honest[anchor_idx]);
-                    anchor_idx += 1;
-                    elems[slot].sub(dr, &pin).enforce_zero(dr)?;
-                }
-            }
-        }
-        Ok(())
+    let sim = Simulator::<Fp>::simulate(*inputs, |dr, w| {
+        synthesize_stack(dr, w, ops, honest_anchors)
     });
     sim.is_ok()
+}
+
+fn sy_from_registry(
+    registry: &Registry<'_, Fp, TestRank>,
+    y: Fp,
+) -> sparse::Polynomial<Fp, TestRank> {
+    let omega_0 = CircuitIndex::new(0).omega_j::<Fp>();
+    let mut wy = registry.wy(omega_0, y);
+    if y != Fp::ZERO {
+        let y_4n_minus_1 = y.pow_vartime([(4 * TestRank::n() - 1) as u64]);
+        let mut key_view = sparse::View::<_, TestRank, _>::wiring();
+        key_view.c.push(registry.digest() * y_4n_minus_1);
+        let key_term = key_view.build();
+        wy.sub_assign(&key_term);
+    }
+    wy
+}
+
+fn identity_lhs(
+    registry: &Registry<'_, Fp, TestRank>,
+    r: &sparse::Polynomial<Fp, TestRank>,
+    y: Fp,
+    z: Fp,
+) -> Fp {
+    let mut b = r.clone();
+    b.dilate(z);
+    b.add_assign(&sy_from_registry(registry, y));
+    b.add_assign(&TestRank::tz(z));
+    r.revdot(&b)
+}
+
+fn evaluation_point(seed: u64, offset: u64) -> Fp {
+    let mut point = Fp::from(seed) + Fp::from(offset);
+    if point == Fp::ZERO || point == Fp::ONE {
+        point += Fp::from(2u64);
+    }
+    point
+}
+
+fn identity_accepts(
+    ops: &[Op],
+    inputs: &[Fp; NUM_INPUTS],
+    honest_anchors: &[Fp],
+    input: &Input,
+) -> Option<bool> {
+    let circuit = StackCircuit {
+        ops,
+        honest_anchors,
+    };
+    let registry = RegistryBuilder::<Fp, TestRank>::new()
+        .register_circuit(circuit)
+        .and_then(|b| b.finalize())
+        .ok()?;
+    let trace = circuit.trace(*inputs).ok()?.into_output();
+    let r = registry
+        .assemble_with_alpha(&trace, CircuitIndex::new(0), Fp::ZERO)
+        .ok()?;
+
+    let y = evaluation_point(input.input_seeds[0], 2);
+    let z = evaluation_point(input.input_seeds[1], 3);
+    let y2 = y * Fp::MULTIPLICATIVE_GENERATOR + Fp::from(5u64);
+    let z2 = z * Fp::MULTIPLICATIVE_GENERATOR + Fp::from(7u64);
+
+    Some(
+        identity_lhs(&registry, &r, y, z) == circuit.ky((), y).ok()?
+            && identity_lhs(&registry, &r, y2, z2) == circuit.ky((), y2).ok()?,
+    )
 }
 
 fuzz_target!(|input: Input| {
@@ -250,6 +372,15 @@ fuzz_target!(|input: Input| {
         simulator_accepts(&input.ops, &honest_inputs, &honest_anchors),
         "Simulator rejected the honest witness — completeness bug. {input:?}"
     );
+    let honest_identity =
+        match identity_accepts(&input.ops, &honest_inputs, &honest_anchors, &input) {
+            Some(v) => v,
+            None => return,
+        };
+    assert!(
+        honest_identity,
+        "constraint identity rejected the honest witness — completeness bug. {input:?}"
+    );
 
     // Patch: mutate one input, repair downstream (both the native shadow
     // and the Simulator recompute every derived wire from the new input).
@@ -262,16 +393,31 @@ fuzz_target!(|input: Input| {
 
     let oracle = native_satisfied(&input.ops, &mutated_inputs, &honest_anchors);
     let simulator = simulator_accepts(&input.ops, &mutated_inputs, &honest_anchors);
+    let identity = match identity_accepts(&input.ops, &mutated_inputs, &honest_anchors, &input) {
+        Some(v) => v,
+        None => return,
+    };
 
     assert_eq!(
-        simulator, oracle,
-        "PATCHER SOUNDNESS SIGNAL: after mutating input \
-         {} by {delta:?} and repairing downstream, the Simulator {} the \
-         witness but the oracle says it is {}. {}. Input: {input:?}",
+        simulator,
+        identity,
+        "Simulator and assembled constraint identity disagree after mutating input \
+         {} by {delta:?}. Simulator {}, identity {}. Input: {input:?}",
         input.cheat_input as usize % NUM_INPUTS,
         if simulator { "ACCEPTED" } else { "REJECTED" },
+        if identity { "ACCEPTED" } else { "REJECTED" },
+    );
+
+    assert_eq!(
+        identity,
+        oracle,
+        "PATCHER SOUNDNESS SIGNAL: after mutating input \
+         {} by {delta:?} and repairing downstream, the constraint identity {} the \
+         witness but the oracle says it is {}. {}. Input: {input:?}",
+        input.cheat_input as usize % NUM_INPUTS,
+        if identity { "ACCEPTED" } else { "REJECTED" },
         if oracle { "satisfied" } else { "VIOLATED" },
-        if simulator && !oracle {
+        if identity && !oracle {
             "Ragu accepted a witness that changed a pinned wire — an \
              under-constrained constraint/gadget (the soundness direction)"
         } else {

@@ -43,12 +43,12 @@
 //! declaring a bug. Roots expressible in the u64 seed range are not
 //! expected to exist (≈ deg·2^64/|F| ≈ 2^-180 of them).
 //!
-//! Mutation is restricted to nonzero coefficients of the honest `r`:
-//! zero coefficients cannot be distinguished from structural padding,
-//! and padding slots whose revdot mirror is also dead are legitimately
-//! unpinned (they carry no witness data). Zero-valued *wires* are
-//! thereby skipped — a small coverage shave, not a soundness loss, since
-//! the same wire is exercised under other witness seeds.
+//! Mutation is restricted to coefficients that are live for the chosen
+//! circuit. The live-degree mask is computed from probe traces of the same
+//! circuit under nonzero satisfying witnesses, then unioned with the current
+//! trace's nonzero coefficients. This avoids mutating structural padding and
+//! intentionally-dead allocation slots while still allowing zero-valued live
+//! wires in the current trace to be mutated.
 //!
 //! # Circuit coverage
 //!
@@ -120,6 +120,7 @@ fn special_value(idx: u8) -> Fp {
 /// `fuzz_circuit_revdot_identity.rs`.
 struct SquareRegistryCache {
     slots: [OnceCell<Result<Registry<'static, Fp, TestRank>, ()>>; 120],
+    live_degrees: [OnceCell<Vec<usize>>; 120],
 }
 
 // SAFETY: libfuzzer runs the fuzz target on a single thread.
@@ -128,6 +129,7 @@ unsafe impl Sync for SquareRegistryCache {}
 static SQUARE_REGISTRY_CACHE: LazyLock<SquareRegistryCache> =
     LazyLock::new(|| SquareRegistryCache {
         slots: [const { OnceCell::new() }; 120],
+        live_degrees: [const { OnceCell::new() }; 120],
     });
 
 fn square_registry_for(times: usize) -> Option<&'static Registry<'static, Fp, TestRank>> {
@@ -162,6 +164,64 @@ fn square_native(witness: Fp, times: usize) -> Fp {
 /// for `MySimpleCircuit`. Returns `None` if `a^5` is a non-residue.
 fn derive_satisfying_b(a: Fp) -> Option<Fp> {
     Option::<Fp>::from(a.pow_vartime([5u64]).sqrt())
+}
+
+fn add_nonzero_degrees(poly: &sparse::Polynomial<Fp, TestRank>, degrees: &mut Vec<usize>) {
+    for (degree, coeff) in poly.iter_coeffs().enumerate() {
+        if coeff != Fp::ZERO && !degrees.contains(&degree) {
+            degrees.push(degree);
+        }
+    }
+}
+
+fn assembled_trace(
+    registry: &Registry<'_, Fp, TestRank>,
+    trace: &Trace<Fp>,
+) -> Result<sparse::Polynomial<Fp, TestRank>, ()> {
+    registry
+        .assemble_with_alpha(trace, CircuitIndex::new(0), Fp::ZERO)
+        .map_err(|_| ())
+}
+
+fn square_live_degrees(
+    registry: &'static Registry<'static, Fp, TestRank>,
+    times: usize,
+) -> &'static [usize] {
+    SQUARE_REGISTRY_CACHE.live_degrees[times - 1]
+        .get_or_init(|| {
+            let circuit = SquareCircuit { times };
+            let mut degrees = Vec::new();
+            for witness in [Fp::ONE, Fp::from(2u64), Fp::MULTIPLICATIVE_GENERATOR] {
+                if let Ok(trace) = circuit.trace(witness) {
+                    if let Ok(poly) = assembled_trace(registry, &trace.into_output()) {
+                        add_nonzero_degrees(&poly, &mut degrees);
+                    }
+                }
+            }
+            degrees.sort_unstable();
+            degrees
+        })
+        .as_slice()
+}
+
+fn simple_live_degrees(registry: &Registry<'_, Fp, TestRank>) -> Vec<usize> {
+    let circuit = MySimpleCircuit;
+    let mut degrees = Vec::new();
+    for a in (1u64..=64).map(Fp::from) {
+        let Some(b) = derive_satisfying_b(a) else {
+            continue;
+        };
+        if let Ok(trace) = circuit.trace((a, b)) {
+            if let Ok(poly) = assembled_trace(registry, &trace.into_output()) {
+                add_nonzero_degrees(&poly, &mut degrees);
+            }
+        }
+        if degrees.len() >= TestRank::num_coeffs() {
+            break;
+        }
+    }
+    degrees.sort_unstable();
+    degrees
 }
 
 /// Compute `s(X, y)` for a single-circuit registry by stripping the
@@ -204,6 +264,7 @@ fn identity_lhs(
 fn check_pinning(
     registry: &Registry<'_, Fp, TestRank>,
     trace: &Trace<Fp>,
+    live_degrees: &[usize],
     ky: impl Fn(Fp) -> Fp,
     input: &Input,
     describe: &dyn Fn() -> String,
@@ -233,17 +294,20 @@ fn check_pinning(
         );
     }
 
-    // Mutate one occupied coefficient.
+    // Mutate one live coefficient. Include the current nonzero degrees so
+    // unusual fuzzer-selected values can expand coverage beyond the probe set,
+    // but do not rely on nonzero-ness alone for zero-valued live wires.
     let mut coeffs: Vec<Fp> = r.iter_coeffs().collect();
-    let occupied: Vec<usize> = coeffs
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| **c != Fp::ZERO)
-        .map(|(i, _)| i)
-        .collect();
+    let mut occupied = live_degrees.to_vec();
+    for (degree, coeff) in coeffs.iter().enumerate() {
+        if *coeff != Fp::ZERO && !occupied.contains(&degree) {
+            occupied.push(degree);
+        }
+    }
     if occupied.is_empty() {
         return;
     }
+    occupied.sort_unstable();
     let degree = occupied[input.mutate_idx as usize % occupied.len()];
     let mut delta = Fp::from(input.delta_seed);
     if delta == Fp::ZERO {
@@ -309,15 +373,18 @@ fuzz_target!(|input: Input| {
             check_pinning(
                 registry,
                 &trace,
+                square_live_degrees(registry, times),
                 |py| {
                     circuit
                         .ky(instance, py)
                         .expect("SquareCircuit::ky should not fail on Fp instance")
                 },
                 &input,
-                &|| format!(
-                    "SquareCircuit times={times}, witness={witness:?}, instance={instance:?}"
-                ),
+                &|| {
+                    format!(
+                        "SquareCircuit times={times}, witness={witness:?}, instance={instance:?}"
+                    )
+                },
             );
         }
 
@@ -347,6 +414,7 @@ fuzz_target!(|input: Input| {
             check_pinning(
                 registry,
                 &trace,
+                &simple_live_degrees(registry),
                 |py| {
                     circuit
                         .ky(instance, py)

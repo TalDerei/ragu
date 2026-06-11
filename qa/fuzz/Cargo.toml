@@ -99,9 +99,10 @@ doc = false
 bench = false
 
 # The "patcher" technique (issue #728): mutate one witness input, repair
-# every downstream wire, and assert the Simulator's accept/reject verdict
+# every downstream wire, and assert the assembled constraint identity
 # matches an independent native oracle over a circuit substrate with real
-# enforce_zero constraints. The operational under-constraint oracle.
+# enforce_zero constraints. Also cross-checks the Simulator verdict against
+# the identity to catch driver-vs-wiring disagreements.
 [[bin]]
 name = "fuzz_circuit_cheat"
 path = "fuzz_targets/fuzz_circuit_cheat.rs"
@@ -162,8 +163,8 @@ doc = false
 bench = false
 
 # Mid-stream witness cheating: honest vs cheat paths through the Simulator.
-# Currently a Simulator-robustness fuzzer; intended as a soundness oracle once
-# the patcher work lands (see issue tracking the patcher technique).
+# Simulator-robustness fuzzer; constraint-side soundness oracles live in
+# fuzz_witness_pinning and fuzz_circuit_cheat.
 [[bin]]
 name = "fuzz_witness_cheat"
 path = "fuzz_targets/fuzz_witness_cheat.rs"
