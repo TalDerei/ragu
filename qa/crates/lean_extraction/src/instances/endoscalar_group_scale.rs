@@ -26,10 +26,14 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
     ///
     /// Output: a single `Point` (x, y) — the scaled point.
     ///
-    /// **Architectural change post-PR-741**: all `add_incomplete` /
-    /// `double_and_add_incomplete` calls now live inside `NonzeroBank::scope`,
-    /// which discharges the nonzero conditions at scope end. No more
-    /// `Some(&mut Element::zero())` workaround.
+    /// **Unchecked bank, mirroring the deployed gadget**: `group_scale`
+    /// creates its bank with `NonzeroBank::new_unchecked()`, so no fold or
+    /// discharge constraints are emitted — the distinct-x conditions of every
+    /// `add_incomplete` / `double_and_add_incomplete` rest on the Appendix C
+    /// no-collision argument (BGH19), not on the constraint system. This
+    /// instance does the same, so the trace digest matches the circuit that
+    /// actually ships. The Lean side carries the corresponding non-degeneracy
+    /// as an explicit `Assumptions` conjunct (`groupScaleNative ≠ none`).
     ///
     /// **Freshening hack** (still required): `double_and_add_incomplete`'s
     /// output `x_s, y_s` are symbolic Expr trees in which the input `x1, y1`
@@ -63,9 +67,11 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
             WireDeserializer::new(wires).into_gadget(&point_template)?
         };
 
-        // Init: AddIncomplete in its own scope (mirrors the Lean reimpl's
-        // per-subcircuit scope discharge).
-        let acc_pre = NonzeroBank::scope(dr, |dr, bank| p_endo.add_incomplete(dr, &p, bank))?;
+        // One unchecked bank for the whole gadget, exactly as the deployed
+        // `Endoscalar::group_scale` does: folds and the drop are no-ops.
+        let mut bank = NonzeroBank::new_unchecked();
+
+        let acc_pre = p_endo.add_incomplete(dr, &p, &mut bank)?;
         let mut acc = acc_pre.double(dr)?;
 
         for i in 0..64usize {
@@ -96,9 +102,8 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
             let s: Point<'_, _, EpAffine> =
                 WireDeserializer::new(s_wires).into_gadget(&point_template)?;
 
-            // acc' = acc.double_and_add_incomplete(s, bank), each DAA in its own scope
-            let acc_sym =
-                NonzeroBank::scope(dr, |dr, bank| acc.double_and_add_incomplete(dr, &s, bank))?;
+            // acc' = acc.double_and_add_incomplete(s) against the unchecked bank.
+            let acc_sym = acc.double_and_add_incomplete(dr, &s, &mut bank)?;
 
             // Freshen acc'.x and acc'.y by multiplying each by 1.
             let acc_sym_wires = WireCollector::collect_from(&acc_sym)?;

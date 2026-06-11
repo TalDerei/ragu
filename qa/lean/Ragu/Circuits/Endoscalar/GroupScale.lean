@@ -4,11 +4,11 @@ import Clean.Gadgets.Boolean
 import Mathlib.Tactic.IntervalCases
 import Mathlib.Tactic.LinearCombination
 import Ragu.Circuits.Element.Mul
-import Ragu.Circuits.Point.AddIncomplete
+import Ragu.Circuits.Point.AddIncompleteUnchecked
 import Ragu.Circuits.Point.ConditionalEndo
 import Ragu.Circuits.Point.ConditionalNegate
 import Ragu.Circuits.Point.Double
-import Ragu.Circuits.Point.DoubleAndAddIncomplete
+import Ragu.Circuits.Point.DoubleAndAddIncompleteUnchecked
 import Ragu.Circuits.Point.Spec
 
 namespace Ragu.Circuits.Endoscalar.GroupScale
@@ -29,17 +29,16 @@ Bundling the iteration into a single `Step` subcircuit keeps the
 within the default heartbeat budget (the same reason
 `NonzeroBank.Scope` needs no `set_option`s).
 
-Non-degeneracy (post-PR-741 NonzeroBank architecture): each
-`add_incomplete` / `double_and_add_incomplete` call runs inside its own
-`NonzeroBank::scope`, folding every denominator into a running product and
-discharging `product ≠ 0` via a trailing `enforce_nonzero` — so the
-constraints themselves force the distinct-x conditions; no conditional spec
-or threaded nonzero wire. The sub-gadget `Inputs` carry an
-`UnconstrainedDep field` inverse hint for the prover-side discharge; this
-reimpl computes the real inverses from the prover environment (the init add's
-`(pt.x - ζ·pt.x)⁻¹` here, the DAA bank product's inverse inside `Step.main`),
-which the completeness proofs discharge via `mul_inv_cancel₀`. The extraction
-instance mirrors the scoping by wrapping each call in `NonzeroBank::scope`. -/
+Non-degeneracy: the deployed gadget creates its `NonzeroBank` with
+`NonzeroBank::new_unchecked()`, so **no** fold or discharge constraints are
+emitted — every `add_incomplete` / `double_and_add_incomplete` distinct-x
+condition rests on the Appendix C no-collision argument of BGH19 (see the
+soundness comment in `Endoscalar::group_scale`), not on the constraint
+system. This reimpl models exactly that via the `*Unchecked` point
+sub-gadgets, and carries the non-degeneracy as the explicit caller
+obligation `groupScaleNative ≠ none` in `Assumptions` — soundness is
+*conditional* on it, which is the honest statement about the circuit that
+ships. The extraction instance mirrors the unchecked bank. -/
 structure Input (F : Type) where
   bits : Vector F 128
   pt : Point.Spec.Point F
@@ -93,9 +92,8 @@ foldl's `circuit_norm` lemmas. -/
 namespace Step
 
 /-- One iteration's inputs: the 2-bit pair `(n, e)`, the base point `pt`,
-and the running accumulator `acc`. No hint input: the DAA's inverse hint is
-computed *inside* `main` from the prover environment, so callers (the foldl
-in `GroupScale.main`) stay hint-free. -/
+and the running accumulator `acc`. No hint input: the unchecked DAA emits no
+discharge, so there is no inverse to witness. -/
 structure Input (F : Type) where
   n : F
   e : F
@@ -104,182 +102,91 @@ structure Input (F : Type) where
 deriving ProvableStruct
 
 /-- ConditionalNegate + ConditionalEndo build `s` from `(n, e)` and `pt`;
-DoubleAndAddIncomplete computes `2·acc + s`; the two trailing
+the unchecked DoubleAndAddIncomplete computes `2·acc + s`; the two trailing
 `Element.Mul ⟨_, 1⟩` calls freshen both output coordinates so the chained
 accumulator stays a bare wire pair across foldl iterations (without this the
-symbolic Expression tree grows exponentially over 64 iterations).
-
-The DAA's `inverse` hint is the inverse of its bank's running product
-`(x_q - x_p)·(x_p - x_r)` (P1 = acc, P2 = s in DAA's naming), computed here
-from the prover environment — both factors are determined by `acc` and `s`,
-including the intermediate `x_r = λ₁² - x_p - x_q`. -/
+symbolic Expression tree grows exponentially over 64 iterations). -/
 def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
     : Circuit (F p) (Var Point.Spec.Point (F p)) := do
   let s_neg ← Point.ConditionalNegate.circuit ⟨input.n, input.pt.x, input.pt.y⟩
   let s ← Point.ConditionalEndo.circuit curveParams ⟨input.e, s_neg.x, s_neg.y⟩
-  let acc' ← Point.DoubleAndAddIncomplete.circuit curveParams
-    ⟨input.acc, s, fun env =>
-      let x_p := env input.acc.x
-      let y_p := env input.acc.y
-      let x_q := env s.x
-      let y_q := env s.y
-      let lambda_1 := (y_q - y_p) / (x_q - x_p)
-      let x_r := lambda_1 ^ 2 - x_p - x_q
-      ((x_q - x_p) * (x_p - x_r))⁻¹⟩
+  let acc' ← Point.DoubleAndAddIncompleteUnchecked.circuit curveParams ⟨input.acc, s⟩
   let fresh_x ← Element.Mul.circuit ⟨acc'.x, 1⟩
   let fresh_y ← Element.Mul.circuit ⟨acc'.y, 1⟩
   return ⟨fresh_x, fresh_y⟩
 
-def Assumptions (curveParams : Point.Spec.CurveParams p)
-    (input : Input (F p)) (_data : ProverData (F p)) :=
+/-- Caller obligations, shared by soundness and completeness: curve
+membership, boolean bits, and the step's non-degeneracy — the unchecked DAA
+does not enforce its distinct-x conditions, so they enter as the assumption
+`stepNative ≠ none` (justified at the `GroupScale` level by Appendix C of
+BGH19, via `groupScaleNative ≠ none`). -/
+def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=
   input.pt.isOnCurve curveParams ∧
   input.acc.isOnCurve curveParams ∧
   IsBool input.n ∧
-  IsBool input.e
-
-/-- Unconditional (post-PR-741 style): the DAA's in-circuit bank discharge
-forces the distinct-x conditions, so the constraints can only be satisfied
-when the native step succeeds. -/
-def Spec (curveParams : Point.Spec.CurveParams p)
-    (input : Input (F p)) (output : Point.Spec.Point (F p))
-    (_data : ProverData (F p)) :=
-  stepNative curveParams input.pt input.acc input.n input.e = some output ∧
-  output.isOnCurve curveParams
-
-/-- Prover side: the native step must be non-degenerate (distinct
-x-coordinates at both internal additions). Stated via the native model; the
-completeness proof unfolds it into the two distinct-x facts and shows the
-internally computed inverse hint satisfies the bank-product condition
-(`mul_inv_cancel₀` on the nonzero product). -/
-def ProverAssumptions (curveParams : Point.Spec.CurveParams p)
-    (input : Input (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
-  input.pt.isOnCurve curveParams ∧
-  input.acc.isOnCurve curveParams ∧
-  IsBool input.n ∧ IsBool input.e ∧
+  IsBool input.e ∧
   stepNative curveParams input.pt input.acc input.n input.e ≠ none
 
-/-- Prover-side conclusion: witness generation lands exactly on the native
-step. `GroupScale.completeness` uses this to thread the accumulator
-correspondence (and curve membership) from one iteration to the next. -/
-def ProverSpec (curveParams : Point.Spec.CurveParams p)
-    (input : Input (F p)) (out : Point.Spec.Point (F p))
-    (_hint : ProverHint (F p)) :=
-  stepNative curveParams input.pt input.acc input.n input.e = some out ∧
-  out.isOnCurve curveParams
+def Spec (curveParams : Point.Spec.CurveParams p)
+    (input : Input (F p)) (output : Point.Spec.Point (F p)) :=
+  stepNative curveParams input.pt input.acc input.n input.e = some output ∧
+  output.isOnCurve curveParams
 
 instance elaborated (curveParams : Point.Spec.CurveParams p)
     : ElaboratedCircuit (F p) Input Point.Spec.Point where
   main := main curveParams
-  -- CondNegate (3) + CondEndo (3) + DAA (24) + 2 × Mul (3 each) = 36
-  localLength _ := 36
+  -- CondNegate (3) + CondEndo (3) + unchecked DAA (15) + 2 × Mul (3 each) = 27
+  localLength _ := 27
   -- The freshened coordinates are the two trailing Mul gates' product wires.
   -- Explicit so the foldl body's `ConstantOutput` synthesis in
   -- `GroupScale.main` is a shallow projection instead of a whnf through the
   -- whole 5-subcircuit body (which exceeds the default heartbeat budget).
   output _ offset :=
-    ⟨varFromOffset field (offset + 32), varFromOffset field (offset + 35)⟩
+    ⟨varFromOffset field (offset + 23), varFromOffset field (offset + 26)⟩
   localLength_eq := by
     simp +arith [main, circuit_norm,
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
-      Point.DoubleAndAddIncomplete.circuit, Element.Mul.circuit]
+      Point.DoubleAndAddIncompleteUnchecked.circuit, Element.Mul.circuit]
   output_eq := by
     simp +arith [main, circuit_norm,
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
-      Point.DoubleAndAddIncomplete.circuit, Element.Mul.circuit]
+      Point.DoubleAndAddIncompleteUnchecked.circuit, Element.Mul.circuit]
   subcircuitsConsistent := by
     simp +arith [main, circuit_norm,
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
-      Point.DoubleAndAddIncomplete.circuit, Element.Mul.circuit]
+      Point.DoubleAndAddIncompleteUnchecked.circuit, Element.Mul.circuit]
 
 omit [NeZero (2 : F p)] in
 theorem soundness (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated curveParams)
+    Soundness (F p) (elaborated curveParams)
       (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
     Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
     Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
     Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
     Boolean.ConditionalSelect.circuit,
-    Point.DoubleAndAddIncomplete.circuit, Point.DoubleAndAddIncomplete.Assumptions,
-    Point.DoubleAndAddIncomplete.Spec, Point.DoubleAndAddIncomplete.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
+    Point.DoubleAndAddIncompleteUnchecked.circuit,
+    Point.DoubleAndAddIncompleteUnchecked.Assumptions,
+    Point.DoubleAndAddIncompleteUnchecked.Spec,
+    Point.DoubleAndAddIncompleteUnchecked.main,
+    Element.Divide.circuit, Element.Square.circuit,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
-  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool⟩ := h_assumptions
+  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
   obtain ⟨h_neg, h_endo, h_daa, h_fx, h_fy⟩ := h_holds
   have h_sy := h_neg h_n_bool
   have h_sx := h_endo h_e_bool
-  -- s is on the curve: y² is invariant under negation, x³ under ζ-scaling.
-  have h_s_curve : (⟨input_pt_x + env.get (i₀ + 3 + 2),
-      input_pt_y + env.get (i₀ + 2)⟩ : Point.Spec.Point (F p)).isOnCurve curveParams := by
-    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
-    rw [h_sx, h_sy]
-    rcases h_n_bool with hn | hn <;> rcases h_e_bool with he | he <;>
-      simp only [hn, he, zero_ne_one, if_false, if_true, neg_sq, mul_pow,
-        curveParams.h_small_order, one_mul] <;>
-      exact h_pt_curve
-  obtain ⟨r, h_add1, h_add2, h_out_curve⟩ := h_daa ⟨h_acc_curve, h_s_curve⟩
-  -- The freshened output wires equal DAA's output coordinates.
-  rw [mul_one] at h_fx h_fy
-  rw [h_fx, h_fy]
-  refine ⟨?_, h_out_curve⟩
-  simp only [stepNative]
-  rw [← h_sx, ← h_sy, h_add1]
-  exact h_add2
-
-omit [NeZero (2 : F p)] in
-theorem completeness (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated curveParams)
-      (ProverAssumptions curveParams) (ProverSpec curveParams) := by
-  circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
-    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
-    Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
-    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
-    Boolean.ConditionalSelect.circuit,
-    Point.DoubleAndAddIncomplete.circuit, Point.DoubleAndAddIncomplete.Assumptions,
-    Point.DoubleAndAddIncomplete.Spec, Point.DoubleAndAddIncomplete.ProverAssumptions,
-    Point.DoubleAndAddIncomplete.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
-    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
-  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
-  obtain ⟨h_neg_env, h_endo_env, h_daa_env, h_fx, h_fy⟩ := h_env
-  have h_sy := h_neg_env h_n_bool
-  have h_sx := h_endo_env h_e_bool
-  -- Rewrite the native-step hypothesis in terms of the s wires.
+  -- Split the native-step assumption into the two-addition chain, in terms of
+  -- the s wires.
   simp only [stepNative] at h_step_ne
   rw [← h_sx, ← h_sy] at h_step_ne
-  -- First addition is non-degenerate: acc.x ≠ s.x.
   have h_add1_ne : (⟨input_acc_x, input_acc_y⟩ : Point.Spec.Point (F p)).add_incomplete
       ⟨input_pt_x + env.get (i₀ + 3 + 2), input_pt_y + env.get (i₀ + 2)⟩ ≠ none := by
     intro h
     rw [h] at h_step_ne
     exact h_step_ne rfl
-  have h_x_ne : input_acc_x ≠ input_pt_x + env.get (i₀ + 3 + 2) := by
-    intro h
-    exact h_add1_ne (by simp only [Point.Spec.Point.add_incomplete, if_pos h])
-  have h_sub_ne : input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x ≠ 0 :=
-    sub_ne_zero.mpr (Ne.symm h_x_ne)
-  have h_add1_eq : (⟨input_acc_x, input_acc_y⟩ : Point.Spec.Point (F p)).add_incomplete
-      ⟨input_pt_x + env.get (i₀ + 3 + 2), input_pt_y + env.get (i₀ + 2)⟩ =
-      some ⟨((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-               (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
-               (input_pt_x + env.get (i₀ + 3 + 2)),
-             ((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-               (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) *
-               (input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-                 (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
-                 (input_pt_x + env.get (i₀ + 3 + 2)))) - input_acc_y⟩ := by
-    simp only [Point.Spec.Point.add_incomplete, if_neg h_x_ne]
-  -- Second addition is non-degenerate: x_r ≠ acc.x.
-  rw [h_add1_eq] at h_step_ne
-  have h_xr_ne : (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-      (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
-      (input_pt_x + env.get (i₀ + 3 + 2))) ≠ input_acc_x := by
-    intro h
-    exact h_step_ne (by simp only [Point.Spec.Point.add_incomplete, if_pos h])
-  have h_sub2_ne : input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-      (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
-      (input_pt_x + env.get (i₀ + 3 + 2))) ≠ 0 :=
-    sub_ne_zero.mpr (Ne.symm h_xr_ne)
+  obtain ⟨r0, h_add1⟩ := Option.ne_none_iff_exists'.mp h_add1_ne
+  rw [h_add1] at h_step_ne
+  obtain ⟨out0, h_add2⟩ := Option.ne_none_iff_exists'.mp h_step_ne
   -- s is on the curve: y² is invariant under negation, x³ under ζ-scaling.
   have h_s_curve : (⟨input_pt_x + env.get (i₀ + 3 + 2),
       input_pt_y + env.get (i₀ + 2)⟩ : Point.Spec.Point (F p)).isOnCurve curveParams := by
@@ -289,37 +196,64 @@ theorem completeness (curveParams : Point.Spec.CurveParams p) :
       simp only [hn, he, zero_ne_one, if_false, if_true, neg_sq, mul_pow,
         curveParams.h_small_order, one_mul] <;>
       exact h_pt_curve
-  -- The bank-product equation for DAA's internally computed inverse.
-  have h_lam_eq : (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x) *
-      ((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-       (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) =
-      input_pt_y + env.get (i₀ + 2) - input_acc_y := by
-    rw [mul_comm, div_mul_cancel₀ _ h_sub_ne]
-  have h_prod_ne : (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x) *
-      (input_acc_x - (((input_pt_y + env.get (i₀ + 2) - input_acc_y) /
-        (input_pt_x + env.get (i₀ + 3 + 2) - input_acc_x)) ^ 2 - input_acc_x -
-        (input_pt_x + env.get (i₀ + 3 + 2)))) ≠ 0 :=
-    mul_ne_zero h_sub_ne h_sub2_ne
   obtain ⟨r, h_add1', h_add2', h_out_curve⟩ :=
-    h_daa_env ⟨h_acc_curve, h_s_curve, _, _, h_lam_eq, rfl, mul_inv_cancel₀ h_prod_ne⟩
-      ⟨h_acc_curve, h_s_curve⟩
+    h_daa ⟨h_acc_curve, h_s_curve, r0, out0, h_add1, h_add2⟩
+  -- The freshened output wires equal the unchecked DAA's output coordinates.
   rw [mul_one] at h_fx h_fy
   rw [h_fx, h_fy]
-  refine ⟨⟨h_n_bool, h_e_bool, h_acc_curve, h_s_curve, _, _, h_lam_eq, rfl,
-    mul_inv_cancel₀ h_prod_ne⟩, ?_, h_out_curve⟩
+  refine ⟨?_, h_out_curve⟩
   simp only [stepNative]
   rw [← h_sx, ← h_sy, h_add1']
   exact h_add2'
 
+omit [NeZero (2 : F p)] in
+theorem completeness (curveParams : Point.Spec.CurveParams p) :
+    Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
+  circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
+    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
+    Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
+    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
+    Boolean.ConditionalSelect.circuit,
+    Point.DoubleAndAddIncompleteUnchecked.circuit,
+    Point.DoubleAndAddIncompleteUnchecked.Assumptions,
+    Point.DoubleAndAddIncompleteUnchecked.Spec,
+    Point.DoubleAndAddIncompleteUnchecked.main,
+    Element.Divide.circuit, Element.Square.circuit,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
+  obtain ⟨h_neg_env, h_endo_env, _⟩ := h_env
+  have h_sy := h_neg_env h_n_bool
+  have h_sx := h_endo_env h_e_bool
+  -- Split the native-step assumption into the two-addition chain, in terms of
+  -- the s wires.
+  simp only [stepNative] at h_step_ne
+  rw [← h_sx, ← h_sy] at h_step_ne
+  have h_add1_ne : (⟨input_acc_x, input_acc_y⟩ : Point.Spec.Point (F p)).add_incomplete
+      ⟨input_pt_x + env.get (i₀ + 3 + 2), input_pt_y + env.get (i₀ + 2)⟩ ≠ none := by
+    intro h
+    rw [h] at h_step_ne
+    exact h_step_ne rfl
+  obtain ⟨r0, h_add1⟩ := Option.ne_none_iff_exists'.mp h_add1_ne
+  rw [h_add1] at h_step_ne
+  obtain ⟨out0, h_add2⟩ := Option.ne_none_iff_exists'.mp h_step_ne
+  -- s is on the curve: y² is invariant under negation, x³ under ζ-scaling.
+  have h_s_curve : (⟨input_pt_x + env.get (i₀ + 3 + 2),
+      input_pt_y + env.get (i₀ + 2)⟩ : Point.Spec.Point (F p)).isOnCurve curveParams := by
+    simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
+    rw [h_sx, h_sy]
+    rcases h_n_bool with hn | hn <;> rcases h_e_bool with he | he <;>
+      simp only [hn, he, zero_ne_one, if_false, if_true, neg_sq, mul_pow,
+        curveParams.h_small_order, one_mul] <;>
+      exact h_pt_curve
+  exact ⟨h_n_bool, h_e_bool, h_acc_curve, h_s_curve, r0, out0, h_add1, h_add2⟩
+
 def circuit (curveParams : Point.Spec.CurveParams p) :
-    GeneralFormalCircuit (F p) Input Point.Spec.Point where
-  elaborated := elaborated curveParams
-  Assumptions := Assumptions curveParams
-  Spec := Spec curveParams
-  ProverAssumptions := ProverAssumptions curveParams
-  ProverSpec := ProverSpec curveParams
-  soundness := soundness curveParams
-  completeness := completeness curveParams
+    FormalCircuit (F p) Input Point.Spec.Point :=
+  { elaborated curveParams with
+    Assumptions := Assumptions curveParams
+    Spec := Spec curveParams
+    soundness := soundness curveParams
+    completeness := completeness curveParams }
 
 end Step
 
@@ -335,29 +269,28 @@ def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
     : Circuit (F p) (Var Point.Spec.Point (F p)) := do
   -- p_endo = (ζ·p.x, p.y) — pure scale, no constraints.
   let p_endo : Var Point.Spec.Point (F p) := ⟨curveParams.ζ * input.pt.x, input.pt.y⟩
-  -- acc_pre = p_endo + p. The AddIncomplete bank folds `P2.x - P1.x`
-  -- (= pt.x - ζ·pt.x), so its inverse hint is that difference's inverse,
-  -- computed from the prover environment.
-  let acc_pre ← Point.AddIncomplete.circuit curveParams
-    ⟨p_endo, input.pt,
-     fun env => (env input.pt.x - curveParams.ζ * env input.pt.x)⁻¹⟩
+  -- acc_pre = p_endo + p; the unchecked AddIncomplete emits no bank
+  -- constraints, mirroring the deployed gadget's `new_unchecked()` bank.
+  let acc_pre ← Point.AddIncompleteUnchecked.circuit curveParams ⟨p_endo, input.pt⟩
   -- acc₀ = acc_pre.double()
   let acc_0 ← Point.Double.circuit curveParams acc_pre
   -- 64 iterations, each a single `Step.circuit` subcircuit (so the foldl
-  -- body's ConstantOutput/ConstantLength synthesize cheaply). Step computes
-  -- its own DAA inverse hint internally — no hint plumbing here.
+  -- body's ConstantOutput/ConstantLength synthesize cheaply).
   Circuit.foldl (.finRange 64) acc_0 fun acc i =>
     Step.circuit curveParams
       ⟨input.bits[2 * i.val]'(by have := i.isLt; omega),
        input.bits[2 * i.val + 1]'(by have := i.isLt; omega),
        input.pt, acc⟩
 
+/-- Caller obligations. `groupScaleNative ≠ none` is the Appendix C
+no-collision condition: the unchecked additions emit no distinct-x
+constraints, so soundness is conditional on it. For transcript-derived
+endoscalars on the Pasta curves this holds by the BGH19 Appendix C bound
+(not yet formalized; see `Endoscalar::group_scale`'s soundness comment). -/
 def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=
   input.pt.isOnCurve curveParams ∧
   curveParams.noOrderTwoPoints ∧
   (∀ i : Fin 128, IsBool input.bits[i]) ∧
-  input.pt.x ≠ 0 ∧
-  curveParams.ζ ≠ 1 ∧
   groupScaleNative curveParams input.pt input.bits ≠ none
 
 def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p))
@@ -368,14 +301,14 @@ def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p))
 instance elaborated (curveParams : Point.Spec.CurveParams p)
     : ElaboratedCircuit (F p) Input Point.Spec.Point where
   main := main curveParams
-  -- 15 (AddIncomplete) + 12 (Double) + 64 × 36 (Step) = 2331
-  localLength _ := 15 + 12 + 64 * 36
+  -- 9 (unchecked AddIncomplete) + 12 (Double) + 64 × 27 (Step) = 1749
+  localLength _ := 9 + 12 + 64 * 27
   localLength_eq := by
     simp +arith [main, circuit_norm,
-      Point.AddIncomplete.circuit, Point.Double.circuit, Step.circuit]
+      Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit]
   subcircuitsConsistent := by
     simp +arith [main, circuit_norm,
-      Point.AddIncomplete.circuit, Point.Double.circuit, Step.circuit]
+      Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit]
 
 /-! ## Native helpers for the prover-side (completeness) non-degeneracy chain.
 
@@ -458,12 +391,11 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   --   4. `groupScaleNative = some output` falls out at m = 64 — the
   --      constraints themselves force every non-degeneracy.
   circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
-    Point.AddIncomplete.circuit, Point.AddIncomplete.Assumptions, Point.AddIncomplete.Spec,
-    Point.AddIncomplete.main,
+    Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
+    Point.AddIncompleteUnchecked.Spec, Point.AddIncompleteUnchecked.main,
     Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
-    Element.Mul.circuit]
-  obtain ⟨h_pt_curve, h_no2, h_bits, h_px_ne, h_zeta_ne, h_native_ne⟩ := h_assumptions
+    Element.Divide.circuit, Element.Square.circuit, Element.Mul.circuit]
+  obtain ⟨h_pt_curve, h_no2, h_bits, h_native_ne⟩ := h_assumptions
   obtain ⟨h_add, h_double, h_step0, h_steps⟩ := h_holds
   obtain ⟨h_bits_eval, _, _⟩ := h_input
   -- Value-level bit lookups.
@@ -478,43 +410,78 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
     simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
     rw [mul_pow, curveParams.h_small_order, one_mul]
     exact h_pt_curve
-  obtain ⟨h_add_eq, h_pre_curve⟩ := h_add ⟨h_endo_curve, h_pt_curve⟩
+  -- The init add's distinct-x condition, from the native chain.
+  have h_acc0_ne := all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits
+    h_native_ne 0 (by omega)
+  have h_zx_ne : curveParams.ζ * input_pt_x ≠ input_pt_x := by
+    intro h
+    apply h_acc0_ne
+    simp only [accAfter, initAcc, Point.Spec.Point.endo,
+      Point.Spec.Point.add_incomplete, if_pos h]
+  obtain ⟨h_add_eq, h_pre_curve⟩ := h_add ⟨h_endo_curve, h_pt_curve, h_zx_ne⟩
   obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double ⟨h_pre_curve, h_no2⟩
   -- The native init chain lands on the circuit's acc₀ wires.
   have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
-      some ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
-          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
-            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
-        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩ := by
+      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩ := by
     simp only [accAfter, initAcc, Point.Spec.Point.endo]
     rw [h_add_eq]
     exact h_double_eq
   -- Inductive invariant: the accumulator wires after iteration m hold
-  -- `accAfter (m+1)`, which in particular is `some` and on the curve.
+  -- `accAfter (m+1)`, which in particular is `some` and on the curve. Each
+  -- step's non-degeneracy assumption is extracted from the native chain.
   have h_inv : ∀ m : ℕ, m < 64 →
       accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits (m + 1) =
-        some ⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩ ∧
-      (⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩
+        some ⟨env.get (i₀ + 9 + 12 + m * 27 + 23), env.get (i₀ + 9 + 12 + m * 27 + 26)⟩ ∧
+      (⟨env.get (i₀ + 9 + 12 + m * 27 + 23), env.get (i₀ + 9 + 12 + m * 27 + 26)⟩
         : Point.Spec.Point (F p)).isOnCurve curveParams := by
     intro m
     induction m with
     | zero =>
       intro _
+      have h_acc1 := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
+        input_bits 0 _ h_acc0 (by omega)
+      have h_ne0 : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
+          ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
+              -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+                (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+            env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩
+          (input_bits[2 * 0]'(by omega)) (input_bits[2 * 0 + 1]'(by omega)) ≠ none := by
+        rw [← h_acc1]
+        exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits
+          h_native_ne 1 (by omega)
       obtain ⟨h_s0, h_c0⟩ := h_step0 ⟨h_pt_curve, h_acc0_curve,
         (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
-        (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩)⟩
+        (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩),
+        (by
+          rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)]
+          exact h_ne0)⟩
       refine ⟨?_, by simpa using h_c0⟩
-      rw [accAfter_succ_of_some _ _ _ 0 _ h_acc0 (by omega)]
+      rw [h_acc1]
       rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)] at h_s0
       simpa using h_s0
     | succ k ih =>
       intro hm
       obtain ⟨h_prev, h_prev_curve⟩ := ih (by omega)
+      have h_acck := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
+        input_bits (k + 1) _ h_prev (by omega)
+      have h_nek : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
+          ⟨env.get (i₀ + 9 + 12 + k * 27 + 23), env.get (i₀ + 9 + 12 + k * 27 + 26)⟩
+          (input_bits[2 * (k + 1)]'(by omega)) (input_bits[2 * (k + 1) + 1]'(by omega)) ≠
+          none := by
+        rw [← h_acck]
+        exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits
+          h_native_ne (k + 1 + 1) (by omega)
       obtain ⟨h_sk, h_ck⟩ := h_steps k (by omega) ⟨h_pt_curve, h_prev_curve,
         (by rw [h_bit]; exact h_bits ⟨2 * (k + 1), by omega⟩),
-        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1) + 1, by omega⟩)⟩
+        (by rw [h_bit]; exact h_bits ⟨2 * (k + 1) + 1, by omega⟩),
+        (by
+          rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)]
+          exact h_nek)⟩
       refine ⟨?_, h_ck⟩
-      rw [accAfter_succ_of_some _ _ _ (k + 1) _ h_prev (by omega)]
+      rw [h_acck]
       rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)] at h_sk
       exact h_sk
   obtain ⟨h_64, h_64_curve⟩ := h_inv 63 (by omega)
@@ -528,13 +495,11 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   -- `groupScaleNative ≠ none` via the `accAfter` helpers above. The init
   -- AddIncomplete needs `(ζ-1)·p.x ≠ 0` (from `h_zeta_ne_one` + `h_px_ne`).
   circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
-    Step.ProverAssumptions, Step.ProverSpec,
-    Point.AddIncomplete.circuit, Point.AddIncomplete.Assumptions, Point.AddIncomplete.Spec,
-    Point.AddIncomplete.ProverAssumptions, Point.AddIncomplete.main,
+    Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
+    Point.AddIncompleteUnchecked.Spec, Point.AddIncompleteUnchecked.main,
     Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.EnforceNonzero.circuit,
-    Element.Mul.circuit]
-  obtain ⟨h_pt_curve, h_no2, h_bits, h_px_ne, h_zeta_ne, h_native_ne⟩ := h_assumptions
+    Element.Divide.circuit, Element.Square.circuit, Element.Mul.circuit]
+  obtain ⟨h_pt_curve, h_no2, h_bits, h_native_ne⟩ := h_assumptions
   obtain ⟨h_add_env, h_double_env, h_step0_env, h_steps_env⟩ := h_env
   obtain ⟨h_bits_eval, _, _⟩ := h_input
   -- Value-level bit lookups.
@@ -549,21 +514,22 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
     simp only [Point.Spec.Point.isOnCurve] at h_pt_curve ⊢
     rw [mul_pow, curveParams.h_small_order, one_mul]
     exact h_pt_curve
-  -- The init AddIncomplete denominator: pt.x - ζ·pt.x = pt.x·(1 - ζ) ≠ 0.
-  have h_x_ne : input_pt_x - curveParams.ζ * input_pt_x ≠ 0 := by
-    have h_factor : input_pt_x - curveParams.ζ * input_pt_x =
-        input_pt_x * (1 - curveParams.ζ) := by ring
-    rw [h_factor]
-    exact mul_ne_zero h_px_ne (sub_ne_zero.mpr (Ne.symm h_zeta_ne))
-  obtain ⟨h_add_eq, h_pre_curve⟩ :=
-    h_add_env ⟨h_endo_curve, h_pt_curve, mul_inv_cancel₀ h_x_ne⟩ ⟨h_endo_curve, h_pt_curve⟩
+  -- The init add's distinct-x condition, from the native chain.
+  have h_acc0_ne := all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits
+    h_native_ne 0 (by omega)
+  have h_zx_ne : curveParams.ζ * input_pt_x ≠ input_pt_x := by
+    intro h
+    apply h_acc0_ne
+    simp only [accAfter, initAcc, Point.Spec.Point.endo,
+      Point.Spec.Point.add_incomplete, if_pos h]
+  obtain ⟨h_add_eq, h_pre_curve⟩ := h_add_env ⟨h_endo_curve, h_pt_curve, h_zx_ne⟩
   obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double_env ⟨h_pre_curve, h_no2⟩
   -- The native init chain lands on the prover's acc₀ wires.
   have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
-      some ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
-          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
-            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
-        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩ := by
+      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩ := by
     simp only [accAfter, initAcc, Point.Spec.Point.endo]
     rw [h_add_eq]
     exact h_double_eq
@@ -571,10 +537,10 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   have h_acc1 := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
     input_bits 0 _ h_acc0 (by omega)
   have h_ne0 : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
-      ⟨env.get (i₀ + 15 + 3 + 3 + 2) +
-          -(env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
-            (env.get (i₀ + 3 + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
-        env.get (i₀ + 15 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 3 + 2) + -input_pt_y)⟩
+      ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
+          -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
+            (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
+        env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩
       (input_bits[2 * 0]'(by omega)) (input_bits[2 * 0 + 1]'(by omega)) ≠ none := by
     rw [← h_acc1]
     exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits h_native_ne 1 (by omega)
@@ -582,14 +548,14 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   -- hold `accAfter (m+1)`, which is `some` and on the curve.
   have h_inv : ∀ m : ℕ, m < 64 →
       accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits (m + 1) =
-        some ⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩ ∧
-      (⟨env.get (i₀ + 15 + 12 + m * 36 + 32), env.get (i₀ + 15 + 12 + m * 36 + 35)⟩
+        some ⟨env.get (i₀ + 9 + 12 + m * 27 + 23), env.get (i₀ + 9 + 12 + m * 27 + 26)⟩ ∧
+      (⟨env.get (i₀ + 9 + 12 + m * 27 + 23), env.get (i₀ + 9 + 12 + m * 27 + 26)⟩
         : Point.Spec.Point (F p)).isOnCurve curveParams := by
     intro m
     induction m with
     | zero =>
       intro _
-      obtain ⟨_, h_s0, h_c0⟩ := h_step0_env ⟨h_pt_curve, h_acc0_curve,
+      obtain ⟨h_s0, h_c0⟩ := h_step0_env ⟨h_pt_curve, h_acc0_curve,
         (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
         (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩),
         (by rw [h_bit (2 * 0) (by omega), h_bit (2 * 0 + 1) (by omega)]; exact h_ne0)⟩
@@ -603,13 +569,13 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
       have h_acck := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
         input_bits (k + 1) _ h_prev (by omega)
       have h_nek : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
-          ⟨env.get (i₀ + 15 + 12 + k * 36 + 32), env.get (i₀ + 15 + 12 + k * 36 + 35)⟩
+          ⟨env.get (i₀ + 9 + 12 + k * 27 + 23), env.get (i₀ + 9 + 12 + k * 27 + 26)⟩
           (input_bits[2 * (k + 1)]'(by omega)) (input_bits[2 * (k + 1) + 1]'(by omega)) ≠
           none := by
         rw [← h_acck]
         exact all_accAfter_ne curveParams ⟨input_pt_x, input_pt_y⟩ input_bits h_native_ne
           (k + 1 + 1) (by omega)
-      obtain ⟨_, h_sk, h_ck⟩ := h_steps_env k (by omega) ⟨h_pt_curve, h_prev_curve,
+      obtain ⟨h_sk, h_ck⟩ := h_steps_env k (by omega) ⟨h_pt_curve, h_prev_curve,
         (by rw [h_bit]; exact h_bits ⟨2 * (k + 1), by omega⟩),
         (by rw [h_bit]; exact h_bits ⟨2 * (k + 1) + 1, by omega⟩),
         (by
@@ -619,9 +585,9 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
       rw [h_acck]
       rw [h_bit (2 * (k + 1)) (by omega), h_bit (2 * (k + 1) + 1) (by omega)] at h_sk
       exact h_sk
-  -- Assemble: init prover assumptions, Double assumptions, and per-iteration
-  -- Step prover assumptions.
-  refine ⟨⟨h_endo_curve, h_pt_curve, mul_inv_cancel₀ h_x_ne⟩, ⟨h_pre_curve, h_no2⟩,
+  -- Assemble: init add assumptions, Double assumptions, and per-iteration
+  -- Step assumptions.
+  refine ⟨⟨h_endo_curve, h_pt_curve, h_zx_ne⟩, ⟨h_pre_curve, h_no2⟩,
     ⟨h_pt_curve, h_acc0_curve,
       (by rw [h_bit]; exact h_bits ⟨2 * 0, by omega⟩),
       (by rw [h_bit]; exact h_bits ⟨2 * 0 + 1, by omega⟩),
@@ -632,7 +598,7 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   have h_acci := accAfter_succ_of_some curveParams ⟨input_pt_x, input_pt_y⟩
     input_bits (i + 1) _ h_prev (by omega)
   have h_nei : stepNative curveParams ⟨input_pt_x, input_pt_y⟩
-      ⟨env.get (i₀ + 15 + 12 + i * 36 + 32), env.get (i₀ + 15 + 12 + i * 36 + 35)⟩
+      ⟨env.get (i₀ + 9 + 12 + i * 27 + 23), env.get (i₀ + 9 + 12 + i * 27 + 26)⟩
       (input_bits[2 * (i + 1)]'(by omega)) (input_bits[2 * (i + 1) + 1]'(by omega)) ≠
       none := by
     rw [← h_acci]
