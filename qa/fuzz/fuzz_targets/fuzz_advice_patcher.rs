@@ -76,8 +76,8 @@ use ragu_core::{
     routines::Routine,
 };
 use ragu_testing::substrate::{
-    AdviceSlot, Capabilities, Limits, OpSet, Overrides, Program, native_satisfied, shadow_eval,
-    synthesize,
+    AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
+    shadow_eval, synthesize,
 };
 
 // ---------------------------------------------------------------------------
@@ -220,59 +220,88 @@ impl<'dr> Driver<'dr> for Recorder {
 // Repair engine: propagate a mutation through the *captured* constraints.
 // ---------------------------------------------------------------------------
 
-/// Apply the captured constraint rules to `values` to a fixpoint, never
-/// overwriting any wire in `frozen` (the mutation targets):
-/// * `Lin`  → recompute the virtual wire from its terms,
-/// * `Gate` → force `c := a·b`,
-/// * 2-term `Enforce` (`c1·w1 + c2·w2 == 0`) → force the *later* wire.
+/// Solve the captured constraint graph for the witness a malicious prover
+/// could submit, given the free-advice wires it has chosen.
 ///
-/// Other `Enforce` events are checks, applied later, not here.
-fn repair(events: &[Ev], values: &mut [Fp], frozen: &[usize]) {
-    let is_frozen = |w: usize| frozen.contains(&w);
-    for _ in 0..(events.len() + 2) {
+/// This is a monotone **single-unknown dataflow solver** (issue #796 item
+/// 1). `free` seeds the *known* set with the prover's genuine degrees of
+/// freedom (held at their — possibly mutated — values in `values`) plus the
+/// fixed ONE wire; everything else is *derived*. The solver repeatedly
+/// applies any constraint that has **exactly one** unknown wire, solving
+/// for it:
+///
+/// * `Lin { out, terms }` — once every term is known, `out := Σ cᵢ·wᵢ`.
+/// * `Gate { a, b, c }` — solve whichever single wire is unknown:
+///   `c := a·b` (output), or — and this is what the old forward-only engine
+///   could not do — an *input*, `a := c/b` or `b := c/a` (needed for
+///   `invert`/`divide`, where the freshly-allocated inverse/quotient is a
+///   gate input pinned by the surrounding copies). Input solves require the
+///   known operand to be nonzero; otherwise the gate is left unsolved and
+///   [`constraints_hold`] reports the resulting violation.
+/// * `Enforce { terms }` — a linear constraint `Σ cᵢ·wᵢ = 0` with one
+///   unknown term solves it (`wⱼ := −(Σ_{i≠j} cᵢ·wᵢ)/cⱼ`). This generalizes
+///   the old 2-term copy rule to any arity.
+///
+/// # Why no false positives
+///
+/// The *known* set only grows, and a wire is solved only when it is the
+/// **unique** unknown of some constraint — so each derived wire is pinned
+/// by exactly one constraint and the order of application cannot matter
+/// (constraint graphs are forward DAGs). There is no oscillation and no
+/// chance of solving a genuine degree of freedom (those are seeded known
+/// and never re-solved). A wire that no constraint can pin stays at its
+/// honest value; any residual violation is caught by [`constraints_hold`].
+fn repair(events: &[Ev], values: &mut [Fp], free: &[usize]) {
+    let mut known = vec![false; values.len()];
+    known[Recorder::ONE] = true;
+    for &w in free {
+        known[w] = true;
+    }
+
+    loop {
         let mut changed = false;
         for ev in events {
             match ev {
                 Ev::Lin { out, terms } => {
-                    if is_frozen(*out) {
-                        continue;
-                    }
-                    let v = terms.iter().map(|(w, c)| values[*w] * c).sum();
-                    if values[*out] != v {
-                        values[*out] = v;
+                    if !known[*out] && terms.iter().all(|(w, _)| known[*w]) {
+                        values[*out] = terms.iter().map(|(w, c)| values[*w] * c).sum();
+                        known[*out] = true;
                         changed = true;
                     }
                 }
-                Ev::Gate { a, b, c } => {
-                    if is_frozen(*c) {
-                        continue;
-                    }
-                    let v = values[*a] * values[*b];
-                    if values[*c] != v {
-                        values[*c] = v;
+                Ev::Gate { a, b, c } => match (known[*a], known[*b], known[*c]) {
+                    (true, true, false) => {
+                        values[*c] = values[*a] * values[*b];
+                        known[*c] = true;
                         changed = true;
                     }
-                }
+                    (false, true, true) if values[*b] != Fp::ZERO => {
+                        values[*a] = values[*c] * values[*b].invert().unwrap();
+                        known[*a] = true;
+                        changed = true;
+                    }
+                    (true, false, true) if values[*a] != Fp::ZERO => {
+                        values[*b] = values[*c] * values[*a].invert().unwrap();
+                        known[*b] = true;
+                        changed = true;
+                    }
+                    _ => {}
+                },
                 Ev::Enforce { terms } => {
-                    // Treat a clean 2-term constraint as a copy that defines
-                    // the later-created wire; everything else is a check.
-                    if terms.len() == 2 {
-                        let (w1, c1) = terms[0];
-                        let (w2, c2) = terms[1];
-                        let (lo, hi, c_lo, c_hi) = if w1 < w2 {
-                            (w1, w2, c1, c2)
-                        } else {
-                            (w2, w1, c2, c1)
-                        };
-                        if is_frozen(hi) || c_hi == Fp::ZERO {
-                            continue;
-                        }
-                        // c_hi·v_hi + c_lo·v_lo = 0  ⇒  v_hi = -(c_lo/c_hi)·v_lo
-                        let v = -(c_lo * c_hi.invert().unwrap()) * values[lo];
-                        if values[hi] != v {
-                            values[hi] = v;
-                            changed = true;
-                        }
+                    let mut unknown = terms.iter().filter(|(w, _)| !known[*w]);
+                    if let Some(&(uw, uc)) = unknown.next()
+                        && unknown.next().is_none()
+                        && uc != Fp::ZERO
+                    {
+                        // Σ cᵢ·wᵢ = 0, one unknown wⱼ ⇒ wⱼ = −(Σ_{i≠j} cᵢ·wᵢ)/cⱼ.
+                        let rest: Fp = terms
+                            .iter()
+                            .filter(|(w, _)| *w != uw)
+                            .map(|(w, c)| values[*w] * c)
+                            .sum();
+                        values[uw] = -rest * uc.invert().unwrap();
+                        known[uw] = true;
+                        changed = true;
                     }
                 }
             }
@@ -315,14 +344,28 @@ struct Input {
     program: Vec<u8>,
 }
 
-/// The repair-safe vocabulary: ops emitting only `{Lin, Gate, 2-term copy,
-/// ≤1-term check}` constraints. Booleans (3-term `a+b=1` enforces) and
-/// value-fallible ops (inverse-hint constraints) are out of the repair
-/// engine's model.
+/// The repair-safe vocabulary.
+///
+/// The single-unknown solver (issue #796 item 1) handles any constraint
+/// with one unknown, so the value-fallible arithmetic gadgets `invert` and
+/// `divide` — whose freshly-allocated inverse/quotient is a *gate input*
+/// the solver now back-solves — are in scope (issue #796 item 2). Two
+/// families stay excluded: booleans (their `a + b = 1` / `a·b = 0`
+/// constraints and the complement wire are a separate classification
+/// problem — issue #796, "later booleans/points/poseidon"), and `AllocRaw`
+/// (a non-canonical 32-byte chunk skips its push, and unlike `invert`/
+/// `divide` that skip depends on fuzzer bytes, not a mutatable value, so
+/// the progression guard below cannot neutralize it).
+///
+/// `invert`/`divide` can still *skip* when their honest input is zero — but
+/// then they are absent from the captured graph entirely (Recorder and
+/// shadow skip identically), so the honest run stays aligned. A *cheat*
+/// that drives an input to zero would shift the native shadow's
+/// progression; the harness guards against that explicitly (see below).
 fn opset() -> OpSet {
-    OpSet::ALL
-        .without(Capabilities::BOOLEAN)
-        .without(Capabilities::VALUE_FALLIBLE)
+    OpSet::filtered(|k| {
+        !k.capabilities().intersects(Capabilities::BOOLEAN) && k != OpKind::AllocRaw
+    })
 }
 
 /// `PATCHER_SELFTEST=1`: build a deliberately under-constrained circuit in
@@ -449,14 +492,16 @@ fuzz_target!(|input: Input| {
         slot_delta.push((slot, delta));
     }
 
-    // ragu side: mutate every cheated advice wire, freeze them all, and
-    // repair the rest through the captured constraints.
+    // ragu side: apply the cheats to the chosen advice wires, then solve the
+    // captured constraint graph for the resulting witness. The *full*
+    // free-advice set is held fixed (the prover's genuine degrees of
+    // freedom — non-cheated advice stays honest); everything else is
+    // re-derived by the single-unknown solver.
     let mut ragu_values = rec.values.clone();
-    let frozen: Vec<usize> = slot_delta.iter().map(|(s, _)| slot_wires[*s]).collect();
     for (slot, delta) in &slot_delta {
         ragu_values[slot_wires[*slot]] += delta;
     }
-    repair(&rec.events, &mut ragu_values, &frozen);
+    repair(&rec.events, &mut ragu_values, &stacks.advice_wires);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
 
     // native side: apply the same cheats and recompute the full chain.
@@ -464,14 +509,25 @@ fuzz_target!(|input: Input| {
         .iter()
         .map(|(slot, delta)| (*slot, shadow.elems[*slot] + delta))
         .collect();
-    let native_ok = native_satisfied(
+    let mutated = shadow_eval::<Fp>(
         &program,
-        &honest_anchors,
         Overrides {
             elems: &overrides,
             ..Overrides::none()
         },
     );
+
+    // Progression guard: a cheat that drives an `invert`/`divide` input to
+    // zero makes the gadget *skip* in the native re-evaluation, shifting
+    // every later stack slot — the captured graph (fixed from the honest
+    // run) and the shifted shadow are then incomparable. Such cheats are
+    // outside this model (value-dependent control flow); bail rather than
+    // emit a spurious signal. The honest graph never skips, so this only
+    // fires for genuinely progression-shifting cheats.
+    if mutated.elems.len() != shadow.elems.len() {
+        return;
+    }
+    let native_ok = mutated.anchors == honest_anchors;
 
     assert_eq!(
         ragu_accepts,
