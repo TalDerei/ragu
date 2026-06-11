@@ -11,15 +11,15 @@ Sections fall into three groups: **Trust model** frames what's trusted vs untrus
 
 ## Trust model
 
-the clean reimplementation and formal instance can be black-boxed and LLM-generated since they’re untrusted. the latter (formal instance) proves that the reimpl equals the autogen using equivalence theorems, and the former (reimpl) proves the soundness / completeness against the spec (loosely an IO contract). so this transitively reduces trust to just manually inspecting that the spec is correct, and assuming the trusted extractor and serialization impl is correct, everything else follows
+the clean reimplementation and formal instance can be black-boxed and LLM-generated since they’re untrusted. the formal instance is tied to the extracted trace by the fingerprint equivalence check (CI compares the canonical digest the Rust extractor computes from its trace against the one computed in Lean from the reimpl), and the reimpl proves the soundness / completeness against the spec (loosely an IO contract). so this transitively reduces trust to just manually inspecting that the spec is correct, and assuming the trusted extractor, serialization impl, and fingerprint encoders are correct, everything else follows
 
 **Artifact map.** Spelling out trusted/untrusted by artifact:
-- *Trusted (must be manually inspected):* Rust circuit instance (`CircuitInstance`), extractor / extraction driver, serialization impl, and — on the Lean side — `Inputs` / `Outputs` struct definitions, `Spec`, `Assumptions`.
-- *Untrusted (can be LLM-generated):* Lean reimpl body (`main`), soundness / completeness theorems, formal-instance equivalence proofs. The autogen Lean file (flat op trace) is mechanically extractor-produced, not human-written.
+- *Trusted (must be manually inspected):* Rust circuit instance (`CircuitInstance`), extractor / extraction driver, serialization impl, the fingerprint encoders on both sides (`qa/crates/lean_extraction/src/fingerprint.rs`, `qa/lean/Ragu/Fingerprint.lean`), and — on the Lean side — `Inputs` / `Outputs` struct definitions, `Spec`, `Assumptions`.
+- *Untrusted (can be LLM-generated):* Lean reimpl body (`main`), soundness / completeness theorems. Drift between the reimpl and the Rust circuit is caught by the fingerprint comparison in CI.
 
 **Subtlety: input/output *struct shape* is part of the trusted spec; wire *order* is not.**
-- Wire ordering is checked by the equivalence proof — constraints are tied to specific wires, and both Ragu and Clean derivers map struct fields to wires in field-definition order. Reorder the wires on either side and the formal instance fails.
-- The *meaning* assigned to those wires (which wire is `x` vs `y`, which input is "first") is trusted. Extraction operates on raw wires; the high-level struct shape is not preserved through it. A Rust bug — say, `assertLt(x, y)` accidentally checking `x > y` — can be **shadowed** by an inverse Lean bug: define `Inputs := { y, x }` and prove `x < y`. Variable names line up, equivalence still holds, the spec reads exactly like the intended behavior. **Reviewer obligation:** verify both that the spec captures the gadget's *intended* behavior *and* that input/output naming matches what callers actually pass.
+- Wire ordering is checked by the fingerprint comparison — constraints are tied to specific wires, and both Ragu and Clean derivers map struct fields to wires in field-definition order. Reorder the wires on either side and the digests diverge.
+- The *meaning* assigned to those wires (which wire is `x` vs `y`, which input is "first") is trusted. Extraction operates on raw wires; the high-level struct shape is not preserved through it. A Rust bug — say, `assertLt(x, y)` accidentally checking `x > y` — can be **shadowed** by an inverse Lean bug: define `Inputs := { y, x }` and prove `x < y`. Variable names line up, the fingerprints still match, the spec reads exactly like the intended behavior. **Reviewer obligation:** verify both that the spec captures the gadget's *intended* behavior *and* that input/output naming matches what callers actually pass.
 
 **Mitigation: composition surfaces bad specs.** A wrong spec or wrong input order on a leaf gadget tends to surface when that gadget is used as a subcircuit in a parent — the child spec won't compose to the statement the parent needs. A second reason (beyond the proof-composability argument in "Mirror Rust delegation") to lean on subcircuit composition: it catches bugs, not just enables proofs.
 
@@ -260,7 +260,7 @@ The trick is to make the body's *last action* a subcircuit call whose output is 
 2. The foldl body is `fun acc i => Mul.circuit ⟨acc + xs[i+1], s⟩` — the index-dependent addition is now *inside* the Mul's input expression, and the body's output is just the fresh Mul wire (`var ⟨offset + 2⟩`), trivially `ConstantOutput`.
 3. After the foldl, add the trailing `xs[n]` via a free expression.
 
-`Fold` in `qa/lean/Ragu/Circuits/Element/Fold.lean` is the worked example (4-way rcases: 0, 1, 2, n+3 — the extra cases handle `Fin 0`/`Fin 1` boundaries cleanly). The autogen extractor sees the same `Mul`-per-Horner-step structure as a recursive-helper translation, so this restructure remains byte-for-byte compatible with the autogen instance proofs.
+`Fold` in `qa/lean/Ragu/Circuits/Element/Fold.lean` is the worked example (4-way rcases: 0, 1, 2, n+3 — the extra cases handle `Fin 0`/`Fin 1` boundaries cleanly). The extractor sees the same `Mul`-per-Horner-step structure as a recursive-helper translation, so this restructure leaves the op trace — and therefore the fingerprint — unchanged.
 
 ### Sidestep `field (F p)` HPow synthesis in helper lemmas
 
@@ -286,31 +286,9 @@ Lean unifies `input : field (F p)` with the lemma's `x_val : F p` parameter clea
 
 A related warning to expect: `automatically included section variable(s) unused — [Fact (Nat.Prime p)]`. The helper does pure ring/field arithmetic, no primality. Suppress with `omit [Fact p.Prime] in` immediately before the lemma declaration (line-comment any docstring out — `omit` doesn't bind through `/-- … -/`).
 
-### Autogen instance proofs for `Circuit.foldl`
+### Autogen instance proofs for `Circuit.foldl` (historical)
 
-When `main` uses `Circuit.foldl`, the `same_constraints` proof in the corresponding `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` file needs to unfold the foldl iteratively to byte-match the autogen's flat op list. The recipe:
-
-```lean
-same_constraints := by
-  intro input
-  simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-    Operations.toFlat, circuit_norm,
-    FormalCircuit.isGeneralFormalCircuit,   -- or FormalAssertion.… for assertion-shaped gadgets
-    GeneralFormalCircuit.toWithHint,
-    GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-    deserializeInput, exportedOperations,
-    Circuits.Element.<Gadget>.circuit,
-    Circuits.Element.<Gadget>.elaborated,
-    Circuits.Element.<Gadget>.main,
-    Circuit.foldl, Vector.foldlM_toList,
-    Vector.finRange, Vector.ofFn, Vector.toList,
-    List.foldlM, List.foldlM_cons,
-    Circuits.Element.<Sub>.circuit, Circuits.Element.<Sub>.main]
-  constructor
-same_output := by intro input; rfl
-```
-
-The key unfolds: `Circuit.foldl` → `Vector.foldlM` → `Vector.foldlM_toList` → `List.foldlM_cons` (peels one iteration at a time until the list is exhausted). Lake's linter will flag any of `Vector.cast`, `List.foldlM_nil`, `Vector.finRange` etc. as unused if a particular gadget's shape doesn't need them — trim the list per the lint. CI treats those linter warnings as errors.
+The `same_constraints` / `same_output` equivalence proofs and the autogen trace files were removed in favor of the fingerprint equivalence check ([#786](https://github.com/tachyon-zcash/ragu/issues/786)): the reimpl's op trace is now compared against the Rust extractor's by digest in CI, with no per-instance Lean proof to maintain. The foldl-unfolding simp recipe that used to live here (`Circuit.foldl` → `Vector.foldlM_toList` → `List.foldlM_cons` peeling) is in git history if a byte-matching proof over op lists is ever needed again.
 
 ## Watch for false justifications
 
@@ -324,21 +302,20 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 
 | File | Trust | What it is |
 |---|---|---|
-| `qa/crates/lean_extraction/src/instances/<gadget>.rs` | trusted | Rust `CircuitInstance` impl: thin wrapper that calls Ragu types / gadgets through `ExtractionDriver`. |
-| `qa/lean/Ragu/Instances/Autogen/<Module>/<Gadget>.lean` | mechanical (CI-checked) | Extractor-produced flat op trace. Regenerated via `cargo run -p lean_extraction -- export`; `check` enforces byte-equality. |
+| `qa/crates/lean_extraction/src/instances/<gadget>.rs` | trusted | Rust `CircuitInstance` impl: thin wrapper that calls Ragu types / gadgets through `ExtractionDriver`. Its trace digest is printed by `lean_extraction -- fingerprint`. |
 | `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` | reimpl untrusted; `Inputs` / `Outputs` / `Spec` / `Assumptions` trusted | The reimpl: `main`, `Spec`, `Assumptions`, `elaborated`, `soundness`, `completeness`. |
-| `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | untrusted | `FormalInstance` packaging: proves reimpl ≡ autogen, exposes the spec. |
+| `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | serialization trusted | `FormalInstance` packaging: `p`, `deserializeInput` / `serializeOutput`, `reimplementation`. Enrolled in the fingerprint check via the generated `Ragu/Fingerprint/Instances.lean` list. |
 | circuit input types containing `Unconstrained` / `UnconstrainedDep` | trusted | The hint shape exposed to callers; should mirror the Rust API and avoid leaking internal rows. |
 
 **Sub-gadget carve-out — the scaling lesson.** Gadgets used only as subcircuits inside other gadgets can live **only as Lean reimpls + soundness / completeness**. Their correctness reaches the top via composition: the parent reimpl's proof uses the child's `Spec`. Top-level gadgets — the ones a Ragu consumer composes with — get the full pipeline. Some core gates such as `Core.mul` still have extractor instances because they are useful as direct equivalence anchors, but that should be an intentional choice rather than the default for every helper.
 
-**Canonical per-gadget commit sequence** (PR #642 followed this ~6 times):
+**Canonical per-gadget commit sequence** (PR #642 followed this ~6 times, pre-fingerprint):
 1. Reimpl skeleton in `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` — `main`, `Spec`, `Assumptions`, `elaborated`.
-2. Rust `CircuitInstance` in `qa/crates/lean_extraction/src/instances/<gadget>.rs` (top-level only).
-3. Run `cargo run -p lean_extraction -- export` → autogen file appears under `qa/lean/Ragu/Instances/Autogen/<Module>/<Gadget>.lean`.
+2. Rust `CircuitInstance` in `qa/crates/lean_extraction/src/instances/<gadget>.rs` (top-level only), registered in `EXPORT_TARGETS`.
+3. Run `cargo run -p lean_extraction -- export` → regenerates `Ragu/Instances.lean` and `Ragu/Fingerprint/Instances.lean`, which now reference the (yet-to-exist) formal instance — Lean won't build until step 6.
 4. Write `soundness`.
 5. Write `completeness` (define honest witness gen if needed).
-6. Add formal-instance packaging in `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` (top-level only).
+6. Add formal-instance packaging in `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` (top-level only), then confirm `lean_extraction -- fingerprint` matches `lake exe fingerprints` for the new instance.
 
 Steps 1–2 can swap. Sub-gadgets stop after step 5.
 

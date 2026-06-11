@@ -35,8 +35,9 @@ Treat `<docs>` below as whichever of the two exists in the current checkout. If 
 - `<docs>/ragu/introduction.md` — the two-approach analysis (high-level export vs. low-level trace); why Ragu chose the low-level export with a Lean reimplementation; the formal instance interface and its fields.
 - `<docs>/ragu/extraction.md` — `ExtractionDriver`, `MaybeKind = Empty`, `ImplWire = Expr<F>`; how `alloc` / `mul` / `add` / `enforce_zero` / `constant` map to operations.
 - `<docs>/ragu/input-outputs-serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
+- `<docs>/ragu/fingerprint.md` — the vk-style fingerprint equivalence check (the sole Rust↔Lean tie since the autogen trace files and `same_constraints` proofs were removed): canonical byte encoding + SHA-256 digest of the op trace, computed in both the Rust extractor (`lean_extraction -- fingerprint`) and Lean (`lake exe fingerprints`), compared in CI; the `2³²` input-variable index region; trust assumptions of the check.
 - `<docs>/ragu/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
-- `<docs>/ragu/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/lean/Ragu.lean` are checked.
+- `<docs>/ragu/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/lean/Ragu.lean` are checked; fingerprint comparison step.
 
 The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading order.
 
@@ -50,15 +51,17 @@ The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading or
 | `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/core/provable.md` |
 | `FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`, `.toWithHint`, `Assumptions`, `ProverAssumptions`, `Spec`, `ProverSpec`, `ProverData`, `ProverHint`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
 | Compile-time parameters, partial-application instantiation | `clean/core/parameters.md` |
-| `FormalInstance`, `reimplementation`, `same_constraints`, `same_output`, `exportedOperations`, `exportedOutput` | `ragu/introduction.md` |
+| `FormalInstance`, `reimplementation` | `ragu/introduction.md` |
+| `same_constraints`, `same_output`, `exportedOperations`, `exportedOutput` (removed; superseded by the fingerprint check) | `ragu/fingerprint.md` |
 | `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `ragu/extraction.md` |
 | `input_var.get`, `alloc_input_wires`, `serializeOutput`, `deserializeInput` | `ragu/input-outputs-serialization.md` |
+| Fingerprint, canonical encoding, `lean_extraction -- fingerprint`, `lake exe fingerprints`, `Ragu.Fingerprint`, `inputVarOffset` | `ragu/fingerprint.md` |
 | Trust assumptions, axiom dependencies | `ragu/assumptions.md` |
 | `--wfail`, `lean_extraction -- check`, what CI verifies | `ragu/ci.md` |
 
 ## Reading order (for new readers)
 
-`clean/introduction` → `clean/core/circuit` → `clean/core/provable` → `clean/core/expression` → `clean/core/operations` → `clean/core/formal` → `clean/core/mul` → `clean/core/example` → `clean/core/parameters` → `ragu/introduction` → `ragu/extraction` → `ragu/input-outputs-serialization` → `ragu/assumptions` → `ragu/ci`.
+`clean/introduction` → `clean/core/circuit` → `clean/core/provable` → `clean/core/expression` → `clean/core/operations` → `clean/core/formal` → `clean/core/mul` → `clean/core/example` → `clean/core/parameters` → `ragu/introduction` → `ragu/extraction` → `ragu/input-outputs-serialization` → `ragu/fingerprint` → `ragu/assumptions` → `ragu/ci`.
 
 ## Out of scope
 
