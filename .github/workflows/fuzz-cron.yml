@@ -95,7 +95,12 @@ jobs:
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        # Pinned version + --locked: an unlocked install re-resolves
+        # transitive deps, whose MSRV can drift past the pinned nightly
+        # (cargo-fuzz 0.13.2 pulls cargo-platform 0.3.3, which wants
+        # rustc >= 1.91). Revisit this pin when rotating the nightly in
+        # .github/actions/rust-nightly-setup.
+        run: cargo install --locked cargo-fuzz@0.13.1
 
       - name: Run fuzz target
         working-directory: qa/fuzz
