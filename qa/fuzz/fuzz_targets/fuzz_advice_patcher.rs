@@ -57,9 +57,9 @@ use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result as RaguResult,
     drivers::{Driver, DriverTypes, LinearExpression},
+    gadgets::Bound,
     maybe::{Always, Maybe},
     routines::Routine,
-    gadgets::Bound,
 };
 use ragu_primitives::Element;
 
@@ -150,7 +150,11 @@ impl DriverTypes for Recorder {
         let ia = self.push_wire(a);
         let ib = self.push_wire(b);
         let ic = self.push_wire(c);
-        self.events.push(Ev::Gate { a: ia, b: ib, c: ic });
+        self.events.push(Ev::Gate {
+            a: ia,
+            b: ib,
+            c: ic,
+        });
         Ok((ia, ib, ic, ()))
     }
 
@@ -171,11 +175,7 @@ impl<'dr> Driver<'dr> for Recorder {
 
     fn add(&mut self, lc: impl Fn(RecLc) -> RecLc) -> usize {
         let built = lc(RecLc::default());
-        let value = built
-            .terms
-            .iter()
-            .map(|(w, c)| self.values[*w] * c)
-            .sum();
+        let value = built.terms.iter().map(|(w, c)| self.values[*w] * c).sum();
         let out = self.push_wire(value);
         self.events.push(Ev::Lin {
             out,
@@ -252,14 +252,10 @@ struct Input {
 }
 
 fn build_inputs(input: &Input) -> [Fp; NUM_INPUTS] {
-    let mut out = [Fp::ZERO; NUM_INPUTS];
-    for i in 0..NUM_INPUTS {
-        out[i] = match input.special[i] {
-            Some(idx) => special_value(idx),
-            None => Fp::from(input.seeds[i]),
-        };
-    }
-    out
+    core::array::from_fn(|i| match input.special[i] {
+        Some(idx) => special_value(idx),
+        None => Fp::from(input.seeds[i]),
+    })
 }
 
 /// Honest native shadow: every advice wire takes its honest value, derived
@@ -442,11 +438,12 @@ fn synthesize<'dr, D: Driver<'dr, F = Fp>>(
 // Repair engine: propagate a mutation through the *captured* constraints.
 // ---------------------------------------------------------------------------
 
-/// Apply the captured constraint rules to `values` to a fixpoint:
+/// Apply the captured constraint rules to `values` to a fixpoint, never
+/// overwriting any wire in `frozen` (the mutation targets):
 /// * `Lin`  → recompute the virtual wire from its terms,
 /// * `Gate` → force `c := a·b`,
-/// * 2-term `Enforce` (`c1·w1 + c2·w2 == 0`) → force the *later* wire,
-/// while never overwriting any wire in `frozen` (the mutation targets).
+/// * 2-term `Enforce` (`c1·w1 + c2·w2 == 0`) → force the *later* wire.
+///
 /// Other `Enforce` events are checks, applied later, not here.
 fn repair(events: &[Ev], values: &mut [Fp], frozen: &[usize]) {
     let is_frozen = |w: usize| frozen.contains(&w);
@@ -507,13 +504,9 @@ fn repair(events: &[Ev], values: &mut [Fp], frozen: &[usize]) {
 /// After repair, do all captured constraints hold?
 fn constraints_hold(events: &[Ev], values: &[Fp]) -> bool {
     events.iter().all(|ev| match ev {
-        Ev::Lin { out, terms } => {
-            values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum()
-        }
+        Ev::Lin { out, terms } => values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum(),
         Ev::Gate { a, b, c } => values[*a] * values[*b] == values[*c],
-        Ev::Enforce { terms } => {
-            terms.iter().map(|(w, c)| values[*w] * c).sum::<Fp>() == Fp::ZERO
-        }
+        Ev::Enforce { terms } => terms.iter().map(|(w, c)| values[*w] * c).sum::<Fp>() == Fp::ZERO,
     })
 }
 
@@ -560,7 +553,10 @@ fuzz_target!(|input: Input| {
     // cheats is degenerate; default to a single cheat on the first advice
     // wire so every input does some work.
     let raw_cheats = if input.cheats.is_empty() {
-        vec![Cheat { advice: 0, delta: 0 }]
+        vec![Cheat {
+            advice: 0,
+            delta: 0,
+        }]
     } else {
         input.cheats.clone()
     };
@@ -595,7 +591,8 @@ fuzz_target!(|input: Input| {
     let native_ok = native_satisfied(&input.ops, &honest, &honest_anchors, &overrides);
 
     assert_eq!(
-        ragu_accepts, native_ok,
+        ragu_accepts,
+        native_ok,
         "PATCHER SOUNDNESS SIGNAL: cheating advice {slot_delta:?} \
          and repairing through the captured constraints, ragu {} the witness \
          but the native oracle says it is {}. {}. Input: {input:?}",
