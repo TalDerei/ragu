@@ -68,6 +68,7 @@ jobs:
           - fuzz_witness_pinning
           - fuzz_circuit_cheat
           - fuzz_advice_patcher
+          - fuzz_completeness
           - fuzz_circuit_revdot_identity
           - fuzz_circuit_witness
           - fuzz_staging
