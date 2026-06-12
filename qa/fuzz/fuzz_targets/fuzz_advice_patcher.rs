@@ -54,10 +54,14 @@
 //! booleanity constraints must reject it (the canonical booleanity
 //! under-constraint).
 //!
+//! The whole differential is field-generic and runs over **both** pasta
+//! fields (`Fp` and `Fq`) per input, catching field-dependent constant bugs
+//! for nearly free.
+//!
 //! # The differential
 //!
-//! Alongside the captured graph the substrate's native `Fp` shadow knows
-//! each gadget's true semantics (the oracle), independent of ragu. For the
+//! Alongside the captured graph the substrate's native shadow knows each
+//! gadget's true semantics (the oracle), independent of ragu. For the
 //! mutated witness:
 //!
 //! * `ragu_accepts` — do all captured constraints hold after repair?
@@ -96,9 +100,9 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
+use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
+use pasta_curves::{Fp, Fq};
 use ragu_testing::{
     recorder::{
         Playback, Recorder, TrackingAllocator, constraints_hold, repair, selftest,
@@ -173,14 +177,17 @@ struct Cheat {
     mutation: Mutation,
 }
 
-/// Assembles a full-width field element from 32 LE bytes as `lo + hi·2¹²⁸`
-/// over the two `u128` halves, covering `[0, 2²⁵⁶) mod p` — deltas the
-/// `u64` mutation can never reach.
-fn wide_value(bytes: &[u8; 32]) -> Fp {
-    let lo = u128::from_le_bytes(bytes[..16].try_into().unwrap());
-    let hi = u128::from_le_bytes(bytes[16..].try_into().unwrap());
-    let pow128 = Fp::from(1u64 << 63).double().square();
-    Fp::from_u128(lo) + Fp::from_u128(hi) * pow128
+/// Assembles a full-width field element from 32 LE bytes as four `u64`
+/// limbs `Σ limbᵢ · 2⁶⁴ⁱ`, covering `[0, 2²⁵⁶) mod p` — deltas the `u64`
+/// mutation can never reach. Generic over the field for dual-field runs.
+fn wide_value<F: PrimeField>(bytes: &[u8; 32]) -> F {
+    let two64 = F::from(u64::MAX) + F::ONE; // 2⁶⁴
+    let mut acc = F::ZERO;
+    for chunk in bytes.chunks(8).rev() {
+        let limb = u64::from_le_bytes(chunk.try_into().unwrap());
+        acc = acc * two64 + F::from(limb);
+    }
+    acc
 }
 
 #[derive(Arbitrary, Debug)]
@@ -244,6 +251,7 @@ fn opset() -> OpSet {
 fuzz_target!(|input: Input| {
     if std::env::var("PATCHER_SELFTEST").is_ok() {
         selftest::<Fp>();
+        selftest::<Fq>();
         return;
     }
 
@@ -257,15 +265,24 @@ fuzz_target!(|input: Input| {
         return;
     }
 
+    // Dual-field: run the whole differential over both pasta fields. The
+    // substrate is field-generic, so this catches field-dependent constant
+    // bugs (a hard-coded modulus, a `2^k` boundary) for nearly free.
+    patch_round::<Fp>(&input, &program);
+    patch_round::<Fq>(&input, &program);
+});
+
+/// One field's worth of the patcher differential over the decoded `program`.
+fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program) {
     // Maximize observability: anchor every derived slot the honest run
     // leaves live, so a cheat that propagates anywhere is observed by some
     // anchor (advice slots stay unanchored — see `anchor_tail`).
-    let program = anchor_tail::<Fp>(&program);
+    let program = anchor_tail::<F>(decoded);
 
     // Honest native shadow: correct semantics, anchor observations, and the
     // free-advice inventory. Element-stack advice (witness inputs,
     // AllocSpecial, AllocSquare roots) are the mutation targets.
-    let shadow = shadow_eval::<Fp>(&program, Overrides::none());
+    let shadow = shadow_eval::<F>(&program, Overrides::none());
     let honest_anchors = shadow.anchors.clone();
     let advice_slots: Vec<usize> = shadow
         .advice
@@ -280,7 +297,7 @@ fuzz_target!(|input: Input| {
     }
 
     // Capture the honest constraint graph and per-slot wire ids.
-    let mut rec = Recorder::<Fp>::new();
+    let mut rec = Recorder::<F>::new();
     let mut alloc = TrackingAllocator::default();
     let stacks = match synthesize(&mut rec, &mut alloc, &program, &honest_anchors) {
         Ok(s) => s,
@@ -330,7 +347,7 @@ fuzz_target!(|input: Input| {
     } else {
         input.cheats.clone()
     };
-    let mut slot_value: Vec<(usize, Fp)> = Vec::new();
+    let mut slot_value: Vec<(usize, F)> = Vec::new();
     for ch in &raw_cheats {
         let slot = advice_slots[ch.advice as usize % advice_slots.len()];
         if slot_value.iter().any(|(s, _)| *s == slot) {
@@ -339,11 +356,11 @@ fuzz_target!(|input: Input| {
         let honest = shadow.elems[slot];
         let other = |o: u16| advice_slots[o as usize % advice_slots.len()];
         let value = match ch.mutation {
-            Mutation::AddSmall(d) => honest + Fp::from(d),
-            Mutation::AddWide(b) => honest + wide_value(&b),
+            Mutation::AddSmall(d) => honest + F::from(d),
+            Mutation::AddWide(b) => honest + wide_value::<F>(&b),
             Mutation::SetSpecial(i) => special_value(i),
             Mutation::Negate => -honest,
-            Mutation::MulSmall(m) => honest * Fp::from(m),
+            Mutation::MulSmall(m) => honest * F::from(m),
             Mutation::CopyFrom(o) => shadow.elems[other(o)],
             Mutation::SwapWith(o) => {
                 let other_slot = other(o);
@@ -359,7 +376,7 @@ fuzz_target!(|input: Input| {
     // value (zero delta, ×1, copy between equal wires, …) is nudged off it.
     for (slot, value) in &mut slot_value {
         if *value == shadow.elems[*slot] {
-            *value += Fp::ONE;
+            *value += F::ONE;
         }
     }
 
@@ -398,7 +415,7 @@ fuzz_target!(|input: Input| {
         }
         let wire = stacks.bool_advice_wires[*raw as usize % stacks.bool_advice_wires.len()];
         // 2, 3, 4, … — never 0 or 1, so always a booleanity violation.
-        ragu_values[wire] = Fp::from(i as u64 + 2);
+        ragu_values[wire] = F::from(i as u64 + 2);
         bool_cheated = true;
     }
 
@@ -437,11 +454,11 @@ fuzz_target!(|input: Input| {
     // *and* the accomplice advice the solver chose. Each element-advice slot
     // is overridden to its post-repair value; derived wires the shadow
     // recomputes itself from true semantics.
-    let elem_overrides: Vec<(usize, Fp)> = advice_slots
+    let elem_overrides: Vec<(usize, F)> = advice_slots
         .iter()
         .map(|s| (*s, ragu_values[slot_wires[*s]]))
         .collect();
-    let mutated = shadow_eval::<Fp>(
+    let mutated = shadow_eval::<F>(
         &program,
         Overrides {
             elems: &elem_overrides,
@@ -528,4 +545,4 @@ fuzz_target!(|input: Input| {
             "ragu rejected a witness the oracle accepts — a completeness gap"
         },
     );
-});
+}
