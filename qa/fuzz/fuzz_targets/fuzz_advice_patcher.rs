@@ -89,10 +89,20 @@ use ragu_testing::{
         Recorder, TrackingAllocator, constraints_hold, repair, selftest, underconstrained_derived,
     },
     substrate::{
-        AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
-        shadow_eval, special_value, synthesize,
+        AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, anchor_tail,
+        native_satisfied, shadow_eval, special_value, synthesize,
     },
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Vacuity telemetry (`PATCHER_STATS=1`): a run is *vacuous* when no oracle
+/// observed its cheat — it bailed on an out-of-model control flip, or both
+/// sides accepted because the cheat dissolved into unobserved freedom. The
+/// anchor tail exists to keep this fraction low; if it creeps up, the
+/// differential is going soft.
+static RUNS: AtomicU64 = AtomicU64::new(0);
+/// See [`RUNS`].
+static VACUOUS: AtomicU64 = AtomicU64::new(0);
 
 /// Wire-count cap for the rank/nullity oracle: the dense elimination is
 /// cubic, so outsized graphs skip it (the cheat differential still runs).
@@ -211,6 +221,11 @@ fuzz_target!(|input: Input| {
     if program.ops.is_empty() {
         return;
     }
+
+    // Maximize observability: anchor every derived slot the honest run
+    // leaves live, so a cheat that propagates anywhere is observed by some
+    // anchor (advice slots stay unanchored — see `anchor_tail`).
+    let program = anchor_tail::<Fp>(&program);
 
     // Honest native shadow: correct semantics, anchor observations, and the
     // free-advice inventory. Element-stack advice (witness inputs,
@@ -347,10 +362,24 @@ fuzz_target!(|input: Input| {
     // shifted shadow are incomparable, so bail rather than emit a spurious
     // signal. The honest graph never skips or flips, so this only fires for
     // genuinely value-flipping cheats.
-    if mutated.elems.len() != shadow.elems.len() || mutated.bools != shadow.bools {
+    let bail = mutated.elems.len() != shadow.elems.len() || mutated.bools != shadow.bools;
+    let native_ok = mutated.anchors == honest_anchors;
+
+    if std::env::var("PATCHER_STATS").is_ok() {
+        let runs = RUNS.fetch_add(1, Ordering::Relaxed) + 1;
+        if bail || (ragu_accepts && native_ok) {
+            VACUOUS.fetch_add(1, Ordering::Relaxed);
+        }
+        if runs % (1 << 14) == 0 {
+            eprintln!(
+                "[advice_patcher] vacuous {}/{runs} runs",
+                VACUOUS.load(Ordering::Relaxed),
+            );
+        }
+    }
+    if bail {
         return;
     }
-    let native_ok = mutated.anchors == honest_anchors;
 
     assert_eq!(
         ragu_accepts,
