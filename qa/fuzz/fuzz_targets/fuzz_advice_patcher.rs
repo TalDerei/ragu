@@ -349,22 +349,34 @@ struct Input {
 /// The single-unknown solver (issue #796 item 1) handles any constraint
 /// with one unknown, so the value-fallible arithmetic gadgets `invert` and
 /// `divide` — whose freshly-allocated inverse/quotient is a *gate input*
-/// the solver now back-solves — are in scope (issue #796 item 2). Two
-/// families stay excluded: booleans (their `a + b = 1` / `a·b = 0`
-/// constraints and the complement wire are a separate classification
-/// problem — issue #796, "later booleans/points/poseidon"), and `AllocRaw`
-/// (a non-canonical 32-byte chunk skips its push, and unlike `invert`/
-/// `divide` that skip depends on fuzzer bytes, not a mutatable value, so
-/// the progression guard below cannot neutralize it).
+/// the solver now back-solves — are in scope (issue #796 item 2), as is
+/// `is_zero` (`x·is_zero = 0`, `x·inv = 1 − is_zero`), whose result is
+/// regression coverage of those constraint shapes rather than a new oracle
+/// (no anchor observes the boolean).
 ///
-/// `invert`/`divide` can still *skip* when their honest input is zero — but
-/// then they are absent from the captured graph entirely (Recorder and
-/// shadow skip identically), so the honest run stays aligned. A *cheat*
-/// that drives an input to zero would shift the native shadow's
-/// progression; the harness guards against that explicitly (see below).
+/// Excluded: the boolean *combinators* (`BoolAlloc`/`BoolNot`/`BoolAnd`/
+/// `ConditionalSelect` — their `a + b = 1` / `a·b = 0` constraints and the
+/// complement wire are a separate classification problem, issue #796
+/// "later booleans/points/poseidon"), and `AllocRaw` (a non-canonical
+/// 32-byte chunk skips its push, and unlike `invert`/`divide` that skip
+/// depends on fuzzer bytes, not a mutatable value, so the progression guard
+/// below cannot neutralize it).
+///
+/// # Value-dependent solvability (guarded in the harness)
+///
+/// `invert`/`divide` *skip* when their honest input is zero, so they are
+/// simply absent from the honest graph (Recorder and shadow skip
+/// identically). `is_zero` never skips, but its inverse hint `inv` becomes
+/// a genuinely free wire when `x = 0` (the gate `0·inv = is_not_zero` has
+/// two unknowns the single-unknown solver cannot crack). In both cases a
+/// *cheat* that moves such an input across zero changes either the native
+/// shadow's stack progression (`invert`/`divide`) or a boolean result
+/// (`is_zero`); the harness bails on both — those value-dependent control
+/// flips are outside this model and would otherwise be false positives.
 fn opset() -> OpSet {
     OpSet::filtered(|k| {
-        !k.capabilities().intersects(Capabilities::BOOLEAN) && k != OpKind::AllocRaw
+        (k == OpKind::IsZero || !k.capabilities().intersects(Capabilities::BOOLEAN))
+            && k != OpKind::AllocRaw
     })
 }
 
@@ -517,14 +529,20 @@ fuzz_target!(|input: Input| {
         },
     );
 
-    // Progression guard: a cheat that drives an `invert`/`divide` input to
-    // zero makes the gadget *skip* in the native re-evaluation, shifting
-    // every later stack slot — the captured graph (fixed from the honest
-    // run) and the shifted shadow are then incomparable. Such cheats are
-    // outside this model (value-dependent control flow); bail rather than
-    // emit a spurious signal. The honest graph never skips, so this only
-    // fires for genuinely progression-shifting cheats.
-    if mutated.elems.len() != shadow.elems.len() {
+    // Value-dependent-solvability guard (see `opset`). Two out-of-model
+    // flips, both caused by a cheat moving a gadget input across zero:
+    //
+    //  * `invert`/`divide` skip in the native re-evaluation, shifting every
+    //    later stack slot — detected by a change in element-stack length;
+    //  * an `is_zero` result flips, which is exactly when its inverse hint
+    //    becomes a free wire the single-unknown solver cannot re-derive —
+    //    detected by a change in the boolean stack.
+    //
+    // In both cases the captured graph (fixed from the honest run) and the
+    // shifted shadow are incomparable, so bail rather than emit a spurious
+    // signal. The honest graph never skips or flips, so this only fires for
+    // genuinely value-flipping cheats.
+    if mutated.elems.len() != shadow.elems.len() || mutated.bools != shadow.bools {
         return;
     }
     let native_ok = mutated.anchors == honest_anchors;
