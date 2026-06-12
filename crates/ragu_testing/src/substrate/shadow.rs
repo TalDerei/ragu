@@ -98,6 +98,13 @@ pub struct ShadowStacks<F> {
     pub anchors: Vec<F>,
     /// Every free advice site, in discovery order.
     pub advice: Vec<AdviceSlot>,
+    /// Whether any [`Op::IsZero`] received an honestly-*zero* input. That is
+    /// the one case where `is_zero`'s inverse hint becomes a genuinely free
+    /// wire (the gate `0·inv = is_not_zero` is satisfied by any `inv`), which
+    /// a whole-graph rank analysis would flag as a benign false positive.
+    /// Distinct from "some boolean is true": a `BoolAlloc(true)` or a
+    /// `BoolNot` produces a true boolean with no free hint.
+    pub is_zero_degenerate: bool,
 }
 
 /// Evaluates `program` natively with the given advice overrides.
@@ -136,6 +143,7 @@ where
     }
     let mut bools: Vec<bool> = Vec::new();
     let mut anchors = Vec::new();
+    let mut is_zero_degenerate = false;
 
     for (idx, op) in program.ops.iter().enumerate() {
         let elen = elems.len();
@@ -179,7 +187,10 @@ where
             }
             Op::IsZero(a) => {
                 let a = a as usize % elen;
-                bools.push(elems[a] == F::ZERO);
+                let is_zero = elems[a] == F::ZERO;
+                // A zero input frees the inverse hint (see the field doc).
+                is_zero_degenerate |= is_zero;
+                bools.push(is_zero);
             }
             Op::Divide(a, b) => {
                 let (a, b) = (a as usize % elen, b as usize % elen);
@@ -273,6 +284,7 @@ where
         bools,
         anchors,
         advice,
+        is_zero_degenerate,
     }
 }
 

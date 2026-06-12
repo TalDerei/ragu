@@ -92,8 +92,9 @@ fn fixture(program: Program) -> Option<Fixture> {
     }
     let shadow = shadow_eval::<Fp>(&program, Overrides::none());
     // An honest zero into is_zero leaves its inverse hint genuinely free,
-    // which the rank oracle would (correctly but unhelpfully) report.
-    if shadow.bools.iter().any(|&b| b) {
+    // which the rank oracle would (correctly but unhelpfully) report. (This
+    // opset has no boolean combinators, so this only fires on is_zero(0).)
+    if shadow.is_zero_degenerate {
         return None;
     }
     let advice_slots: Vec<usize> = shadow
