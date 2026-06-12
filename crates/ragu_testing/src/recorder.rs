@@ -898,4 +898,59 @@ mod tests {
         assert!(constraints_hold(&rec.events, &values));
         assert_eq!(values[b], Fp::from(3u64), "accomplice b was not solved");
     }
+
+    /// A correctly constrained boolean rejects a non-`{0,1}` value: the
+    /// booleanity constraints (`a·b = 0`, `a + b = 1`, captured as a gate
+    /// and two enforces) are unsatisfiable when the wire is cheated to 2.
+    #[test]
+    fn booleanity_rejects_non_bool() {
+        // Mirror Boolean::alloc: gate(a, comp, c) with a·comp = c, enforce
+        // c = 0, enforce a + comp = 1. Honest a = 1, comp = 0.
+        let mut rec = Recorder::<Fp>::new();
+        let (a, comp, c, ()) = rec
+            .gate(|| {
+                Ok((
+                    Coeff::Arbitrary(Fp::ONE),
+                    Coeff::Arbitrary(Fp::ZERO),
+                    Coeff::Arbitrary(Fp::ZERO),
+                ))
+            })
+            .unwrap();
+        rec.enforce_zero(|lc| lc.add(&c)).unwrap();
+        rec.enforce_zero(|lc| {
+            lc.add_term(&Recorder::<Fp>::ONE, Coeff::One)
+                .add_term(&a, Coeff::NegativeOne)
+                .add_term(&comp, Coeff::NegativeOne)
+        })
+        .unwrap();
+        assert!(constraints_hold(&rec.events, &rec.values));
+
+        // Cheat the boolean wire `a` to 2; only `a` is the prover's advice.
+        let mut values = rec.values.clone();
+        values[a] = Fp::from(2u64);
+        repair(&rec.events, &mut values, &[a]);
+        assert!(
+            !constraints_hold(&rec.events, &values),
+            "booleanity accepted a non-{{0,1}} wire — under-constrained",
+        );
+    }
+
+    /// The planted bug: a boolean wire allocated with *no* booleanity
+    /// constraints can be set to any field value and the graph accepts —
+    /// exactly the under-constraint the patcher's boolean cheat catches.
+    #[test]
+    fn missing_booleanity_is_underconstrained() {
+        let mut rec = Recorder::<Fp>::new();
+        let a = rec.push_wire(Fp::ONE); // BUG: allocated as bare advice
+        // No a·(1−a) = 0. The rank oracle also flags nothing here because
+        // `a` is advice (a genuine DOF from its own perspective); the cheat
+        // oracle is what catches the missing booleanity.
+        let mut values = rec.values.clone();
+        values[a] = Fp::from(2u64);
+        repair(&rec.events, &mut values, &[a]);
+        assert!(
+            constraints_hold(&rec.events, &values),
+            "harness bug: an unconstrained wire should accept any value",
+        );
+    }
 }
