@@ -261,94 +261,126 @@ pub fn underconstrained_derived<F: Field>(
     values: &[F],
     free: &[usize],
 ) -> Vec<usize> {
-    let n = values.len();
-    let mut fixed = vec![false; n];
-    fixed[Recorder::<F>::ONE] = true;
-    for &w in free {
-        fixed[w] = true;
-    }
-
-    // Map derived wires onto dense columns.
-    let mut col_of = vec![usize::MAX; n];
-    let mut wire_of = Vec::new();
-    for (w, fx) in fixed.iter().enumerate() {
-        if !fx {
-            col_of[w] = wire_of.len();
-            wire_of.push(w);
-        }
-    }
-    let d = wire_of.len();
-    if d == 0 {
-        return Vec::new();
-    }
-
-    // Jacobian rows over the derived columns (fixed columns contribute
-    // nothing: their direction is zero).
-    let mut rows: Vec<Vec<F>> = Vec::new();
-    let mut push_row = |entries: &[(usize, F)]| {
-        let mut row = vec![F::ZERO; d];
-        let mut nonzero = false;
-        for &(w, c) in entries {
-            if !fixed[w] && c != F::ZERO {
-                row[col_of[w]] += c;
-                nonzero = true;
-            }
-        }
-        if nonzero {
-            rows.push(row);
-        }
-    };
-    for ev in events {
-        match ev {
-            Event::Lin { out, terms } => {
-                let mut entries = terms.clone();
-                entries.push((*out, -F::ONE));
-                push_row(&entries);
-            }
-            Event::Gate { a, b, c } => {
-                push_row(&[(*a, values[*b]), (*b, values[*a]), (*c, -F::ONE)]);
-            }
-            Event::Enforce { terms } => push_row(terms),
-        }
-    }
-
-    // Reduced row echelon form.
-    let mut pivot_row_of_col: Vec<Option<usize>> = vec![None; d];
-    let mut r = 0;
-    for (c, pivot) in pivot_row_of_col.iter_mut().enumerate() {
-        if r == rows.len() {
-            break;
-        }
-        let Some(pr) = (r..rows.len()).find(|&i| rows[i][c] != F::ZERO) else {
-            continue;
-        };
-        rows.swap(r, pr);
-        let inv = rows[r][c].invert().unwrap();
-        for x in c..d {
-            rows[r][x] *= inv;
-        }
-        for i in 0..rows.len() {
-            if i != r && rows[i][c] != F::ZERO {
-                let f = rows[i][c];
-                for x in c..d {
-                    let t = rows[r][x] * f;
-                    rows[i][x] -= t;
-                }
-            }
-        }
-        *pivot = Some(r);
-        r += 1;
-    }
+    let rref = Rref::build(events, values, free);
+    let d = rref.wire_of.len();
 
     // Non-pivot columns are free parameters; a pivot column moves iff its
     // RREF row reads a free parameter.
     (0..d)
-        .filter(|&c| match pivot_row_of_col[c] {
+        .filter(|&c| match rref.pivot_row_of_col[c] {
             None => true,
-            Some(pr) => (0..d).any(|x| pivot_row_of_col[x].is_none() && rows[pr][x] != F::ZERO),
+            Some(pr) => {
+                (0..d).any(|x| rref.pivot_row_of_col[x].is_none() && rref.rows[pr][x] != F::ZERO)
+            }
         })
-        .map(|c| wire_of[c])
+        .map(|c| rref.wire_of[c])
         .collect()
+}
+
+/// The rank of the restricted Jacobian behind [`underconstrained_derived`]
+/// — the number of independent local pins the constraints place on the
+/// derived wires. A constraint whose deletion leaves this unchanged is
+/// locally redundant: removing it loses nothing the remaining constraints
+/// don't already enforce.
+pub fn derived_rank<F: Field>(events: &[Event<F>], values: &[F], free: &[usize]) -> usize {
+    Rref::build(events, values, free).rank
+}
+
+/// The reduced row echelon form of the Jacobian of `events` at `values`,
+/// restricted to the columns not in `free` (those directions are pinned to
+/// zero). Shared by [`underconstrained_derived`] and [`derived_rank`].
+struct Rref<F> {
+    rows: Vec<Vec<F>>,
+    pivot_row_of_col: Vec<Option<usize>>,
+    wire_of: Vec<usize>,
+    rank: usize,
+}
+
+impl<F: Field> Rref<F> {
+    fn build(events: &[Event<F>], values: &[F], free: &[usize]) -> Self {
+        let n = values.len();
+        let mut fixed = vec![false; n];
+        fixed[Recorder::<F>::ONE] = true;
+        for &w in free {
+            fixed[w] = true;
+        }
+
+        // Map derived wires onto dense columns.
+        let mut col_of = vec![usize::MAX; n];
+        let mut wire_of = Vec::new();
+        for (w, fx) in fixed.iter().enumerate() {
+            if !fx {
+                col_of[w] = wire_of.len();
+                wire_of.push(w);
+            }
+        }
+        let d = wire_of.len();
+
+        // Jacobian rows over the derived columns (fixed columns contribute
+        // nothing: their direction is zero).
+        let mut rows: Vec<Vec<F>> = Vec::new();
+        let mut push_row = |entries: &[(usize, F)]| {
+            let mut row = vec![F::ZERO; d];
+            let mut nonzero = false;
+            for &(w, c) in entries {
+                if !fixed[w] && c != F::ZERO {
+                    row[col_of[w]] += c;
+                    nonzero = true;
+                }
+            }
+            if nonzero {
+                rows.push(row);
+            }
+        };
+        for ev in events {
+            match ev {
+                Event::Lin { out, terms } => {
+                    let mut entries = terms.clone();
+                    entries.push((*out, -F::ONE));
+                    push_row(&entries);
+                }
+                Event::Gate { a, b, c } => {
+                    push_row(&[(*a, values[*b]), (*b, values[*a]), (*c, -F::ONE)]);
+                }
+                Event::Enforce { terms } => push_row(terms),
+            }
+        }
+
+        // Gauss–Jordan elimination to reduced row echelon form.
+        let mut pivot_row_of_col: Vec<Option<usize>> = vec![None; d];
+        let mut r = 0;
+        for (c, pivot) in pivot_row_of_col.iter_mut().enumerate() {
+            if r == rows.len() {
+                break;
+            }
+            let Some(pr) = (r..rows.len()).find(|&i| rows[i][c] != F::ZERO) else {
+                continue;
+            };
+            rows.swap(r, pr);
+            let inv = rows[r][c].invert().unwrap();
+            for x in c..d {
+                rows[r][x] *= inv;
+            }
+            for i in 0..rows.len() {
+                if i != r && rows[i][c] != F::ZERO {
+                    let f = rows[i][c];
+                    for x in c..d {
+                        let t = rows[r][x] * f;
+                        rows[i][x] -= t;
+                    }
+                }
+            }
+            *pivot = Some(r);
+            r += 1;
+        }
+
+        Rref {
+            rows,
+            pivot_row_of_col,
+            wire_of,
+            rank: r,
+        }
+    }
 }
 
 /// Solve the captured constraint graph for the witness a malicious prover
