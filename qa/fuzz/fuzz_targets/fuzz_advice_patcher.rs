@@ -78,6 +78,13 @@
 //! must have a trivial null space — an algebraic, mutation-free detector
 //! for wires the constraints fail to pin.
 //!
+//! Every input also runs a **playback cross-check**: the repaired witness is
+//! re-verified by a fresh synthesis of the *real* gadget calls
+//! (`recorder::Playback`) with an independent linear-combination evaluator.
+//! If that live re-execution disagrees with the recorder's stored-event
+//! verdict, the recorder mis-captured the circuit and every signal is
+//! suspect — so the engine validates its own model on every run.
+//!
 //! The engine — the recording driver, the repair solver, and the planted-bug
 //! selftest — lives in `ragu_testing::recorder`, where it is unit tested in
 //! CI and reusable against real circuits (issue #793). `PATCHER_SELFTEST=1`
@@ -94,7 +101,8 @@ use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_testing::{
     recorder::{
-        Recorder, TrackingAllocator, constraints_hold, repair, selftest, underconstrained_derived,
+        Playback, Recorder, TrackingAllocator, constraints_hold, repair, selftest,
+        underconstrained_derived,
     },
     substrate::{
         AdviceSlot, Limits, OpKind, OpSet, Overrides, Program, anchor_tail, native_satisfied,
@@ -396,6 +404,23 @@ fuzz_target!(|input: Input| {
 
     repair(&rec.events, &mut ragu_values, &fixed_free);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
+
+    // Playback cross-check: re-derive the verdict from a fresh synthesis of
+    // the *real* gadget calls over the repaired witness, with an independent
+    // linear-combination evaluator. If the recorder's stored-event verdict
+    // and this live re-execution disagree, the recorder mis-captured the
+    // circuit and every signal above is suspect.
+    let mut playback = Playback::new(ragu_values.clone());
+    if synthesize(&mut playback, &mut (), &program, &honest_anchors).is_ok() {
+        assert_eq!(
+            playback.accepts(),
+            ragu_accepts,
+            "RECORDER CAPTURE BUG: the stored constraint graph accepts={ragu_accepts} but a \
+             fresh playback of the real gadget synthesis says accepts={}. The recorder \
+             mis-captured the circuit. Program: {program:?}",
+            playback.accepts(),
+        );
+    }
 
     if bool_cheated {
         assert!(
