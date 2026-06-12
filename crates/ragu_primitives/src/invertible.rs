@@ -262,14 +262,6 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// Constructs a bank that asserts every fold is nonzero by external
     /// argument. No constraints are emitted by `fold` or by dropping the
     /// bank.
-    ///
-    /// Circuit authors should use [`scope`](Self::scope) instead: an unchecked
-    /// bank shifts soundness from the constraint system onto a mathematical
-    /// argument the caller must supply (e.g. `Endoscalar::group_scale`'s
-    /// Appendix C no-collision bound). Public so that trace-extraction tooling
-    /// (`qa/crates/lean_extraction`) can mirror gadgets that make that
-    /// trade-off; treat any new in-circuit use as requiring the same level of
-    /// justification.
     pub fn new_unchecked() -> Self {
         Self { product: None }
     }

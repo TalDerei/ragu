@@ -296,7 +296,9 @@ def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
 no-collision condition: the unchecked additions emit no distinct-x
 constraints, so soundness is conditional on it. For transcript-derived
 endoscalars on the Pasta curves this holds by the BGH19 Appendix C bound
-(not yet formalized; see `Endoscalar::group_scale`'s soundness comment). -/
+(whose integer core is formalized in `Ragu.Contrib.EndoscalarProof`). The
+remaining curve-side bridge from that core to this affine `groupScaleNative`
+precondition is still future work, so the condition remains an assumption here. -/
 def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=
   input.pt.isOnCurve curveParams ∧
   curveParams.noOrderTwoPoints ∧
@@ -320,13 +322,12 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
     simp +arith [main, circuit_norm,
       Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit]
 
-/-! ## Native helpers for the prover-side (completeness) non-degeneracy chain.
+/-! ## Native helpers for threading the non-degeneracy chain.
 
-Post-PR-741 the sub-gadget specs are unconditional, so *soundness* no longer
-needs these: the constraints force the distinct-x conditions and
-`groupScaleNative = some output` falls out of the per-step specs.
-*Completeness* still extracts each iteration's non-degeneracy from the single
-`groupScaleNative ≠ none` premise via these lemmas. -/
+Both soundness and completeness use these helpers to extract each unchecked
+addition's distinct-x precondition from the single top-level
+`groupScaleNative ≠ none` premise. The unchecked point gadgets do not emit
+constraints for those preconditions; they consume them through `Assumptions`. -/
 
 -- `accAfter` is `none` from m onward, once it's `none` at some step ≤ m.
 -- (Line comments: `omit` doesn't bind through `/-- -/` docstrings.)
@@ -398,8 +399,9 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   --   3. Inductive invariant `∀ m ≤ 64`: the foldl accumulator at iteration
   --      m is the point with `accAfter m = some it` (each step is exactly
   --      `Step.Spec`, i.e. `stepNative ... = some next`).
-  --   4. `groupScaleNative = some output` falls out at m = 64 — the
-  --      constraints themselves force every non-degeneracy.
+  --   4. The top-level `groupScaleNative ≠ none` assumption supplies each
+  --      unchecked addition's non-degeneracy via `all_accAfter_ne`, so
+  --      `groupScaleNative = some output` follows at m = 64.
   circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
     Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
     Point.AddIncompleteUnchecked.Spec, Point.AddIncompleteUnchecked.main,
