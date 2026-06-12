@@ -49,10 +49,12 @@
 //! the corner cases under-constrained bugs live in (see [`Mutation`]):
 //! small and full-width additive deltas, exact special values, negation
 //! and scaling, and aliasing/swaps against other advice wires — the direct
-//! probe for missing copy constraints. A separate *boolean* cheat sets a
-//! boolean-advice wire to a non-`{0,1}` field value; the captured
-//! booleanity constraints must reject it (the canonical booleanity
-//! under-constraint).
+//! probe for missing copy constraints. All three kinds of prover-controlled
+//! advice are cheatable: element-stack witnesses, `Fold` scales (replayed
+//! through the native shadow's `fold_scales` so both sides judge the same
+//! commitment), and `BoolAlloc` booleans (set to a non-`{0,1}` field value,
+//! which the captured booleanity constraints must reject — the canonical
+//! booleanity under-constraint).
 //!
 //! The whole differential is field-generic and runs over **both** pasta
 //! fields (`Fp` and `Fq`) per input, catching field-dependent constant bugs
@@ -192,10 +194,15 @@ fn wide_value<F: PrimeField>(bytes: &[u8; 32]) -> F {
 
 #[derive(Arbitrary, Debug)]
 struct Input {
-    /// One or more advice wires to mutate simultaneously. Coordinated
-    /// multi-wire cheats catch under-constraint that no single-wire change
-    /// exposes (e.g. two wires whose product is pinned but neither is).
+    /// Element-advice wires to mutate simultaneously. Coordinated multi-wire
+    /// cheats catch under-constraint that no single-wire change exposes
+    /// (e.g. two wires whose product is pinned but neither is).
     cheats: Vec<Cheat>,
+    /// Fold-scale advice wires to mutate (the freshly-allocated scale of an
+    /// [`Op::Fold`]). These are prover-controlled advice just like element
+    /// witnesses; the cheats flow through the native shadow's
+    /// `Overrides::fold_scales` so both sides judge the same commitment.
+    fold_cheats: Vec<Cheat>,
     /// Boolean-advice wires (mod boolean-advice count) to corrupt to a
     /// non-`{0,1}` field value. A non-empty list turns the run into a
     /// booleanity check: the captured `a·(1−a) = 0` constraints must reject
@@ -206,23 +213,66 @@ struct Input {
     program: Vec<u8>,
 }
 
-/// The repair-safe vocabulary.
+/// Resolves a coordinated cheat over an advice list into `(index, new value)`
+/// pairs, where `index` selects `honest[index]`. Deduplicated (first cheat on
+/// an index wins, including the second leg of a swap), and every result is
+/// nudged off the honest value so each cheat does real work. Shared by the
+/// element- and fold-advice paths.
+fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, F)> {
+    let n = honest.len();
+    let mut out: Vec<(usize, F)> = Vec::new();
+    if n == 0 {
+        return out;
+    }
+    for ch in cheats {
+        let i = ch.advice as usize % n;
+        if out.iter().any(|(j, _)| *j == i) {
+            continue;
+        }
+        let other = |o: u16| o as usize % n;
+        let value = match ch.mutation {
+            Mutation::AddSmall(d) => honest[i] + F::from(d),
+            Mutation::AddWide(b) => honest[i] + wide_value::<F>(&b),
+            Mutation::SetSpecial(s) => special_value(s),
+            Mutation::Negate => -honest[i],
+            Mutation::MulSmall(m) => honest[i] * F::from(m),
+            Mutation::CopyFrom(o) => honest[other(o)],
+            Mutation::SwapWith(o) => {
+                let oj = other(o);
+                if oj != i && !out.iter().any(|(j, _)| *j == oj) {
+                    out.push((oj, honest[i]));
+                }
+                honest[oj]
+            }
+        };
+        out.push((i, value));
+    }
+    for (i, v) in &mut out {
+        if *v == honest[*i] {
+            *v += F::ONE;
+        }
+    }
+    out
+}
+
+/// The patcher vocabulary: `OpSet::ALL` minus `ConditionalSelect` and
+/// `AllocRaw`.
 ///
 /// The single-unknown solver (issue #796 item 1) handles any constraint
 /// with one unknown, so the value-fallible arithmetic gadgets `invert` and
 /// `divide` — whose freshly-allocated inverse/quotient is a *gate input*
-/// the solver now back-solves — are in scope (issue #796 item 2), as is
-/// `is_zero` (`x·is_zero = 0`, `x·inv = 1 − is_zero`), whose result is
-/// regression coverage of those constraint shapes rather than a new oracle
-/// (no anchor observes the boolean).
+/// the solver back-solves — are in scope (issue #796 item 2), as is
+/// `is_zero` (`x·is_zero = 0`, `x·inv = 1 − is_zero`). The boolean
+/// allocator and combinators `BoolAlloc`/`BoolNot`/`BoolAnd` also
+/// participate: their booleanity (`a·b = 0`, `a + b = 1`) and result
+/// constraints are plain gates and enforces the solver already models, and
+/// a dedicated boolean cheat exercises booleanity directly.
 ///
-/// Excluded: the boolean *combinators* (`BoolAlloc`/`BoolNot`/`BoolAnd`/
-/// `ConditionalSelect` — their `a + b = 1` / `a·b = 0` constraints and the
-/// complement wire are a separate classification problem, issue #796
-/// "later booleans/points/poseidon"), and `AllocRaw` (a non-canonical
-/// 32-byte chunk skips its push, and unlike `invert`/`divide` that skip
-/// depends on fuzzer bytes, not a mutatable value, so the progression guard
-/// below cannot neutralize it).
+/// Excluded: `ConditionalSelect` (it routes a boolean back into an element,
+/// which needs field-valued select semantics to compare soundly) and
+/// `AllocRaw` (a non-canonical 32-byte chunk skips its push, and unlike
+/// `invert`/`divide` that skip depends on fuzzer bytes, not a mutatable
+/// value, so the zero-crossing classification cannot neutralize it).
 ///
 /// # Value-dependent solvability (classified in the harness)
 ///
@@ -258,7 +308,10 @@ fuzz_target!(|input: Input| {
     let program = Program::decode(&input.program, opset(), Limits::default());
 
     if std::env::var("DEBUG_INPUT").is_ok() {
-        eprintln!("cheats = {:?}\n{program:#?}", input.cheats);
+        eprintln!(
+            "cheats = {:?}\nfold_cheats = {:?}\nbool_cheats = {:?}\n{program:#?}",
+            input.cheats, input.fold_cheats, input.bool_cheats,
+        );
         return;
     }
     if program.ops.is_empty() {
@@ -292,9 +345,6 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
             _ => None,
         })
         .collect();
-    if advice_slots.is_empty() {
-        return;
-    }
 
     // Capture the honest constraint graph and per-slot wire ids.
     let mut rec = Recorder::<F>::new();
@@ -304,6 +354,20 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
         Err(_) => return,
     };
     let slot_wires: Vec<usize> = stacks.elems.iter().map(|e| *e.wire()).collect();
+
+    // The prover controls three kinds of advice: element-stack witnesses
+    // (mutated directly), Fold scales (mutated and replayed through the
+    // native shadow's `fold_scales`), and BoolAlloc booleans (corrupted to
+    // non-`{0,1}`). A program with *any* of them has real advice — an
+    // all-constant-preamble program that only allocates a boolean or a fold
+    // scale still gets fuzzed, instead of being dropped for lack of element
+    // advice.
+    if advice_slots.is_empty()
+        && stacks.fold_advice.is_empty()
+        && stacks.bool_advice_wires.is_empty()
+    {
+        return;
+    }
 
     // Completeness: the honest witness satisfies the captured constraints
     // and the native oracle agrees. Both hold by construction.
@@ -319,9 +383,11 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     // Rank/nullity oracle, independent of any cheat: with the genuine free
     // wires (advice, gate-D extras, allocator waste) held fixed, every
     // remaining wire must be locally pinned by the captured constraints.
-    // Skipped when an honest is_zero input was zero — its inverse hint is
-    // genuinely (and benignly) free there — and on outsized graphs.
-    if rec.values.len() <= RANK_WIRE_CAP && !shadow.bools.iter().any(|&b| b) {
+    // Skipped only on the genuine degeneracy — an honest `is_zero(0)`, whose
+    // inverse hint is benignly free — not on every true boolean (a
+    // `BoolAlloc(true)`/`BoolNot` produces no free hint), and on outsized
+    // graphs.
+    if rec.values.len() <= RANK_WIRE_CAP && !shadow.is_zero_degenerate {
         let mut rank_free = stacks.advice_wires.clone();
         rank_free.extend_from_slice(&rec.extras);
         rank_free.extend_from_slice(&alloc.wasted);
@@ -334,64 +400,63 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
         );
     }
 
-    // Resolve the coordinated cheat into (advice slot, new value) pairs,
-    // deduplicated by slot so a wire is mutated at most once (first cheat
-    // wins, including the second leg of a swap). A run with no cheats is
-    // degenerate; default to a single cheat on the first advice wire so
-    // every input does some work.
-    let raw_cheats = if input.cheats.is_empty() {
-        vec![Cheat {
-            advice: 0,
-            mutation: Mutation::AddSmall(1),
-        }]
-    } else {
-        input.cheats.clone()
-    };
-    let mut slot_value: Vec<(usize, F)> = Vec::new();
-    for ch in &raw_cheats {
-        let slot = advice_slots[ch.advice as usize % advice_slots.len()];
-        if slot_value.iter().any(|(s, _)| *s == slot) {
-            continue;
-        }
-        let honest = shadow.elems[slot];
-        let other = |o: u16| advice_slots[o as usize % advice_slots.len()];
-        let value = match ch.mutation {
-            Mutation::AddSmall(d) => honest + F::from(d),
-            Mutation::AddWide(b) => honest + wide_value::<F>(&b),
-            Mutation::SetSpecial(i) => special_value(i),
-            Mutation::Negate => -honest,
-            Mutation::MulSmall(m) => honest * F::from(m),
-            Mutation::CopyFrom(o) => shadow.elems[other(o)],
-            Mutation::SwapWith(o) => {
-                let other_slot = other(o);
-                if other_slot != slot && !slot_value.iter().any(|(s, _)| *s == other_slot) {
-                    slot_value.push((other_slot, honest));
-                }
-                shadow.elems[other_slot]
-            }
-        };
-        slot_value.push((slot, value));
-    }
-    // Every cheat must do work: a mutation that lands back on the honest
-    // value (zero delta, ×1, copy between equal wires, …) is nudged off it.
-    for (slot, value) in &mut slot_value {
-        if *value == shadow.elems[*slot] {
-            *value += F::ONE;
-        }
-    }
+    // The honest value of each advice in its list order. Element honest
+    // values come from the shadow; fold-scale honest values from the
+    // recorder (the freshly-allocated scale wire).
+    let elem_honest: Vec<F> = advice_slots.iter().map(|s| shadow.elems[*s]).collect();
+    let fold_honest: Vec<F> = stacks
+        .fold_advice
+        .iter()
+        .map(|(_, w)| rec.values[*w])
+        .collect();
 
-    // ragu side: apply the cheats, then solve the captured graph for the
-    // witness — in the *accomplice* adversary model. Only the cheated
-    // element advice and the non-element advice (fold scales, booleans)
-    // are held fixed; every *non-cheated* element-advice wire is left
-    // solvable, modeling a prover who adjusts its other advice to mask the
-    // cheat. The solver picks those accomplice values, and we feed them
-    // back to the native oracle below so both judge the *same* commitment.
-    let cheated_slots: Vec<usize> = slot_value.iter().map(|(s, _)| *s).collect();
+    // Default to one small cheat when the input names none, so every run does
+    // work; it lands on whichever advice kind the program actually has.
+    let no_cheats =
+        input.cheats.is_empty() && input.fold_cheats.is_empty() && input.bool_cheats.is_empty();
+    let default_cheat = [Cheat {
+        advice: 0,
+        mutation: Mutation::AddSmall(1),
+    }];
+    let default_bool = [0u16];
+    let elem_cheats: &[Cheat] = if no_cheats && !elem_honest.is_empty() {
+        &default_cheat
+    } else {
+        &input.cheats
+    };
+    let fold_cheats: &[Cheat] = if no_cheats && elem_honest.is_empty() && !fold_honest.is_empty() {
+        &default_cheat
+    } else {
+        &input.fold_cheats
+    };
+    let bool_cheats: &[u16] = if no_cheats
+        && elem_honest.is_empty()
+        && fold_honest.is_empty()
+        && !stacks.bool_advice_wires.is_empty()
+    {
+        &default_bool
+    } else {
+        &input.bool_cheats
+    };
+
+    // Resolve element and fold cheats into concrete new values (indexed into
+    // each advice list).
+    let elem_value = resolve_cheats::<F>(elem_cheats, &elem_honest);
+    let fold_value = resolve_cheats::<F>(fold_cheats, &fold_honest);
+
+    // ragu side, accomplice model: hold the cheated element advice, every
+    // fold scale, and every boolean fixed; leave each *non-cheated*
+    // element-advice wire solvable so the solver can pick accomplice values
+    // that mask the cheat. Those are fed back to the native oracle below so
+    // both sides judge the same commitment.
+    let cheated_elem_wires: Vec<usize> = elem_value
+        .iter()
+        .map(|(k, _)| slot_wires[advice_slots[*k]])
+        .collect();
     let accomplice_wires: Vec<usize> = advice_slots
         .iter()
-        .filter(|s| !cheated_slots.contains(s))
         .map(|s| slot_wires[*s])
+        .filter(|w| !cheated_elem_wires.contains(w))
         .collect();
     let fixed_free: Vec<usize> = stacks
         .advice_wires
@@ -401,15 +466,19 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
         .collect();
 
     let mut ragu_values = rec.values.clone();
-    for (slot, value) in &slot_value {
-        ragu_values[slot_wires[*slot]] = *value;
+    for (k, v) in &elem_value {
+        ragu_values[slot_wires[advice_slots[*k]]] = *v;
+    }
+    for (k, v) in &fold_value {
+        let (_, wire) = stacks.fold_advice[*k];
+        ragu_values[wire] = *v;
     }
 
     // Boolean cheats: corrupt chosen boolean-advice wires to non-`{0,1}`
     // field values. Booleanity (`a·(1−a) = 0`) must reject them, so the run
     // becomes a must-reject check independent of the element anchors.
     let mut bool_cheated = false;
-    for (i, raw) in input.bool_cheats.iter().enumerate() {
+    for (i, raw) in bool_cheats.iter().enumerate() {
         if stacks.bool_advice_wires.is_empty() {
             break;
         }
@@ -452,16 +521,24 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
 
     // native side: judge the exact commitment ragu accepted — the cheats
     // *and* the accomplice advice the solver chose. Each element-advice slot
-    // is overridden to its post-repair value; derived wires the shadow
-    // recomputes itself from true semantics.
+    // and each fold scale is overridden to its post-repair value; derived
+    // wires the shadow recomputes itself from true semantics. Routing fold
+    // scales through `fold_scales` is what lets a cheated fold scale be
+    // observed (rather than silently held fixed).
     let elem_overrides: Vec<(usize, F)> = advice_slots
         .iter()
         .map(|s| (*s, ragu_values[slot_wires[*s]]))
+        .collect();
+    let fold_overrides: Vec<(usize, F)> = stacks
+        .fold_advice
+        .iter()
+        .map(|(op_idx, w)| (*op_idx, ragu_values[*w]))
         .collect();
     let mutated = shadow_eval::<F>(
         &program,
         Overrides {
             elems: &elem_overrides,
+            fold_scales: &fold_overrides,
             ..Overrides::none()
         },
     );
@@ -480,11 +557,11 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     //    that gadget, so there is nothing to compare against; still out of
     //    model, so bail.
     //  * only the boolean stack changed — an `is_zero` result flipped. The
-    //    patcher vocabulary excludes the boolean *combinators* (no
-    //    `ConditionalSelect`), so a flipped boolean cannot move any anchored
-    //    element, and the cluster solver re-derives the `is_zero` hint
-    //    witness (`prod = x·inv`, the result bit, the inverse). The
-    //    element-anchor comparison therefore stays valid — no bail.
+    //    patcher vocabulary excludes `ConditionalSelect`, so a flipped
+    //    boolean cannot move any anchored element, and the cluster solver
+    //    re-derives the `is_zero` hint witness (`prod = x·inv`, the result
+    //    bit, the inverse). The element-anchor comparison therefore stays
+    //    valid — no bail.
     let shrank = mutated.elems.len() < shadow.elems.len();
     let grew = mutated.elems.len() > shadow.elems.len();
     let bools_flipped = mutated.bools != shadow.bools;
@@ -522,8 +599,8 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     if shrank {
         assert!(
             !ragu_accepts,
-            "PATCHER ZERO-DIVISOR SIGNAL: setting advice (slot, value) \
-             {slot_value:?} drove an invert/divide input to zero, yet ragu \
+            "PATCHER ZERO-DIVISOR SIGNAL: cheating advice (elem {elem_value:?}, \
+             fold {fold_value:?}) drove an invert/divide input to zero, yet ragu \
              ACCEPTED the repaired witness — the gadget's nonzero enforcement \
              is under-constrained (the soundness direction). Program: {program:?}",
         );
@@ -533,9 +610,9 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     assert_eq!(
         ragu_accepts,
         native_ok,
-        "PATCHER SOUNDNESS SIGNAL: setting advice (slot, value) {slot_value:?} \
-         and repairing through the captured constraints, ragu {} the witness \
-         but the native oracle says it is {}. {}. Program: {program:?}",
+        "PATCHER SOUNDNESS SIGNAL: cheating advice (elem {elem_value:?}, fold \
+         {fold_value:?}) and repairing through the captured constraints, ragu {} \
+         the witness but the native oracle says it is {}. {}. Program: {program:?}",
         if ragu_accepts { "ACCEPTED" } else { "REJECTED" },
         if native_ok { "satisfied" } else { "VIOLATED" },
         if ragu_accepts && !native_ok {

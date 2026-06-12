@@ -58,6 +58,12 @@ pub struct Stacks<'dr, D: Driver<'dr>> {
     /// (`a·b = 0`, `a + b = 1`); the patcher cheats these wires to a
     /// non-boolean field value to check that booleanity actually rejects.
     pub bool_advice_wires: Vec<D::Wire>,
+    /// Each [`Op::Fold`] scale, as `(op index, wire)` — a subset of
+    /// [`advice_wires`](Self::advice_wires). The op index keys the native
+    /// shadow's [`Overrides::fold_scales`](super::Overrides::fold_scales), so
+    /// the patcher can cheat a fold scale and have both sides judge the same
+    /// commitment.
+    pub fold_advice: Vec<(usize, D::Wire)>,
 }
 
 /// Synthesizes `program` through `dr`.
@@ -179,6 +185,7 @@ where
 {
     let mut bools: Vec<Boolean<'dr, D>> = Vec::new();
     let mut bool_advice_wires: Vec<D::Wire> = Vec::new();
+    let mut fold_advice: Vec<(usize, D::Wire)> = Vec::new();
     let mut anchor_idx = 0usize;
 
     for (idx, op) in program.ops.iter().enumerate() {
@@ -252,6 +259,7 @@ where
                 let (a, b) = (a as usize % elen, b as usize % elen);
                 let scale = Element::alloc(dr, allocator, D::just(move || D::F::from(s)))?;
                 advice_wires.push(scale.wire().clone());
+                fold_advice.push((idx, scale.wire().clone()));
                 if let Ok(r) = Element::fold(dr, [&elems[a], &elems[b]], &scale) {
                     elems.push(r);
                 }
@@ -339,6 +347,7 @@ where
         anchors_emitted: anchor_idx.min(anchors.len()),
         advice_wires,
         bool_advice_wires,
+        fold_advice,
     })
 }
 

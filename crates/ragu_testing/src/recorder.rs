@@ -892,8 +892,9 @@ mod tests {
         ) {
             let shadow = shadow_eval::<Fp>(&program, Overrides::none());
             // An honest zero into is_zero leaves its inverse hint genuinely
-            // free; skip those (see `underconstrained_derived` caveats).
-            prop_assume!(!shadow.bools.iter().any(|&b| b));
+            // free; skip those (see `underconstrained_derived` caveats). A
+            // merely-true boolean (BoolAlloc/BoolNot/BoolAnd) is fine.
+            prop_assume!(!shadow.is_zero_degenerate);
 
             let mut rec = Recorder::<Fp>::new();
             let mut alloc = TrackingAllocator::default();
@@ -910,6 +911,47 @@ mod tests {
                 "movable derived wires {movable:?} in {program:?}",
             );
         }
+    }
+
+    /// A merely-true boolean (here a `BoolAlloc(true)`) is *not* the
+    /// `is_zero(0)` degeneracy: `is_zero_degenerate` stays false, so the rank
+    /// oracle must still run — and find nothing movable, since booleanity
+    /// pins the complement and the gate output. Regression for the
+    /// over-broad "skip on any true boolean" guard.
+    #[test]
+    fn true_boolean_does_not_disable_rank_oracle() {
+        use crate::substrate::{Op, Preamble, Program};
+
+        let program = Program {
+            preamble: Preamble {
+                seeds: [3, 5, 7, 11],
+                large_seeds: [[1, 2, 3, 4], [5, 6, 7, 8]],
+                special_seeds: [1, 11],
+                constant_mask: 0,
+            },
+            ops: vec![Op::BoolAlloc(true), Op::Add(0, 1)],
+        };
+        let shadow = shadow_eval::<Fp>(&program, Overrides::none());
+        assert!(
+            shadow.bools.iter().any(|&b| b),
+            "the boolean should be true"
+        );
+        assert!(
+            !shadow.is_zero_degenerate,
+            "a BoolAlloc(true) is not the is_zero(0) degeneracy",
+        );
+
+        let mut rec = Recorder::<Fp>::new();
+        let mut alloc = TrackingAllocator::default();
+        let stacks = synthesize(&mut rec, &mut alloc, &program, &shadow.anchors).unwrap();
+        let mut free = stacks.advice_wires.clone();
+        free.extend_from_slice(&rec.extras);
+        free.extend_from_slice(&alloc.wasted);
+        let movable = underconstrained_derived(&rec.events, &rec.values, &free);
+        assert!(
+            movable.is_empty(),
+            "rank oracle false positive: {movable:?}"
+        );
     }
 
     /// The planted under-constrained circuit makes the oracle fire.
