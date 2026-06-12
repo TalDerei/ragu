@@ -38,6 +38,14 @@
 //! over the historical Add/Sub/Mul/Scale/AllocSquare/Anchor set —
 //! `Square`, `Double`, `Negate`, `Fold`, and `AllocConst` now participate.
 //!
+//! # Mutations
+//!
+//! A cheat rewrites a free advice wire's value, and the vocabulary targets
+//! the corner cases under-constrained bugs live in (see [`Mutation`]):
+//! small and full-width additive deltas, exact special values, negation
+//! and scaling, and aliasing/swaps against other advice wires — the direct
+//! probe for missing copy constraints.
+//!
 //! # The differential
 //!
 //! Alongside the captured graph the substrate's native `Fp` shadow knows
@@ -64,7 +72,7 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::Field;
+use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_arithmetic::Coeff;
@@ -77,7 +85,7 @@ use ragu_core::{
 };
 use ragu_testing::substrate::{
     AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
-    shadow_eval, synthesize,
+    shadow_eval, special_value, synthesize,
 };
 
 // ---------------------------------------------------------------------------
@@ -325,12 +333,51 @@ fn constraints_hold(events: &[Ev], values: &[Fp]) -> bool {
 // Harness.
 // ---------------------------------------------------------------------------
 
-/// A coordinated cheat: which free advice wire (mod advice count) and the
-/// nonzero delta to add. A run may apply several at once.
+/// How a cheat rewrites the honest value of its target advice wire.
+///
+/// `AddSmall` is the historical mutation, but a `u64` delta explores only a
+/// ~2⁻¹⁹⁰ sliver of the field around the honest value, and issue #728's
+/// premise is that under-constrained bugs live at corner cases. The rest
+/// aim directly at them: exact special values (0, ±1, p−2, 2⁻¹, roots of
+/// unity, 2^k boundaries), full-width deltas, sign/scale flips, and
+/// aliasing against another advice wire — the direct probe for a missing
+/// copy constraint ("these two should both be pinned, but only one is").
+#[derive(Arbitrary, Debug, Clone, Copy)]
+enum Mutation {
+    /// `v + δ` for a small delta `δ ∈ [0, 2⁶⁴)`.
+    AddSmall(u64),
+    /// `v + δ` for a full-width delta assembled from 32 LE bytes (see
+    /// [`wide_value`]).
+    AddWide([u8; 32]),
+    /// Set to [`special_value`] of the index.
+    SetSpecial(u8),
+    /// `−v`.
+    Negate,
+    /// `v · m` for a small factor.
+    MulSmall(u64),
+    /// Set to the honest value of another advice wire (mod advice count).
+    CopyFrom(u16),
+    /// Swap honest values with another advice wire — the coordinated form
+    /// of [`Mutation::CopyFrom`], moving both wires at once.
+    SwapWith(u16),
+}
+
+/// A coordinated cheat: which free advice wire (mod advice count) and how
+/// to rewrite its value. A run may apply several at once.
 #[derive(Arbitrary, Debug, Clone, Copy)]
 struct Cheat {
     advice: u16,
-    delta: u64,
+    mutation: Mutation,
+}
+
+/// Assembles a full-width field element from 32 LE bytes as `lo + hi·2¹²⁸`
+/// over the two `u128` halves, covering `[0, 2²⁵⁶) mod p` — deltas the
+/// `u64` mutation can never reach.
+fn wide_value(bytes: &[u8; 32]) -> Fp {
+    let lo = u128::from_le_bytes(bytes[..16].try_into().unwrap());
+    let hi = u128::from_le_bytes(bytes[16..].try_into().unwrap());
+    let pow128 = Fp::from(1u64 << 63).double().square();
+    Fp::from_u128(lo) + Fp::from_u128(hi) * pow128
 }
 
 #[derive(Arbitrary, Debug)]
@@ -479,29 +526,50 @@ fuzz_target!(|input: Input| {
         "honest native oracle disagreed with itself (harness bug): {program:?}"
     );
 
-    // Resolve the coordinated cheat into (advice slot, delta) pairs,
-    // deduplicated by slot so a wire is mutated at most once. A run with no
-    // cheats is degenerate; default to a single cheat on the first advice
-    // wire so every input does some work.
+    // Resolve the coordinated cheat into (advice slot, new value) pairs,
+    // deduplicated by slot so a wire is mutated at most once (first cheat
+    // wins, including the second leg of a swap). A run with no cheats is
+    // degenerate; default to a single cheat on the first advice wire so
+    // every input does some work.
     let raw_cheats = if input.cheats.is_empty() {
         vec![Cheat {
             advice: 0,
-            delta: 0,
+            mutation: Mutation::AddSmall(1),
         }]
     } else {
         input.cheats.clone()
     };
-    let mut slot_delta: Vec<(usize, Fp)> = Vec::new();
+    let mut slot_value: Vec<(usize, Fp)> = Vec::new();
     for ch in &raw_cheats {
         let slot = advice_slots[ch.advice as usize % advice_slots.len()];
-        if slot_delta.iter().any(|(s, _)| *s == slot) {
+        if slot_value.iter().any(|(s, _)| *s == slot) {
             continue;
         }
-        let mut delta = Fp::from(ch.delta);
-        if delta == Fp::ZERO {
-            delta = Fp::ONE;
+        let honest = shadow.elems[slot];
+        let other = |o: u16| advice_slots[o as usize % advice_slots.len()];
+        let value = match ch.mutation {
+            Mutation::AddSmall(d) => honest + Fp::from(d),
+            Mutation::AddWide(b) => honest + wide_value(&b),
+            Mutation::SetSpecial(i) => special_value(i),
+            Mutation::Negate => -honest,
+            Mutation::MulSmall(m) => honest * Fp::from(m),
+            Mutation::CopyFrom(o) => shadow.elems[other(o)],
+            Mutation::SwapWith(o) => {
+                let other_slot = other(o);
+                if other_slot != slot && !slot_value.iter().any(|(s, _)| *s == other_slot) {
+                    slot_value.push((other_slot, honest));
+                }
+                shadow.elems[other_slot]
+            }
+        };
+        slot_value.push((slot, value));
+    }
+    // Every cheat must do work: a mutation that lands back on the honest
+    // value (zero delta, ×1, copy between equal wires, …) is nudged off it.
+    for (slot, value) in &mut slot_value {
+        if *value == shadow.elems[*slot] {
+            *value += Fp::ONE;
         }
-        slot_delta.push((slot, delta));
     }
 
     // ragu side: apply the cheats to the chosen advice wires, then solve the
@@ -510,21 +578,17 @@ fuzz_target!(|input: Input| {
     // freedom — non-cheated advice stays honest); everything else is
     // re-derived by the single-unknown solver.
     let mut ragu_values = rec.values.clone();
-    for (slot, delta) in &slot_delta {
-        ragu_values[slot_wires[*slot]] += delta;
+    for (slot, value) in &slot_value {
+        ragu_values[slot_wires[*slot]] = *value;
     }
     repair(&rec.events, &mut ragu_values, &stacks.advice_wires);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
 
     // native side: apply the same cheats and recompute the full chain.
-    let overrides: Vec<(usize, Fp)> = slot_delta
-        .iter()
-        .map(|(slot, delta)| (*slot, shadow.elems[*slot] + delta))
-        .collect();
     let mutated = shadow_eval::<Fp>(
         &program,
         Overrides {
-            elems: &overrides,
+            elems: &slot_value,
             ..Overrides::none()
         },
     );
@@ -550,7 +614,7 @@ fuzz_target!(|input: Input| {
     assert_eq!(
         ragu_accepts,
         native_ok,
-        "PATCHER SOUNDNESS SIGNAL: cheating advice {slot_delta:?} \
+        "PATCHER SOUNDNESS SIGNAL: setting advice (slot, value) {slot_value:?} \
          and repairing through the captured constraints, ragu {} the witness \
          but the native oracle says it is {}. {}. Program: {program:?}",
         if ragu_accepts { "ACCEPTED" } else { "REJECTED" },
