@@ -27,16 +27,21 @@
 //!
 //! # Vocabulary
 //!
-//! The repair engine only models `{Lin, Gate, 2-term copy, ≤1-term check}`
-//! constraint shapes, so the vocabulary is restricted to the substrate ops
-//! that emit *only* those: `OpSet::ALL` minus the boolean ops (which emit
-//! 3-term `a + b = 1` enforces and gates the repair engine does not model)
-//! and the value-fallible ops (`Invert`/`Divide`/`AllocRaw`, whose
-//! inverse-hint constraints are likewise out of model). The free advice the
-//! patcher mutates is the element-stack advice (witness inputs,
-//! `AllocSpecial`, and `AllocSquare` roots). This is a genuine widening
-//! over the historical Add/Sub/Mul/Scale/AllocSquare/Anchor set —
-//! `Square`, `Double`, `Negate`, `Fold`, and `AllocConst` now participate.
+//! The vocabulary is `OpSet::ALL` minus [`Op::ConditionalSelect`] (it routes
+//! a boolean back into an element, which needs field-valued select semantics
+//! to compare soundly) and [`Op::AllocRaw`] (its skip depends on fuzzer
+//! bytes, not a mutatable value). Everything else participates: the
+//! arithmetic and allocation gadgets, the value-fallible `invert`/`divide`
+//! (whose freshly-allocated inverse/quotient the single-unknown solver
+//! back-solves), `is_zero`, and the boolean allocator/combinators
+//! `BoolAlloc`/`BoolNot`/`BoolAnd` (whose booleanity and result constraints
+//! are plain gates and enforces the solver already models). The free advice
+//! the patcher mutates is the element-stack advice (witness inputs,
+//! `AllocSpecial`, `AllocSquare` roots) plus, via a dedicated boolean cheat,
+//! the `BoolAlloc` wires.
+//!
+//! [`Op::ConditionalSelect`]: ragu_testing::substrate::Op::ConditionalSelect
+//! [`Op::AllocRaw`]: ragu_testing::substrate::Op::AllocRaw
 //!
 //! # Mutations
 //!
@@ -44,7 +49,10 @@
 //! the corner cases under-constrained bugs live in (see [`Mutation`]):
 //! small and full-width additive deltas, exact special values, negation
 //! and scaling, and aliasing/swaps against other advice wires — the direct
-//! probe for missing copy constraints.
+//! probe for missing copy constraints. A separate *boolean* cheat sets a
+//! boolean-advice wire to a non-`{0,1}` field value; the captured
+//! booleanity constraints must reject it (the canonical booleanity
+//! under-constraint).
 //!
 //! # The differential
 //!
@@ -89,8 +97,8 @@ use ragu_testing::{
         Recorder, TrackingAllocator, constraints_hold, repair, selftest, underconstrained_derived,
     },
     substrate::{
-        AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, anchor_tail,
-        native_satisfied, shadow_eval, special_value, synthesize,
+        AdviceSlot, Limits, OpKind, OpSet, Overrides, Program, anchor_tail, native_satisfied,
+        shadow_eval, special_value, synthesize,
     },
 };
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -173,6 +181,11 @@ struct Input {
     /// multi-wire cheats catch under-constraint that no single-wire change
     /// exposes (e.g. two wires whose product is pinned but neither is).
     cheats: Vec<Cheat>,
+    /// Boolean-advice wires (mod boolean-advice count) to corrupt to a
+    /// non-`{0,1}` field value. A non-empty list turns the run into a
+    /// booleanity check: the captured `a·(1−a) = 0` constraints must reject
+    /// the witness, or the boolean is under-constrained.
+    bool_cheats: Vec<u16>,
     /// Raw program bytes, decoded via [`Program::decode`]. Last field, so
     /// `arbitrary_take_rest` hands it the remainder of the input.
     program: Vec<u8>,
@@ -209,8 +222,14 @@ struct Input {
 /// (stack grew) remains out of model and bails.
 fn opset() -> OpSet {
     OpSet::filtered(|k| {
-        (k == OpKind::IsZero || !k.capabilities().intersects(Capabilities::BOOLEAN))
-            && k != OpKind::AllocRaw
+        // Boolean allocation and the and/not combinators participate (their
+        // booleanity and result constraints are plain gates/enforces the
+        // solver already models, and the boolean cheat checks booleanity).
+        // `ConditionalSelect` stays out — it routes a boolean back into an
+        // element, which needs field-valued select semantics to compare
+        // soundly. `AllocRaw` stays out (its skip depends on fuzzer bytes,
+        // not a mutatable value).
+        !matches!(k, OpKind::ConditionalSelect | OpKind::AllocRaw)
     })
 }
 
@@ -360,8 +379,34 @@ fuzz_target!(|input: Input| {
     for (slot, value) in &slot_value {
         ragu_values[slot_wires[*slot]] = *value;
     }
+
+    // Boolean cheats: corrupt chosen boolean-advice wires to non-`{0,1}`
+    // field values. Booleanity (`a·(1−a) = 0`) must reject them, so the run
+    // becomes a must-reject check independent of the element anchors.
+    let mut bool_cheated = false;
+    for (i, raw) in input.bool_cheats.iter().enumerate() {
+        if stacks.bool_advice_wires.is_empty() {
+            break;
+        }
+        let wire = stacks.bool_advice_wires[*raw as usize % stacks.bool_advice_wires.len()];
+        // 2, 3, 4, … — never 0 or 1, so always a booleanity violation.
+        ragu_values[wire] = Fp::from(i as u64 + 2);
+        bool_cheated = true;
+    }
+
     repair(&rec.events, &mut ragu_values, &fixed_free);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
+
+    if bool_cheated {
+        assert!(
+            !ragu_accepts,
+            "PATCHER BOOLEANITY SIGNAL: a boolean-advice wire was set to a \
+             non-{{0,1}} value, yet ragu ACCEPTED the witness — the \
+             booleanity constraints are under-constrained (the soundness \
+             direction). Program: {program:?}",
+        );
+        return;
+    }
 
     // native side: judge the exact commitment ragu accepted — the cheats
     // *and* the accomplice advice the solver chose. Each element-advice slot

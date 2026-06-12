@@ -52,6 +52,12 @@ pub struct Stacks<'dr, D: Driver<'dr>> {
     /// gate's output, an `invert` inverse, a `divide` quotient) are
     /// excluded, because constraints determine them.
     pub advice_wires: Vec<D::Wire>,
+    /// The wire of each [`Op::BoolAlloc`]-allocated boolean, in creation
+    /// order — a subset of [`advice_wires`](Self::advice_wires). A boolean
+    /// wire is pinned to `{0, 1}` only by its booleanity constraints
+    /// (`a·b = 0`, `a + b = 1`); the patcher cheats these wires to a
+    /// non-boolean field value to check that booleanity actually rejects.
+    pub bool_advice_wires: Vec<D::Wire>,
 }
 
 /// Synthesizes `program` through `dr`.
@@ -172,6 +178,7 @@ where
     D::F: PrimeField<Repr = [u8; 32]>,
 {
     let mut bools: Vec<Boolean<'dr, D>> = Vec::new();
+    let mut bool_advice_wires: Vec<D::Wire> = Vec::new();
     let mut anchor_idx = 0usize;
 
     for (idx, op) in program.ops.iter().enumerate() {
@@ -280,6 +287,7 @@ where
             Op::BoolAlloc(v) => {
                 if let Ok(b) = Boolean::alloc(dr, allocator, D::just(move || v)) {
                     advice_wires.push(b.wire().clone());
+                    bool_advice_wires.push(b.wire().clone());
                     bools.push(b);
                 }
             }
@@ -330,6 +338,7 @@ where
         bools,
         anchors_emitted: anchor_idx.min(anchors.len()),
         advice_wires,
+        bool_advice_wires,
     })
 }
 
