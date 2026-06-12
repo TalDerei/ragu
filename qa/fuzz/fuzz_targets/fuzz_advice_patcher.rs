@@ -465,7 +465,7 @@ fn run_selftest() {
     // True semantics: square must be root²; after the cheat it isn't 49.
     let native_ok = (root_honest + delta).square() == root_honest.square();
 
-    assert_eq!(
+    assert_ne!(
         ragu_accepts, native_ok,
         "PATCHER SELF-TEST: the oracle failed to fire on a known \
          under-constrained alloc_square (ragu_accepts={ragu_accepts}, \
