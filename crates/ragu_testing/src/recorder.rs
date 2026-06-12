@@ -28,6 +28,7 @@ use ragu_core::{
     maybe::Always,
     routines::Routine,
 };
+use ragu_primitives::allocator::Allocator;
 
 /// A captured constraint / wire definition, in emission order.
 #[derive(Clone, Debug)]
@@ -61,6 +62,11 @@ pub struct Recorder<F> {
     pub values: Vec<F>,
     /// The captured constraint graph, in emission order.
     pub events: Vec<Event<F>>,
+    /// Wires created through [`DriverTypes::assign_extra`] — gate $D$ wires,
+    /// pinned by `C · D = 0` only when `C ≠ 0` and intentionally free
+    /// otherwise. The recorder does not capture that constraint, so these
+    /// are exempt from [`underconstrained_derived`].
+    pub extras: Vec<usize>,
 }
 
 impl<F: Field> Recorder<F> {
@@ -72,6 +78,7 @@ impl<F: Field> Recorder<F> {
         Recorder {
             values: vec![F::ONE],
             events: Vec::new(),
+            extras: Vec::new(),
         }
     }
 
@@ -150,7 +157,9 @@ impl<F: Field> DriverTypes for Recorder<F> {
 
     fn assign_extra(&mut self, _extra: (), value: impl Fn() -> Result<Coeff<F>>) -> Result<usize> {
         let v = value()?.value();
-        Ok(self.push_wire(v))
+        let id = self.push_wire(v);
+        self.extras.push(id);
+        Ok(id)
     }
 }
 
@@ -183,6 +192,163 @@ impl<'dr, F: Field> Driver<'dr> for Recorder<F> {
     ) -> Result<Bound<'dr, Self, R::Output>> {
         unreachable!("the recorder does not support routines yet (issue #793)")
     }
+}
+
+/// The unit allocator with bookkeeping: each `alloc` emits an `a · 0 = 0`
+/// gate and returns the `a` wire (exactly like the `()` allocator), but
+/// records the deliberately wasted `b` and `c` wires.
+///
+/// Those wires are real, prover-controlled degrees of freedom — `b` is
+/// unconstrained and `c = a·b` follows it — that ragu wastes *by design*,
+/// so a whole-graph analysis like [`underconstrained_derived`] must exempt
+/// them or it would flag every allocation.
+#[derive(Default)]
+pub struct TrackingAllocator {
+    /// The `b` and `c` wires of every allocation gate, in creation order.
+    pub wasted: Vec<usize>,
+}
+
+impl<'dr, F: Field> Allocator<'dr, Recorder<F>> for TrackingAllocator {
+    fn alloc(
+        &mut self,
+        dr: &mut Recorder<F>,
+        value: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<usize> {
+        let (a, b, c) = dr.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+        self.wasted.push(b);
+        self.wasted.push(c);
+        Ok(a)
+    }
+}
+
+/// The rank/nullity oracle: derived wires a malicious prover can move, to
+/// first order, while every free wire is held fixed.
+///
+/// Builds the Jacobian of the captured constraints at the (satisfying)
+/// witness `values` — `Lin` and `Enforce` are their own (linear) rows, and
+/// a gate `a·b = c` linearizes to `b̄·da + ā·db − dc = 0` — restricted to
+/// the columns *not* in `free` (advice directions are pinned: `da = 0`).
+/// A derived wire is **movable** when some null-space vector of that
+/// restricted system is nonzero at its column, computed by Gaussian
+/// elimination to reduced row echelon form: non-pivot columns are free
+/// parameters, and a pivot column moves exactly when its row reads a free
+/// parameter.
+///
+/// For a correctly constrained circuit the result is **empty**: given the
+/// advice, every other wire is locally pinned by the constraints. A
+/// non-empty result is an under-constrained wire found *algebraically* —
+/// no mutation has to land on the free direction, no repair walk has to
+/// propagate it, and no anchor has to observe it. This complements the
+/// cheat differential, which covers the advice-level bug class (a wire
+/// that should be derived but is exposed as advice) that this check, by
+/// construction, cannot see.
+///
+/// # Exemptions and caveats
+///
+/// `free` must include every *intentionally* free wire, or the oracle
+/// reports false positives: the advice itself, [`Recorder::extras`] (gate
+/// $D$ wires whose `C · D = 0` pin the recorder does not capture), and
+/// [`TrackingAllocator::wasted`] (the `b`/`c` wires of allocation gates).
+///
+/// Rank can only *drop* at special witnesses (vanishing partial
+/// derivatives), so this can report movable wires that a generic witness
+/// would pin — e.g. an `is_zero` inverse hint when the input is honestly
+/// zero — but never the reverse: a clean result at any satisfying witness
+/// is a clean result generically. Callers either guard those known
+/// degenerate points or re-check at a resampled witness.
+pub fn underconstrained_derived<F: Field>(
+    events: &[Event<F>],
+    values: &[F],
+    free: &[usize],
+) -> Vec<usize> {
+    let n = values.len();
+    let mut fixed = vec![false; n];
+    fixed[Recorder::<F>::ONE] = true;
+    for &w in free {
+        fixed[w] = true;
+    }
+
+    // Map derived wires onto dense columns.
+    let mut col_of = vec![usize::MAX; n];
+    let mut wire_of = Vec::new();
+    for (w, fx) in fixed.iter().enumerate() {
+        if !fx {
+            col_of[w] = wire_of.len();
+            wire_of.push(w);
+        }
+    }
+    let d = wire_of.len();
+    if d == 0 {
+        return Vec::new();
+    }
+
+    // Jacobian rows over the derived columns (fixed columns contribute
+    // nothing: their direction is zero).
+    let mut rows: Vec<Vec<F>> = Vec::new();
+    let mut push_row = |entries: &[(usize, F)]| {
+        let mut row = vec![F::ZERO; d];
+        let mut nonzero = false;
+        for &(w, c) in entries {
+            if !fixed[w] && c != F::ZERO {
+                row[col_of[w]] += c;
+                nonzero = true;
+            }
+        }
+        if nonzero {
+            rows.push(row);
+        }
+    };
+    for ev in events {
+        match ev {
+            Event::Lin { out, terms } => {
+                let mut entries = terms.clone();
+                entries.push((*out, -F::ONE));
+                push_row(&entries);
+            }
+            Event::Gate { a, b, c } => {
+                push_row(&[(*a, values[*b]), (*b, values[*a]), (*c, -F::ONE)]);
+            }
+            Event::Enforce { terms } => push_row(terms),
+        }
+    }
+
+    // Reduced row echelon form.
+    let mut pivot_row_of_col: Vec<Option<usize>> = vec![None; d];
+    let mut r = 0;
+    for (c, pivot) in pivot_row_of_col.iter_mut().enumerate() {
+        if r == rows.len() {
+            break;
+        }
+        let Some(pr) = (r..rows.len()).find(|&i| rows[i][c] != F::ZERO) else {
+            continue;
+        };
+        rows.swap(r, pr);
+        let inv = rows[r][c].invert().unwrap();
+        for x in c..d {
+            rows[r][x] *= inv;
+        }
+        for i in 0..rows.len() {
+            if i != r && rows[i][c] != F::ZERO {
+                let f = rows[i][c];
+                for x in c..d {
+                    let t = rows[r][x] * f;
+                    rows[i][x] -= t;
+                }
+            }
+        }
+        *pivot = Some(r);
+        r += 1;
+    }
+
+    // Non-pivot columns are free parameters; a pivot column moves iff its
+    // RREF row reads a free parameter.
+    (0..d)
+        .filter(|&c| match pivot_row_of_col[c] {
+            None => true,
+            Some(pr) => (0..d).any(|x| pivot_row_of_col[x].is_none() && rows[pr][x] != F::ZERO),
+        })
+        .map(|c| wire_of[c])
+        .collect()
 }
 
 /// Solve the captured constraint graph for the witness a malicious prover
@@ -339,9 +505,75 @@ pub fn selftest<F: PrimeField>() {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use ragu_pasta::Fp;
 
     use super::*;
+    use crate::substrate::{Limits, OpSet, Overrides, program_strategy, shadow_eval, synthesize};
+
+    /// A gate whose `b` input lacks its copy constraint is caught by the
+    /// rank oracle: `b` (and the output it drives) can move with all
+    /// advice held fixed. Adding the missing copy clears the signal.
+    #[test]
+    fn rank_detects_unpinned_gate_input() {
+        let x_honest = Fp::from(5u64);
+        let mut rec = Recorder::<Fp>::new();
+        let x = rec.push_wire(x_honest); // free advice
+        let (a, b, c, ()) = rec
+            .gate(|| {
+                Ok((
+                    Coeff::Arbitrary(x_honest),
+                    Coeff::Arbitrary(x_honest),
+                    Coeff::Arbitrary(x_honest.square()),
+                ))
+            })
+            .unwrap();
+        // Copy-constrain `a = x` but forget `b = x` — the planted bug.
+        rec.enforce_zero(|lc| lc.add(&a).add_term(&x, Coeff::NegativeOne))
+            .unwrap();
+        let movable = underconstrained_derived(&rec.events, &rec.values, &[x]);
+        assert!(
+            movable.contains(&b) && movable.contains(&c),
+            "rank oracle missed the unpinned gate input: {movable:?}",
+        );
+
+        // With the copy in place the system pins everything.
+        rec.enforce_zero(|lc| lc.add(&b).add_term(&x, Coeff::NegativeOne))
+            .unwrap();
+        let movable = underconstrained_derived(&rec.events, &rec.values, &[x]);
+        assert!(movable.is_empty(), "false positive: {movable:?}");
+    }
+
+    proptest! {
+        /// Generated programs over the full vocabulary have no
+        /// under-constrained derived wires: with the advice, the gate-D
+        /// extras, and the allocator waste held fixed, the rank oracle
+        /// reports nothing movable.
+        #[test]
+        fn proptest_rank_oracle_clean(
+            program in program_strategy(OpSet::ALL, Limits::default().max_ops),
+        ) {
+            let shadow = shadow_eval::<Fp>(&program, Overrides::none());
+            // An honest zero into is_zero leaves its inverse hint genuinely
+            // free; skip those (see `underconstrained_derived` caveats).
+            prop_assume!(!shadow.bools.iter().any(|&b| b));
+
+            let mut rec = Recorder::<Fp>::new();
+            let mut alloc = TrackingAllocator::default();
+            let stacks = match synthesize(&mut rec, &mut alloc, &program, &shadow.anchors) {
+                Ok(s) => s,
+                Err(_) => return Ok(()),
+            };
+            let mut free = stacks.advice_wires.clone();
+            free.extend_from_slice(&rec.extras);
+            free.extend_from_slice(&alloc.wasted);
+            let movable = underconstrained_derived(&rec.events, &rec.values, &free);
+            prop_assert!(
+                movable.is_empty(),
+                "movable derived wires {movable:?} in {program:?}",
+            );
+        }
+    }
 
     /// The planted under-constrained circuit makes the oracle fire.
     #[test]
