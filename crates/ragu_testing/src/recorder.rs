@@ -221,6 +221,153 @@ impl<'dr, F: Field> Allocator<'dr, Recorder<F>> for TrackingAllocator {
     }
 }
 
+/// A constraint *checker* that re-runs the real gadget synthesis with an
+/// injected witness, verifying each gate and `enforce_zero` against the
+/// supplied values rather than the gadget's own closures.
+///
+/// `Playback` is the independent cross-check for [`Recorder`]/[`repair`]
+/// (issue #793, the "remove trust in the recorder" item). The recorder
+/// captures the constraint graph *once* and the differential then reasons
+/// entirely over that stored snapshot ([`Event`]s, [`constraints_hold`]); a
+/// capture bug — a mis-folded `Coeff` gain, a dropped term, a swapped wire —
+/// would corrupt every later verdict invisibly. `Playback` re-derives the
+/// verdict from scratch: same `synthesize`, same gadget calls, but its own
+/// linear-combination evaluator reading the injected `values` directly. If
+/// the recorder's stored answer and this live re-execution ever disagree,
+/// the recorder mis-captured the circuit.
+///
+/// `Wire = usize` and allocation is sequential from the fixed ONE wire, so
+/// running the *same* `synthesize` (with the plain `()` allocator, whose
+/// gate-per-`alloc` call sequence matches [`TrackingAllocator`]) assigns
+/// wire `i` exactly the recorder's wire `i` — so `values` is the recorder's
+/// value vector, honest or repaired, used verbatim.
+pub struct Playback<F> {
+    values: Vec<F>,
+    next: usize,
+    /// Set false by the first failed gate, `add` definition, or enforce.
+    ok: bool,
+}
+
+impl<F: Field> Playback<F> {
+    /// A checker over the given injected witness (indexed by recorder wire).
+    pub fn new(values: Vec<F>) -> Self {
+        Playback {
+            values,
+            next: 1, // wire 0 is the fixed ONE wire
+            ok: true,
+        }
+    }
+
+    fn alloc_wire(&mut self) -> usize {
+        let id = self.next;
+        self.next += 1;
+        id
+    }
+}
+
+/// Playback's linear-combination evaluator. Like [`RecLc`] it records only
+/// structure — `(wire, resolved_coeff)` terms with the running gain folded
+/// in — and the driver evaluates `Σ coeff · values[wire]` afterwards from
+/// its own table. An implementation independent of [`RecLc`], so a bug in
+/// one does not hide a bug in the other.
+#[derive(Default)]
+pub struct PlayLc<F> {
+    terms: Vec<(usize, F)>,
+    gain: F,
+}
+
+impl<F: Field> LinearExpression<usize, F> for PlayLc<F> {
+    fn add_term(mut self, wire: &usize, coeff: Coeff<F>) -> Self {
+        self.terms.push((*wire, coeff.value() * self.gain));
+        self
+    }
+
+    fn gain(mut self, coeff: Coeff<F>) -> Self {
+        self.gain *= coeff.value();
+        self
+    }
+}
+
+impl<F: Field> Playback<F> {
+    fn eval(&self, built: &PlayLc<F>) -> F {
+        built.terms.iter().map(|(w, c)| *c * self.values[*w]).sum()
+    }
+
+    fn fresh_lc() -> PlayLc<F> {
+        PlayLc {
+            terms: Vec::new(),
+            gain: F::ONE,
+        }
+    }
+}
+
+impl<F: Field> DriverTypes for Playback<F> {
+    type ImplField = F;
+    type ImplWire = usize;
+    type MaybeKind = Always<()>;
+    type LCadd = PlayLc<F>;
+    type LCenforce = PlayLc<F>;
+    type Extra = ();
+
+    fn gate(
+        &mut self,
+        _values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<(usize, usize, usize, ())> {
+        let (ia, ib, ic) = (self.alloc_wire(), self.alloc_wire(), self.alloc_wire());
+        if self.values[ia] * self.values[ib] != self.values[ic] {
+            self.ok = false;
+        }
+        Ok((ia, ib, ic, ()))
+    }
+
+    fn assign_extra(&mut self, _extra: (), _value: impl Fn() -> Result<Coeff<F>>) -> Result<usize> {
+        Ok(self.alloc_wire())
+    }
+}
+
+impl<'dr, F: Field> Driver<'dr> for Playback<F> {
+    type F = F;
+    type Wire = usize;
+    const ONE: usize = 0;
+
+    fn add(&mut self, lc: impl Fn(PlayLc<F>) -> PlayLc<F>) -> usize {
+        let built = lc(Self::fresh_lc());
+        let value = self.eval(&built);
+        let out = self.alloc_wire();
+        // A virtual `add` wire is *defined* as the linear combination, so the
+        // injected value must already equal it.
+        if self.values[out] != value {
+            self.ok = false;
+        }
+        out
+    }
+
+    fn enforce_zero(&mut self, lc: impl Fn(PlayLc<F>) -> PlayLc<F>) -> Result<()> {
+        let built = lc(Self::fresh_lc());
+        if self.eval(&built) != F::ZERO {
+            self.ok = false;
+        }
+        Ok(())
+    }
+
+    fn routine<R: Routine<F> + 'dr>(
+        &mut self,
+        _routine: R,
+        _input: Bound<'dr, Self, R::Input>,
+    ) -> Result<Bound<'dr, Self, R::Output>> {
+        unreachable!("the recorder does not support routines yet (issue #793)")
+    }
+}
+
+impl<F: Field> Playback<F> {
+    /// Whether every gate, `add` definition, and `enforce_zero` held, and
+    /// every wire of the injected witness was consumed (a length mismatch
+    /// means the playback diverged from the recorder's allocation order).
+    pub fn accepts(&self) -> bool {
+        self.ok && self.next == self.values.len()
+    }
+}
+
 /// The rank/nullity oracle: derived wires a malicious prover can move, to
 /// first order, while every free wire is held fixed.
 ///
