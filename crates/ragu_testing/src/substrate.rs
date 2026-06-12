@@ -51,7 +51,7 @@ mod integration_tests;
 mod shadow;
 mod synth;
 
-pub use circuit::{ProgramCircuit, steer};
+pub use circuit::{ProgramCircuit, anchor_tail, steer};
 pub use shadow::{AdviceSlot, Overrides, ShadowStacks, native_satisfied, shadow_eval};
 pub use synth::{
     BOOL_STACK_CAP, BOOL_TRUNCATE_TO, ELEM_STACK_CAP, ELEM_TRUNCATE_TO, Stacks, synthesize,

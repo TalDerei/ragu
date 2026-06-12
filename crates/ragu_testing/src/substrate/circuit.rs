@@ -27,7 +27,10 @@ use ragu_core::{
 };
 use ragu_primitives::allocator::Standard;
 
-use super::{Capabilities, Op, Overrides, Preamble, Program, shadow_eval, synthesize_with_witness};
+use super::{
+    AdviceSlot, Capabilities, Op, Overrides, Preamble, Program, shadow_eval,
+    synthesize_with_witness,
+};
 
 /// A generated program as a [`Circuit`].
 ///
@@ -123,6 +126,36 @@ pub fn steer<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program {
         steered.ops.push(chosen);
     }
     steered
+}
+
+/// Appends an [`Op::Anchor`] for every *derived* element-stack slot the
+/// honest run leaves live, maximizing the observability of the
+/// constraint-level oracles: a cheat that propagates anywhere is caught by
+/// some anchor, instead of relying on the random program having placed one
+/// downstream.
+///
+/// Advice slots are deliberately **not** anchored: pinning an advice wire
+/// to its honest value makes every cheat on it trivially rejected at the
+/// pin itself, so ragu and the native oracle agree before the cheat ever
+/// reaches the gadget under test — masking downstream bugs rather than
+/// exposing them.
+pub fn anchor_tail<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program {
+    let shadow = shadow_eval::<F>(program, Overrides::none());
+    let advice: Vec<usize> = shadow
+        .advice
+        .iter()
+        .filter_map(|a| match a {
+            AdviceSlot::Elem(i) => Some(*i),
+            _ => None,
+        })
+        .collect();
+    let mut anchored = program.clone();
+    for slot in 0..shadow.elems.len().min(u8::MAX as usize + 1) {
+        if !advice.contains(&slot) {
+            anchored.ops.push(Op::Anchor(slot as u8));
+        }
+    }
+    anchored
 }
 
 #[cfg(test)]
