@@ -64,6 +64,12 @@
 //! shadow — which knows the true relation — reports the anchor violated.
 //! That disagreement is the under-constrained-advice signal.
 //!
+//! Independently of any cheat, every input also runs the **rank/nullity
+//! oracle** (`underconstrained_derived`): the Jacobian of the captured
+//! constraints at the honest witness, restricted to the non-free wires,
+//! must have a trivial null space — an algebraic, mutation-free detector
+//! for wires the constraints fail to pin.
+//!
 //! The engine — the recording driver, the repair solver, and the planted-bug
 //! selftest — lives in `ragu_testing::recorder`, where it is unit tested in
 //! CI and reusable against real circuits (issue #793). `PATCHER_SELFTEST=1`
@@ -79,12 +85,18 @@ use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_testing::{
-    recorder::{Recorder, constraints_hold, repair, selftest},
+    recorder::{
+        Recorder, TrackingAllocator, constraints_hold, repair, selftest, underconstrained_derived,
+    },
     substrate::{
         AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
         shadow_eval, special_value, synthesize,
     },
 };
+
+/// Wire-count cap for the rank/nullity oracle: the dense elimination is
+/// cubic, so outsized graphs skip it (the cheat differential still runs).
+const RANK_WIRE_CAP: usize = 384;
 
 // ---------------------------------------------------------------------------
 // Harness.
@@ -219,7 +231,8 @@ fuzz_target!(|input: Input| {
 
     // Capture the honest constraint graph and per-slot wire ids.
     let mut rec = Recorder::<Fp>::new();
-    let stacks = match synthesize(&mut rec, &mut (), &program, &honest_anchors) {
+    let mut alloc = TrackingAllocator::default();
+    let stacks = match synthesize(&mut rec, &mut alloc, &program, &honest_anchors) {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -235,6 +248,24 @@ fuzz_target!(|input: Input| {
         native_satisfied(&program, &honest_anchors, Overrides::none()),
         "honest native oracle disagreed with itself (harness bug): {program:?}"
     );
+
+    // Rank/nullity oracle, independent of any cheat: with the genuine free
+    // wires (advice, gate-D extras, allocator waste) held fixed, every
+    // remaining wire must be locally pinned by the captured constraints.
+    // Skipped when an honest is_zero input was zero — its inverse hint is
+    // genuinely (and benignly) free there — and on outsized graphs.
+    if rec.values.len() <= RANK_WIRE_CAP && !shadow.bools.iter().any(|&b| b) {
+        let mut rank_free = stacks.advice_wires.clone();
+        rank_free.extend_from_slice(&rec.extras);
+        rank_free.extend_from_slice(&alloc.wasted);
+        let movable = underconstrained_derived(&rec.events, &rec.values, &rank_free);
+        assert!(
+            movable.is_empty(),
+            "RANK ORACLE SIGNAL: derived wires {movable:?} can move while every \
+             free wire is held fixed — an under-constrained wire, found \
+             algebraically (no cheat, repair, or anchor needed). Program: {program:?}",
+        );
+    }
 
     // Resolve the coordinated cheat into (advice slot, new value) pairs,
     // deduplicated by slot so a wire is mutated at most once (first cheat
