@@ -46,12 +46,17 @@ use ff::PrimeField;
 use proptest::{prelude::*, sample::select, strategy::BoxedStrategy};
 
 mod circuit;
+mod idioms;
 #[cfg(test)]
 mod integration_tests;
 mod shadow;
 mod synth;
 
 pub use circuit::{ProgramCircuit, anchor_tail, steer};
+pub use idioms::{
+    IDIOM_BUILDERS, conditional_gating, decompose_recompose, deep_chain, idiom_programs,
+    idiom_seed_corpus, idiom_strategy, multiply_accumulate,
+};
 pub use shadow::{AdviceSlot, Overrides, ShadowStacks, native_satisfied, shadow_eval};
 pub use synth::{
     BOOL_STACK_CAP, BOOL_TRUNCATE_TO, ELEM_STACK_CAP, ELEM_TRUNCATE_TO, Stacks, synthesize,
