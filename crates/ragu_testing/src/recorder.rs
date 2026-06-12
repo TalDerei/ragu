@@ -383,35 +383,58 @@ impl<F: Field> Rref<F> {
     }
 }
 
+/// The largest cluster of coupled unknowns [`repair`] will solve by dense
+/// elimination, bounding its cubic cost per pass.
+const CLUSTER_SOLVE_CAP: usize = 96;
+
 /// Solve the captured constraint graph for the witness a malicious prover
-/// could submit, given the free-advice wires it has chosen.
+/// could submit, given the free wires it has chosen.
 ///
-/// This is a monotone **single-unknown dataflow solver** (issue #796 item
-/// 1). `free` seeds the *known* set with the prover's genuine degrees of
+/// `free` seeds the *known* set with the prover's committed degrees of
 /// freedom (held at their — possibly mutated — values in `values`) plus the
-/// fixed ONE wire; everything else is *derived*. The solver repeatedly
-/// applies any constraint that has **exactly one** unknown wire, solving
-/// for it:
+/// fixed ONE wire; everything else is *derived* and solved from the
+/// constraints. Two cooperating passes run to a fixpoint:
 ///
-/// * `Lin { out, terms }` — once every term is known, `out := Σ cᵢ·wᵢ`.
-/// * `Gate { a, b, c }` — solve whichever single wire is unknown:
-///   `c := a·b` (output), or an *input*, `a := c/b` or `b := c/a` (needed
-///   for `invert`/`divide`, where the freshly-allocated inverse/quotient is
-///   a gate input pinned by the surrounding copies). Input solves require
-///   the known operand to be nonzero; otherwise the gate is left unsolved
-///   and [`constraints_hold`] reports the resulting violation.
-/// * `Enforce { terms }` — a linear constraint `Σ cᵢ·wᵢ = 0` with one
-///   unknown term solves it (`wⱼ := −(Σ_{i≠j} cᵢ·wᵢ)/cⱼ`).
+/// 1. **Single-unknown propagation** (issue #796 item 1): apply any
+///    constraint with exactly one unknown wire and solve it. `Lin` once all
+///    terms are known; a `Gate` output `c := a·b` or — for `invert`/
+///    `divide` — an *input* `a := c/b` / `b := c/a` (requires the known
+///    operand nonzero); an `Enforce` with one unknown term.
+/// 2. **Linear-cluster solving** (issue #796 follow-up): when propagation
+///    stalls, the remaining unknowns may still be jointly determined by a
+///    coupled *linear* subsystem that no single constraint cracks (e.g. an
+///    `invert`/`divide` chain, or two wires pinned only together). Gather
+///    every constraint that is linear in the current unknowns — `Lin`,
+///    `Enforce`, and any `Gate` with at least one *known* operand (a known
+///    operand makes `a·b = c` linear) — and solve that system by Gauss–
+///    Jordan elimination, holding under-determined unknowns at their honest
+///    values. Newly solved wires can unlock more propagation, so the two
+///    passes alternate.
 ///
 /// # Why no false positives
 ///
-/// The *known* set only grows, and a wire is solved only when it is the
-/// **unique** unknown of some constraint — so each derived wire is pinned
-/// by exactly one constraint and the order of application cannot matter
-/// (constraint graphs are forward DAGs). There is no oscillation and no
-/// chance of solving a genuine degree of freedom (those are seeded known
-/// and never re-solved). A wire that no constraint can pin stays at its
-/// honest value; any residual violation is caught by [`constraints_hold`].
+/// [`repair`] only ever produces a concrete witness; whether ragu accepts
+/// it is decided by [`constraints_hold`] checking *every* captured
+/// constraint afterwards — repair never asserts acceptance by inference, so
+/// no solving step can manufacture one. The invariants that keep it honest:
+///
+/// * **Free wires are never overwritten.** Both passes only assign wires
+///   outside `free`, so the prover's committed degrees of freedom (the
+///   cheated advice, and in accomplice mode the fixed advice) are preserved
+///   exactly — repair cannot "fix" a cheat by silently editing what the
+///   prover committed.
+/// * **Found ⇒ feasible.** Any assignment the linear solve emits satisfies
+///   the linear subsystem by construction; the nonlinear gates it could not
+///   include are re-checked by `constraints_hold`. An inconsistent subsystem
+///   (no extension of the current knowns exists) is left unsolved, so the
+///   residual violation surfaces rather than being papered over.
+/// * **Under-determination is benign.** A genuinely free derived direction
+///   (an under-constraint) leaves the linear system rank-deficient; repair
+///   pins the free parameters to honest values and solves the rest. Picking
+///   one satisfying witness is correct — a malicious prover could submit it
+///   — and the differential's verdict comes from comparing that witness's
+///   *observable* anchors against the native oracle, not from how repair
+///   resolved the slack.
 pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
     let mut known = vec![false; values.len()];
     known[Recorder::<F>::ONE] = true;
@@ -419,6 +442,18 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
         known[w] = true;
     }
 
+    loop {
+        propagate(events, values, &mut known);
+        // Propagation has stalled; try to crack a coupled linear cluster.
+        // If that solves nothing new, the fixpoint is reached.
+        if !cluster_solve(events, values, &mut known) {
+            break;
+        }
+    }
+}
+
+/// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]).
+fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
     loop {
         let mut changed = false;
         for ev in events {
@@ -471,6 +506,129 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
             break;
         }
     }
+}
+
+/// Linear-cluster solving (pass 2 of [`repair`]): solve the coupled linear
+/// subsystem over the currently-unknown wires. Returns whether any wire was
+/// newly solved.
+///
+/// Each linearizable constraint becomes a row `Σ cᵢ·xᵢ = rhs` over the
+/// unknown columns, with known wires folded into `rhs`. A `Gate a·b = c`
+/// contributes a row only when at least one of `a`, `b` is known (then it
+/// is linear); a gate with both operands unknown is genuinely nonlinear and
+/// is left for [`constraints_hold`] to check. The augmented matrix is
+/// reduced to row echelon form; an inconsistent row (`0 = nonzero`, no
+/// solution) abandons the solve, and each pivot wire is assigned from its
+/// row with the non-pivot unknowns held at their honest values.
+fn cluster_solve<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) -> bool {
+    // Columns: the still-unknown wires.
+    let mut col_of = vec![usize::MAX; values.len()];
+    let mut wire_of = Vec::new();
+    for (w, k) in known.iter().enumerate() {
+        if !k {
+            col_of[w] = wire_of.len();
+            wire_of.push(w);
+        }
+    }
+    let m = wire_of.len();
+    if m == 0 || m > CLUSTER_SOLVE_CAP {
+        return false;
+    }
+
+    // Build the augmented system. `entries` is `Σ coeff·wire = 0`; the row
+    // builder splits known wires into the constant column at index `m`.
+    let mut rows: Vec<Vec<F>> = Vec::new();
+    let push = |entries: &[(usize, F)], rows: &mut Vec<Vec<F>>| {
+        let mut row = vec![F::ZERO; m + 1];
+        let mut has_unknown = false;
+        for &(w, c) in entries {
+            if known[w] {
+                row[m] -= c * values[w]; // move to RHS
+            } else {
+                row[col_of[w]] += c;
+                has_unknown = true;
+            }
+        }
+        if has_unknown {
+            rows.push(row);
+        }
+    };
+    for ev in events {
+        match ev {
+            Event::Lin { out, terms } => {
+                let mut entries = terms.clone();
+                entries.push((*out, -F::ONE));
+                push(&entries, &mut rows);
+            }
+            Event::Enforce { terms } => push(terms, &mut rows),
+            Event::Gate { a, b, c } => {
+                // Linear iff an operand is known; pick the known one as the
+                // coefficient on the other.
+                if known[*a] {
+                    push(&[(*b, values[*a]), (*c, -F::ONE)], &mut rows);
+                } else if known[*b] {
+                    push(&[(*a, values[*b]), (*c, -F::ONE)], &mut rows);
+                }
+            }
+        }
+    }
+    if rows.is_empty() {
+        return false;
+    }
+
+    // Gauss–Jordan over the m unknown columns (the constant sits at m).
+    let mut pivot_col_of_row = Vec::new();
+    let mut r = 0;
+    for c in 0..m {
+        let Some(pr) = (r..rows.len()).find(|&i| rows[i][c] != F::ZERO) else {
+            continue;
+        };
+        rows.swap(r, pr);
+        let inv = rows[r][c].invert().unwrap();
+        for x in c..=m {
+            rows[r][x] *= inv;
+        }
+        for i in 0..rows.len() {
+            if i != r && rows[i][c] != F::ZERO {
+                let f = rows[i][c];
+                for x in c..=m {
+                    let t = rows[r][x] * f;
+                    rows[i][x] -= t;
+                }
+            }
+        }
+        pivot_col_of_row.push(c);
+        r += 1;
+        if r == rows.len() {
+            break;
+        }
+    }
+
+    // Inconsistent row (all-zero coefficients, nonzero constant) ⇒ the
+    // subsystem has no solution: leave everything unsolved.
+    if rows
+        .iter()
+        .any(|row| row[..m].iter().all(|&x| x == F::ZERO) && row[m] != F::ZERO)
+    {
+        return false;
+    }
+
+    // Assign each pivot wire, holding non-pivot unknowns at honest values.
+    let mut changed = false;
+    for (row_idx, &pc) in pivot_col_of_row.iter().enumerate() {
+        // RREF row: x_pc + Σ_{nonpivot j} row[j]·x_j = row[m].
+        let mut val = rows[row_idx][m];
+        for (j, &coeff) in rows[row_idx][..m].iter().enumerate() {
+            if j != pc && coeff != F::ZERO {
+                val -= coeff * values[wire_of[j]];
+            }
+        }
+        let wire = wire_of[pc];
+        values[wire] = val;
+        known[wire] = true;
+        changed = true;
+    }
+    changed
 }
 
 /// After repair, do all captured constraints hold?
@@ -658,5 +816,86 @@ mod tests {
             "correctly constrained circuit must not produce a signal",
         );
         assert!(!ragu_accepts, "the anchor must reject the cheated witness");
+    }
+
+    /// A coupled 2-unknown cluster that single-unknown propagation cannot
+    /// crack: `u + v = x` and `u − v = 0` pin `u, v` jointly but neither
+    /// alone. After cheating `x`, the linear-cluster pass must still find
+    /// the repaired witness (`u = v = x/2`); the old propagation-only solver
+    /// would leave `u, v` honest and reject.
+    #[test]
+    fn cluster_solver_cracks_coupled_pair() {
+        let mut rec = Recorder::<Fp>::new();
+        let x = rec.push_wire(Fp::from(8u64)); // free advice
+        let u = rec.push_wire(Fp::from(4u64)); // derived, jointly pinned
+        let v = rec.push_wire(Fp::from(4u64)); // derived, jointly pinned
+        // u + v − x = 0
+        rec.enforce_zero(|lc| lc.add(&u).add(&v).add_term(&x, Coeff::NegativeOne))
+            .unwrap();
+        // u − v = 0
+        rec.enforce_zero(|lc| lc.add(&u).add_term(&v, Coeff::NegativeOne))
+            .unwrap();
+        assert!(constraints_hold(&rec.events, &rec.values));
+
+        let mut values = rec.values.clone();
+        values[x] = Fp::from(10u64); // cheat
+        repair(&rec.events, &mut values, &[x]);
+
+        assert!(
+            constraints_hold(&rec.events, &values),
+            "cluster solver failed to repair the coupled pair",
+        );
+        assert_eq!(values[u], Fp::from(5u64));
+        assert_eq!(values[v], Fp::from(5u64));
+    }
+
+    /// An inconsistent cluster (`u + v = x` and `u + v = 0` with `x ≠ 0`)
+    /// has no solution: repair must leave it unsatisfied rather than invent
+    /// one, so the cheat is correctly rejected.
+    #[test]
+    fn cluster_solver_rejects_inconsistent() {
+        let mut rec = Recorder::<Fp>::new();
+        let x = rec.push_wire(Fp::ZERO); // free advice, honestly zero
+        let u = rec.push_wire(Fp::from(3u64));
+        let v = rec.push_wire(-Fp::from(3u64));
+        rec.enforce_zero(|lc| lc.add(&u).add(&v).add_term(&x, Coeff::NegativeOne))
+            .unwrap();
+        rec.enforce_zero(|lc| lc.add(&u).add(&v)).unwrap();
+        assert!(constraints_hold(&rec.events, &rec.values));
+
+        let mut values = rec.values.clone();
+        values[x] = Fp::from(1u64); // cheat: now u+v must be both 1 and 0
+        repair(&rec.events, &mut values, &[x]);
+        assert!(
+            !constraints_hold(&rec.events, &values),
+            "repair invented a solution to an inconsistent system",
+        );
+    }
+
+    /// Accomplice advice: the prover moves a *non-cheated* advice wire to
+    /// keep the constraints satisfied. With only the cheated wire held
+    /// fixed, repair solves the accomplice; feeding its solved value back to
+    /// the oracle is what makes the wider adversary sound.
+    #[test]
+    fn accomplice_advice_is_solved() {
+        // Two advice wires a, b with a single coupling `a + b = 10`, and a
+        // derived `p = a·b` anchored to its honest value.
+        let mut rec = Recorder::<Fp>::new();
+        let a = rec.push_wire(Fp::from(4u64)); // cheated advice
+        let b = rec.push_wire(Fp::from(6u64)); // accomplice advice
+        rec.enforce_zero(|lc| {
+            lc.add(&a)
+                .add(&b)
+                .add_term(&Recorder::<Fp>::ONE, Coeff::Arbitrary(-Fp::from(10u64)))
+        })
+        .unwrap();
+
+        let mut values = rec.values.clone();
+        values[a] = Fp::from(7u64); // cheat a; only a is held fixed
+        repair(&rec.events, &mut values, &[a]);
+
+        // With a fixed at 7, the accomplice b must move to 3.
+        assert!(constraints_hold(&rec.events, &values));
+        assert_eq!(values[b], Fp::from(3u64), "accomplice b was not solved");
     }
 }
