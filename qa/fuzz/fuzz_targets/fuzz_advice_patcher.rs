@@ -103,6 +103,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static RUNS: AtomicU64 = AtomicU64::new(0);
 /// See [`RUNS`].
 static VACUOUS: AtomicU64 = AtomicU64::new(0);
+/// Runs bailed because a cheat un-skipped an `invert`/`divide` (stack grew).
+static GREW: AtomicU64 = AtomicU64::new(0);
+/// Runs where a cheat zeroed an `invert`/`divide` input (stack shrank) and
+/// the zero-divisor rejection check ran instead of bailing.
+static SHRANK: AtomicU64 = AtomicU64::new(0);
+/// Runs where only an `is_zero` result flipped, now compared instead of
+/// bailed.
+static BOOL_FLIP: AtomicU64 = AtomicU64::new(0);
 
 /// Wire-count cap for the rank/nullity oracle: the dense elimination is
 /// cubic, so outsized graphs skip it (the cheat differential still runs).
@@ -188,17 +196,17 @@ struct Input {
 /// depends on fuzzer bytes, not a mutatable value, so the progression guard
 /// below cannot neutralize it).
 ///
-/// # Value-dependent solvability (guarded in the harness)
+/// # Value-dependent solvability (classified in the harness)
 ///
-/// `invert`/`divide` *skip* when their honest input is zero, so they are
-/// simply absent from the honest graph (Recorder and shadow skip
-/// identically). `is_zero` never skips, but its inverse hint `inv` becomes
-/// a genuinely free wire when `x = 0` (the gate `0·inv = is_not_zero` has
-/// two unknowns the single-unknown solver cannot crack). In both cases a
-/// *cheat* that moves such an input across zero changes either the native
-/// shadow's stack progression (`invert`/`divide`) or a boolean result
-/// (`is_zero`); the harness bails on both — those value-dependent control
-/// flips are outside this model and would otherwise be false positives.
+/// A *cheat* that moves an `invert`/`divide`/`is_zero` input across zero
+/// changes the native run's control flow. The harness classifies the three
+/// resulting cases (see the zero-crossing block in the target) rather than
+/// discarding them wholesale: a zeroed `invert`/`divide` input (stack
+/// shrank) becomes a soundness check that ragu rejects; a flipped `is_zero`
+/// result is compared normally (its hint witness is re-solved by the
+/// cluster pass, and no `ConditionalSelect` can route the boolean into an
+/// anchored element); only an honestly-skipped op that a cheat *un-skips*
+/// (stack grew) remains out of model and bails.
 fn opset() -> OpSet {
     OpSet::filtered(|k| {
         (k == OpKind::IsZero || !k.capabilities().intersects(Capabilities::BOOLEAN))
@@ -371,35 +379,67 @@ fuzz_target!(|input: Input| {
         },
     );
 
-    // Value-dependent-solvability guard (see `opset`). Two out-of-model
-    // flips, both caused by a cheat moving a gadget input across zero:
+    // Zero-crossing classification. A cheat can move a gadget input across
+    // zero, changing which ops the native re-evaluation executes:
     //
-    //  * `invert`/`divide` skip in the native re-evaluation, shifting every
-    //    later stack slot — detected by a change in element-stack length;
-    //  * an `is_zero` result flips, which is exactly when its inverse hint
-    //    becomes a free wire the single-unknown solver cannot re-derive —
-    //    detected by a change in the boolean stack.
-    //
-    // In both cases the captured graph (fixed from the honest run) and the
-    // shifted shadow are incomparable, so bail rather than emit a spurious
-    // signal. The honest graph never skips or flips, so this only fires for
-    // genuinely value-flipping cheats.
-    let bail = mutated.elems.len() != shadow.elems.len() || mutated.bools != shadow.bools;
+    //  * element stack *shrank* — an `invert`/`divide` whose input the cheat
+    //    zeroed now skips natively. The honest captured graph still contains
+    //    that gadget's nonzero enforcement (`x · x⁻¹ = 1`), which is
+    //    unsatisfiable at `x = 0`, so ragu *must* reject. Accepting it means
+    //    the nonzero check is under-constrained — a soundness bug. This is
+    //    the formerly-bailed case turned into a real oracle.
+    //  * element stack *grew* — an `invert`/`divide` the honest run skipped
+    //    (input honestly zero) now executes. The honest graph never captured
+    //    that gadget, so there is nothing to compare against; still out of
+    //    model, so bail.
+    //  * only the boolean stack changed — an `is_zero` result flipped. The
+    //    patcher vocabulary excludes the boolean *combinators* (no
+    //    `ConditionalSelect`), so a flipped boolean cannot move any anchored
+    //    element, and the cluster solver re-derives the `is_zero` hint
+    //    witness (`prod = x·inv`, the result bit, the inverse). The
+    //    element-anchor comparison therefore stays valid — no bail.
+    let shrank = mutated.elems.len() < shadow.elems.len();
+    let grew = mutated.elems.len() > shadow.elems.len();
+    let bools_flipped = mutated.bools != shadow.bools;
     let native_ok = mutated.anchors == honest_anchors;
 
     if std::env::var("PATCHER_STATS").is_ok() {
         let runs = RUNS.fetch_add(1, Ordering::Relaxed) + 1;
-        if bail || (ragu_accepts && native_ok) {
+        if grew {
+            GREW.fetch_add(1, Ordering::Relaxed);
+        }
+        if shrank {
+            SHRANK.fetch_add(1, Ordering::Relaxed);
+        }
+        if bools_flipped && !shrank && !grew {
+            BOOL_FLIP.fetch_add(1, Ordering::Relaxed);
+        }
+        if grew || (ragu_accepts && native_ok) {
             VACUOUS.fetch_add(1, Ordering::Relaxed);
         }
         if runs % (1 << 14) == 0 {
             eprintln!(
-                "[advice_patcher] vacuous {}/{runs} runs",
+                "[advice_patcher] runs {runs}: vacuous {}, grew(bail) {}, \
+                 shrank(reject-check) {}, bool-flip {}",
                 VACUOUS.load(Ordering::Relaxed),
+                GREW.load(Ordering::Relaxed),
+                SHRANK.load(Ordering::Relaxed),
+                BOOL_FLIP.load(Ordering::Relaxed),
             );
         }
     }
-    if bail {
+
+    if grew {
+        return;
+    }
+    if shrank {
+        assert!(
+            !ragu_accepts,
+            "PATCHER ZERO-DIVISOR SIGNAL: setting advice (slot, value) \
+             {slot_value:?} drove an invert/divide input to zero, yet ragu \
+             ACCEPTED the repaired witness — the gadget's nonzero enforcement \
+             is under-constrained (the soundness direction). Program: {program:?}",
+        );
         return;
     }
 
