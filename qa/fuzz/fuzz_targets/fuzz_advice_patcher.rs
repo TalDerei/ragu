@@ -328,23 +328,45 @@ fuzz_target!(|input: Input| {
         }
     }
 
-    // ragu side: apply the cheats to the chosen advice wires, then solve the
-    // captured constraint graph for the resulting witness. The *full*
-    // free-advice set is held fixed (the prover's genuine degrees of
-    // freedom — non-cheated advice stays honest); everything else is
-    // re-derived by the single-unknown solver.
+    // ragu side: apply the cheats, then solve the captured graph for the
+    // witness — in the *accomplice* adversary model. Only the cheated
+    // element advice and the non-element advice (fold scales, booleans)
+    // are held fixed; every *non-cheated* element-advice wire is left
+    // solvable, modeling a prover who adjusts its other advice to mask the
+    // cheat. The solver picks those accomplice values, and we feed them
+    // back to the native oracle below so both judge the *same* commitment.
+    let cheated_slots: Vec<usize> = slot_value.iter().map(|(s, _)| *s).collect();
+    let accomplice_wires: Vec<usize> = advice_slots
+        .iter()
+        .filter(|s| !cheated_slots.contains(s))
+        .map(|s| slot_wires[*s])
+        .collect();
+    let fixed_free: Vec<usize> = stacks
+        .advice_wires
+        .iter()
+        .copied()
+        .filter(|w| !accomplice_wires.contains(w))
+        .collect();
+
     let mut ragu_values = rec.values.clone();
     for (slot, value) in &slot_value {
         ragu_values[slot_wires[*slot]] = *value;
     }
-    repair(&rec.events, &mut ragu_values, &stacks.advice_wires);
+    repair(&rec.events, &mut ragu_values, &fixed_free);
     let ragu_accepts = constraints_hold(&rec.events, &ragu_values);
 
-    // native side: apply the same cheats and recompute the full chain.
+    // native side: judge the exact commitment ragu accepted — the cheats
+    // *and* the accomplice advice the solver chose. Each element-advice slot
+    // is overridden to its post-repair value; derived wires the shadow
+    // recomputes itself from true semantics.
+    let elem_overrides: Vec<(usize, Fp)> = advice_slots
+        .iter()
+        .map(|s| (*s, ragu_values[slot_wires[*s]]))
+        .collect();
     let mutated = shadow_eval::<Fp>(
         &program,
         Overrides {
-            elems: &slot_value,
+            elems: &elem_overrides,
             ..Overrides::none()
         },
     );

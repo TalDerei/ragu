@@ -285,18 +285,19 @@ fn corpus_deletion_sensitivity() {
         "corpus degenerated: only {programs} programs"
     );
 
-    // The pinned snapshot: 99.3% of non-redundant deletions detected.
-    // The 11 blind deletions are pins on directions no anchor observes or
-    // that need coordinated multi-wire cheats — the anchor-steering and
-    // accomplice-solver work items attack exactly those.
+    // The pinned snapshot: 99.9% of non-redundant deletions detected (1 of
+    // 1508 blind). The linear-cluster solver moved 10 deletions out of Blind
+    // (was 11) by repairing coupled 2-unknown clusters the single-unknown
+    // solver stalled on; the lone remaining blind spot needs a coordinated
+    // multi-wire cheat the single-advice search does not attempt.
     // Update deliberately, not incidentally.
     assert_eq!(
         stats,
         Stats {
             rank: 1474,
-            cheat: 23,
+            cheat: 33,
             redundant: 272,
-            blind: 11,
+            blind: 1,
         },
         "sensitivity snapshot changed",
     );
