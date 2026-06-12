@@ -2,6 +2,7 @@
 
 pub mod circuits;
 pub mod pcd;
+pub mod recorder;
 pub mod registry;
 pub mod strategies;
 pub mod substrate;

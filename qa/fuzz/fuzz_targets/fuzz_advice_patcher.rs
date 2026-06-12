@@ -64,10 +64,13 @@
 //! shadow — which knows the true relation — reports the anchor violated.
 //! That disagreement is the under-constrained-advice signal.
 //!
-//! `PATCHER_SELFTEST=1` builds a deliberately under-constrained circuit
-//! directly in the recorder (a root and a "square" allocated as independent
-//! free wires, with the `square = root²` gate omitted) and confirms the
-//! oracle fires — proof the soundness direction is not vacuous.
+//! The engine — the recording driver, the repair solver, and the planted-bug
+//! selftest — lives in `ragu_testing::recorder`, where it is unit tested in
+//! CI and reusable against real circuits (issue #793). `PATCHER_SELFTEST=1`
+//! runs that selftest here on demand: a deliberately under-constrained
+//! circuit (a root and a "square" allocated as independent free wires, with
+//! the `square = root²` gate omitted) whose oracle must fire — proof the
+//! soundness direction is not vacuous.
 
 #![no_main]
 
@@ -75,259 +78,13 @@ use arbitrary::Arbitrary;
 use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
-use ragu_arithmetic::Coeff;
-use ragu_core::{
-    Result as RaguResult,
-    drivers::{Driver, DriverTypes, LinearExpression},
-    gadgets::Bound,
-    maybe::Always,
-    routines::Routine,
+use ragu_testing::{
+    recorder::{Recorder, constraints_hold, repair, selftest},
+    substrate::{
+        AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
+        shadow_eval, special_value, synthesize,
+    },
 };
-use ragu_testing::substrate::{
-    AdviceSlot, Capabilities, Limits, OpKind, OpSet, Overrides, Program, native_satisfied,
-    shadow_eval, special_value, synthesize,
-};
-
-// ---------------------------------------------------------------------------
-// Recording driver: captures the constraint graph ragu emits.
-// ---------------------------------------------------------------------------
-
-/// A captured constraint / wire definition, in emission order.
-#[derive(Clone, Debug)]
-enum Ev {
-    /// `out` is a virtual wire equal to `Σ coeff · wire` over `terms`.
-    Lin { out: usize, terms: Vec<(usize, Fp)> },
-    /// A multiplication gate: `values[a] · values[b] == values[c]`.
-    Gate { a: usize, b: usize, c: usize },
-    /// A constraint `Σ coeff · wire == 0` over `terms`.
-    Enforce { terms: Vec<(usize, Fp)> },
-}
-
-/// The recording driver. `Wire = usize`, an index into `values`.
-struct Recorder {
-    values: Vec<Fp>,
-    events: Vec<Ev>,
-}
-
-impl Recorder {
-    fn new() -> Self {
-        // Wire 0 is the fixed ONE wire.
-        Recorder {
-            values: vec![Fp::ONE],
-            events: Vec::new(),
-        }
-    }
-
-    fn push_wire(&mut self, value: Fp) -> usize {
-        let id = self.values.len();
-        self.values.push(value);
-        id
-    }
-}
-
-/// Recording linear expression: accumulates `(wire, resolved_coeff)` terms,
-/// folding the running gain into each coefficient as it is added. It records
-/// only structure; the driver computes the resulting value from its own
-/// wire table afterwards.
-struct RecLc {
-    terms: Vec<(usize, Fp)>,
-    gain: Fp,
-}
-
-impl Default for RecLc {
-    fn default() -> Self {
-        RecLc {
-            terms: Vec::new(),
-            gain: Fp::ONE,
-        }
-    }
-}
-
-impl LinearExpression<usize, Fp> for RecLc {
-    fn add_term(mut self, wire: &usize, coeff: Coeff<Fp>) -> Self {
-        let resolved = coeff.value() * self.gain;
-        if resolved != Fp::ZERO {
-            self.terms.push((*wire, resolved));
-        }
-        self
-    }
-
-    fn gain(mut self, coeff: Coeff<Fp>) -> Self {
-        self.gain *= coeff.value();
-        self
-    }
-}
-
-impl DriverTypes for Recorder {
-    type ImplField = Fp;
-    type ImplWire = usize;
-    type MaybeKind = Always<()>;
-    type LCadd = RecLc;
-    type LCenforce = RecLc;
-    type Extra = ();
-
-    fn gate(
-        &mut self,
-        values: impl Fn() -> RaguResult<(Coeff<Fp>, Coeff<Fp>, Coeff<Fp>)>,
-    ) -> RaguResult<(usize, usize, usize, ())> {
-        let (a, b, c) = values()?;
-        let (a, b, c) = (a.value(), b.value(), c.value());
-        let ia = self.push_wire(a);
-        let ib = self.push_wire(b);
-        let ic = self.push_wire(c);
-        self.events.push(Ev::Gate {
-            a: ia,
-            b: ib,
-            c: ic,
-        });
-        Ok((ia, ib, ic, ()))
-    }
-
-    fn assign_extra(
-        &mut self,
-        _extra: (),
-        value: impl Fn() -> RaguResult<Coeff<Fp>>,
-    ) -> RaguResult<usize> {
-        let v = value()?.value();
-        Ok(self.push_wire(v))
-    }
-}
-
-impl<'dr> Driver<'dr> for Recorder {
-    type F = Fp;
-    type Wire = usize;
-    const ONE: usize = 0;
-
-    fn add(&mut self, lc: impl Fn(RecLc) -> RecLc) -> usize {
-        let built = lc(RecLc::default());
-        let value = built.terms.iter().map(|(w, c)| self.values[*w] * c).sum();
-        let out = self.push_wire(value);
-        self.events.push(Ev::Lin {
-            out,
-            terms: built.terms,
-        });
-        out
-    }
-
-    fn enforce_zero(&mut self, lc: impl Fn(RecLc) -> RecLc) -> RaguResult<()> {
-        let built = lc(RecLc::default());
-        self.events.push(Ev::Enforce { terms: built.terms });
-        Ok(())
-    }
-
-    fn routine<R: Routine<Fp> + 'dr>(
-        &mut self,
-        _routine: R,
-        _input: Bound<'dr, Self, R::Input>,
-    ) -> RaguResult<Bound<'dr, Self, R::Output>> {
-        unreachable!("the advice-patcher substrate never invokes routines")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Repair engine: propagate a mutation through the *captured* constraints.
-// ---------------------------------------------------------------------------
-
-/// Solve the captured constraint graph for the witness a malicious prover
-/// could submit, given the free-advice wires it has chosen.
-///
-/// This is a monotone **single-unknown dataflow solver** (issue #796 item
-/// 1). `free` seeds the *known* set with the prover's genuine degrees of
-/// freedom (held at their — possibly mutated — values in `values`) plus the
-/// fixed ONE wire; everything else is *derived*. The solver repeatedly
-/// applies any constraint that has **exactly one** unknown wire, solving
-/// for it:
-///
-/// * `Lin { out, terms }` — once every term is known, `out := Σ cᵢ·wᵢ`.
-/// * `Gate { a, b, c }` — solve whichever single wire is unknown:
-///   `c := a·b` (output), or — and this is what the old forward-only engine
-///   could not do — an *input*, `a := c/b` or `b := c/a` (needed for
-///   `invert`/`divide`, where the freshly-allocated inverse/quotient is a
-///   gate input pinned by the surrounding copies). Input solves require the
-///   known operand to be nonzero; otherwise the gate is left unsolved and
-///   [`constraints_hold`] reports the resulting violation.
-/// * `Enforce { terms }` — a linear constraint `Σ cᵢ·wᵢ = 0` with one
-///   unknown term solves it (`wⱼ := −(Σ_{i≠j} cᵢ·wᵢ)/cⱼ`). This generalizes
-///   the old 2-term copy rule to any arity.
-///
-/// # Why no false positives
-///
-/// The *known* set only grows, and a wire is solved only when it is the
-/// **unique** unknown of some constraint — so each derived wire is pinned
-/// by exactly one constraint and the order of application cannot matter
-/// (constraint graphs are forward DAGs). There is no oscillation and no
-/// chance of solving a genuine degree of freedom (those are seeded known
-/// and never re-solved). A wire that no constraint can pin stays at its
-/// honest value; any residual violation is caught by [`constraints_hold`].
-fn repair(events: &[Ev], values: &mut [Fp], free: &[usize]) {
-    let mut known = vec![false; values.len()];
-    known[Recorder::ONE] = true;
-    for &w in free {
-        known[w] = true;
-    }
-
-    loop {
-        let mut changed = false;
-        for ev in events {
-            match ev {
-                Ev::Lin { out, terms } => {
-                    if !known[*out] && terms.iter().all(|(w, _)| known[*w]) {
-                        values[*out] = terms.iter().map(|(w, c)| values[*w] * c).sum();
-                        known[*out] = true;
-                        changed = true;
-                    }
-                }
-                Ev::Gate { a, b, c } => match (known[*a], known[*b], known[*c]) {
-                    (true, true, false) => {
-                        values[*c] = values[*a] * values[*b];
-                        known[*c] = true;
-                        changed = true;
-                    }
-                    (false, true, true) if values[*b] != Fp::ZERO => {
-                        values[*a] = values[*c] * values[*b].invert().unwrap();
-                        known[*a] = true;
-                        changed = true;
-                    }
-                    (true, false, true) if values[*a] != Fp::ZERO => {
-                        values[*b] = values[*c] * values[*a].invert().unwrap();
-                        known[*b] = true;
-                        changed = true;
-                    }
-                    _ => {}
-                },
-                Ev::Enforce { terms } => {
-                    let mut unknown = terms.iter().filter(|(w, _)| !known[*w]);
-                    if let Some(&(uw, uc)) = unknown.next()
-                        && unknown.next().is_none()
-                        && uc != Fp::ZERO
-                    {
-                        // Σ cᵢ·wᵢ = 0, one unknown wⱼ ⇒ wⱼ = −(Σ_{i≠j} cᵢ·wᵢ)/cⱼ.
-                        let rest: Fp = terms
-                            .iter()
-                            .filter(|(w, _)| *w != uw)
-                            .map(|(w, c)| values[*w] * c)
-                            .sum();
-                        values[uw] = -rest * uc.invert().unwrap();
-                        known[uw] = true;
-                        changed = true;
-                    }
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-}
-
-/// After repair, do all captured constraints hold?
-fn constraints_hold(events: &[Ev], values: &[Fp]) -> bool {
-    events.iter().all(|ev| match ev {
-        Ev::Lin { out, terms } => values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum(),
-        Ev::Gate { a, b, c } => values[*a] * values[*b] == values[*c],
-        Ev::Enforce { terms } => terms.iter().map(|(w, c)| values[*w] * c).sum::<Fp>() == Fp::ZERO,
-    })
-}
 
 // ---------------------------------------------------------------------------
 // Harness.
@@ -427,56 +184,9 @@ fn opset() -> OpSet {
     })
 }
 
-/// `PATCHER_SELFTEST=1`: build a deliberately under-constrained circuit in
-/// the recorder and confirm the patcher's soundness assertion fires.
-///
-/// The circuit allocates `root` and `square` as independent free wires and
-/// anchors `square` to its honest value `root²`, but omits the
-/// `square = root²` gate. Mutating `root` and repairing through the
-/// captured constraints leaves `square` untouched (no rule carries the
-/// change), so ragu accepts — while the true semantics say `square` must
-/// move, violating the anchor. The mismatch is the signal.
-fn run_selftest() {
-    let root_honest = Fp::from(7u64);
-
-    let mut rec = Recorder::new();
-    let root = rec.push_wire(root_honest); // free advice
-    let square = rec.push_wire(root_honest.square()); // free advice — BUG: not gated to root²
-
-    // Anchor `square` to its honest value via `enforce_zero(square - 49)`,
-    // exactly as the substrate's `Op::Anchor` would: a constant wire, a
-    // difference Lin, and a 1-term check.
-    let pin = rec.add(|lc| lc.add_term(&Recorder::ONE, Coeff::Arbitrary(root_honest.square())));
-    let diff = rec.add(|lc| lc.add(&square).add_term(&pin, Coeff::NegativeOne));
-    rec.enforce_zero(|lc| lc.add(&diff)).unwrap();
-
-    assert!(
-        constraints_hold(&rec.events, &rec.values),
-        "self-test honest circuit must satisfy its own constraints",
-    );
-
-    // Cheat the root; repair cannot reach `square` (no gate links them).
-    let mut values = rec.values.clone();
-    let delta = Fp::from(3u64);
-    values[root] += delta;
-    repair(&rec.events, &mut values, &[root]);
-    let ragu_accepts = constraints_hold(&rec.events, &values);
-
-    // True semantics: square must be root²; after the cheat it isn't 49.
-    let native_ok = (root_honest + delta).square() == root_honest.square();
-
-    assert_ne!(
-        ragu_accepts, native_ok,
-        "PATCHER SELF-TEST: the oracle failed to fire on a known \
-         under-constrained alloc_square (ragu_accepts={ragu_accepts}, \
-         native_ok={native_ok}). The soundness direction is vacuous — the \
-         engine would miss real bugs.",
-    );
-}
-
 fuzz_target!(|input: Input| {
     if std::env::var("PATCHER_SELFTEST").is_ok() {
-        run_selftest();
+        selftest::<Fp>();
         return;
     }
 
@@ -508,7 +218,7 @@ fuzz_target!(|input: Input| {
     }
 
     // Capture the honest constraint graph and per-slot wire ids.
-    let mut rec = Recorder::new();
+    let mut rec = Recorder::<Fp>::new();
     let stacks = match synthesize(&mut rec, &mut (), &program, &honest_anchors) {
         Ok(s) => s,
         Err(_) => return,
