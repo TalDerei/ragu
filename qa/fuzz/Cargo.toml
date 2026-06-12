@@ -111,16 +111,28 @@ test = false
 doc = false
 bench = false
 
-# The patcher with a real repair engine (issues #728, #793): a recording
-# Driver captures the constraint graph ragu emits for a ragu_testing::substrate
-# program (repair-safe vocabulary: no booleans, no value-fallible ops), then a
-# coordinated mutation to free advice wires is repaired by propagating through
-# the *captured* constraints (not by re-running gadget logic). Disagreement
-# with the substrate's native oracle is the under-constrained-advice signal
-# that re-trace-based repair cannot see.
+# The patcher with a real repair engine (issues #728, #793, #796): a
+# recording Driver captures the constraint graph ragu emits for a
+# ragu_testing::substrate program, then mutations to free advice wires are
+# repaired by propagating through the *captured* constraints (not by
+# re-running gadget logic). Disagreement with the substrate's native oracle
+# is the under-constrained-advice signal that re-trace-based repair cannot
+# see. Also runs the rank/nullity oracle, the zero-divisor and booleanity
+# must-reject oracles, and a Playback cross-check of the recorder's capture.
 [[bin]]
 name = "fuzz_advice_patcher"
 path = "fuzz_targets/fuzz_advice_patcher.rs"
+test = false
+doc = false
+bench = false
+
+# Completeness / over-constraint fuzzing (issues #728, #793): the dual of
+# the patcher. For an anchorless program over the infallible vocabulary
+# every preamble witness is valid, so ragu's real Simulator must accept all
+# of them; a rejection is an over-constrained gadget (a completeness bug).
+[[bin]]
+name = "fuzz_completeness"
+path = "fuzz_targets/fuzz_completeness.rs"
 test = false
 doc = false
 bench = false
