@@ -5,7 +5,7 @@
 //! # The substrate and the oracle
 //!
 //! A fuzzer-chosen program over a stack of [`Element`]s and [`Boolean`]s
-//! (decoded and synthesized by [`ragu_testing::substrate`]) is registered
+//! (decoded and synthesized by [`ragu_testing_fuzz::substrate`]) is registered
 //! as a [`ProgramCircuit`] and run two ways: through the `Simulator` as a
 //! fast synthesis sanity check, and as a real circuit whose trace is
 //! assembled and checked with the revdot constraint identity. Alongside it
@@ -66,7 +66,7 @@ use ragu_circuits::{
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_primitives::{Simulator, allocator::Standard};
-use ragu_testing::substrate::{
+use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, OpSet, Overrides, Preamble, Program, ProgramCircuit, native_satisfied,
     shadow_eval, synthesize_with_witness,
 };

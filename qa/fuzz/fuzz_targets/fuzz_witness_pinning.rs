@@ -40,7 +40,7 @@
 //! satisfy the identity, which is correct, not a bug. The original target
 //! used two hand-written circuits (`SquareCircuit`, `MySimpleCircuit`) that
 //! happen to be fully determined. To run the same oracle over arbitrary
-//! generated [`ragu_testing::substrate`] programs, we *force* full pinning:
+//! generated [`ragu_testing_fuzz::substrate`] programs, we *force* full pinning:
 //! after the fuzzer-chosen op body, an `Anchor` is appended for every
 //! element slot, pinning each wire to its honest value. Every live trace
 //! coefficient is then determined (element wires directly; gate input wires
@@ -76,7 +76,7 @@ use ragu_circuits::{
     polynomials::{Rank, TestRank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
-use ragu_testing::substrate::{
+use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, Op, OpSet, Overrides, Preamble, Program, ProgramCircuit, shadow_eval,
 };
 

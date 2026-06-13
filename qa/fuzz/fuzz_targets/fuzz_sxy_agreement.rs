@@ -10,7 +10,7 @@
 //!
 //! The identity is a property of the *registry polynomial* — it never
 //! inspects the witness — so any registered circuit is a valid vehicle.
-//! The circuit is an arbitrary generated [`ragu_testing::substrate`]
+//! The circuit is an arbitrary generated [`ragu_testing_fuzz::substrate`]
 //! program (registered as a [`ProgramCircuit`]), generalizing the original
 //! target's single hand-written `SquareCircuit` to the full space of
 //! circuit shapes the grammar produces.
@@ -23,7 +23,7 @@ use ragu_circuits::{
     polynomials::TestRank,
     registry::{CircuitIndex, RegistryBuilder},
 };
-use ragu_testing::substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval};
+use ragu_testing_fuzz::substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval};
 
 #[derive(arbitrary::Arbitrary, Debug)]
 struct Input {

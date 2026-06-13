@@ -6,7 +6,7 @@
 //! under-constrained *advice* wire, because the gadget always recomputes
 //! the *correct* advice on a re-run, masking a missing constraint.
 //!
-//! This target closes that gap. It synthesizes a [`ragu_testing::substrate`]
+//! This target closes that gap. It synthesizes a [`ragu_testing_fuzz::substrate`]
 //! program through a **recording driver** that captures the constraint
 //! graph ragu actually emits — every multiplication gate `a·b=c`, every
 //! linear-combination wire, every `enforce_zero` — together with the honest
@@ -40,8 +40,8 @@
 //! `AllocSpecial`, `AllocSquare` roots) plus, via a dedicated boolean cheat,
 //! the `BoolAlloc` wires.
 //!
-//! [`Op::ConditionalSelect`]: ragu_testing::substrate::Op::ConditionalSelect
-//! [`Op::AllocRaw`]: ragu_testing::substrate::Op::AllocRaw
+//! [`Op::ConditionalSelect`]: ragu_testing_fuzz::substrate::Op::ConditionalSelect
+//! [`Op::AllocRaw`]: ragu_testing_fuzz::substrate::Op::AllocRaw
 //!
 //! # Mutations
 //!
@@ -92,7 +92,7 @@
 //! suspect — so the engine validates its own model on every run.
 //!
 //! The engine — the recording driver, the repair solver, and the planted-bug
-//! selftest — lives in `ragu_testing::recorder`, where it is unit tested in
+//! selftest — lives in `ragu_testing_fuzz::recorder`, where it is unit tested in
 //! CI and reusable against real circuits (issue #793). `PATCHER_SELFTEST=1`
 //! runs that selftest here on demand: a deliberately under-constrained
 //! circuit (a root and a "square" allocated as independent free wires, with
@@ -105,7 +105,7 @@ use arbitrary::Arbitrary;
 use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::{Fp, Fq};
-use ragu_testing::{
+use ragu_testing_fuzz::{
     recorder::{
         Playback, Recorder, TrackingAllocator, constraints_hold, repair, selftest,
         underconstrained_derived,

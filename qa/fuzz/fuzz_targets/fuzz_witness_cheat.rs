@@ -7,7 +7,7 @@
 //! boolean values are compared.
 //!
 //! The op grammar, byte decoding, and gadget dispatch live in
-//! [`ragu_testing::substrate`]; the cheat is injected through the
+//! [`ragu_testing_fuzz::substrate`]; the cheat is injected through the
 //! substrate's pre-op synthesis hook. This harness owns the cheat
 //! machinery, the dead-cheat triage, and the fingerprint comparison.
 //!
@@ -45,7 +45,7 @@ use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_core::{Error, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, Simulator, allocator::Standard};
-use ragu_testing::substrate::{
+use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, Op, OpKind, OpSet, Preamble, Program, special_value, synthesize_with_hook,
 };
 

@@ -23,7 +23,7 @@
 //!
 //! # Circuit substrate
 //!
-//! The circuit is an arbitrary generated [`ragu_testing::substrate`]
+//! The circuit is an arbitrary generated [`ragu_testing_fuzz::substrate`]
 //! program, `steer`ed so its honest witness never hits a value-dependent
 //! gadget failure, and registered as a [`ProgramCircuit`] with anchors
 //! pinned to the honest values (so the honest witness is satisfying by
@@ -52,7 +52,7 @@ use ragu_circuits::{
     polynomials::{Rank, TestRank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
-use ragu_testing::substrate::{
+use ragu_testing_fuzz::substrate::{
     Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval, steer,
 };
 

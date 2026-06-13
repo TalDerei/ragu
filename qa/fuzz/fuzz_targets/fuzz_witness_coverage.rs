@@ -1,7 +1,7 @@
 //! Witness-inspection coverage augmentation POC.
 //!
 //! Same substrate dispatch as `fuzz_element_ops` (shared via
-//! [`ragu_testing::substrate`]), but with an added coverage-augmentation
+//! [`ragu_testing_fuzz::substrate`]), but with an added coverage-augmentation
 //! step at the end of each successful simulation: the final witness state
 //! (element values + boolean values) is hashed and the hash is "spread"
 //! across branches that SanitizerCoverage's PC-guard instrumentation
@@ -52,7 +52,7 @@ use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_core::maybe::Maybe;
 use ragu_primitives::{Simulator, allocator::Standard};
-use ragu_testing::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
+use ragu_testing_fuzz::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
 
 /// Hash the final witness state into a single u64.
 ///

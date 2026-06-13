@@ -1,7 +1,7 @@
 //! Fuzz `Circuit::witness` pipeline correctness against a native oracle.
 //!
 //! Drives a menu of circuits — an arbitrary generated
-//! [`ragu_testing::substrate`] program plus bespoke point/routine/boolean
+//! [`ragu_testing_fuzz::substrate`] program plus bespoke point/routine/boolean
 //! circuits — with fuzzer-chosen witnesses, and checks pairwise consistency
 //! across three pipelines:
 //!
@@ -41,7 +41,7 @@
 //! ## Circuit coverage
 //!
 //! The `Generated` arm covers `Element`'s arithmetic and boolean surface
-//! over arbitrary [`ragu_testing::substrate`] programs — the broad,
+//! over arbitrary [`ragu_testing_fuzz::substrate`] programs — the broad,
 //! fuzzer-driven replacement for the former hand-written `SquareCircuit`
 //! and `MySimpleCircuit` arms. The remaining arms are bespoke circuits
 //! exercising gadget families the substrate grammar does not generate
@@ -109,7 +109,7 @@ use ragu_core::{
 };
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{Boolean, Element, Point, Simulator, allocator::Standard};
-use ragu_testing::substrate::{
+use ragu_testing_fuzz::substrate::{
     Limits, OpSet, Overrides, Preamble, Program, ProgramCircuit, shadow_eval, steer,
     synthesize_with_witness,
 };
@@ -117,7 +117,7 @@ use std::sync::LazyLock;
 
 #[derive(Arbitrary, Debug)]
 enum CircuitChoice {
-    /// An arbitrary [`ragu_testing::substrate`] program as a
+    /// An arbitrary [`ragu_testing_fuzz::substrate`] program as a
     /// [`ProgramCircuit`]. Replaces the former hand-written `SquareCircuit`
     /// and `MySimpleCircuit` arms with broad fuzzer-driven coverage of
     /// `Element` arithmetic, `alloc_square`, booleans, conditional select,
