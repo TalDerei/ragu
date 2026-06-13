@@ -5,7 +5,7 @@
 //! - Expected failures (invert zero, div by zero) return `Err`, not panic.
 //!
 //! The op grammar, byte decoding, and gadget dispatch live in
-//! [`ragu_testing::substrate`], shared with the other op-stream targets;
+//! [`ragu_testing_fuzz::substrate`], shared with the other op-stream targets;
 //! this harness owns only the vocabulary mask (the historical 19-op
 //! robustness set — everything except `Anchor`) and the
 //! swallow-errors-but-never-panic policy.
@@ -15,7 +15,7 @@
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_primitives::{Simulator, allocator::Standard};
-use ragu_testing::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
+use ragu_testing_fuzz::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
 
 fuzz_target!(|data: &[u8]| {
     let program = Program::decode(

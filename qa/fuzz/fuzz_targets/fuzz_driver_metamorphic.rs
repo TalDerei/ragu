@@ -9,7 +9,7 @@
 //! the same gadget code observationally identically.
 //!
 //! The op grammar, byte decoding, and gadget dispatch live in
-//! [`ragu_testing::substrate`] — one driver-generic interpreter runs both
+//! [`ragu_testing_fuzz::substrate`] — one driver-generic interpreter runs both
 //! sides, so this target is also the proof that the substrate itself does
 //! not branch on driver type.
 //!
@@ -63,7 +63,7 @@ use ragu_core::{
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Simulator, allocator::Standard};
-use ragu_testing::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
+use ragu_testing_fuzz::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
 
 /// Final-state fingerprint: every element's value followed by every
 /// boolean's value, in stack order.
