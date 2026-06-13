@@ -24,6 +24,8 @@ pub mod consistent;
 mod element;
 mod endoscalar;
 mod foreign;
+#[cfg(feature = "unstable-fv")]
+pub mod fv_utils;
 mod invertible;
 pub mod io;
 mod point;

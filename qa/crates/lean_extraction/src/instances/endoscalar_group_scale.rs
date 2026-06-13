@@ -3,7 +3,7 @@ use group::CurveAffine;
 use ragu_arithmetic::Coeff;
 use ragu_core::drivers::{Driver, LinearExpression};
 use ragu_pasta::{EpAffine, Fp};
-use ragu_primitives::{Element, NonzeroBank, Point};
+use ragu_primitives::{Element, Point, fv_utils};
 
 use crate::{
     driver::ExtractionDriver,
@@ -69,7 +69,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
 
         // One unchecked bank for the whole gadget, exactly as the deployed
         // `Endoscalar::group_scale` does: folds and the drop are no-ops.
-        let mut bank = NonzeroBank::new_unchecked();
+        let mut bank = fv_utils::nonzero_bank_unchecked();
 
         let acc_pre = p_endo.add_incomplete(dr, &p, &mut bank)?;
         let mut acc = acc_pre.double(dr)?;
