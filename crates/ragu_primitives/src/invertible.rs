@@ -262,7 +262,18 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// Constructs a bank that asserts every fold is nonzero by external
     /// argument. No constraints are emitted by `fold` or by dropping the
     /// bank.
+    ///
+    /// `pub` only under the `unstable-fv` feature, which the trace-extraction
+    /// tooling enables to mirror gadgets (e.g. `Endoscalar::group_scale`) that
+    /// build an unchecked bank; otherwise crate-internal.
+    #[cfg(feature = "unstable-fv")]
     pub fn new_unchecked() -> Self {
+        Self { product: None }
+    }
+
+    /// Crate-internal counterpart to the `unstable-fv`-gated `new_unchecked`.
+    #[cfg(not(feature = "unstable-fv"))]
+    pub(crate) fn new_unchecked() -> Self {
         Self { product: None }
     }
 

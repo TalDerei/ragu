@@ -32,6 +32,11 @@ default = ["alloc", "modern-deps"]
 legacy-deps = ["ragu_arithmetic/legacy-deps", "ragu_core/legacy-deps"]
 modern-deps = ["ragu_arithmetic/modern-deps", "ragu_core/modern-deps"]
 std = []
+# Widens the visibility of constructors that trade in-circuit constraints for
+# an external soundness argument so the trace-extraction tooling
+# (`qa/crates/lean_extraction`) can mirror gadgets that make that trade-off.
+# Not part of the stable public API.
+unstable-fv = []
 
 [lib]
 bench = false
