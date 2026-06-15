@@ -9,16 +9,20 @@
 
 pub use application::{Application, ApplicationBuilder};
 pub use ctx::StepCtx;
+pub use domain::Domain;
 pub use error::{Error, Result};
 pub use header::{Header, Suffix};
 pub use hooks::FrameworkHooks;
-pub use polynomial::{Commitment, Polynomial, generators, poly_with_roots};
+pub use polynomial::Polynomial;
 pub use proof::{Pcd, Proof};
+pub use ragu_arithmetic::{Cycle, FixedGenerators};
+pub use ragu_pasta::{Pasta, VestaGenerators};
 pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice};
 pub use step::{Index, Step};
 
 pub mod application;
 pub mod ctx;
+pub mod domain;
 pub mod error;
 pub mod header;
 pub mod hooks;

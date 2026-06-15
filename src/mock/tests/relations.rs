@@ -1,12 +1,12 @@
 use alloc::vec::Vec;
 
 use ff::Field as _;
-use pasta_curves::Fp;
+use pasta_curves::{Eq, Fp};
 
 use crate::{
     ctx::StepCtx,
     hooks::{FrameworkHooks, PolyQueryClaim},
-    polynomial::{Commitment, Polynomial},
+    polynomial::Polynomial,
     relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice},
 };
 
@@ -28,7 +28,7 @@ fn recorded_claims(hooks: &FrameworkHooks) -> Vec<PolyQueryClaim> {
 /// from the operand commitments in order -- exactly the shape every relation
 /// here produces. Pass the operands in the order the relation opens them.
 fn expected_opening_claims(operands: &[&Polynomial]) -> Vec<PolyQueryClaim> {
-    let coms: Vec<Commitment> = operands.iter().map(|poly| poly.commit()).collect();
+    let coms: Vec<Eq> = operands.iter().map(|poly| poly.commit()).collect();
     let mut hooks = FrameworkHooks::new();
     let mut ctx = StepCtx::new(&mut hooks);
     let z = ctx.derive_challenge(&coms).unwrap();
@@ -318,7 +318,7 @@ fn product_accepts_a_trailing_zero_padded_result() {
     padded.push(Fp::ZERO);
     let product_padded = Polynomial::from_coeffs(&padded);
 
-    assert_eq!(product, product_padded);
+    assert_eq!(product.commit(), product_padded.commit());
 
     let mut hooks = FrameworkHooks::new();
     {

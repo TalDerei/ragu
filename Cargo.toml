@@ -33,6 +33,10 @@ mock = [
   "dep:lazy_static",
   "dep:pasta_curves",
   "dep:rand_core",
+  "dep:ragu_pasta",
+  "ragu_pasta/alloc",
+  "ragu_pasta/baked",
+  "ragu_pasta/legacy-deps",
 ]
 modern-deps = [
   "ragu_arithmetic/modern-deps",
@@ -64,6 +68,8 @@ ragu_circuits = { path = "crates/ragu_circuits", version = "0.0.0", default-feat
 ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"] }
+ragu_pasta = { path = "crates/ragu_pasta", version = "0.0.0", default-features = false, optional = true }
+
 
 # mock dependencies (pulled in only by the `mock` feature; legacy crypto stack).
 # `ff`/`pasta_curves`/`rand_core` are pinned to the legacy versions directly

@@ -9,9 +9,9 @@
 
 use blake2b_simd::Params;
 use ff::FromUniformBytes as _;
-use pasta_curves::Fp;
+use pasta_curves::{Eq, Fp, group::GroupEncoding as _};
 
-use crate::{error::Result, hooks::FrameworkHooks, polynomial::Commitment};
+use crate::{error::Result, hooks::FrameworkHooks};
 
 const CHALLENGE_LEN: usize = 64;
 
@@ -26,18 +26,17 @@ impl<'a> StepCtx<'a> {
         Self { hooks }
     }
 
-    pub fn enforce_poly_query(&mut self, com: Commitment, x: Fp, y: Fp) -> Result<()> {
+    pub fn enforce_poly_query(&mut self, com: Eq, x: Fp, y: Fp) -> Result<()> {
         self.hooks.enforce_polynomial_query(com, x, y)
     }
 
-    pub fn derive_challenge(&mut self, commitments: &[Commitment]) -> Result<Fp> {
+    pub fn derive_challenge(&mut self, commitments: &[Eq]) -> Result<Fp> {
         let mut state = Params::new()
             .hash_length(CHALLENGE_LEN)
             .personal(b"MkRagu_Challng_\0")
             .to_state();
         for com in commitments {
-            let bytes: [u8; 32] = (*com).into();
-            state.update(&bytes);
+            state.update(com.to_bytes().as_ref());
         }
         let mut wide = [0u8; CHALLENGE_LEN];
         wide.copy_from_slice(state.finalize().as_bytes());
