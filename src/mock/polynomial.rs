@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 use ff::Field as _;
 use pasta_curves::{Eq, Fp};
 use ragu_arithmetic::{Cycle as _, FixedGenerators as _};
+use ragu_circuits::polynomials::{ProductionRank, Rank};
 use ragu_pasta::Pasta;
 
 /// Mirrors `ragu_circuits::polynomials::unstructured::Polynomial`.
@@ -18,6 +19,8 @@ use ragu_pasta::Pasta;
 pub struct Polynomial(Vec<Fp>);
 
 impl Polynomial {
+    pub const MAX: usize = 1 << <ProductionRank as Rank>::RANK;
+
     #[must_use]
     pub fn from_coeffs(coeffs: &[Fp]) -> Self {
         Self(coeffs.to_vec())
