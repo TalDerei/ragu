@@ -21,6 +21,7 @@ pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_spli
 pub use step::{Index, Step};
 
 pub mod application;
+pub mod constraint;
 pub mod ctx;
 pub mod domain;
 pub mod error;
