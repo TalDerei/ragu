@@ -17,7 +17,6 @@ pub use proof::{Pcd, Proof};
 pub use ragu_arithmetic::{Cycle, FixedGenerators};
 pub use ragu_core::{Error, Result};
 pub use ragu_pasta::{Pasta, VestaGenerators};
-pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice};
 pub use sponge::{Sponge, SpongeState};
 pub use step::{Index, Step};
 
@@ -29,7 +28,6 @@ pub mod header;
 pub mod hooks;
 pub mod polynomial;
 pub mod proof;
-pub mod relations;
 pub mod sponge;
 pub mod step;
 
