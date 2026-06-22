@@ -3,6 +3,7 @@
 //! Generic over the field `F`, mirroring real ragu's field-generic gadgets.
 
 use ff::Field;
+use pasta_curves::group::Group;
 use ragu_core::{Error, Result};
 
 /// Enforces `a == 0`. Mirrors `Element::enforce_zero`; returns
@@ -60,5 +61,17 @@ pub fn conditional_enforce_equal<F: Field>(cond: bool, a: F, b: F, err: &'static
         Err(Error::InvalidWitness(err.into()))
     } else {
         Ok(())
+    }
+}
+
+/// Enforces `a == b` for two curve points. Mirrors `Point::enforce_equal` (real
+/// ragu's derived `GadgetEquals` for `Point`, which constrains the coordinates
+/// equal); returns `Err(Error::InvalidWitness(err))` where those constraints
+/// would be unsatisfiable (`a != b`).
+pub fn enforce_equal_point<C: Group>(a: C, b: C, err: &'static str) -> Result<()> {
+    if a == b {
+        Ok(())
+    } else {
+        Err(Error::InvalidWitness(err.into()))
     }
 }

@@ -1,5 +1,5 @@
 use ff::Field as _;
-use pasta_curves::Fp;
+use pasta_curves::{Eq, Fp, group::Group as _};
 
 use crate::constraint::*;
 
@@ -56,4 +56,12 @@ fn conditional_enforce_equal_only_binds_when_true() {
     // Condition true: equal passes, unequal fails.
     assert!(conditional_enforce_equal(true, a, a, "a == b").is_ok());
     assert!(conditional_enforce_equal(true, a, b, "a == b").is_err());
+}
+
+#[test]
+fn enforce_equal_point_rejects_distinct_points() {
+    let g = Eq::generator();
+    assert!(enforce_equal_point(g, g, "points must match").is_ok());
+    assert!(enforce_equal_point(g, g.double(), "points must match").is_err());
+    assert!(enforce_equal_point(g, Eq::identity(), "points must match").is_err());
 }
