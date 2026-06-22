@@ -96,9 +96,8 @@ impl Sponge {
             .iter()
             .map(|&value| Element::constant(&mut emu, value))
             .collect();
-        let inner_state = InnerState::from_elements(
-            elements.try_into().expect("STATE_LEN elements collected"),
-        );
+        let inner_state =
+            InnerState::from_elements(elements.try_into().expect("STATE_LEN elements collected"));
         let inner = InnerSponge::resume(inner_state, Pasta::circuit_poseidon(Pasta::baked()));
         Self { emu, inner }
     }

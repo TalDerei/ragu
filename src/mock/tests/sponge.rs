@@ -3,13 +3,13 @@ use alloc::string::ToString as _;
 use ff::Field as _;
 use pasta_curves::Fp;
 use ragu_arithmetic::Cycle as _;
+use ragu_core::Error;
 use ragu_core::{
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe as _},
 };
-use ragu_core::Error;
-use ragu_primitives::{Element, poseidon::Sponge as InnerSponge};
 use ragu_pasta::Pasta;
+use ragu_primitives::{Element, poseidon::Sponge as InnerSponge};
 
 use crate::sponge::Sponge;
 
@@ -50,7 +50,10 @@ fn squeeze_is_deterministic() {
 
 #[test]
 fn distinct_inputs_give_distinct_squeezes() {
-    assert_ne!(absorb_then_squeeze(&inputs(3)), absorb_then_squeeze(&inputs(4)));
+    assert_ne!(
+        absorb_then_squeeze(&inputs(3)),
+        absorb_then_squeeze(&inputs(4))
+    );
 }
 
 #[test]

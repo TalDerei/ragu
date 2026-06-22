@@ -56,7 +56,12 @@ pub fn enforce_root_of_unity<F: Field>(a: F, k: u32, err: &'static str) -> Resul
 /// false, imposes nothing. Mirrors `Boolean::conditional_enforce_equal`;
 /// returns `Err(Error::InvalidWitness(err))` where the real constraint would be
 /// unsatisfiable (`cond` true and `a != b`).
-pub fn conditional_enforce_equal<F: Field>(cond: bool, a: F, b: F, err: &'static str) -> Result<()> {
+pub fn conditional_enforce_equal<F: Field>(
+    cond: bool,
+    a: F,
+    b: F,
+    err: &'static str,
+) -> Result<()> {
     if cond && a != b {
         Err(Error::InvalidWitness(err.into()))
     } else {
