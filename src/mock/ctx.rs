@@ -10,8 +10,9 @@
 use blake2b_simd::Params;
 use ff::FromUniformBytes as _;
 use pasta_curves::{Eq, Fp, group::GroupEncoding as _};
+use ragu_core::Result;
 
-use crate::{error::Result, hooks::FrameworkHooks};
+use crate::hooks::FrameworkHooks;
 
 const CHALLENGE_LEN: usize = 64;
 

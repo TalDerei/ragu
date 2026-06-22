@@ -5,9 +5,10 @@ use core::any::TypeId;
 
 use rand_core::CryptoRng;
 
+use ragu_core::{Error, Result};
+
 use crate::{
     ctx::StepCtx,
-    error::{Error, Result},
     header::{Header, Suffix},
     hooks::FrameworkHooks,
     proof::{self, PROOF_SIZE_COMPRESSED, Pcd, Proof},
@@ -46,7 +47,7 @@ impl ApplicationBuilder {
         self.num_application_steps = self
             .num_application_steps
             .checked_add(1)
-            .ok_or(Error("registered step count overflow"))?;
+            .ok_or_else(|| Error::Initialization("registered step count overflow".into()))?;
         Ok(self)
     }
 
@@ -60,8 +61,8 @@ impl ApplicationBuilder {
         let suffix = H::SUFFIX;
         let type_id = TypeId::of::<H>();
         match self.header_map.get(&suffix) {
-            Some(registered) if *registered != type_id => Err(Error(
-                "two distinct Header implementations declared the same suffix",
+            Some(registered) if *registered != type_id => Err(Error::Initialization(
+                "two distinct Header implementations declared the same suffix".into(),
             )),
             Some(_) => Ok(()),
             None => {

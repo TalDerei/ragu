@@ -8,8 +8,7 @@
 use alloc::vec::Vec;
 
 use pasta_curves::{Eq, Fp};
-
-use crate::error::Result;
+use ragu_core::Result;
 
 pub type PolyQueryClaim = (Eq, Fp, Fp);
 

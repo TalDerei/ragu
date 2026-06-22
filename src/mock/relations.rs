@@ -42,11 +42,9 @@
 use ff::Field as _;
 use pasta_curves::Fp;
 
-use crate::{
-    ctx::StepCtx,
-    error::{Error, Result},
-    polynomial::Polynomial,
-};
+use ragu_core::{Error, Result};
+
+use crate::{ctx::StepCtx, polynomial::Polynomial};
 
 /// Faithful polynomial product: confirm `product = multiplicand · multiplier`
 /// among three committed polynomials by opening all three at a Fiat-Shamir
@@ -76,7 +74,9 @@ pub fn enforce_poly_product(
     let z = ctx.derive_challenge(&[multiplicand_com, multiplier_com, product_com])?;
 
     if product.eval(z) != multiplicand.eval(z) * multiplier.eval(z) {
-        return Err(Error("poly product: product identity fails at challenge"));
+        return Err(Error::InvalidWitness(
+            "poly product: product identity fails at challenge".into(),
+        ));
     }
 
     ctx.enforce_poly_query(multiplicand_com, z, multiplicand.eval(z))?;
@@ -135,8 +135,8 @@ pub fn enforce_poly_concat(
 
     let zo = z.pow_vartime([offset as u64]);
     if result.eval(z) != head.eval(z) + zo * tail.eval(z) {
-        return Err(Error(
-            "poly concat: shifted-sum identity fails at challenge",
+        return Err(Error::InvalidWitness(
+            "poly concat: shifted-sum identity fails at challenge".into(),
         ));
     }
 
@@ -188,8 +188,8 @@ pub fn enforce_poly_splice(
 
     let zo = z.pow_vartime([offset as u64]);
     if result.eval(z) != head.eval(z) + zo * mid + zo * z * tail.eval(z) {
-        return Err(Error(
-            "poly splice: spliced-sum identity fails at challenge",
+        return Err(Error::InvalidWitness(
+            "poly splice: spliced-sum identity fails at challenge".into(),
         ));
     }
 

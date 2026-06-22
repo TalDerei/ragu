@@ -147,32 +147,36 @@ impl From<Proof> for [u8; PROOF_SIZE_COMPRESSED] {
 }
 
 impl TryFrom<&[u8; PROOF_SIZE_COMPRESSED]> for Proof {
-    type Error = crate::error::Error;
+    type Error = ragu_core::Error;
 
     fn try_from(bytes: &[u8; PROOF_SIZE_COMPRESSED]) -> Result<Self, Self::Error> {
+        use ragu_core::Error;
+
         let slice: &[u8] = bytes.as_slice();
         let (step_index_bytes, rest) = slice
             .split_first_chunk::<STEP_INDEX_SIZE>()
-            .ok_or(crate::error::Error("step_index slot missing"))?;
+            .ok_or_else(|| Error::MalformedEncoding("step_index slot missing".into()))?;
         let (header_hash, rest) = rest
             .split_first_chunk::<HASH_SIZE>()
-            .ok_or(crate::error::Error("header_hash slot missing"))?;
+            .ok_or_else(|| Error::MalformedEncoding("header_hash slot missing".into()))?;
         let (witness_hash, rest) = rest
             .split_first_chunk::<HASH_SIZE>()
-            .ok_or(crate::error::Error("witness_hash slot missing"))?;
+            .ok_or_else(|| Error::MalformedEncoding("witness_hash slot missing".into()))?;
         let (binding, rest) = rest
             .split_first_chunk::<HASH_SIZE>()
-            .ok_or(crate::error::Error("binding slot missing"))?;
+            .ok_or_else(|| Error::MalformedEncoding("binding slot missing".into()))?;
         let (rerand_tag, _padding) = rest
             .split_first_chunk::<HASH_SIZE>()
-            .ok_or(crate::error::Error("rerand_tag slot missing"))?;
+            .ok_or_else(|| Error::MalformedEncoding("rerand_tag slot missing".into()))?;
 
         let step_index_value = u64::from_le_bytes(*step_index_bytes);
         let step_index = Index::from_value(step_index_value)?;
 
         let expected_binding = compute_binding(step_index, header_hash, witness_hash);
         if expected_binding != *binding {
-            return Err(crate::error::Error("mock_ragu internal binding mismatch"));
+            return Err(Error::MalformedEncoding(
+                "mock_ragu internal binding mismatch".into(),
+            ));
         }
 
         Ok(Self {

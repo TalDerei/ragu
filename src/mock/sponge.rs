@@ -17,16 +17,15 @@ use ff::Field as _;
 use pasta_curves::Fp;
 use ragu_arithmetic::{Cycle as _, PoseidonPermutation as _};
 use ragu_core::{
+    Error, Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe as _},
 };
+use ragu_pasta::{Pasta, PoseidonFp};
 use ragu_primitives::{
     Element,
     poseidon::{SaveError, Sponge as InnerSponge, SpongeState as InnerState},
 };
-use ragu_pasta::{Pasta, PoseidonFp};
-
-use crate::error::{Error, Result};
 
 /// The wireless emulator driver used to evaluate the sponge natively. `Wire` is
 /// `()` and witness values are `Always` present, so absorb/squeeze compute real
@@ -56,17 +55,12 @@ impl Sponge {
     /// Absorb one field element. Mirrors `Sponge::absorb`.
     pub fn absorb(&mut self, value: Fp) -> Result<()> {
         let element = Element::constant(&mut self.emu, value);
-        self.inner
-            .absorb(&mut self.emu, &element)
-            .map_err(|_| Error("poseidon sponge absorb failed"))
+        self.inner.absorb(&mut self.emu, &element)
     }
 
     /// Squeeze one field element. Mirrors `Sponge::squeeze`.
     pub fn squeeze(&mut self) -> Result<Fp> {
-        let element = self
-            .inner
-            .squeeze(&mut self.emu)
-            .map_err(|_| Error("cannot squeeze from empty sponge"))?;
+        let element = self.inner.squeeze(&mut self.emu)?;
         // Wireless `Always` mode guarantees the value exists.
         Ok(*element.value().take())
     }
@@ -77,12 +71,15 @@ impl Sponge {
     /// Fails if the sponge is already in squeeze mode or has nothing absorbed.
     pub fn save_state(self) -> Result<SpongeState> {
         let Self { mut emu, inner } = self;
-        let inner_state = inner.save_state(&mut emu).map_err(|e| match e {
-            SaveError::AlreadyInSqueezeMode => {
-                Error("cannot save sponge state: already in squeeze mode")
-            }
-            SaveError::NothingAbsorbed => Error("cannot save sponge state: nothing absorbed"),
-            _ => Error("cannot save sponge state"),
+        let inner_state = inner.save_state(&mut emu).map_err(|e| {
+            let message = match e {
+                SaveError::AlreadyInSqueezeMode => {
+                    "cannot save sponge state: already in squeeze mode"
+                }
+                SaveError::NothingAbsorbed => "cannot save sponge state: nothing absorbed",
+                _ => "cannot save sponge state",
+            };
+            Error::Initialization(message.into())
         })?;
         let mut values = [Fp::ZERO; STATE_LEN];
         for (slot, element) in values.iter_mut().zip(inner_state.into_elements().iter()) {

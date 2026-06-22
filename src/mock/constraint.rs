@@ -2,16 +2,16 @@
 
 use ff::Field as _;
 use pasta_curves::Fp;
+use ragu_core::{Error, Result};
 
-use crate::error::{Error, Result};
-
-/// Enforces `a == 0`. Mirrors `Element::enforce_zero`; returns `Err(Error(err))`
-/// where the real constraint would be unsatisfiable (`a` nonzero).
+/// Enforces `a == 0`. Mirrors `Element::enforce_zero`; returns
+/// `Err(Error::InvalidWitness(err))` where the real constraint would be
+/// unsatisfiable (`a` nonzero).
 pub fn enforce_zero(a: Fp, err: &'static str) -> Result<()> {
     if bool::from(a.is_zero()) {
         Ok(())
     } else {
-        Err(Error(err))
+        Err(Error::InvalidWitness(err.into()))
     }
 }
 
@@ -19,7 +19,7 @@ pub fn enforce_zero(a: Fp, err: &'static str) -> Result<()> {
 /// fails to synthesize for a zero value.
 pub fn enforce_nonzero(a: Fp, err: &'static str) -> Result<Fp> {
     if bool::from(a.is_zero()) {
-        Err(Error(err))
+        Err(Error::InvalidWitness(err.into()))
     } else {
         Ok(a)
     }
@@ -28,7 +28,7 @@ pub fn enforce_nonzero(a: Fp, err: &'static str) -> Result<Fp> {
 /// Multiplicative inverse `a⁻¹`. Mirrors `Element::invert`, which is
 /// unsatisfiable for a zero value.
 pub fn invert(a: Fp, err: &'static str) -> Result<Fp> {
-    Option::from(a.invert()).ok_or(Error(err))
+    Option::from(a.invert()).ok_or_else(|| Error::InvalidWitness(err.into()))
 }
 
 /// `a / divisor`. Mirrors `Element::divide`; errors on a zero divisor (real
@@ -46,17 +46,17 @@ pub fn enforce_root_of_unity(a: Fp, k: u32, err: &'static str) -> Result<()> {
     if value == Fp::ONE {
         Ok(())
     } else {
-        Err(Error(err))
+        Err(Error::InvalidWitness(err.into()))
     }
 }
 
 /// Conditionally enforces `a == b`: when `cond` is true, requires `a == b`; when
 /// false, imposes nothing. Mirrors `Boolean::conditional_enforce_equal`;
-/// returns `Err(Error(err))` where the real constraint would be unsatisfiable
-/// (`cond` true and `a != b`).
+/// returns `Err(Error::InvalidWitness(err))` where the real constraint would be
+/// unsatisfiable (`cond` true and `a != b`).
 pub fn conditional_enforce_equal(cond: bool, a: Fp, b: Fp, err: &'static str) -> Result<()> {
     if cond && a != b {
-        Err(Error(err))
+        Err(Error::InvalidWitness(err.into()))
     } else {
         Ok(())
     }

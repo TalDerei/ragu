@@ -1,10 +1,8 @@
 //! Mock PCD step — mirrors `ragu_pcd::Step`.
 
-use crate::{
-    ctx::StepCtx,
-    error::{Error, Result},
-    header::Header,
-};
+use ragu_core::{Error, Result};
+
+use crate::{ctx::StepCtx, header::Header};
 
 /// Number of internal step indexes reserved by mock_ragu.
 ///
@@ -70,8 +68,8 @@ impl Index {
 
     /// Parses an [`Index`] from its `get()` value.
     pub(crate) fn from_value(value: u64) -> Result<Self> {
-        let value_usize =
-            usize::try_from(value).map_err(|_err| Error("step index value exceeds usize"))?;
+        let value_usize = usize::try_from(value)
+            .map_err(|_err| Error::Initialization("step index value exceeds usize".into()))?;
         if value_usize < NUM_INTERNAL_STEPS {
             return Ok(Self {
                 index: StepIndex::Internal(value_usize),
@@ -79,7 +77,7 @@ impl Index {
         }
         let application = value_usize
             .checked_sub(NUM_INTERNAL_STEPS)
-            .ok_or(Error("step index value underflow"))?;
+            .ok_or_else(|| Error::Initialization("step index value underflow".into()))?;
         Ok(Self {
             index: StepIndex::Application(application),
         })
@@ -90,8 +88,12 @@ impl Index {
     pub(crate) fn assert_sequential(self, expected: usize) -> Result<()> {
         match self.index {
             StepIndex::Application(value) if value == expected => Ok(()),
-            StepIndex::Application(_) => Err(Error("steps must be registered in sequential order")),
-            StepIndex::Internal(_) => Err(Error("step INDEX must be application-defined")),
+            StepIndex::Application(_) => Err(Error::Initialization(
+                "steps must be registered in sequential order".into(),
+            )),
+            StepIndex::Internal(_) => Err(Error::Initialization(
+                "step INDEX must be application-defined".into(),
+            )),
         }
     }
 }

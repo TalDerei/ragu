@@ -2,10 +2,11 @@ use alloc::vec::Vec;
 
 use rand::thread_rng as rng;
 
+use ragu_core::Result;
+
 use crate::{
     application::*,
     ctx::StepCtx,
-    error::Result,
     header::{Header, Suffix},
     proof::{PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::{Index, Step},
