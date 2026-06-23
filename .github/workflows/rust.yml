@@ -97,18 +97,19 @@ jobs:
           cache-suffix: legacy-deps
       - name: Check runtime crates with legacy dependencies
         run: cargo check -p ragu_arithmetic -p ragu_pasta -p ragu_core -p ragu_primitives -p ragu_circuits -p ragu_pcd --lib --locked --no-default-features --features "alloc legacy-deps"
-      - name: Check root crate with legacy dependencies
-        run: cargo check -p ragu --lib --locked --no-default-features --features legacy-deps
 
-  # The `mock` feature is off by default and requires the legacy crypto stack
-  # (it is incompatible with the default `modern-deps`, enforced by a
-  # compile_error in src/lib.rs). It therefore gets its own job rather than
-  # sharing the modern-stack `clippy`/`test` runs.
+  # The `mock` feature is off by default and is the root crate's only API. It
+  # builds against either crypto stack, so it gets its own job (the default
+  # `clippy`/`test` runs leave it off) and exercises both stacks via a matrix.
   mock:
-    name: mock (legacy stack)
+    name: mock (${{ matrix.stack }})
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [modern-deps, legacy-deps]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -117,11 +118,11 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           components: clippy
-          cache-suffix: mock
+          cache-suffix: mock-${{ matrix.stack }}
       - name: Run clippy (mock)
-        run: cargo clippy -p ragu --no-default-features --features "mock legacy-deps" --lib --tests --locked -- -D warnings
+        run: cargo clippy -p ragu --no-default-features --features "mock ${{ matrix.stack }}" --lib --tests --locked -- -D warnings
       - name: Run tests (mock)
-        run: cargo test --release -p ragu --no-default-features --features "mock legacy-deps" --locked
+        run: cargo test --release -p ragu --no-default-features --features "mock ${{ matrix.stack }}" --locked
 
   proptests-fast:
     name: proptests (fast)
