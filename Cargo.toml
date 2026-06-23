@@ -30,7 +30,6 @@ default = ["modern-deps", "multicore"]
 mock = [
   "dep:blake2b_simd",
   "dep:ff",
-  "dep:lazy_static",
   "dep:pasta_curves",
   "dep:rand_core",
   "dep:ragu_pasta",
@@ -78,7 +77,6 @@ ragu_pasta = { path = "crates/ragu_pasta", version = "0.0.0", default-features =
 # the legacy stack without routing through the workspace crates.
 blake2b_simd = { workspace = true, optional = true }
 ff = { package = "ff", version = "0.13", default-features = false, optional = true }
-lazy_static = { workspace = true, optional = true }
 pasta_curves = { package = "pasta_curves", version = "0.5.1", optional = true }
 rand_core = { package = "rand_core", version = "0.6", default-features = false, optional = true }
 

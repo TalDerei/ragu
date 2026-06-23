@@ -868,7 +868,6 @@ version = "0.0.0"
 dependencies = [
  "blake2b_simd",
  "ff 0.13.1",
- "lazy_static",
  "pasta_curves 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ragu_arithmetic",
  "ragu_circuits",
