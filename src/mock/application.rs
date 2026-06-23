@@ -3,8 +3,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::any::TypeId;
 
-use rand_core::CryptoRng;
-
+use ragu_arithmetic::CryptoRngCore;
 use ragu_core::{Error, Result};
 
 use crate::{
@@ -75,7 +74,7 @@ impl ApplicationBuilder {
 
 impl Application {
     /// Delegates to [`fuse`](Self::fuse) with trivial PCDs.
-    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
+    pub fn seed<'source, RNG: CryptoRngCore, S: Step<Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
@@ -86,7 +85,7 @@ impl Application {
         self.fuse(rng, step, witness, left, right)
     }
 
-    pub fn fuse<'source, RNG: CryptoRng, S: Step>(
+    pub fn fuse<'source, RNG: CryptoRngCore, S: Step>(
         &self,
         _rng: &mut RNG,
         step: S,
@@ -116,7 +115,7 @@ impl Application {
         Ok((proof_value.carry::<S::Output>(output_data), aux))
     }
 
-    pub fn verify<RNG: CryptoRng, H: Header>(&self, pcd: &Pcd<H>, _rng: RNG) -> Result<bool> {
+    pub fn verify<RNG: CryptoRngCore, H: Header>(&self, pcd: &Pcd<H>, _rng: RNG) -> Result<bool> {
         match pcd.proof.step_index.application() {
             Some(application_index) if application_index < self.num_application_steps => {}
             _ => return Ok(false),
@@ -136,7 +135,7 @@ impl Application {
         Ok(expected_binding == pcd.proof.binding)
     }
 
-    pub fn rerandomize<RNG: CryptoRng, H: Header>(
+    pub fn rerandomize<RNG: CryptoRngCore, H: Header>(
         &self,
         pcd: Pcd<H>,
         _rng: &mut RNG,

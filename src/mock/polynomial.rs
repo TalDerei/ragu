@@ -8,11 +8,11 @@
 
 use alloc::vec::Vec;
 
-use ff::Field as _;
-use pasta_curves::{Eq, Fp};
+use ragu_arithmetic::ff::Field as _;
 use ragu_arithmetic::{Cycle as _, FixedGenerators as _};
 use ragu_circuits::polynomials::{ProductionRank, Rank};
 use ragu_pasta::Pasta;
+use ragu_pasta::{Eq, Fp};
 
 /// Mirrors `ragu_circuits::polynomials::unstructured::Polynomial`.
 #[derive(Clone, Debug)]

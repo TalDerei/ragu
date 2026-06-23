@@ -1,5 +1,6 @@
-use ff::Field as _;
-use pasta_curves::{Eq, Fp, group::Group as _};
+use ragu_arithmetic::ff::Field as _;
+use ragu_arithmetic::group::Group as _;
+use ragu_pasta::{Eq, Fp};
 
 use crate::constraint::*;
 

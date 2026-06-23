@@ -13,15 +13,14 @@
 //! This replaces the ad-hoc `halo2_poseidon` use that mock consumers have been
 //! reaching for in the absence of a sponge.
 
-use ff::Field as _;
-use pasta_curves::Fp;
+use ragu_arithmetic::ff::Field as _;
 use ragu_arithmetic::{Cycle as _, PoseidonPermutation as _};
 use ragu_core::{
     Error, Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe as _},
 };
-use ragu_pasta::{Pasta, PoseidonFp};
+use ragu_pasta::{Fp, Pasta, PoseidonFp};
 use ragu_primitives::{
     Element,
     poseidon::{SaveError, Sponge as InnerSponge, SpongeState as InnerState},

@@ -2,8 +2,8 @@
 //!
 //! Generic over the field `F`, mirroring real ragu's field-generic gadgets.
 
-use ff::Field;
-use pasta_curves::group::Group;
+use ragu_arithmetic::ff::Field;
+use ragu_arithmetic::group::Group;
 use ragu_core::{Error, Result};
 
 /// Enforces `a == 0`. Mirrors `Element::enforce_zero`; returns
