@@ -13,8 +13,7 @@
 //! This replaces the ad-hoc `halo2_poseidon` use that mock consumers have been
 //! reaching for in the absence of a sponge.
 
-use ragu_arithmetic::ff::Field as _;
-use ragu_arithmetic::{Cycle as _, PoseidonPermutation as _};
+use ragu_arithmetic::{Cycle as _, PoseidonPermutation as _, ff::Field as _};
 use ragu_core::{
     Error, Result,
     drivers::emulator::{Emulator, Wireless},

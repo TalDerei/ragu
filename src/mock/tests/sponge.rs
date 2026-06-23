@@ -1,14 +1,12 @@
 use alloc::string::ToString as _;
 
-use ragu_arithmetic::Cycle as _;
-use ragu_arithmetic::ff::Field as _;
-use ragu_core::Error;
+use ragu_arithmetic::{Cycle as _, ff::Field as _};
 use ragu_core::{
+    Error,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe as _},
 };
-use ragu_pasta::Fp;
-use ragu_pasta::Pasta;
+use ragu_pasta::{Fp, Pasta};
 use ragu_primitives::{Element, poseidon::Sponge as InnerSponge};
 
 use crate::sponge::Sponge;

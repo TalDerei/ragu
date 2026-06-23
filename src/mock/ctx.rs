@@ -8,8 +8,7 @@
 //! polynomial-query opening claims and deriving Fiat-Shamir challenges.
 
 use blake2b_simd::Params;
-use ragu_arithmetic::ff::FromUniformBytes as _;
-use ragu_arithmetic::group::GroupEncoding as _;
+use ragu_arithmetic::{ff::FromUniformBytes as _, group::GroupEncoding as _};
 use ragu_core::Result;
 use ragu_pasta::{Eq, Fp};
 

@@ -1,5 +1,4 @@
-use ragu_arithmetic::ff::Field as _;
-use ragu_arithmetic::group::Group as _;
+use ragu_arithmetic::{ff::Field as _, group::Group as _};
 use ragu_pasta::{Eq, Fp};
 
 use crate::constraint::*;
