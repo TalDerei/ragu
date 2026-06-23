@@ -37,18 +37,6 @@
     )
 )]
 
-// The mock routes its crypto through the workspace crates, which require
-// exactly one of `modern-deps` / `legacy-deps`. Surface a clear message if a
-// `mock` build selects neither (e.g. `--no-default-features --features mock`).
-#[cfg(all(
-    feature = "mock",
-    not(any(feature = "modern-deps", feature = "legacy-deps"))
-))]
-compile_error!(
-    "the `mock` feature requires a crypto stack; add `modern-deps` or \
-     `legacy-deps` (the default features include `modern-deps`)"
-);
-
 #[cfg(feature = "std")]
 extern crate std;
 
