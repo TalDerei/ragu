@@ -128,5 +128,5 @@ lazy_static = "1.5.0"
 proptest = "1.11.0"
 gungraun = "0.17.0"
 blake2b_simd = "1.0"
-maybe-rayon = { version = "0.1.1", default-features = false }
+maybe-rayon = { git = "https://github.com/tachyon-zcash/maybe-rayon.git", rev = "5c37ee0dd448e8c1edc4529d0b8897ecaff5aad1", default-features = false }
 criterion = { version = "0.5", default-features = false }
