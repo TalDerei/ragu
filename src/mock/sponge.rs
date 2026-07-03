@@ -1,17 +1,24 @@
-//! Out-of-circuit Poseidon sponge — mirrors `ragu_primitives::poseidon::Sponge`.
+//! Out-of-circuit Poseidon sponge — wraps `ragu_primitives::poseidon::Sponge`.
 //!
-//! Real ragu's sponge API is inherently in-circuit: every method threads a
-//! driver and operates on `Element` constraint wires, which is useless to a
-//! mock consumer that has no driver. There is also no standalone native
-//! Poseidon permutation — it exists only as an in-circuit routine. So this
-//! module runs the *real* sponge out-of-circuit by driving it through the
-//! wireless emulator (`Emulator<Wireless<Always<()>, Fp>>`), exposing a plain
-//! `Fp`-in / `Fp`-out boundary. The output is bit-identical to the in-circuit
-//! sponge, and the method surface (`new` / `absorb` / `squeeze` / `save_state`
-//! / `resume`) mirrors the real API as closely as the absent driver allows.
+//! No sponge or permutation logic is copied here. Real ragu's sponge API is
+//! inherently in-circuit: every method threads a driver and operates on
+//! `Element` constraint wires, which is useless to a mock consumer that has no
+//! driver. There is also no standalone native Poseidon permutation — it exists
+//! only as an in-circuit routine. So this module runs the *real* sponge
+//! out-of-circuit by driving it through the wireless emulator
+//! (`Emulator<Wireless<Always<()>, Fp>>`). The [`Sponge`] struct exists only
+//! to bundle that emulator (so callers don't supply a driver on every call)
+//! and to convert `Fp`↔`Element` at the boundary; every operation delegates to
+//! the real sponge, and the output is bit-identical to the in-circuit sponge.
 //!
-//! This replaces the ad-hoc `halo2_poseidon` use that mock consumers have been
-//! reaching for in the absence of a sponge.
+//! This serves mock consumers that want *in-circuit semantics* — values
+//! matching what a real ragu circuit computes — replacing the ad-hoc
+//! `halo2_poseidon` use that stood in for them. It is **not** a substitute for
+//! hashes defined in terms of `halo2_poseidon` itself: ragu's `PoseidonFp` is
+//! a different Poseidon instantiation (width $T = 5$, rate 4) than
+//! halo2_poseidon's Pasta `P128Pow5T3` (width $T = 3$, rate 2), so the two
+//! disagree at every level, including the permutation. Consumers whose hashes
+//! are pinned to `halo2_poseidon` output must keep using it directly.
 
 use ragu_arithmetic::{Cycle as _, PoseidonPermutation as _, ff::Field as _};
 use ragu_core::{
