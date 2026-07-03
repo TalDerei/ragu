@@ -26,7 +26,7 @@ pub fn enforce_nonzero<F: Field>(a: F, err: &'static str) -> Result<F> {
     }
 }
 
-/// Multiplicative inverse `a⁻¹`. Mirrors `Element::invert`, which is
+/// Multiplicative inverse $a^{-1}$. Mirrors `Element::invert`, which is
 /// unsatisfiable for a zero value.
 pub fn invert<F: Field>(a: F, err: &'static str) -> Result<F> {
     Option::from(a.invert()).ok_or_else(|| Error::InvalidWitness(err.into()))
@@ -38,7 +38,7 @@ pub fn divide<F: Field>(a: F, divisor: F, err: &'static str) -> Result<F> {
     invert(divisor, err).map(|inv| a * inv)
 }
 
-/// Enforces `a^{2^k} == 1`. Mirrors `Element::enforce_root_of_unity`.
+/// Enforces $a^{2^k} = 1$. Mirrors `Element::enforce_root_of_unity`.
 pub fn enforce_root_of_unity<F: Field>(a: F, k: u32, err: &'static str) -> Result<()> {
     let mut value = a;
     for _ in 0..k {
@@ -72,6 +72,11 @@ pub fn conditional_enforce_equal<F: Field>(
 /// ragu's derived `GadgetEquals` for `Point`, which constrains the coordinates
 /// equal); returns `Err(Error::InvalidWitness(err))` where those constraints
 /// would be unsatisfiable (`a != b`).
+///
+/// Note: the real `Point` gadget cannot represent the identity —
+/// `Point::alloc` and `Point::constant` reject points at infinity — so while
+/// this mock accepts `identity == identity`, callers using it as a `Point`
+/// mock must only pass non-identity points.
 pub fn enforce_equal_point<C: Group>(a: C, b: C, err: &'static str) -> Result<()> {
     if a == b {
         Ok(())
