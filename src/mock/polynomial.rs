@@ -47,19 +47,18 @@ impl Polynomial {
         ragu_arithmetic::eval(&self.0, x)
     }
 
-    /// `commit() = ∑ coeffᵢ·gᵢ` -- the unblinded coefficient commitment, the
-    /// Vesta point `ragu_arithmetic::mul` returns.
+    /// $\text{commit}() = \sum_i c_i \cdot g_i$ -- the unblinded coefficient
+    /// commitment, the Vesta point `ragu_arithmetic::mul` returns.
     #[must_use]
     pub fn commit(&self) -> Eq {
-        let coeffs = self.0.clone();
         let g = Pasta::host_generators(Pasta::baked()).g();
         assert!(
-            coeffs.len() <= g.len(),
+            self.0.len() <= g.len(),
             "polynomial degree {} exceeds max generators {}",
-            coeffs.len() - 1,
+            self.0.len() - 1,
             g.len() - 1
         );
-        ragu_arithmetic::mul(coeffs.iter(), g[..coeffs.len()].iter())
+        ragu_arithmetic::mul(self.0.iter(), g[..self.0.len()].iter())
     }
 }
 
