@@ -69,7 +69,7 @@ impl Index {
     /// Parses an [`Index`] from its `get()` value.
     pub(crate) fn from_value(value: u64) -> Result<Self> {
         let value_usize = usize::try_from(value)
-            .map_err(|_err| Error::Initialization("step index value exceeds usize".into()))?;
+            .map_err(|_err| Error::MalformedEncoding("step index value exceeds usize".into()))?;
         if value_usize < NUM_INTERNAL_STEPS {
             return Ok(Self {
                 index: StepIndex::Internal(value_usize),
@@ -77,7 +77,7 @@ impl Index {
         }
         let application = value_usize
             .checked_sub(NUM_INTERNAL_STEPS)
-            .ok_or_else(|| Error::Initialization("step index value underflow".into()))?;
+            .ok_or_else(|| Error::MalformedEncoding("step index value underflow".into()))?;
         Ok(Self {
             index: StepIndex::Application(application),
         })
