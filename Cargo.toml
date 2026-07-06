@@ -22,62 +22,51 @@ features = ["legacy-deps", "multicore", "mock"]
 
 [features]
 default = ["modern-deps", "multicore"]
-# Opt-in API-level mock of `ragu_pcd` (see the crate docs). Off by default:
-# without it the crate exposes no API and pulls none of the mock-only deps
-# below. The mock is built against the legacy crypto stack, so it requires
-# `legacy-deps` and is guarded against the default `modern-deps`
-# (compile_error in lib.rs).
+# Opt-in API-level mock of `ragu_pcd` (see the crate docs). Off by default.
 mock = [
   "dep:blake2b_simd",
-  "dep:ff",
-  "dep:lazy_static",
-  "dep:pasta_curves",
-  "dep:rand_core",
+  "dep:ragu_arithmetic",
+  "dep:ragu_circuits",
+  "dep:ragu_core",
+  "dep:ragu_pasta",
+  "dep:ragu_pcd",
+  "dep:ragu_primitives",
 ]
 modern-deps = [
-  "ragu_arithmetic/modern-deps",
-  "ragu_circuits/modern-deps",
-  "ragu_core/modern-deps",
-  "ragu_primitives/modern-deps",
-  "ragu_pcd/modern-deps",
+  "ragu_arithmetic?/modern-deps",
+  "ragu_circuits?/modern-deps",
+  "ragu_core?/modern-deps",
+  "ragu_pasta?/modern-deps",
+  "ragu_pcd?/modern-deps",
+  "ragu_primitives?/modern-deps",
 ]
 legacy-deps = [
-  "ragu_arithmetic/legacy-deps",
-  "ragu_circuits/legacy-deps",
-  "ragu_core/legacy-deps",
-  "ragu_primitives/legacy-deps",
-  "ragu_pcd/legacy-deps",
+  "ragu_arithmetic?/legacy-deps",
+  "ragu_circuits?/legacy-deps",
+  "ragu_core?/legacy-deps",
+  "ragu_pasta?/legacy-deps",
+  "ragu_pcd?/legacy-deps",
+  "ragu_primitives?/legacy-deps",
 ]
 multicore = [
-  "ragu_arithmetic/multicore",
-  "ragu_circuits/multicore",
-  "ragu_pcd/multicore",
+  "ragu_arithmetic?/multicore",
+  "ragu_circuits?/multicore",
+  "ragu_pcd?/multicore",
 ]
 std = []
 
 [lib]
 bench = false
 
+# mock dependencies (pulled in only by the `mock` feature)
 [dependencies]
-ragu_core = { path = "crates/ragu_core", version = "0.0.0", default-features = false, features = ["alloc"] }
-ragu_circuits = { path = "crates/ragu_circuits", version = "0.0.0", default-features = false, features = ["alloc"] }
-ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
-ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
-ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"] }
-
-# mock dependencies (pulled in only by the `mock` feature; legacy crypto stack).
-# `ff`/`pasta_curves`/`rand_core` are pinned to the legacy versions directly
-# (mirroring the `*_legacy` aliases in `[workspace.dependencies]`) so the mock's
-# unaliased `use ff::…` / `use pasta_curves::…` / `use rand_core::…` resolve to
-# the legacy stack without routing through the workspace crates.
 blake2b_simd = { workspace = true, optional = true }
-ff = { package = "ff", version = "0.13", default-features = false, optional = true }
-lazy_static = { workspace = true, optional = true }
-pasta_curves = { package = "pasta_curves", version = "0.5.1", optional = true }
-rand_core = { package = "rand_core", version = "0.6", default-features = false, optional = true }
-
-[dev-dependencies]
-rand = { package = "rand", version = "0.8" }
+ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
+ragu_circuits = { path = "crates/ragu_circuits", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
+ragu_core = { path = "crates/ragu_core", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
+ragu_pasta = { path = "crates/ragu_pasta", version = "0.0.0", default-features = false, features = ["alloc", "baked"], optional = true }
+ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
+ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
 
 [workspace]
 members = [

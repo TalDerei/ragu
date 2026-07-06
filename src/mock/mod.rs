@@ -4,27 +4,31 @@
 //! so downstream consumers (e.g. Zebra) can integrate against it ahead of the
 //! real implementation. The contents are re-exported at the crate root.
 //!
-//! The mock is built against the legacy crypto stack only and is incompatible
-//! with `modern-deps`.
+//! The mock builds against whichever crypto stack the `modern-deps` (default)
+//! or `legacy-deps` feature selects.
 
 pub use application::{Application, ApplicationBuilder};
 pub use ctx::StepCtx;
-pub use error::{Error, Result};
+pub use domain::Domain;
 pub use header::{Header, Suffix};
 pub use hooks::FrameworkHooks;
-pub use polynomial::{Commitment, Polynomial, generators, poly_with_roots};
+pub use polynomial::Polynomial;
 pub use proof::{Pcd, Proof};
-pub use relations::{enforce_poly_concat, enforce_poly_product, enforce_poly_splice};
+pub use ragu_arithmetic::{Cycle, FixedGenerators};
+pub use ragu_core::{Error, Result};
+pub use ragu_pasta::{Pasta, VestaGenerators};
+pub use sponge::{Sponge, SpongeState};
 pub use step::{Index, Step};
 
 pub mod application;
+pub mod constraint;
 pub mod ctx;
-pub mod error;
+pub mod domain;
 pub mod header;
 pub mod hooks;
 pub mod polynomial;
 pub mod proof;
-pub mod relations;
+pub mod sponge;
 pub mod step;
 
 #[cfg(test)]

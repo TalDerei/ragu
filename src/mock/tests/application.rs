@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 
-use rand::thread_rng as rng;
+use ragu_arithmetic::rand::{SeedableRng as _, rngs::StdRng};
+use ragu_core::Result;
 
 use crate::{
     application::*,
     ctx::StepCtx,
-    error::Result,
     header::{Header, Suffix},
     proof::{PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::{Index, Step},
@@ -80,6 +80,7 @@ impl Step for MergeStep {
 
 #[test]
 fn seed_then_verify() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -87,15 +88,16 @@ fn seed_then_verify() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
 
-    let valid = app.verify(&pcd, rng()).expect("verify should succeed");
+    let valid = app.verify(&pcd, &mut rng).expect("verify should succeed");
     assert!(valid, "proof should verify against matching header data");
 }
 
 #[test]
 fn verify_rejects_wrong_data() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -103,16 +105,19 @@ fn verify_rejects_wrong_data() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
     let bad_pcd = pcd.proof.carry::<TestHeader>(TestHeaderData { value: 999 });
 
-    let valid = app.verify(&bad_pcd, rng()).expect("verify should succeed");
+    let valid = app
+        .verify(&bad_pcd, &mut rng)
+        .expect("verify should succeed");
     assert!(!valid, "proof should reject mismatched header data");
 }
 
 #[test]
 fn fuse_then_verify() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -121,21 +126,22 @@ fn fuse_then_verify() {
         .finalize()
         .expect("finalize should succeed");
 
-    let (pcd_a, ()) = app.seed(&mut rng(), SeedStep, 10u64).expect("seed a");
-    let (pcd_b, ()) = app.seed(&mut rng(), SeedStep, 20u64).expect("seed b");
+    let (pcd_a, ()) = app.seed(&mut rng, SeedStep, 10u64).expect("seed a");
+    let (pcd_b, ()) = app.seed(&mut rng, SeedStep, 20u64).expect("seed b");
 
     let (merged_pcd, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pcd_a, pcd_b)
+        .fuse(&mut rng, MergeStep, (), pcd_a, pcd_b)
         .expect("fuse should succeed");
 
     let valid = app
-        .verify(&merged_pcd, rng())
+        .verify(&merged_pcd, &mut rng)
         .expect("verify should succeed");
     assert!(valid, "merged proof should verify");
 }
 
 #[test]
 fn fuse_rejects_wrong_sum() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register")
@@ -144,22 +150,23 @@ fn fuse_rejects_wrong_sum() {
         .finalize()
         .expect("finalize");
 
-    let (pcd_a, ()) = app.seed(&mut rng(), SeedStep, 10u64).expect("seed a");
-    let (pcd_b, ()) = app.seed(&mut rng(), SeedStep, 20u64).expect("seed b");
+    let (pcd_a, ()) = app.seed(&mut rng, SeedStep, 10u64).expect("seed a");
+    let (pcd_b, ()) = app.seed(&mut rng, SeedStep, 20u64).expect("seed b");
 
     let (merged_pcd, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pcd_a, pcd_b)
+        .fuse(&mut rng, MergeStep, (), pcd_a, pcd_b)
         .expect("fuse");
     let bad_pcd = merged_pcd
         .proof
         .carry::<TestHeader>(TestHeaderData { value: 31 });
 
-    let valid = app.verify(&bad_pcd, rng()).expect("verify");
+    let valid = app.verify(&bad_pcd, &mut rng).expect("verify");
     assert!(!valid, "fused proof must reject wrong header data");
 }
 
 #[test]
 fn deep_fuse_chain() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register")
@@ -170,28 +177,28 @@ fn deep_fuse_chain() {
 
     let mut pcds = Vec::new();
     for val in 1u64..=4 {
-        let (pcd, ()) = app.seed(&mut rng(), SeedStep, val).expect("seed");
+        let (pcd, ()) = app.seed(&mut rng, SeedStep, val).expect("seed");
         pcds.push(pcd);
     }
 
     let pcd1 = pcds.remove(0);
     let pcd2 = pcds.remove(0);
     let (merged_left, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pcd1, pcd2)
+        .fuse(&mut rng, MergeStep, (), pcd1, pcd2)
         .expect("fuse left");
 
     let pcd3 = pcds.remove(0);
     let pcd4 = pcds.remove(0);
     let (merged_right, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pcd3, pcd4)
+        .fuse(&mut rng, MergeStep, (), pcd3, pcd4)
         .expect("fuse right");
 
     let (final_pcd, ()) = app
-        .fuse(&mut rng(), MergeStep, (), merged_left, merged_right)
+        .fuse(&mut rng, MergeStep, (), merged_left, merged_right)
         .expect("fuse final");
 
     assert!(
-        app.verify(&final_pcd, rng()).expect("verify"),
+        app.verify(&final_pcd, &mut rng).expect("verify"),
         "depth-2 fuse tree must verify"
     );
 
@@ -199,13 +206,14 @@ fn deep_fuse_chain() {
         .proof
         .carry::<TestHeader>(TestHeaderData { value: 11 });
     assert!(
-        !app.verify(&bad_pcd, rng()).expect("verify"),
+        !app.verify(&bad_pcd, &mut rng).expect("verify"),
         "wrong total must fail"
     );
 }
 
 #[test]
 fn different_merge_trees_same_header() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register")
@@ -214,28 +222,26 @@ fn different_merge_trees_same_header() {
         .finalize()
         .expect("finalize");
 
-    let (pa, ()) = app.seed(&mut rng(), SeedStep, 1u64).expect("seed a");
-    let (pb, ()) = app.seed(&mut rng(), SeedStep, 2u64).expect("seed b");
-    let (pc, ()) = app.seed(&mut rng(), SeedStep, 3u64).expect("seed c");
+    let (pa, ()) = app.seed(&mut rng, SeedStep, 1u64).expect("seed a");
+    let (pb, ()) = app.seed(&mut rng, SeedStep, 2u64).expect("seed b");
+    let (pc, ()) = app.seed(&mut rng, SeedStep, 3u64).expect("seed c");
 
     // Tree shape 1: fuse(fuse(a, b), c)
     let (ab, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pa.clone(), pb.clone())
+        .fuse(&mut rng, MergeStep, (), pa.clone(), pb.clone())
         .expect("fuse ab");
     let (left_leaning, ()) = app
-        .fuse(&mut rng(), MergeStep, (), ab, pc.clone())
+        .fuse(&mut rng, MergeStep, (), ab, pc.clone())
         .expect("fuse (ab)c");
 
     // Tree shape 2: fuse(a, fuse(b, c))
-    let (bc, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pb, pc)
-        .expect("fuse bc");
+    let (bc, ()) = app.fuse(&mut rng, MergeStep, (), pb, pc).expect("fuse bc");
     let (right_leaning, ()) = app
-        .fuse(&mut rng(), MergeStep, (), pa, bc)
+        .fuse(&mut rng, MergeStep, (), pa, bc)
         .expect("fuse a(bc)");
 
-    assert!(app.verify(&left_leaning, rng()).expect("verify"));
-    assert!(app.verify(&right_leaning, rng()).expect("verify"));
+    assert!(app.verify(&left_leaning, &mut rng).expect("verify"));
+    assert!(app.verify(&right_leaning, &mut rng).expect("verify"));
     assert_ne!(
         left_leaning.proof.serialize(),
         right_leaning.proof.serialize(),
@@ -299,6 +305,7 @@ impl Step for AuxMergeStep {
 
 #[test]
 fn aux_data_flows_through_seed_and_fuse() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(AuxSeedStep)
         .expect("register")
@@ -307,25 +314,26 @@ fn aux_data_flows_through_seed_and_fuse() {
         .finalize()
         .expect("finalize");
 
-    let (pcd_a, aux_a) = app.seed(&mut rng(), AuxSeedStep, 3u64).expect("seed a");
+    let (pcd_a, aux_a) = app.seed(&mut rng, AuxSeedStep, 3u64).expect("seed a");
     assert_eq!(aux_a, alloc::vec![9]);
 
-    let (pcd_b, aux_b) = app.seed(&mut rng(), AuxSeedStep, 4u64).expect("seed b");
+    let (pcd_b, aux_b) = app.seed(&mut rng, AuxSeedStep, 4u64).expect("seed b");
     assert_eq!(aux_b, alloc::vec![16]);
 
     let (merged_pcd, merged_aux) = app
-        .fuse(&mut rng(), AuxMergeStep, (aux_a, aux_b), pcd_a, pcd_b)
+        .fuse(&mut rng, AuxMergeStep, (aux_a, aux_b), pcd_a, pcd_b)
         .expect("fuse");
 
     assert_eq!(merged_aux, alloc::vec![9, 16]);
     let reconstructed_value: u64 = merged_aux.iter().sum();
     assert_eq!(reconstructed_value, 25);
-    let valid = app.verify(&merged_pcd, rng()).expect("verify");
+    let valid = app.verify(&merged_pcd, &mut rng).expect("verify");
     assert!(valid, "fused proof must verify");
 }
 
 #[test]
 fn serialized_proof_still_verifies() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -333,7 +341,7 @@ fn serialized_proof_still_verifies() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
     let saved_data = pcd.data.clone();
 
@@ -342,13 +350,14 @@ fn serialized_proof_still_verifies() {
 
     let recovered_pcd = recovered_proof.carry::<TestHeader>(saved_data);
     let valid = app
-        .verify(&recovered_pcd, rng())
+        .verify(&recovered_pcd, &mut rng)
         .expect("verify should succeed");
     assert!(valid, "round-tripped proof should still verify");
 }
 
 #[test]
 fn serialized_proof_rejects_mismatched_header_data() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -356,14 +365,16 @@ fn serialized_proof_rejects_mismatched_header_data() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
 
     let bytes: [u8; PROOF_SIZE_COMPRESSED] = pcd.proof.into();
     let recovered_proof = Proof::try_from(&bytes).expect("recovered proof should deserialize");
 
     let bad_pcd = recovered_proof.carry::<TestHeader>(TestHeaderData { value: 999 });
-    let valid = app.verify(&bad_pcd, rng()).expect("verify should succeed");
+    let valid = app
+        .verify(&bad_pcd, &mut rng)
+        .expect("verify should succeed");
     assert!(
         !valid,
         "round-tripped proof must still reject mismatched header data"
@@ -372,6 +383,7 @@ fn serialized_proof_rejects_mismatched_header_data() {
 
 #[test]
 fn tampered_serialized_proof_fails_to_deserialize() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -379,7 +391,7 @@ fn tampered_serialized_proof_fails_to_deserialize() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
 
     let mut bytes: [u8; PROOF_SIZE_COMPRESSED] = pcd.proof.into();
@@ -392,6 +404,7 @@ fn tampered_serialized_proof_fails_to_deserialize() {
 
 #[test]
 fn rerandomize_preserves_validity() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -399,15 +412,15 @@ fn rerandomize_preserves_validity() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
     let original_proof = pcd.proof.clone();
 
     let rerand_pcd = app
-        .rerandomize(pcd, &mut rng())
+        .rerandomize(pcd, &mut rng)
         .expect("rerandomize should succeed");
     let valid = app
-        .verify(&rerand_pcd, rng())
+        .verify(&rerand_pcd, &mut rng)
         .expect("verify should succeed");
     assert!(valid, "rerandomized proof should still verify");
     assert_ne!(
@@ -551,6 +564,7 @@ fn internal_step_index_rejects_registration() {
 
 #[test]
 fn verify_rejects_unregistered_step_index() {
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -568,7 +582,7 @@ fn verify_rejects_unregistered_step_index() {
         forged_proof.carry::<TestHeader>(TestHeaderData { value: 42 });
 
     let valid = app
-        .verify(&forged_pcd, rng())
+        .verify(&forged_pcd, &mut rng)
         .expect("verify should succeed");
     assert!(
         !valid,
@@ -589,6 +603,7 @@ fn verify_rejects_swapped_header_type() {
         }
     }
 
+    let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
         .register(SeedStep)
         .expect("register should succeed")
@@ -596,7 +611,7 @@ fn verify_rejects_swapped_header_type() {
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng(), SeedStep, 42u64)
+        .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
 
     let swapped_pcd: Pcd<SwappedHeader> = pcd
@@ -604,7 +619,7 @@ fn verify_rejects_swapped_header_type() {
         .carry::<SwappedHeader>(TestHeaderData { value: 42 });
 
     let valid = app
-        .verify(&swapped_pcd, rng())
+        .verify(&swapped_pcd, &mut rng)
         .expect("verify should succeed");
     assert!(
         !valid,

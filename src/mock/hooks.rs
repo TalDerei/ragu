@@ -7,11 +7,10 @@
 
 use alloc::vec::Vec;
 
-use pasta_curves::Fp;
+use ragu_core::Result;
+use ragu_pasta::{Eq, Fp};
 
-use crate::{error::Result, polynomial::Commitment};
-
-pub type PolyQueryClaim = (Commitment, Fp, Fp);
+pub type PolyQueryClaim = (Eq, Fp, Fp);
 
 /// Container for framework-side state threaded through a
 /// [`Step::witness`](crate::step::Step::witness) invocation.
@@ -28,7 +27,7 @@ impl FrameworkHooks {
         }
     }
 
-    pub fn enforce_polynomial_query(&mut self, com: Commitment, x: Fp, y: Fp) -> Result<()> {
+    pub fn enforce_polynomial_query(&mut self, com: Eq, x: Fp, y: Fp) -> Result<()> {
         self.poly_query_claims.push((com, x, y));
         Ok(())
     }
