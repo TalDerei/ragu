@@ -39,7 +39,7 @@ bench = false
 [dependencies]
 ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
-thiserror = "2.0.12"
+thiserror = { version = "2.0.12", default-features = false }
 
 [dev-dependencies]
 ff = { workspace = true }
