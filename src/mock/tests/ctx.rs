@@ -1,4 +1,4 @@
-use alloc::string::ToString as _;
+use alloc::{string::ToString as _, vec};
 
 use ragu_arithmetic::{ff::Field as _, group::Group as _};
 use ragu_core::Error;
@@ -39,7 +39,7 @@ fn derive_challenge_rejects_identity() {
 #[test]
 fn zero_polynomial_commits_to_identity_but_cannot_be_witnessed() {
     // Commit is permissive, exactly like real ragu's unblinded MSM…
-    let com = Polynomial::from_coeffs(&[Fp::ZERO]).commit();
+    let com = Polynomial::from_coeffs(vec![Fp::ZERO]).commit();
     assert!(bool::from(com.is_identity()));
 
     // …the failure happens where the commitment enters the proof system,
