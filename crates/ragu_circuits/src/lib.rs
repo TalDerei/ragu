@@ -28,11 +28,14 @@ pub mod polynomials;
 mod raw;
 pub mod registry;
 pub mod staging;
+/// Test-only circuit analysis utilities.
+#[cfg(feature = "test-utils")]
+pub mod testing;
 mod trace;
 mod trivial;
 mod wiring;
 
-pub use metrics::{CircuitMetrics, RoutineFingerprint, RoutineIdentity, SegmentRecord};
+pub use metrics::{RoutineFingerprint, RoutineIdentity, SegmentRecord};
 pub use trace::Trace;
 
 #[cfg(test)]
@@ -172,18 +175,6 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     /// a point $y \in \mathbb{F}$.
     fn ky(&self, instance: Self::Instance<'_>, y: F) -> Result<F> {
         ky::eval(self, instance, y)
-    }
-
-    /// Computes synthesis metrics for this circuit using the same analysis
-    /// driver used during registry compilation.
-    ///
-    /// The returned counts describe raw circuit synthesis, including system
-    /// constraints such as the root `enforce_one` call.
-    fn metrics(&self) -> Result<CircuitMetrics>
-    where
-        F: FromUniformBytes<64>,
-    {
-        metrics::eval(self)
     }
 }
 
