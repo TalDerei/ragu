@@ -51,10 +51,10 @@ use super::metrics::SegmentRecord;
 /// segment in DFS order.
 ///
 /// The floor plan is indexed by DFS emission order: `floor_plan[i]`
-/// corresponds to the *i*-th segment encountered during constraint emission. A reordering
-/// floor planner may assign different offset values but must preserve index
-/// correspondence. The root segment (index 0) must always be placed at
-/// the polynomial origin (both offsets zero).
+/// corresponds to the *i*-th segment encountered during constraint emission. A
+/// reordering floor planner may assign different offset values but must
+/// preserve index correspondence. The root segment (index 0) must always be
+/// placed at the polynomial origin (both offsets zero).
 ///
 /// Currently, segments keep their emission (DFS) order and positions are
 /// computed by a trivial prefix sum over per-segment constraint counts. A

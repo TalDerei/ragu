@@ -39,8 +39,7 @@ pub struct Endoscalar<'dr, D: Driver<'dr>> {
     #[ragu(gadget)]
     bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ u128::BITS as usize }>>,
 
-    /// Assignment-generation value for the represented endoscalar in compact
-    /// representation.
+    /// Witness data for the represented endoscalar in compact representation.
     #[ragu(value)]
     value: DriverValue<D, u128>,
 }
@@ -50,8 +49,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     ///
     /// # Soundness
     ///
-    /// Any satisfying assignment makes the stored bit gadgets represent the
-    /// little-endian bit decomposition of `value`.
+    /// Any satisfying assignment makes each stored bit represent `0` or `1`.
+    /// Nothing ties those bits to `value`, which is witness input: witness
+    /// generation decomposes it in little-endian order, but callers needing the
+    /// endoscalar bound to a specific field element must enforce that relation
+    /// themselves (see [`extract`](Self::extract)).
     pub fn alloc(dr: &mut D, value: DriverValue<D, u128>) -> Result<Self> {
         let bits = (0..u128::BITS as usize)
             .map(|i| {

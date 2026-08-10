@@ -57,7 +57,7 @@ pub struct Element<'dr, D: Driver<'dr>> {
     #[ragu(wire)]
     wire: D::Wire,
 
-    /// Assignment-generation data for this wire.
+    /// Witness data for this wire.
     #[ragu(value)]
     value: DriverValue<D, D::F>,
 }

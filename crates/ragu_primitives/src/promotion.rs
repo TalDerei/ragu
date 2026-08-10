@@ -1,5 +1,4 @@
-//! Strips witness data from a gadget while preserving its wire
-//! structure.
+//! Strips witness data from a gadget while preserving its wire structure.
 
 use core::ops::Deref;
 
@@ -106,11 +105,11 @@ impl<F: Field, WM: WireMap<F>> WireMap<F> for Demoter<'_, WM> {
 ///
 /// All gadgets can be demoted using
 /// [`GadgetExt::demote`](crate::GadgetExt::demote), producing a [`Demoted`]
-/// version of the original gadget that has its witness data
-/// stripped away. They can be recovered (promoted) from their demoted state;
-/// gadgets must opt into supporting this by implementing the [`Promotion`]
-/// trait so that users can then use the [`Demoted::promote`] method.
-/// Optionally, gadgets can offer their own custom promotion strategies.
+/// version of the original gadget that has its witness data stripped away.
+/// They can be recovered (promoted) from their demoted state; gadgets must opt
+/// into supporting this by implementing the [`Promotion`] trait so that users
+/// can then use the [`Demoted::promote`] method. Optionally, gadgets can offer
+/// their own custom promotion strategies.
 ///
 /// # Witness Consistency
 ///
@@ -131,8 +130,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Deref for Demoted<'dr, D, G> {
 }
 
 impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
-    /// Strips a gadget of its witness data and returns a demoted
-    /// version of it.
+    /// Strips a gadget of its witness data and returns a demoted version of it.
     pub fn new(gadget: &G) -> Result<Self> {
         Ok(Demoted {
             gadget: CloneWires::<_, DemotedDriver<D>>::remap(gadget)?,

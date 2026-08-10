@@ -26,7 +26,7 @@
 //! matrices determined by the `enforce_zero` (and indirectly,
 //! [`add`](ragu_core::drivers::Driver::add)) calls.
 //!
-//! ### Constraint Evaluation
+//! ### Direct Evaluation
 //!
 //! Naively, one could pre-compute $s(X, Y)$ as a bivariate polynomial for each
 //! circuit and then evaluate it as needed. However, this is inefficient in both
@@ -67,9 +67,9 @@
 //! in $s(X, Y)$. Similarly, the $k$-th gate in segment $i$
 //! occupies absolute gate index $m\_{i} + k$.
 //!
-//! Because constraint emission interleaves a segment's own constraints with nested
-//! routine calls that belong to *separate* segments, the running $Y$-power
-//! counter is **not** continuous across routine boundaries. When entering a
+//! Because constraint emission interleaves a segment's own constraints with
+//! nested routine calls that belong to *separate* segments, the running
+//! $Y$-power counter is **not** continuous across routine boundaries. When entering a
 //! routine for segment $i$, each evaluator jumps to $\ell\_{i}$ and restores
 //! the parent's offset on return.
 //!

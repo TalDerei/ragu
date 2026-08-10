@@ -56,8 +56,8 @@ where
     /// The circuit must declare `Output = ()`. Non-empty output would
     /// be serialized into output-binding constraints by the standard
     /// constraint-emission path, contributing to $k(Y)$ and violating the
-    /// bonding requirement that $k(Y) \equiv 0$. This is enforced at the type
-    /// level.
+    /// bonding requirement that $k(Y) \equiv 0$. The `Output = ()` bound makes
+    /// this a type-level requirement.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.

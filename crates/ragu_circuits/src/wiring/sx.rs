@@ -13,8 +13,8 @@
 //!
 //! Rather than pre-computing $s(X, Y)$ as a bivariate polynomial and then
 //! evaluating it (which would require $O(n \cdot q)$ storage), this module uses
-//! a specialized [`Driver`] that interprets circuit operations to
-//! produce coefficients directly. Wires become evaluated monomials, and linear
+//! a specialized [`Driver`] that interprets circuit operations to produce
+//! coefficients directly. Wires become evaluated monomials, and linear
 //! combinations become field arithmetic.
 //!
 //! The driver redefines each operation as follows:
@@ -111,9 +111,9 @@ struct SxScope<F> {
 /// A [`Driver`] that computes the partial evaluation $s(x, Y)$.
 ///
 /// Given a fixed evaluation point $x \in \mathbb{F}$, this driver interprets
-/// circuit operations to produce the coefficients of $s(x, Y)$
-/// directly as field elements. Each call to [`Driver::enforce_zero`] stores one
-/// coefficient in the result polynomial.
+/// circuit operations to produce the coefficients of $s(x, Y)$ directly as
+/// field elements. Each call to [`Driver::enforce_zero`] stores one coefficient
+/// in the result polynomial.
 ///
 /// [`Driver`]: ragu_core::drivers::Driver
 /// [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
@@ -343,8 +343,8 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
 
     let mut evaluator = Evaluator::<F, R> {
         // Zero-initialized: the evaluator fills specific indices during
-        // constraint emission. Unfilled indices must remain zero as they represent
-        // unused wire slots.
+        // constraint emission. Unfilled indices must remain zero as they
+        // represent unused wire slots.
         result: vec![F::ZERO; R::num_coeffs()],
         scope: SxScope {
             current_a_x: base_a_x,

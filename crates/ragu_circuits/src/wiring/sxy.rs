@@ -85,8 +85,8 @@ struct SxyScope<F> {
 /// A [`Driver`] that computes the full evaluation $s(x, y)$.
 ///
 /// Given fixed evaluation points $x, y \in \mathbb{F}$, this driver interprets
-/// circuit operations to produce $s(x, y)$ as a single field element
-/// using Horner's rule (see [module documentation][`self`]). Each call to
+/// circuit operations to produce $s(x, y)$ as a single field element using
+/// Horner's rule (see [module documentation][`self`]). Each call to
 /// [`Driver::enforce_zero`] applies one Horner step:
 /// `result = result * y + coefficient`.
 ///
@@ -310,7 +310,8 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
 ) -> Result<F> {
     // At x = 0 every monomial other than x^0 vanishes; the d[0] ONE wire
     // (at x^0) still contributes. Set x_inv = 0 so the running monomials
-    // stay zero through constraint emission and the ONE wire still resolves to F::ONE.
+    // stay zero through constraint emission and the ONE wire still resolves to
+    // F::ONE.
     let x_inv = if x == F::ZERO {
         F::ZERO
     } else {

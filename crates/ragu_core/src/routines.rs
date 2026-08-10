@@ -82,8 +82,9 @@ pub trait Routine<F: Field>: Clone + Send {
 ///
 /// # Design note
 ///
-/// [`Routine::predict`] is witness-generation oriented, but constraint-only drivers
-/// piggyback on it just for the auxiliary data. This bundles two concerns:
+/// [`Routine::predict`] is witness-generation oriented, but constraint-only
+/// drivers piggyback on it just for the auxiliary data. This bundles two
+/// concerns:
 ///
 /// - **Auxiliary data**: all drivers can benefit from avoiding redundant work.
 /// - **`Known` vs `Unknown`**: witness drivers can use this to short-circuit
