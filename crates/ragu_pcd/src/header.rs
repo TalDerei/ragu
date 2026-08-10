@@ -103,11 +103,6 @@ pub trait Header<F: Field>: Send + Sync + Any {
     /// determine the constraints emitted while constructing `Output`. The
     /// `Output` implementation determines any constraints emitted when callers
     /// serialize it.
-    ///
-    /// # Errors
-    ///
-    /// Implementations may return header-specific witness-generation or encoding
-    /// errors and should document their concrete failure conditions.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
