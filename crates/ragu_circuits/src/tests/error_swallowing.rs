@@ -2,11 +2,13 @@
 //!
 //! Circuits are trusted to propagate driver errors with `?`. A malicious
 //! circuit can instead drop an error and let synthesis continue. These tests
-//! pin what actually happens on each synthesis path when it does: the trace
-//! evaluator records nothing for the failed gate, the metrics counter (which
-//! never runs closures) still counts it, and the resulting gate-count
-//! desynchronization is caught when the trace is assembled against the floor
-//! plan.
+//! pin what actually happens on each synthesis path when it does. For direct
+//! gate failures, the trace evaluator records nothing while the metrics counter
+//! still counts the gate, and assembly catches the resulting desynchronization.
+//! For partially executed routine failures, the trace evaluator stops the
+//! routine after the failing witness closure while the metrics counter, which
+//! does not run that closure, synthesizes the complete routine. Assembly then
+//! catches the short routine segment.
 
 use alloc::format;
 
@@ -16,6 +18,7 @@ use ragu_core::{
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    routines::{Prediction, Routine},
 };
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, allocator::Standard};
@@ -113,6 +116,104 @@ impl Circuit<Fp> for ErrorSwallowingCircuit {
     }
 }
 
+/// Routine that records one gate before a witness-only allocation error.
+///
+/// The trace driver evaluates `D::try_just`, so it records the square and then
+/// returns the allocation error. Empty structure drivers do not evaluate that
+/// closure, so they synthesize the allocation and complete the routine.
+#[derive(Clone)]
+struct PartiallyExecutedFailingRoutine;
+
+impl Routine<Fp> for PartiallyExecutedFailingRoutine {
+    type Input = Kind![Fp; Element<'_, _>];
+    type Output = Kind![Fp; Element<'_, _>];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let _partial_output = input.square(dr)?;
+        let failed_value: DriverValue<D, Fp> =
+            D::try_just(|| Err(Error::InvalidWitness("routine failed".into())))?;
+        Element::alloc(dr, &mut Standard::new(), failed_value)
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::unit()))
+    }
+}
+
+/// Propagates a partially executed routine's error back to the synthesis
+/// caller.
+struct RoutineErrorPropagatingCircuit;
+
+impl Circuit<Fp> for RoutineErrorPropagatingCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = Fp;
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Element::alloc(dr, &mut Standard::new(), instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let input = Element::alloc(dr, &mut Standard::new(), witness)?;
+        let output = dr.routine(PartiallyExecutedFailingRoutine, input)?;
+        Ok(WithAux::new(output, D::unit()))
+    }
+}
+
+/// Malicious circuit that ignores a partially executed routine's error and
+/// continues allocating in its parent scope.
+struct RoutineErrorSwallowingCircuit;
+
+impl Circuit<Fp> for RoutineErrorSwallowingCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = (Fp, Fp);
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Element::alloc(dr, &mut Standard::new(), instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let allocator = &mut Standard::new();
+        let routine_input = Element::alloc(dr, allocator, witness.as_ref().map(|value| value.0))?;
+
+        // Swallow the error rather than propagating it with `?`.
+        let _ = dr.routine(PartiallyExecutedFailingRoutine, routine_input);
+
+        // Trace synthesis restores the parent scope before returning the error.
+        let output = Element::alloc(dr, allocator, witness.as_ref().map(|value| value.1))?;
+        Ok(WithAux::new(output, D::unit()))
+    }
+}
+
 /// Positive control: a circuit that propagates a gate error with `?` causes
 /// [`CircuitExt::trace`] to fail, confirming that the trace driver surfaces the
 /// error. This is the complement to the [`ErrorSwallowingCircuit`] tests.
@@ -162,6 +263,48 @@ fn test_propagated_gate_error_caught() {
         Err(other) => panic!("expected InvalidWitness, got {other:?}"),
         Ok(_) => panic!("trace should fail when a gate error is propagated with `?`"),
     }
+}
+
+/// Positive control for the routine boundary: propagating the error returned
+/// by `dr.routine` aborts trace synthesis with that same error.
+#[test]
+fn test_propagated_routine_error_caught() {
+    let witness = Fp::from(3u64);
+    match RoutineErrorPropagatingCircuit.trace(witness) {
+        Err(Error::InvalidWitness(err)) => {
+            assert_eq!(format!("{err}"), "routine failed");
+        }
+        Err(other) => panic!("expected InvalidWitness, got {other:?}"),
+        Ok(_) => panic!("trace should fail when a routine error is propagated with `?`"),
+    }
+
+    let obj = into_wiring_object::<_, _, TestRank>(RoutineErrorPropagatingCircuit)
+        .expect("structure synthesis must not evaluate the failing witness closure");
+    assert_eq!(obj.segment_records().len(), 2);
+}
+
+/// A swallowed routine error leaves the routine trace one gate shorter than the
+/// structure synthesized by metrics, so assembly rejects the routine segment.
+#[test]
+#[should_panic(expected = "segment 1 size must match floor plan")]
+fn test_swallowed_routine_error_rejected_during_assembly() {
+    let witness = (Fp::from(3u64), Fp::from(7u64));
+
+    let trace = RoutineErrorSwallowingCircuit
+        .trace(witness)
+        .expect("the malicious circuit swallowed the routine error")
+        .into_output();
+    assert_eq!(trace.segments.len(), 2);
+    assert_eq!(trace.segments[0].a.len(), 2);
+    assert_eq!(trace.segments[0].a[1], Fp::from(3u64));
+    assert_eq!(trace.segments[0].d[1], Fp::from(7u64));
+    assert_eq!(trace.segments[1].a.len(), 1);
+
+    let obj = into_wiring_object::<_, _, TestRank>(RoutineErrorSwallowingCircuit).unwrap();
+    let plan = floor_planner::floor_plan(obj.segment_records());
+    assert_eq!(trace.segments[1].a.len() + 1, plan[1].num_gates);
+
+    let _ = trace.assemble::<TestRank>(&plan, Fp::ZERO);
 }
 
 /// The trace driver evaluates a gate's closure before recording anything, so a

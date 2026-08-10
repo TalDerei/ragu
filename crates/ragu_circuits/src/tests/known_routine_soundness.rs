@@ -115,9 +115,9 @@ where
     }
 }
 
-/// Runs the full prover/verifier satisfaction relation and returns whether the
-/// resulting trace is *accepted* (`true`) for the given circuit/witness/instance.
-fn trace_is_accepted<Ro>(routine: Ro, witness: Fp, instance: Fp) -> bool
+/// Runs the full prover/verifier satisfaction relation at fixed verifier
+/// challenges and returns whether the resulting trace is accepted.
+fn trace_is_accepted_at<Ro>(routine: Ro, witness: Fp, instance: Fp, y: Fp, z: Fp) -> bool
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
         + Clone
@@ -134,8 +134,6 @@ where
     let trace = circuit.trace(witness).unwrap().into_output();
 
     // Verifier side: the public instance polynomial k(y).
-    let y = Fp::random(&mut ragu_arithmetic::rand::rng());
-    let z = Fp::random(&mut ragu_arithmetic::rand::rng());
     let expected = circuit.ky(instance, y).unwrap();
 
     // The fixed, witness-independent constraint structure s(X, Y), built by the
@@ -154,17 +152,29 @@ where
     expected == a.revdot(&b)
 }
 
+/// Fixed nonzero challenge pairs make these regression tests reproducible and
+/// check the satisfaction identity at more than one point.
+fn challenge_pairs() -> [(Fp, Fp); 3] {
+    [
+        (Fp::from(2u64), Fp::from(3u64)),
+        (Fp::from(5u64), Fp::from(7u64)),
+        (Fp::from(11u64), Fp::from(13u64)),
+    ]
+}
+
 /// Control: an honest Known routine (predict == execute) produces a trace that
-/// the verifier accepts. Confirms the harness and the Known/parallel path work.
+/// the verifier accepts. Confirms the harness and the Known/deferred path work.
 #[test]
 fn honest_known_routine_is_accepted() {
     let w = Fp::from(3u64);
     // output = (w^2)^2 = w^4
     let instance = w.square().square();
-    assert!(
-        trace_is_accepted(ConfigurableSquare::<0>, w, instance),
-        "honest Known routine must verify"
-    );
+    for (y, z) in challenge_pairs() {
+        assert!(
+            trace_is_accepted_at(ConfigurableSquare::<0>, w, instance, y, z),
+            "honest Known routine must verify at y={y:?}, z={z:?}"
+        );
+    }
 }
 
 /// The actual finding under test: a Known routine whose `predict` lies about the
@@ -175,16 +185,20 @@ fn honest_known_routine_is_accepted() {
 ///   * the value matching the honest/executed computation, and
 ///   * the value matching the lie they fed the parent.
 ///
-/// Both must be REJECTED for the system to be sound.
+/// Rejecting both provides deterministic regression coverage for the claimed
+/// mismatch; it is not an exhaustive soundness proof over every instance.
 #[test]
 fn lying_known_routine_is_rejected_for_executed_instance() {
     let w = Fp::from(3u64);
     // Instance consistent with the EXECUTED routine: output = (w^2)^2 = w^4.
     let executed_instance = w.square().square();
-    assert!(
-        !trace_is_accepted(ConfigurableSquare::<7>, w, executed_instance),
-        "lying Known routine must NOT verify against the executed-output instance"
-    );
+    for (y, z) in challenge_pairs() {
+        assert!(
+            !trace_is_accepted_at(ConfigurableSquare::<7>, w, executed_instance, y, z),
+            "lying Known routine must NOT verify against the executed-output instance at \
+             y={y:?}, z={z:?}"
+        );
+    }
 }
 
 #[test]
@@ -194,10 +208,11 @@ fn lying_known_routine_is_rejected_for_predicted_instance() {
     // the parent squared input^2 + 7, so output = (w^2 + 7)^2.
     let predicted = w.square() + Fp::from(7u64);
     let predicted_instance = predicted.square();
-    assert!(
-        !trace_is_accepted(ConfigurableSquare::<7>, w, predicted_instance),
-        "lying Known routine must NOT verify against the predicted-output instance either; \
-         the parent value is structurally bound to the executed child output, so no instance \
-         choice can reconcile a predict/execute mismatch"
-    );
+    for (y, z) in challenge_pairs() {
+        assert!(
+            !trace_is_accepted_at(ConfigurableSquare::<7>, w, predicted_instance, y, z),
+            "lying Known routine must NOT verify against the predicted-output instance at \
+             y={y:?}, z={z:?}"
+        );
+    }
 }
