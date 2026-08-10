@@ -156,10 +156,10 @@ Three workflows in `.github/workflows/`:
   and `bin/**/*.rs`.
 
 - **`fuzz-cron.yml`** runs every target via matrix-parallel for 5 hours
-  each on Sundays and Wednesdays at 00:00 UTC. Each target restores its
-  latest corpus, replays committed crash regressions, extends the corpus,
-  and saves it even when fuzzing finds a crash. Crash artifacts have
-  30-day retention. Manual runs can override `duration` and `use_dict`.
+  each on Sundays, Wednesdays, and Fridays at 00:00 UTC. Each target
+  restores its latest corpus, replays committed crash regressions, extends
+  the corpus, and saves it even when fuzzing finds a crash. Crash artifacts
+  have 30-day retention. Manual runs can override `duration` and `use_dict`.
 
 - **`fuzz-coverage.yml`** runs every Monday at 06:00 UTC, after the Sunday
   fuzz run. Each matrix job restores its target's latest accumulated corpus,
