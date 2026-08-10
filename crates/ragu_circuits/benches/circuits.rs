@@ -10,6 +10,7 @@ use ragu_circuits::{
     Circuit, CircuitExt,
     polynomials::{ProductionRank, TestRank, sparse},
     registry::{Registry, RegistryBuilder},
+    testing::synthesis_counts,
 };
 use ragu_pasta::{Fp, Pasta};
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
@@ -78,13 +79,13 @@ fn eval_ky((a, b, y): (Fp, Fp, Fp)) {
 #[library_benchmark]
 #[bench::simple(MySimpleCircuit)]
 fn metrics_simple(circuit: impl Circuit<Fp> + 'static) {
-    black_box(circuit.metrics()).unwrap();
+    black_box(synthesis_counts(&circuit)).unwrap();
 }
 
 #[library_benchmark]
 #[benches::multiple( SquareCircuit { times: 2 }, SquareCircuit { times: 10 },)]
 fn metrics_square(circuit: impl Circuit<Fp> + 'static) {
-    black_box(circuit.metrics()).unwrap();
+    black_box(synthesis_counts(&circuit)).unwrap();
 }
 
 #[library_benchmark(setup = setup_rng)]

@@ -3,10 +3,10 @@ use native::{
     stages::{eval, inner_error, outer_error, preamble, query},
 };
 use ragu_circuits::{
-    CircuitExt,
+    Circuit,
     staging::{Stage, StageExt},
 };
-use ragu_pasta::{Pasta, fp, fq};
+use ragu_pasta::{Fp, Pasta, fp, fq};
 
 use super::*;
 use crate::*;
@@ -57,51 +57,53 @@ type InnerError = inner_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
 type Query = query::Stage<Pasta, R, HEADER_SIZE>;
 type Eval = eval::Stage<Pasta, R, HEADER_SIZE>;
 
+fn synthesis_counts(circuit: impl Circuit<Fp>) -> (usize, usize) {
+    let counts = ragu_circuits::testing::synthesis_counts(&circuit).unwrap();
+    (counts.num_gates, counts.num_constraints)
+}
+
 fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
     let pasta = Pasta::baked();
     let (_, log2_circuits) = native::total_circuit_counts(NUM_APP_STEPS);
 
-    let metrics = match variant {
+    match variant {
         InternalCircuitIndex::Hashes1Circuit => {
-            native::circuits::hashes_1::Circuit::<Pasta, R, HEADER_SIZE, RevdotParameters>::new(
-                pasta,
-                log2_circuits,
-            )
-            .metrics()
-            .unwrap()
+            synthesis_counts(native::circuits::hashes_1::Circuit::<
+                Pasta,
+                R,
+                HEADER_SIZE,
+                RevdotParameters,
+            >::new(pasta, log2_circuits))
         }
         InternalCircuitIndex::Hashes2Circuit => {
-            native::circuits::hashes_2::Circuit::<Pasta, R, HEADER_SIZE, RevdotParameters>::new(
-                pasta,
-            )
-            .metrics()
-            .unwrap()
+            synthesis_counts(native::circuits::hashes_2::Circuit::<
+                Pasta,
+                R,
+                HEADER_SIZE,
+                RevdotParameters,
+            >::new(pasta))
         }
-        InternalCircuitIndex::InnerCollapseCircuit => native::circuits::inner_collapse::Circuit::<
-            Pasta,
-            R,
-            HEADER_SIZE,
-            RevdotParameters,
-        >::new()
-        .metrics()
-        .unwrap(),
-        InternalCircuitIndex::OuterCollapseCircuit => native::circuits::outer_collapse::Circuit::<
-            Pasta,
-            R,
-            HEADER_SIZE,
-            RevdotParameters,
-        >::new()
-        .metrics()
-        .unwrap(),
+        InternalCircuitIndex::InnerCollapseCircuit => {
+            synthesis_counts(native::circuits::inner_collapse::Circuit::<
+                Pasta,
+                R,
+                HEADER_SIZE,
+                RevdotParameters,
+            >::new())
+        }
+        InternalCircuitIndex::OuterCollapseCircuit => {
+            synthesis_counts(native::circuits::outer_collapse::Circuit::<
+                Pasta,
+                R,
+                HEADER_SIZE,
+                RevdotParameters,
+            >::new())
+        }
         InternalCircuitIndex::ComputeVCircuit => {
-            native::circuits::compute_v::Circuit::<Pasta, R, HEADER_SIZE>::new()
-                .metrics()
-                .unwrap()
+            synthesis_counts(native::circuits::compute_v::Circuit::<Pasta, R, HEADER_SIZE>::new())
         }
         _ => panic!("constraint counts only apply to internal circuits"),
-    };
-
-    (metrics.num_gates(), metrics.num_constraints())
+    }
 }
 
 #[rustfmt::skip]
