@@ -27,7 +27,7 @@ p(X)\cdot q(X) =c(X)= \sum_{k=0}^{8n-2}c_k\cdot X^k
 \text{ and } c_{4n-1}=\revdot{\v{p}}{\v{q}}
 $$
 
-This is exactly what we need! If we multiply $\hat{r}(X)$ by $(r(zX) + s(X,y) + t(X,z))$, the
+This is exactly what we need! If we multiply $r(X)$ by $(r(zX) + s(X,y) + t(X,z))$, the
 coefficient of its $X^{4n-1}$ term equals
 $\revdot{\v{r}}{\v{r}\circ\v{z^{4n}} + \v{t} + \v{s}}$—the left side of our
 constraint.
@@ -134,7 +134,7 @@ Here's how the protocol flows:
    polynomials only_.
 
 5. **Product and decomposition**: The prover computes the product polynomial
-   $\hat{r}(X) \cdot (r(zX) + s(X,y) + t(X,z))$, decomposes it into $c_1(X)$
+   $r(X) \cdot (r(zX) + s(X,y) + t(X,z))$, decomposes it into $c_1(X)$
    and $c_2(X)$ using the trick we described earlier, and commits to both.
 
 6. **Verification**: The verifier runs the checks we'll describe below.
@@ -174,7 +174,7 @@ This PIOP works, but it's not as efficient as we'd like. Here are the main
 bottlenecks:
 
 **Prover overhead**: Computing the product polynomial
-$\hat{r}(X) \cdot (r(zX) + s(X,y) + t(X,z))$ and then decomposing it into
+$r(X) \cdot (r(zX) + s(X,y) + t(X,z))$ and then decomposing it into
 $c_1(X)$ and $c_2(X)$ is expensive. We need at
 least 3 FFTs over a domain of size $8n-2$[^prod-cost]. This is the most
 expensive step for the prover.
