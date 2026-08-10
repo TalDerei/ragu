@@ -282,6 +282,7 @@ jobs:
       - test
       - test-32-bit
       - bitrot
+      - fuzz-check
       - docs
       - book
     runs-on: ubuntu-latest

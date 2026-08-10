@@ -29,7 +29,7 @@
 # — measured ~70% on fuzz_witness_cheat (50k → 84k exec/s), ~30% on
 # fuzz_poseidon_sponge, ~10% on fuzz_element_ops. ASAN catches memory
 # bugs (UAF, OOB on unwise unsafe, leaks across `Simulator::simulate`
-# closures); to opt back in, set ASAN=1. The weekly cron in
+# closures); to opt back in, set ASAN=1. The scheduled cron in
 # `.github/workflows/fuzz-cron.yml` invokes `cargo +nightly fuzz run`
 # directly and keeps ASAN regardless of this script's default. Crash
 # artifacts found here should be reproduced under ASAN=1 before triaging
@@ -175,6 +175,10 @@ if [[ "${1:-}" == "coverage" ]]; then
     echo "Install it with: rustup component add llvm-tools-preview --toolchain nightly" >&2
     exit 1
   fi
+  has_input_files() {
+    local dir="$1"
+    [[ -d "$dir" ]] && [[ -n "$(find "$dir" -type f -print -quit)" ]]
+  }
   # Keep the report focused on workspace code: drop registry deps, the
   # rust std sources, and the fuzz harness itself.
   IGNORE='(/\.cargo/|/rustc/|/\.rustup/|qa/fuzz/)'
@@ -187,13 +191,16 @@ if [[ "${1:-}" == "coverage" ]]; then
   PROFS=()
   OBJS=()
   for target in "${COV_TARGETS[@]}"; do
-    if [[ ! -d "corpus/$target" ]]; then
-      echo "=== $target: no corpus, skipping ==="
-      continue
+    dirs=()
+    if has_input_files "corpus/$target"; then
+      dirs+=("corpus/$target")
     fi
-    dirs=("corpus/$target")
-    if [[ -d "seeds/$target" ]]; then
+    if has_input_files "seeds/$target"; then
       dirs+=("seeds/$target")
+    fi
+    if [[ ${#dirs[@]} -eq 0 ]]; then
+      echo "=== $target: no corpus or seed inputs, skipping ==="
+      continue
     fi
     echo "=== coverage $target ==="
     cargo +nightly fuzz coverage --fuzz-dir . -s none "$target" "${dirs[@]}"

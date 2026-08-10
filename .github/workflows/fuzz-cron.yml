@@ -101,7 +101,10 @@ jobs:
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        # Keep this pin in sync with fuzz-coverage.yml. An unlocked install
+        # currently resolves cargo-platform 0.3.3, which requires Rust 1.91,
+        # while this step runs under the repository's Rust 1.90 toolchain.
+        run: cargo install --locked cargo-fuzz@0.13.1
 
       # Replay committed crash reproducers (one execution per file, no
       # fuzzing) before spending the long fuzz budget. A regression here

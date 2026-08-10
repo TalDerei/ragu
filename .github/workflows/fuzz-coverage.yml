@@ -1,11 +1,12 @@
 name: Fuzz coverage
 
 # Weekly per-target coverage reports over the cron-accumulated corpora.
-# Replays each target's cached corpus under a coverage-instrumented
-# build and uploads an llvm-cov per-file report, so coverage drift is
-# visible over time without running anything locally. The union ("which
-# code does fuzzing reach at all") view is generated locally via
-# `./fuzz.sh coverage`; this workflow tracks the per-target trend.
+# Replays each target's cached corpus and committed seeds under a
+# coverage-instrumented build and uploads an llvm-cov per-file report,
+# so coverage drift is visible over time without running anything
+# locally. The union ("which code does fuzzing reach at all") view is
+# generated locally via `./fuzz.sh coverage`; this workflow tracks the
+# per-target trend.
 
 on:
   # Mondays 06:00 UTC, after the Sunday 00:00 UTC fuzz run has extended
@@ -80,7 +81,10 @@ jobs:
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        # Keep this pin in sync with fuzz-cron.yml. An unlocked install
+        # currently resolves cargo-platform 0.3.3, which requires Rust 1.91,
+        # while this step runs under the repository's Rust 1.90 toolchain.
+        run: cargo install --locked cargo-fuzz@0.13.1
 
       - name: Generate coverage report
         working-directory: qa/fuzz
@@ -90,15 +94,27 @@ jobs:
         run: |
           set -euo pipefail
           REPORT="coverage-report-${FUZZ_TARGET}.txt"
-          if [ ! -d "corpus/${FUZZ_TARGET}" ] || [ -z "$(ls -A "corpus/${FUZZ_TARGET}" 2>/dev/null)" ]; then
-            # First run for a target predates any cron corpus; surface
-            # that in the artifact rather than failing the matrix.
-            echo "No corpus restored for ${FUZZ_TARGET}; skipping coverage." | tee "$REPORT"
+          has_input_files() {
+            local dir="$1"
+            [ -d "$dir" ] && [ -n "$(find "$dir" -type f -print -quit)" ]
+          }
+          INPUT_DIRS=()
+          if has_input_files "corpus/${FUZZ_TARGET}"; then
+            INPUT_DIRS+=("corpus/${FUZZ_TARGET}")
+          fi
+          if has_input_files "seeds/${FUZZ_TARGET}"; then
+            INPUT_DIRS+=("seeds/${FUZZ_TARGET}")
+          fi
+          if [ "${#INPUT_DIRS[@]}" -eq 0 ]; then
+            # A target can predate both a cron corpus and committed seeds;
+            # surface that in the artifact rather than failing the matrix.
+            echo "No corpus or seed inputs found for ${FUZZ_TARGET}; skipping coverage." \
+              | tee "$REPORT"
             exit 0
           fi
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           TOOLS="$(rustc --print sysroot)/lib/rustlib/${HOST}/bin"
-          cargo fuzz coverage --fuzz-dir . -s none "$FUZZ_TARGET" "corpus/${FUZZ_TARGET}"
+          cargo fuzz coverage --fuzz-dir . -s none "$FUZZ_TARGET" "${INPUT_DIRS[@]}"
           # Keep the report focused on workspace code: drop registry
           # deps, the rust std sources, and the fuzz harness itself.
           "$TOOLS/llvm-cov" report \
