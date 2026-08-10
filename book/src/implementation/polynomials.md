@@ -18,10 +18,9 @@ This vector is the coefficient vector of a special polynomial
 
 $$
 s(X, Y) = \sum\limits_{j=0}^{4n - 1} Y^j \Big(
-      \sum_{i = 0}^{n - 1} (\v{u})_{j,i} X^{2n - 1 - i}
-    + \sum_{i = 0}^{n - 1} (\v{v})_{j,i} X^{2n + i}
-    + \sum_{i = 0}^{n - 1} (\v{w})_{j,i} X^{4n - 1 - i}
-    + \sum_{i = 0}^{n - 1} (\v{d})_{j,i} X^{i}
+      \sum_{i = 0}^{n - 1} (\v{u})_{i,j} X^{2n - 1 - i}
+    + \sum_{i = 0}^{n - 1} (\v{v})_{i,j} X^{2n + i}
+    + \sum_{i = 0}^{n - 1} (\v{w})_{i,j} X^{4n - 1 - i}
 \Big)
 $$
 
@@ -40,7 +39,7 @@ polynomial:
 * `mul` creates new wires $(a, b, c)$ that must satisfy a
   [gate]
   $ab = c$. This allocates (or assigns) the corresponding powers
-  $(X^{2n + i}, X^{2n - 1 - i}, X^{4n - 1 - i})$ for some unused $i$.
+  $(X^{2n + i}, X^{2n - 1 - i}, X^i)$ for some unused $i$.
 
 **Importantly, this synthesis process is procedural.** Any contiguous
 sequence of `enforce_zero` and `mul` operations is defined by the

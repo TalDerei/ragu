@@ -1,5 +1,7 @@
 # Circuits
 
+> Normal circuit, multi-stage circuits etc.
+
 The [`ragu_circuits`] crate turns arithmetic circuit definitions into
 polynomials. For the underlying protocol-level arithmetization see the
 [arithmetization chapter](../protocol/core/arithmetization.md); for the
@@ -28,7 +30,10 @@ evaluating driver to produce a [`Trace`] of raw gate values; its
 [`ky`][circuit-ky] method evaluates the instance polynomial $k(y)$ at a
 concrete challenge $y$.
 
-## `Maybe<T>`
+## Maybe Values
+
+Explains the `Maybe<T>` abstraction for type-level encoding of optional
+witness data, enabling zero-cost optimizations.
 
 Circuit code runs under drivers that may or may not need concrete
 values. `Maybe<T>` resolves this at the type level: drivers with
@@ -40,34 +45,29 @@ evaluation, metrics, and wiring evaluation without runtime branching.
 ## Witness Structure
 
 The prover's witness $\v{r}$ is defined by
-$\v{a}, \v{b}, \v{c}, \v{d} \in \F^n$, where $n = 2^k$. Individual
-elements are known as _wires_, specifically _allocated_ wires, because
-the prover must commit to them and they exist at a cost. They are called
-"wires" rather than "variables" because they principally behave as
-inputs and outputs to multiplication gates. Each gate enforces
-$\v{a}_i \v{b}_i = \v{c}_i$ and
-$\v{c}_i \v{d}_i = 0$. The fourth wire $\v{d}$ defaults to zero, with
-$\v{d}_0 = 1$ reserved for the `ONE` wire; non-system $\v{d}$ slots
-may carry witness values when their gate's $\v{c}_i = 0$ makes the
-second equation vacuous.
+$\v{a}, \v{b}, \v{c} \in \F^n$, where $n = 2^k$. Individual elements of
+this witness are known as _wires_—specifically, _allocated_ wires, because
+the prover must commit to them and thus they exist at a cost. They are
+referred to as "wires," rather than "variables," because they principally
+behave as inputs and outputs to multiplication gates.
 
-The witness $\v{r}$ is the concatenation
-$\v{c} \| \rv{a} \| \v{b} \| \rv{d}$, a
-[structured polynomial](../protocol/local/arithmetization.md).
+Ragu defines the witness $\v{r}$ as the concatenation
+$\v{c} || \v{\hat{b}} || \v{a} || \v{0^n}$, which is an example of a
+[structured vector](../protocol/prelim/structured_vectors.md).
 
 ### Virtual Wires
 
-The left-hand side of each constraint is a linear combination of
-elements within $\v{a}, \v{b}, \v{c}, \v{d}$. Any linear combination of wires
-can itself be considered a _virtual_ wire (as opposed to an allocated
-wire) which imposes no cost on the protocol.
+The left-hand side of all constraints are linear combinations of
+elements within $\v{a}, \v{b}, \v{c}$. Any linear combination of wires can
+itself be considered a _virtual_ wire (as opposed to an allocated wire)
+which imposes no cost on the protocol.
 
 ### `ONE`
 
-The `ONE` wire $\v{d}_0 = 1$ is provided by the SYSTEM gate at
-position 0. The verifier sets $\v{k}_0 = 1$, and the
-[wiring polynomial](../protocol/local/wiring.md) satisfies
-$s(X, 0) = 1$.
+Circuits always have the specially-labeled `ONE` wire $\v{c}_0 = 1$. This
+is enforced with the
+[constraint](../protocol/core/arithmetization.md#constraints)
+$\v{c}_0 = \v{k}_0 = 1$.
 
 ## Trace and Segments
 

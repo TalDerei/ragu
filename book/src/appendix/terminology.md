@@ -27,16 +27,16 @@
 | Bivariate polynomial $s(X, Y)$ encoding all circuit constraints; fixed by the circuit definition | **Wiring polynomial** | [Wiring](../protocol/local/wiring.md) |
 | First gate; ensures the ONE wire equals 1 | **SYSTEM gate** | [Wiring](../protocol/local/wiring.md) |
 
-## Registry, stage, and circuit terminology
+## Registry, Stage, and Circuit Terminology Mapping
 
 | Concept | Term | Code Reference |
 |---------|------|----------------|
-| Defines stage structure; specifies wire range and corresponds with a stage polynomial that represents a partial trace | **Stage** | `staging::Stage` |
+| Defines stage structure; specifies wire range and corresponds with a stage polynomial that represents a partial trace | **Stage** | `preamble::Stage` |
 | Input data for a stage | **Stage witness** | `Stage::witness()` |
-| Well-formedness check for a stage; bonding polynomial enforcing independence (for multi-stage circuits, these masks are batched in the revdot check) | **Stage mask** | `StageExt::mask()` or `StageExt::final_mask()` |
+| Well-formedness check for a stage; $s$ polynomial enforcing independence (for multi-stage circuits, these masks are batched in the revdot check) | **Stage mask** | `Stage::mask()` or `Stage::final_mask()` |
 | Circuit using staged traces | **Multi-stage circuit** | `MultiStageCircuit` |
 | Combined witness across all stages | **Multi-stage witness** | implicit, concatenation of stage witness |
-| Combined trace polynomial $r(X) = \sum_i r_i(X)$, the sum of all per-stage traces | **Multi-stage trace polynomial $r(X)$** | implicit, sum of all `Stage::rx()` |
+| Combined $r(X) = a(X) + b(X) + \cdots + f(X)$ | **Multi-stage trace polynomial $r(X)$** | implicit, sum of all `Stage::rx()` |
 | Collection of circuits indexed by $\omega^i$; $m(W, X, Y)$ interpolating wiring polynomials | **Registry** | `Registry`, `RegistryBuilder` |
 
 ## Polynomial operations
