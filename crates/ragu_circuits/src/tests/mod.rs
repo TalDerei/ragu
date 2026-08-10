@@ -57,6 +57,38 @@ impl Circuit<Fp> for SquareCircuit {
     }
 }
 
+/// Circuit with a configurable number of linear constraints.
+struct ManyLinearCircuit {
+    constraints: usize,
+}
+
+impl Circuit<Fp> for ManyLinearCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = Fp;
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Element::alloc(dr, &mut Standard::new(), instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let a = Element::alloc(dr, &mut Standard::new(), witness)?;
+        for _ in 0..self.constraints {
+            dr.enforce_zero(|lc| lc.add(a.wire()))?;
+        }
+        Ok(WithAux::new(a, D::unit()))
+    }
+}
+
 fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
     let x = Fp::random(&mut ragu_arithmetic::rand::rng());
     let y = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -258,48 +290,25 @@ fn test_gate_bound_exceeded() {
     }
 }
 
-/// Circuit with enough `enforce_zero` calls to exceed the constraint bound.
-///
 /// With `TestRank` (`R<7>`): `num_coeffs` = 128, of which `into_wiring_object`
 /// reserves the last slot ($Y^{4n-1}$) for the registry key constraint, leaving
-/// 127 usable. Overhead is 2 constraints (1 output + 1 ONE), so 126
-/// `enforce_zero` calls give 128 > 127.
+/// 127 usable. Overhead is 2 constraints (1 output + 1 ONE), so 125
+/// `enforce_zero` calls exactly fill the available slots.
+#[test]
+fn test_constraint_bound_exact() {
+    let result = into_wiring_object::<_, _, TestRank>(ManyLinearCircuit { constraints: 125 });
+    assert!(
+        result.is_ok(),
+        "127 constraints should fit exactly below the reserved registry slot"
+    );
+}
+
+/// One additional `enforce_zero` call produces 128 constraints and must exceed
+/// the 127 usable coefficient slots.
 #[test]
 fn test_constraint_bound_exceeded() {
-    struct ManyLinearCircuit;
-
-    impl Circuit<Fp> for ManyLinearCircuit {
-        type Instance<'instance> = Fp;
-        type Output = Kind![Fp; Element<'_, _>];
-        type Witness<'witness> = Fp;
-        type Aux<'witness> = ();
-
-        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            dr: &mut D,
-            instance: DriverValue<D, Self::Instance<'instance>>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            let allocator = &mut Standard::new();
-            Element::alloc(dr, allocator, instance)
-        }
-
-        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            dr: &mut D,
-            witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
-        {
-            let allocator = &mut Standard::new();
-            let a = Element::alloc(dr, allocator, witness)?;
-            for _ in 0..126 {
-                dr.enforce_zero(|lc| lc.add(a.wire()))?;
-            }
-            Ok(WithAux::new(a, D::unit()))
-        }
-    }
-
     let limit = TestRank::num_coeffs() - 1;
-    match into_wiring_object::<_, _, TestRank>(ManyLinearCircuit) {
+    match into_wiring_object::<_, _, TestRank>(ManyLinearCircuit { constraints: 126 }) {
         Err(Error::ConstraintBoundExceeded { limit: reported }) => {
             assert_eq!(reported, limit);
         }
@@ -345,8 +354,8 @@ impl Routine<Fp> for SimpleRoutine {
 }
 
 /// Circuit that calls `dr.routine(SimpleRoutine, input)` in its `witness`
-/// method, exercising the per-routine scope save/restore logic in every
-/// evaluator.
+/// method, exercising per-routine scope save/restore across trace, metrics, and
+/// wiring evaluation.
 #[test]
 fn test_routine_consistency() {
     struct RoutineCircuit;
@@ -379,6 +388,10 @@ fn test_routine_consistency() {
         }
     }
 
-    let circuit = into_wiring_object::<_, _, TestRank>(RoutineCircuit).unwrap();
-    consistency_checks(&*circuit);
+    let trace = RoutineCircuit.trace(Fp::from(3u64)).unwrap().into_output();
+    let obj = into_wiring_object::<_, _, TestRank>(RoutineCircuit).unwrap();
+    let plan = floor_planner::floor_plan(obj.segment_records());
+
+    trace.assemble::<TestRank>(&plan, Fp::ZERO).unwrap();
+    consistency_checks(&*obj);
 }
