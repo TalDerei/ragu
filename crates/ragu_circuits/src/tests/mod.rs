@@ -234,7 +234,10 @@ fn test_element() {
     assert_eq!(*result.value().take(), Fp::from(15u64));
 }
 
-/// Well-behaved reference circuit: allocates a, b, outputs (a+b, a-b).
+/// Well-behaved reference circuit: allocates `a` and `b`, outputs `(a + b, a - b)`.
+///
+/// Serves as the control for the error-swallowing circuits below: same shape,
+/// same allocations, no dropped errors.
 struct WellBehavedCircuit;
 
 impl Circuit<Fp> for WellBehavedCircuit {
@@ -248,8 +251,9 @@ impl Circuit<Fp> for WellBehavedCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
-        let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
+        let allocator = &mut Standard::new();
+        let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
+        let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
         Ok((c, d))
     }
 
@@ -257,24 +261,33 @@ impl Circuit<Fp> for WellBehavedCircuit {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'witness>>,
-    )> {
-        let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
-        let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let allocator = &mut Standard::new();
+        let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+        let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
         let c = a.add(dr, &b);
         let d = a.sub(dr, &b);
-        Ok(((c, d), D::just(|| ())))
+        Ok(WithAux::new((c, d), D::unit()))
     }
 }
 
-/// Malicious circuit: identical shape to WellBehavedCircuit, but swallows an
-/// error from a bogus allocation between the two real allocations.
+/// Malicious circuit: identical shape to [`WellBehavedCircuit`], but drops the
+/// error from a bogus gate placed between the two real allocations.
 ///
-/// Exercises the trust boundary where circuits are expected to propagate
-/// driver errors with `?`. A malicious circuit can instead drop the error,
-/// corrupting the rx polynomial while leaving s-polynomial drivers unaffected.
+/// Exercises the trust boundary where circuits are expected to propagate driver
+/// errors with `?`. The two synthesis paths disagree about whether that gate
+/// exists:
+///
+/// * [`trace`](crate::trace)'s evaluator has `MaybeKind = Always`, so
+///   [`gate`](ragu_core::drivers::DriverTypes::gate) evaluates the closure
+///   before touching any segment. The closure fails, nothing is recorded, and
+///   the swallowed error leaves the trace byte-identical to the well-behaved
+///   one.
+/// * [`metrics`](crate::metrics)'s counter has `MaybeKind = Empty` and never
+///   calls the closure, so it counts the gate.
+///
+/// The result is a gate-count desynchronization rather than corrupted wire
+/// values; see [`test_error_swallowing_desyncs_trace_and_metrics`].
 struct ErrorSwallowingCircuit;
 
 impl Circuit<Fp> for ErrorSwallowingCircuit {
@@ -288,8 +301,9 @@ impl Circuit<Fp> for ErrorSwallowingCircuit {
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'instance>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
-        let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
+        let allocator = &mut Standard::new();
+        let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
+        let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
         Ok((c, d))
     }
 
@@ -297,28 +311,23 @@ impl Circuit<Fp> for ErrorSwallowingCircuit {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'witness>>,
-    ) -> Result<(
-        Bound<'dr, D, Self::Output>,
-        DriverValue<D, Self::Aux<'witness>>,
-    )> {
-        let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
-        // Swallow the error: available_b was consumed, but the closure's error
-        // is silently dropped. In rx, this corrupts gate b/c slots (they stay
-        // zero). In sx/sy/sxy/Counter, the closure is never called, so the
-        // allocation succeeds and the returned wire is simply dropped.
-        let _ = dr.alloc(|| Err(Error::InvalidWitness("swallowed".into())));
-        let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let allocator = &mut Standard::new();
+        let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+        // Swallow the error rather than propagating it with `?`.
+        let _ = dr.mul(|| Err(Error::InvalidWitness("swallowed".into())));
+        let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
         let c = a.add(dr, &b);
         let d = a.sub(dr, &b);
-        Ok(((c, d), D::just(|| ())))
+        Ok(WithAux::new((c, d), D::unit()))
     }
 }
 
-/// Positive control: a circuit that properly propagates an alloc error with
-/// `?` causes rx() to fail, confirming that the rx driver surfaces the error.
-/// This is the complement to the ErrorSwallowingCircuit negative test.
+/// Positive control: a circuit that propagates a gate error with `?` causes
+/// [`CircuitExt::trace`] to fail, confirming that the trace driver surfaces the
+/// error. This is the complement to the [`ErrorSwallowingCircuit`] tests.
 #[test]
-fn test_propagated_alloc_error_caught() {
+fn test_propagated_gate_error_caught() {
     struct ErrorPropagatingCircuit;
 
     impl Circuit<Fp> for ErrorPropagatingCircuit {
@@ -332,8 +341,9 @@ fn test_propagated_alloc_error_caught() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            let c = Element::alloc(dr, instance.as_ref().map(|v| v.0))?;
-            let d = Element::alloc(dr, instance.as_ref().map(|v| v.1))?;
+            let allocator = &mut Standard::new();
+            let c = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.0))?;
+            let d = Element::alloc(dr, allocator, instance.as_ref().map(|v| v.1))?;
             Ok((c, d))
         }
 
@@ -341,172 +351,162 @@ fn test_propagated_alloc_error_caught() {
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'witness>>,
-        )> {
-            let a = Element::alloc(dr, witness.as_ref().map(|w| w.0))?;
-            // Properly propagate the error with `?` — unlike ErrorSwallowingCircuit.
-            let _bogus = dr.alloc(|| Err(Error::InvalidWitness("propagated".into())))?;
-            let b = Element::alloc(dr, witness.as_ref().map(|w| w.1))?;
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+        {
+            let allocator = &mut Standard::new();
+            let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+            // Propagate the error with `?` — unlike ErrorSwallowingCircuit.
+            let _bogus = dr.mul(|| Err(Error::InvalidWitness("propagated".into())))?;
+            let b = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
             let c = a.add(dr, &b);
             let d = a.sub(dr, &b);
-            Ok(((c, d), D::just(|| ())))
+            Ok(WithAux::new((c, d), D::unit()))
         }
     }
 
     let witness = (Fp::from(3u64), Fp::from(7u64));
-    let result = ErrorPropagatingCircuit.rx(witness);
-    match result {
+    match ErrorPropagatingCircuit.trace(witness) {
         Err(Error::InvalidWitness(err)) => {
             assert_eq!(format!("{err}"), "propagated");
         }
-        Err(other) => panic!("expected InvalidWitness, got {:?}", other),
-        Ok(_) => panic!("rx should fail when alloc error is properly propagated with `?`"),
+        Err(other) => panic!("expected InvalidWitness, got {other:?}"),
+        Ok(_) => panic!("trace should fail when a gate error is propagated with `?`"),
     }
 }
 
-/// The swallowed alloc consumes available_b in the rx driver, causing the
-/// closure error to corrupt gate b/c slots. The well-behaved circuit produces
-/// a different rx trace because it fills those slots correctly.
+/// The trace driver evaluates a gate's closure before recording anything, so a
+/// swallowed error leaves no residue: the malicious trace is identical to the
+/// well-behaved one, wire for wire.
+///
+/// Note that `b` and `c` are zero in both traces. [`Standard`] packs two
+/// allocations into one gate's unconstrained $A$ and $D$ wires, so allocation
+/// never writes to the $B$ or $C$ slots.
 #[test]
-fn test_error_swallowing_corrupts_rx() {
+fn test_error_swallowing_is_invisible_to_trace() {
     let witness = (Fp::from(3u64), Fp::from(7u64));
 
-    let (trace_good, _) = WellBehavedCircuit.rx(witness).unwrap();
-    let (trace_bad, _) = ErrorSwallowingCircuit.rx(witness).unwrap();
+    let good = WellBehavedCircuit.trace(witness).unwrap().into_output();
+    let bad = ErrorSwallowingCircuit.trace(witness).unwrap().into_output();
 
-    // The traces must differ because the swallowed alloc left gate b/c
-    // slots as zeros in the malicious version and introduced an extra gate.
-    let good_len = trace_good.segments[0].a.len();
-    let bad_len = trace_bad.segments[0].a.len();
-    assert_eq!(
-        good_len + 1,
-        bad_len,
-        "swallowed alloc should create an extra gate in rx"
-    );
-    // Contract check: rx::Evaluator::alloc reserves a gate before executing
-    // the closure, so a failing closure still consumes the b/c slots.
-    assert!(
-        good_len > 1 && bad_len > 1,
-        "rx should contain at least two gates (key + allocation)"
-    );
+    assert_eq!(good.segments.len(), 1);
+    assert_eq!(bad.segments.len(), 1);
 
-    assert_ne!(
-        trace_good.segments[0].b[1],
-        Fp::ZERO,
-        "well-behaved b slot should be nonzero"
-    );
-    assert_ne!(
-        trace_good.segments[0].c[1],
-        Fp::ZERO,
-        "well-behaved c slot should be nonzero"
-    );
+    let (good, bad) = (&good.segments[0], &bad.segments[0]);
     assert_eq!(
-        trace_bad.segments[0].b[1],
-        Fp::ZERO,
-        "malicious b slot should be zero"
+        good.a.len(),
+        bad.a.len(),
+        "the swallowed gate must not appear in the trace"
     );
-    assert_eq!(
-        trace_bad.segments[0].c[1],
-        Fp::ZERO,
-        "malicious c slot should be zero"
-    );
+    assert_eq!(good.a, bad.a);
+    assert_eq!(good.b, bad.b);
+    assert_eq!(good.c, bad.c);
+    assert_eq!(good.d, bad.d);
+
+    // Segment 0 holds the SYSTEM gate plus the one gate that carries both
+    // paired allocations in its A and D wires.
+    assert_eq!(good.a.len(), 2);
+    assert_eq!(good.a[1], Fp::from(3u64));
+    assert_eq!(good.d[1], Fp::from(7u64));
+    assert_eq!(good.b[1], Fp::ZERO);
+    assert_eq!(good.c[1], Fp::ZERO);
 }
 
-/// Cross-circuit revdot check: the malicious circuit's rx is used with the
-/// well-behaved circuit's sy. Since the two circuits have different gate
-/// structures (the swallowed alloc adds an extra gate in the malicious
-/// version), the revdot identity breaks when polynomials from different
-/// synthesis paths are mixed.
+/// The swallowed error is visible to the metrics driver but not to the trace
+/// driver, so the two disagree on the gate count. This desynchronization — not
+/// corrupted wire values — is what a swallowed error actually produces.
 #[test]
-fn test_error_swallowing_breaks_revdot() {
-    let a_val = Fp::from(3u64);
-    let b_val = Fp::from(7u64);
-    let witness = (a_val, b_val);
-    let instance = (a_val + b_val, a_val - b_val);
+fn test_error_swallowing_desyncs_trace_and_metrics() {
+    let witness = (Fp::from(3u64), Fp::from(7u64));
 
-    // rx from the malicious circuit (has corrupted gate slots)
-    let (malicious_trace, _) = ErrorSwallowingCircuit.rx(witness).unwrap();
-    let malicious_rx = malicious_trace.assemble_trivial::<TestRank>().unwrap();
+    let good_obj = into_wiring_object::<_, _, TestRank>(WellBehavedCircuit).unwrap();
+    let bad_obj = into_wiring_object::<_, _, TestRank>(ErrorSwallowingCircuit).unwrap();
 
-    // sy from the well-behaved circuit (different gate structure)
-    let good_circuit = WellBehavedCircuit.into_object::<TestRank>().unwrap();
-    let floor_plan = crate::floor_planner::floor_plan(good_circuit.segment_records());
-    let key = registry::Key::default();
+    let (good_gates, good_constraints) = good_obj.constraint_counts();
+    let (bad_gates, bad_constraints) = bad_obj.constraint_counts();
 
-    let y = Fp::from(2u64);
-    let z = Fp::from(3u64);
+    assert_eq!(
+        good_gates + 1,
+        bad_gates,
+        "the metrics driver never calls the closure, so it counts the bogus gate"
+    );
+    assert_eq!(
+        good_constraints, bad_constraints,
+        "the bogus gate adds no linear constraint"
+    );
 
-    let rx_poly = malicious_rx.clone();
-    let mut b_poly = malicious_rx;
-    b_poly.dilate(z);
-    b_poly.add_assign(&good_circuit.sy(y, &key, &floor_plan));
-    b_poly.add_assign(&TestRank::tz(z));
-
-    let ky_eval = WellBehavedCircuit.ky(instance, y).unwrap();
-
-    let rx_u = rx_poly.unstructured();
-    let b_u = b_poly.unstructured();
-    let revdot = ragu_arithmetic::dot(rx_u.iter(), b_u.iter().rev());
-
-    assert_ne!(
-        ky_eval, revdot,
-        "revdot identity should break when mixing malicious rx with well-behaved sy"
+    let trace = ErrorSwallowingCircuit.trace(witness).unwrap().into_output();
+    assert_eq!(
+        trace.segments[0].a.len() + 1,
+        bad_gates,
+        "the trace is one gate short of what the wiring object expects"
     );
 }
 
-/// consistency_checks passes for the malicious circuit because sx, sy, and sxy
-/// all ignore closures and see a consistent synthesis. The corruption is
-/// isolated to rx.
+/// The gate-count desynchronization is caught when the trace is assembled
+/// against its own floor plan.
+#[test]
+#[should_panic(expected = "segment 0 size must match floor plan")]
+fn test_error_swallowing_trace_assembly_rejected() {
+    let witness = (Fp::from(3u64), Fp::from(7u64));
+
+    let obj = into_wiring_object::<_, _, TestRank>(ErrorSwallowingCircuit).unwrap();
+    let plan = floor_planner::floor_plan(obj.segment_records());
+    let trace = ErrorSwallowingCircuit.trace(witness).unwrap().into_output();
+
+    let _ = trace.assemble::<TestRank>(&plan, Fp::ZERO);
+}
+
+/// `consistency_checks` passes for the malicious circuit: `sx`, `sy` and `sxy`
+/// all ignore witness closures and see one self-consistent synthesis. The bogus
+/// gate participates in no linear constraint, so it does not perturb $s(X, Y)$
+/// at all — the divergence is confined to the gate count.
 #[test]
 fn test_error_swallowing_consistency_passes() {
-    let circuit = ErrorSwallowingCircuit.into_object::<TestRank>().unwrap();
-    // This should not panic: all s-polynomial drivers agree.
+    let circuit = into_wiring_object::<_, _, TestRank>(ErrorSwallowingCircuit).unwrap();
     consistency_checks(&*circuit);
 }
 
-/// Run SquareCircuit through consistency_checks for small and medium sizes.
+/// Run [`SquareCircuit`] through `consistency_checks` for small and medium sizes.
 #[test]
 fn test_square_circuit_consistency() {
     for times in [1, 5] {
-        let circuit = SquareCircuit { times }.into_object::<TestRank>().unwrap();
+        let circuit = into_wiring_object::<_, _, TestRank>(SquareCircuit { times }).unwrap();
         consistency_checks(&*circuit);
     }
 }
 
-/// SquareCircuit { times: 30 } with TestRank (R<7>, n=32).
-/// Total gates: 1(key) + 1(alloc) + 30(squares) = 32 = n(). Should succeed.
+/// `SquareCircuit { times: 30 }` with `TestRank` (`R<7>`, `n = 32`).
+/// Total gates: 1 (SYSTEM) + 1 (allocation) + 30 (squares) = 32 = `n()`.
 #[test]
-fn test_multiplication_bound_exact() {
-    let result = SquareCircuit { times: 30 }.into_object::<TestRank>();
-    assert!(result.is_ok(), "32 gates should fit exactly in n()=32");
+fn test_gate_bound_exact() {
+    let result = into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 30 });
+    assert!(result.is_ok(), "32 gates should fit exactly in n() = 32");
 }
 
-/// SquareCircuit { times: 31 } needs 33 gates > n()=32. Should fail with
-/// MultiplicationBoundExceeded.
+/// `SquareCircuit { times: 31 }` needs 33 gates > `n()` = 32, so it must fail
+/// with [`Error::GateBoundExceeded`].
 #[test]
-fn test_multiplication_bound_exceeded() {
-    let result = SquareCircuit { times: 31 }.into_object::<TestRank>();
-    match result {
-        Err(Error::MultiplicationBoundExceeded { limit }) => {
+fn test_gate_bound_exceeded() {
+    match into_wiring_object::<_, _, TestRank>(SquareCircuit { times: 31 }) {
+        Err(Error::GateBoundExceeded { limit }) => {
             assert_eq!(limit, TestRank::n());
         }
         other => panic!(
-            "expected MultiplicationBoundExceeded {{ limit: {} }}, got {:?}",
+            "expected GateBoundExceeded {{ limit: {} }}, got {:?}",
             TestRank::n(),
             other.map(|_| "(ok)")
         ),
     }
 }
 
-/// Circuit with many enforce_zero calls to exceed the linear bound.
-/// With TestRank (R<7>): num_coeffs = 128.
-/// Each enforce_zero adds 1 linear constraint.
-/// Overhead: degree_ky(1 output) + 2 = 3 (1 output + 1 key + 1 ONE).
-/// So 126 enforce_zero calls give total = 126 + 3 = 129 > 128.
+/// Circuit with enough `enforce_zero` calls to exceed the constraint bound.
+///
+/// With `TestRank` (`R<7>`): `num_coeffs` = 128, of which `into_wiring_object`
+/// reserves the last slot ($Y^{4n-1}$) for the registry key constraint, leaving
+/// 127 usable. Overhead is 2 constraints (1 output + 1 ONE), so 126
+/// `enforce_zero` calls give 128 > 127.
 #[test]
-fn test_linear_bound_exceeded() {
+fn test_constraint_bound_exceeded() {
     struct ManyLinearCircuit;
 
     impl Circuit<Fp> for ManyLinearCircuit {
@@ -520,41 +520,40 @@ fn test_linear_bound_exceeded() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            Element::alloc(dr, instance)
+            let allocator = &mut Standard::new();
+            Element::alloc(dr, allocator, instance)
         }
 
         fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'witness>>,
-        )> {
-            let a = Element::alloc(dr, witness)?;
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+        {
+            let allocator = &mut Standard::new();
+            let a = Element::alloc(dr, allocator, witness)?;
             for _ in 0..126 {
                 dr.enforce_zero(|lc| lc.add(a.wire()))?;
             }
-            Ok((a, D::just(|| ())))
+            Ok(WithAux::new(a, D::unit()))
         }
     }
 
-    let result = ManyLinearCircuit.into_object::<TestRank>();
-    match result {
-        Err(Error::LinearBoundExceeded { limit }) => {
-            assert_eq!(limit, TestRank::num_coeffs());
+    let limit = TestRank::num_coeffs() - 1;
+    match into_wiring_object::<_, _, TestRank>(ManyLinearCircuit) {
+        Err(Error::ConstraintBoundExceeded { limit: reported }) => {
+            assert_eq!(reported, limit);
         }
         other => panic!(
-            "expected LinearBoundExceeded {{ limit: {} }}, got {:?}",
-            TestRank::num_coeffs(),
+            "expected ConstraintBoundExceeded {{ limit: {limit} }}, got {:?}",
             other.map(|_| "(ok)")
         ),
     }
 }
 
-/// A routine compatible with all drivers (including Empty-typed ones).
-/// Allocates two elements (to keep paired allocation counts even) and
-/// returns their sum with the input, without calling .take() on aux.
+/// A routine compatible with all drivers (including `Empty`-typed ones).
+/// Allocates two elements and returns their sum with the input, without
+/// calling `.take()` on aux.
 #[derive(Clone)]
 struct SimpleRoutine;
 
@@ -569,8 +568,9 @@ impl Routine<Fp> for SimpleRoutine {
         input: Bound<'dr, D, Self::Input>,
         _aux: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        let elem1 = Element::alloc(dr, D::just(|| Fp::from(5u64)))?;
-        let elem2 = Element::alloc(dr, D::just(|| Fp::from(7u64)))?;
+        let allocator = &mut Standard::new();
+        let elem1 = Element::alloc(dr, allocator, D::just(|| Fp::from(5u64)))?;
+        let elem2 = Element::alloc(dr, allocator, D::just(|| Fp::from(7u64)))?;
         let sum = elem1.add(dr, &elem2);
         let result = input.add(dr, &sum);
         Ok(result)
@@ -581,12 +581,13 @@ impl Routine<Fp> for SimpleRoutine {
         _dr: &mut D,
         _input: &Bound<'dr, D, Self::Input>,
     ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
-        Ok(Prediction::Unknown(D::just(|| ())))
+        Ok(Prediction::Unknown(D::unit()))
     }
 }
 
-/// Circuit that calls dr.routine(SimpleRoutine, input) in its witness method.
-/// Tests the available_b save/restore logic in all evaluators.
+/// Circuit that calls `dr.routine(SimpleRoutine, input)` in its `witness`
+/// method, exercising the per-routine scope save/restore logic in every
+/// evaluator.
 #[test]
 fn test_routine_consistency() {
     struct RoutineCircuit;
@@ -602,23 +603,23 @@ fn test_routine_consistency() {
             dr: &mut D,
             instance: DriverValue<D, Self::Instance<'instance>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            Element::alloc(dr, instance)
+            let allocator = &mut Standard::new();
+            Element::alloc(dr, allocator, instance)
         }
 
         fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
             &self,
             dr: &mut D,
             witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<(
-            Bound<'dr, D, Self::Output>,
-            DriverValue<D, Self::Aux<'witness>>,
-        )> {
-            let input = Element::alloc(dr, witness)?;
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+        {
+            let allocator = &mut Standard::new();
+            let input = Element::alloc(dr, allocator, witness)?;
             let result = dr.routine(SimpleRoutine, input)?;
-            Ok((result, D::just(|| ())))
+            Ok(WithAux::new(result, D::unit()))
         }
     }
 
-    let circuit = RoutineCircuit.into_object::<TestRank>().unwrap();
+    let circuit = into_wiring_object::<_, _, TestRank>(RoutineCircuit).unwrap();
     consistency_checks(&*circuit);
 }
