@@ -277,7 +277,7 @@ pub trait MultiStageCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     /// as interstitial witness data needed by later computations.
     type Aux<'source>: Send;
 
-    /// Given ordinary instance input for this circuit, uses the provided
+    /// Given public instance data for this circuit, uses the provided
     /// [`Driver`] to return the verifier-visible `Self::Output` gadget.
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,

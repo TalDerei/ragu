@@ -3,8 +3,8 @@
 //!
 //! This module provides constraint system analysis by simulating circuit
 //! execution without computing assignment values, counting the number of
-//! gates and constraints a circuit emits. It simultaneously
-//! computes Schwartz–Zippel fingerprints for each routine invocation via the
+//! gates and constraints a circuit emits. It simultaneously computes
+//! Schwartz–Zippel fingerprints for each routine invocation via the
 //! merged [`Counter`] driver, which combines constraint counting with identity
 //! evaluation in a single DFS traversal.
 //!

@@ -8,8 +8,8 @@
 //!
 //! Drivers create wires, compute assignments when available, and enforce
 //! constraints. Circuit code that is generic over a driver must emit the same
-//! constraints independently of witness input. Drivers use a [`Maybe<T>`] type
-//! (via [`DriverValue`]) to statically gate witness generation, and define
+//! constraints independently of values carried through [`DriverValue`]. Drivers
+//! use a [`Maybe<T>`] type to statically gate witness generation, and define
 //! their own opaque [`Driver::Wire`] type so that monomorphized code inherits
 //! driver-specific optimizations. Drivers can execute circuit code within
 //! [routines](crate::routines), which grant them flexibility for
@@ -20,7 +20,7 @@
 //!   alongside witness-generation logic, even though drivers tend to reason
 //!   about one or the other. To reduce overhead, drivers specify a [`Maybe<T>`]
 //!   type (via the type alias [`DriverValue`]) which enables static analysis
-//!   and optimization of witness input handling for a specific driver context.
+//!   and optimization of driver-managed value handling for a specific context.
 //!   This coupling with witness generation is a zero-cost abstraction.
 //! * **Integration of in-circuit and out-of-circuit code**: Recursive proofs
 //!   require many algorithms to be executed both within and outside of
@@ -64,8 +64,8 @@ use crate::{
 
 /// Alias for the concrete [`Maybe<T>`] type for a driver `D`.
 ///
-/// Circuit APIs use this for witness input and witness data that may or may
-/// not be available in a particular driver context.
+/// Circuit APIs use this for witness input, witness data, and public instance
+/// data that may or may not be available in a particular driver context.
 pub type DriverValue<D, T> = Perhaps<<D as DriverTypes>::MaybeKind, T>;
 
 /// Associated types and low-level gate allocation for a [`Driver`], without
@@ -98,8 +98,8 @@ pub trait DriverTypes {
     /// The type of wire that this driver provides.
     type ImplWire: Clone;
 
-    /// The kind of [`Maybe<T>`] types for witness input that this driver
-    /// expects.
+    /// The kind of [`Maybe<T>`] types for driver-managed values, including
+    /// witness input, witness data, and public instance data.
     type MaybeKind: MaybeKind;
 
     /// The concrete [`LinearExpression`] type used by [`Driver::add`].
@@ -193,7 +193,7 @@ pub trait DriverTypes {
 /// * Wires are assigned values upon their creation; the driver may or may not
 ///   need to obtain these values depending on whether witness generation is
 ///   active.
-/// * Users keep track of wire assignments or related witness input using a
+/// * Users keep track of wire assignments or related witness data using a
 ///   driver-specific [`DriverValue`] type. This type implements an
 ///   `Option`-like abstraction called [`Maybe`] which allows for compile-time
 ///   optimization and static analysis of witness-generation computation and
@@ -209,8 +209,9 @@ pub trait DriverTypes {
 ///
 /// Drivers are parameterized by a lifetime `'dr`. Routines are constrained to
 /// outlive this lifetime so that references to non-`'static` parameters or
-/// witness input can be placed inside of them while still allowing drivers to
-/// use multithreaded execution. See the [book section on `'dr`][dr-lifetime]
+/// driver-managed values can be placed inside of them while still allowing
+/// drivers to use multithreaded execution. See the [book section on
+/// `'dr`][dr-lifetime]
 /// for more detail.
 ///
 /// [dr-lifetime]: https://tachyon.z.cash/ragu/guide/drivers/#the-dr-lifetime

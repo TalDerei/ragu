@@ -99,13 +99,15 @@ pub trait Header<F: Field>: Send + Sync + Any {
     ///
     /// # Constraints
     ///
-    /// The header type's `Output` gadget and serialization determine the
-    /// emitted constraints.
+    /// The implementation of this method and the allocator's behavior and state
+    /// determine the constraints emitted while constructing `Output`. The
+    /// `Output` implementation determines any constraints emitted when callers
+    /// serialize it.
     ///
     /// # Errors
     ///
-    /// Implementations return method-specific errors for witness generation,
-    /// input validation, or encoding failures in the header.
+    /// Implementations may return header-specific witness-generation or encoding
+    /// errors and should document their concrete failure conditions.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

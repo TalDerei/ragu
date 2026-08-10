@@ -2,8 +2,8 @@
 //!
 //! The [`Write`] trait allows compatible [`Gadget`](crate::Gadget)s
 //! to write [`Element`]s to a [`Buffer`] for serialization purposes. Because
-//! gadgets are just containers for wires and witness data, they
-//! can usually reconstitute their encapsulated [`Element`]s via promotion.
+//! gadgets are just containers for wires and witness data, they can usually
+//! reconstitute their encapsulated [`Element`]s via promotion.
 //!
 //! The [`Buffer`] trait allows destination buffers to receive a [`Driver`] for
 //! processing the elements they receive. This is handy for streaming hash

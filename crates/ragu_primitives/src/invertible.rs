@@ -181,8 +181,8 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
     ///
     /// # Soundness
     ///
-    /// No satisfying assignment can make `value` zero, and `inverse_value`
-    /// represents its multiplicative inverse.
+    /// No satisfying assignment can make the represented element zero, and the
+    /// returned inverse represents its multiplicative inverse.
     ///
     /// # Completeness
     ///

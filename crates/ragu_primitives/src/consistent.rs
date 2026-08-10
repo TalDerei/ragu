@@ -14,9 +14,8 @@ use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 /// for every instance.
 ///
 /// This trait is used to ask the gadget to re-express those contracts via new
-/// constraints. The gadget's own witness data is often required
-/// to do so; gadgets without witness data generally cannot
-/// implement the trait.
+/// constraints. The gadget's own witness data is often required to do so;
+/// gadgets without witness data generally cannot implement the trait.
 ///
 /// Most impls allocate a fresh `Self` and constrain it equal to the existing
 /// wires. That equality uses the conservative

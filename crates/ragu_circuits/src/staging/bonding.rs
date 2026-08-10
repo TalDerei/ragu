@@ -62,6 +62,12 @@ where
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
     ///
+    /// # Errors
+    ///
+    /// Returns an input error if the supplied circuit violates the structural
+    /// restrictions above by using the `ONE` wire, emitting a gate, or allocating
+    /// a constant after the stage builder is finalized.
+    ///
     /// [`Driver::gate`]: ragu_core::drivers::DriverTypes::gate
     /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
     /// [`Driver::add`]: ragu_core::drivers::Driver::add

@@ -146,8 +146,8 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
     /// # Errors
     ///
     /// Returns a witness-generation error if the stage witness body cannot
-    /// produce its output, a capacity error if wire rebinding needs more reserved
-    /// stage wires than available, or a local-check error if `Consistent`
+    /// produce its output, a structural error if the output gadget contains more
+    /// wires than were reserved, or a local-check error if `Consistent`
     /// enforcement fails under a checking driver.
     pub fn enforced<'source: 'dr>(
         self,
@@ -192,8 +192,8 @@ impl<'dr, D: Driver<'dr>, R: Rank, S: Stage<D::F, R> + 'dr> StageGuard<'dr, D, R
     /// # Errors
     ///
     /// Returns a witness-generation error if the stage witness body cannot
-    /// produce its output, or a capacity error if wire rebinding needs more
-    /// reserved stage wires than available.
+    /// produce its output, or a structural error if the output gadget contains
+    /// more wires than were reserved.
     pub fn unenforced<'source: 'dr>(
         self,
         _dr: &mut D,

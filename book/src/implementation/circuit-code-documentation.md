@@ -18,11 +18,16 @@ they affect the emitted system.
 
 Plain **input** means ordinary non-witness input: Rust values, type parameters,
 const generics, configuration, iterator lengths, header types, and constants.
-Use **witness input** explicitly for data carried through
-[`DriverValue`](ragu_core::drivers::DriverValue).
+[`DriverValue`](ragu_core::drivers::DriverValue) describes whether a value is
+available in a driver context; it does not by itself determine the value's role.
+Use **witness input** for values supplied to an API for witness generation, and
+**witness data** for computed or stored values such as gadget assignments and
+auxiliary data. Name public instance data explicitly when that distinction
+matters. All of these may be carried through `DriverValue`.
 
-Input may determine emitted constraints. Witness input may determine witness
-generation and auxiliary values, but must not determine emitted constraints.
+Input may determine emitted constraints. Values carried through `DriverValue`
+may determine witness generation and auxiliary values, but must not determine
+emitted constraints.
 
 Do not repeat this rule in every method. It is the default for all circuit code.
 Document the cases where callers need to know more.
@@ -87,7 +92,8 @@ Write complete, concise prose.
 ```rust,ignore
 /// # Constraints
 ///
-/// `HEADER_SIZE` and `H::Output` determine the emitted constraints.
+/// The header implementation, its output serialization, `HEADER_SIZE`, and the
+/// allocator's behavior determine the emitted constraints.
 ```
 
 ```rust,ignore
@@ -216,10 +222,12 @@ Common categories:
 - **setup error**: registration, initialization, or configuration failed.
 - **local check error**: a testing or simulator driver found an unsatisfied
   constraint during local execution.
+- **structural error**: circuit or gadget behavior violates a required structural
+  invariant, such as emitting a variable number of gadget wires.
 
-Use `capacity error`, `setup error`, and `local check error` for errors that are
-part of the method's own behavior. Do not list them only because some delegated
-driver operation might return them.
+Use `capacity error`, `setup error`, `local check error`, and `structural error`
+for errors that are part of the method's own behavior. Do not list them only
+because some delegated driver operation might return them.
 
 ```rust,ignore
 /// # Errors
@@ -305,7 +313,7 @@ impose an additional wire contract.
 ///
 /// # Errors
 ///
-/// Returns an error if `p` is the identity.
+/// Returns an input error if `p` is the identity.
 ```
 
 Here `p` is input, not witness input. The failure is deterministic for that
@@ -365,7 +373,9 @@ Avoid these patterns:
 - "assignment generation" or "assignment-generation data" when "witness
   generation" or "witness data" is meant
 - "supplied value" when the distinction between input and witness input matters
-- "invalid witness" for structural circuit bugs, setup failures, or input errors
+- "invalid witness" as a prose error category; legacy APIs may return
+  `Error::InvalidWitness` for several categories, so describe the concrete
+  failure instead
 - "enforce" for checks that are not represented by constraints
 - standalone `# Errors` sections that only say driver errors are propagated
 - caveating every ordinary gadget argument with "if its contract holds"
@@ -376,9 +386,11 @@ Avoid these patterns:
 Prefer direct wording:
 
 - "input" for ordinary input
-- "witness input" for `DriverValue`
+- "witness input" for values supplied to an API for witness generation
 - "witness generation" for local witness computation
-- "witness data" for gadget or auxiliary data used during witness generation
+- "witness data" for computed or stored gadget and auxiliary values, including
+  values carried through `DriverValue`
+- "instance data" for verifier-visible circuit instance values
 - "constraints" for the emitted constraint system
 - "verification returns `Ok(false)`" for rejected public proof data
 
@@ -386,8 +398,8 @@ Prefer direct wording:
 
 When documenting or reviewing circuit code, ask:
 
-1. Can witness input affect emitted constraints? If yes, this is a bug or needs
-   a very explicit justification.
+1. Can a value carried through `DriverValue` affect emitted constraints? If yes,
+   this is a bug or needs a very explicit justification.
 2. Does ordinary input affect emitted constraints in a caller-relevant way? If
    yes, add `# Constraints`.
 3. Does the method establish a semantic relation not clear from the return type?

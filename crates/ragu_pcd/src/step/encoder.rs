@@ -114,7 +114,9 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     ///
     /// # Constraints
     ///
-    /// `H::Output` and `HEADER_SIZE` determine the emitted constraints.
+    /// `H::encode`, `H::Output` serialization, `HEADER_SIZE`, and the allocator's
+    /// behavior and state determine the constraints emitted while constructing
+    /// and writing the header.
     pub fn new<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
@@ -136,8 +138,15 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     ///
     /// # Constraints
     ///
-    /// `HEADER_SIZE` determines the emitted constraints; `H::Output` affects
+    /// `HEADER_SIZE` and the destination allocator's behavior and state determine
+    /// the emitted constraints. `H::encode` and `H::Output` serialization affect
     /// only the wireless pre-serialization step.
+    ///
+    /// # Errors
+    ///
+    /// Returns an encoding error if the serialized header exceeds
+    /// `HEADER_SIZE - 1` field elements. Header-specific errors from `H::encode`
+    /// are also propagated during wireless pre-serialization.
     pub(crate) fn new_uniform<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

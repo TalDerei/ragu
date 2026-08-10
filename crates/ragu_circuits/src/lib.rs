@@ -116,9 +116,9 @@ pub(crate) trait DriverScope<S> {
 /// Core trait for arithmetic circuits.
 ///
 /// Implementations must emit constraints deterministically from ordinary input
-/// such as type parameters, constants, and iterator lengths. Witness input
-/// carried through [`DriverValue`] may determine witness generation and
-/// auxiliary data, but not which constraints are emitted.
+/// such as type parameters, constants, and iterator lengths. Values carried
+/// through [`DriverValue`] may determine witness generation and auxiliary data,
+/// but not which constraints are emitted.
 pub trait Circuit<F: Field>: Sized + Send + Sync {
     /// The type of data that is needed to construct the expected output of this
     /// circuit.
@@ -137,12 +137,12 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
     /// interstitial witness data needed by later computations.
     type Aux<'source>: Send;
 
-    /// Given ordinary instance input for this circuit, uses the provided
+    /// Given public instance data for this circuit, uses the provided
     /// [`Driver`] to return the verifier-visible `Self::Output` gadget.
     ///
     /// This method describes the public output that a corresponding
     /// [`witness`](Circuit::witness) call must produce, without requiring
-    /// the witness input itself.
+    /// the private witness input itself.
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,

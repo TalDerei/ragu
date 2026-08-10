@@ -8,11 +8,11 @@
 //! necessarily parameterized by a [`Driver`]. As with all circuit code, gadgets
 //! must emit constraints deterministically.
 //!
-//! Witness input is driver-defined and its contents can only be extracted by
-//! the driver, so no gadget can enforce facts about witness data itself. In
-//! contrast, while wire types are also opaque handles defined by the driver,
-//! gadgets can carry **wire contracts**: facts about the assignments of their
-//! wires that are enforced or derived by constraints.
+//! Witness data is carried through driver-defined types whose contents can only
+//! be extracted through the driver, so no gadget can enforce facts about that
+//! data itself. In contrast, while wire types are also opaque handles defined by
+//! the driver, gadgets can carry **wire contracts**: facts about the assignments
+//! of their wires that are enforced or derived by constraints.
 //!
 //! The [`Gadget`] trait is implemented for gadgets instantiated over a driver;
 //! the [`GadgetKind`] trait relates gadgets instantiated over different
