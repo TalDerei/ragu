@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 mod identity;
+mod known_routine_soundness;
 mod segment_order;
 
 use alloc::format;
