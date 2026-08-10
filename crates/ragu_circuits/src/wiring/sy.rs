@@ -15,10 +15,10 @@
 //! Consider the coefficient of $X^j$ in $s(X, y)$: it equals $\sum\_{q=0}^{Q-1}
 //! \mathbf{U}\_{j,q} \cdot y^q$, where $\mathbf{U}\_{j,q}$ is determined by
 //! which wires appear in constraint $q$ and $Q$ is the total constraint count.
-//! During constraint emission, constraints arrive one at a time—we learn $U\_{j,0}$ from
-//! the first constraint, $U\_{j,1}$ from the second, and so on. The complete
-//! coefficient of $X^j$ remains unknown until all $q$ constraints have been
-//! processed.
+//! During constraint emission, constraints arrive one at a time—we learn
+//! $U\_{j,0}$ from the first constraint, $U\_{j,1}$ from the second, and so on.
+//! The complete coefficient of $X^j$ remains unknown until all $q$ constraints
+//! have been processed.
 //!
 //! This contrasts with [`sx`], where each constraint produces a complete
 //! coefficient $c\_j$ that can be stored immediately (because the $Y$ powers
@@ -355,9 +355,9 @@ struct SyScope<F: Field> {
 /// A [`Driver`] that computes $s(X, y)$ at a fixed $y$.
 ///
 /// Given a fixed evaluation point $y \in \mathbb{F}$, this driver interprets
-/// circuit operations to produce the polynomial $s(X, y)$.
-/// Unlike [`sx`] and [`sxy`] which use immediate evaluation, this driver uses
-/// deferred computation through virtual wires (see [module documentation](self)).
+/// circuit operations to produce the polynomial $s(X, y)$. Unlike [`sx`] and
+/// [`sxy`] which use immediate evaluation, this driver uses deferred
+/// computation through virtual wires (see [module documentation](self)).
 ///
 /// [`Driver`]: ragu_core::drivers::Driver
 /// [`sx`]: super::sx
@@ -728,8 +728,8 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
             );
         }
 
-        // Invariant: all virtual wires must have been freed during constraint emission,
-        // indicating proper reference counting and no leaked wires.
+        // Invariant: all virtual wires must have been freed during constraint
+        // emission, indicating proper reference counting and no leaked wires.
         let virtual_table = virtual_table.into_inner();
         assert_eq!(virtual_table.free.len(), virtual_table.wires.len());
     }

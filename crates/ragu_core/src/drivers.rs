@@ -64,8 +64,8 @@ use crate::{
 
 /// Alias for the concrete [`Maybe<T>`] type for a driver `D`.
 ///
-/// Circuit APIs use this for witness input and witness data that
-/// may or may not be available in a particular driver context.
+/// Circuit APIs use this for witness input and witness data that may or may
+/// not be available in a particular driver context.
 pub type DriverValue<D, T> = Perhaps<<D as DriverTypes>::MaybeKind, T>;
 
 /// Associated types and low-level gate allocation for a [`Driver`], without

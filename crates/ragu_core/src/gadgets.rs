@@ -44,15 +44,15 @@
 //! always contain the same number of wires in every instance, and cannot carry
 //! any additional state that would influence emitted constraints. It also means
 //! that gadgets usually cannot be `enum`s. Fortunately, most gadgets only
-//! contain wires, witness data and other gadgets. These simple
-//! gadgets always qualify as fungible by definition.
+//! contain wires, witness data and other gadgets. These simple gadgets always
+//! qualify as fungible by definition.
 //!
 //! #### Transformations between Drivers
 //!
 //! Gadgets must define a canonical mapping between their instantiations over
 //! different [`Driver`] types. This mapping uses the [`WireMap`] trait to
-//! facilitate the transformation of wires and witness data from
-//! one driver to another.
+//! facilitate the transformation of wires and witness data from one driver to
+//! another.
 //!
 //! That mapping defines the wire correspondence used by fungibility. It must
 //! visit wire fields in the same order for every instance of the same concrete
@@ -139,9 +139,9 @@ impl<'a, 'dr, D: Driver<'dr>> WireEqualizer<'a, 'dr, D> {
 /// instance indistinguishable in all subsequent constraint emission from `a`,
 /// carrying the same wire contracts. This precludes dynamic-length
 /// collections, enum discriminants, and any other instance state that affects
-/// emitted constraints. Wires are fungible by definition, and
-/// witness data cannot affect emitted constraints, so gadgets
-/// containing only these automatically satisfy this requirement.
+/// emitted constraints. Wires are fungible by definition, and witness data
+/// cannot affect emitted constraints, so gadgets containing only these
+/// automatically satisfy this requirement.
 ///
 /// The wire correspondence used here is defined by
 /// [`GadgetKind::map_gadget`]. Its traversal must be the same for every

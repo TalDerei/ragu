@@ -36,7 +36,7 @@ pub struct Boolean<'dr, D: Driver<'dr>> {
     #[ragu(wire)]
     wire: D::Wire,
 
-    /// Assignment-generation value of this boolean.
+    /// Witness data for this boolean.
     #[ragu(value)]
     value: DriverValue<D, bool>,
 }

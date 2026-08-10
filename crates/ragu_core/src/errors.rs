@@ -47,7 +47,7 @@ pub enum Error {
         limit: usize,
     },
 
-    /// Assignment-generation or local-check error.
+    /// Witness-generation or local-check error.
     ///
     /// This variant is retained for compatibility. In new documentation, prefer
     /// describing the concrete failure as a witness-generation error or a
