@@ -69,70 +69,6 @@ is enforced with the
 [constraint](../protocol/core/arithmetization.md#constraints)
 $\v{c}_0 = \v{k}_0 = 1$.
 
-## Trace and Segments
-
-[`Trace`] holds the gate values produced by synthesis as a list of
-_segments_, groups of four dense vectors $(a, b, c, d)$ corresponding
-to multiplication-gate wire assignments.
-
-Segment 0 is the _root_: all gates allocated outside of routine calls,
-plus the SYSTEM gate at position 0. Each `Driver::routine` call creates
-an additional segment isolated from its parent's gate indices. Segments
-are ordered by DFS traversal of the routine call tree. Under the
-`multicore` feature, subtrees run in parallel; each is annotated with a
-DFS path and the results are sorted back into DFS order before
-assembly.
-
-## Metrics and Fingerprinting
-
-Before any trace is computed, the circuit's constraint topology is
-analyzed by running synthesis on a counting driver. The result is a
-`CircuitMetrics`: total gate and constraint counts, plus a
-[`SegmentRecord`] for each segment in DFS order.
-
-Each routine invocation produces a [`RoutineFingerprint`], a
-Schwartz-Zippel fingerprint that combines the Rust `TypeId` of the
-routine's input and output types, a scalar evaluation of the routine's
-$s(X, Y)$ contribution at deterministic pseudorandom points, and the
-local gate and constraint counts. Two routines sharing a fingerprint
-have identical constraint shapes with probability ~$1 - 2^{-64}$.
-
-[`RoutineIdentity`] wraps the fingerprint to distinguish the root
-segment (which cannot be memoized) from actual routine invocations.
-
-## Floor Planning
-
-The floor planner converts per-segment counts into absolute offsets.
-[`floor_plan`][floor-plan-fn] takes segment records from metrics and
-returns [`ConstraintSegment`] entries, each specifying `gate_start`
-(the absolute gate index) and `constraint_start` (the absolute
-$Y$-power index for the segment's first constraint).
-
-The current layout is a simple prefix sum: segments are placed
-contiguously in DFS order. Routines with matching fingerprints have
-identical constraint shapes, which a future floor planner could exploit
-to assign congruent layouts and memoize $s(X, Y)$ evaluations.
-
-## Synthesis Flow
-
-The lifecycle of a circuit from definition to polynomial:
-
-1. **Metrics.** Synthesis runs on a counting driver, producing
-   `CircuitMetrics`.
-2. **Registration.** The circuit and its metrics are registered with a
-   [`Registry`][registry], which computes the floor plan and stores
-   evaluable wiring objects for on-demand $s(X, Y)$ queries.
-3. **Trace.** For a concrete witness, `CircuitExt::trace` produces a
-   `Trace` of raw gate values.
-4. **Assembly.** `Registry::assemble` scatters each trace segment to
-   the absolute position assigned by the floor plan, producing the
-   $r(X)$ [trace polynomial](../protocol/local/arithmetization.md).
-5. **Polynomial evaluation.** The wiring and trace polynomials feed
-   into the [protocol's verification checks](../protocol/core/nark.md).
-
-For multi-stage circuits, stage polynomials are interleaved between
-steps 3 and 4; see the [staging implementation](staging.md).
-
 [`ragu_circuits`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/
 [circuit-trait]: https://docs.rs/ragu_circuits/latest/ragu_circuits/trait.Circuit.html
 [circuit-instance]: https://docs.rs/ragu_circuits/latest/ragu_circuits/trait.Circuit.html#tymethod.instance
@@ -142,9 +78,3 @@ steps 3 and 4; see the [staging implementation](staging.md).
 [circuit-ky]: https://docs.rs/ragu_circuits/latest/ragu_circuits/trait.CircuitExt.html#method.ky
 [`Driver`]: https://docs.rs/ragu_core/latest/ragu_core/drivers/trait.Driver.html
 [`Trace`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/struct.Trace.html
-[`SegmentRecord`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/struct.SegmentRecord.html
-[`RoutineFingerprint`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/struct.RoutineFingerprint.html
-[floor-plan-fn]: https://docs.rs/ragu_circuits/latest/ragu_circuits/floor_planner/fn.floor_plan.html
-[`ConstraintSegment`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/floor_planner/struct.ConstraintSegment.html
-[`RoutineIdentity`]: https://docs.rs/ragu_circuits/latest/ragu_circuits/enum.RoutineIdentity.html
-[registry]: https://docs.rs/ragu_circuits/latest/ragu_circuits/registry/struct.Registry.html

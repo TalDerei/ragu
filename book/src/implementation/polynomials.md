@@ -90,35 +90,17 @@ repeated multiplications can reuse a single allocation.
 
 ### Decomposition
 
-The [NARK protocol](../protocol/core/nark.md#the-decomposition-trick)
-reduces a revdot claim $\revdot{\v{a}}{\v{b}} = c$ to polynomial
-evaluation queries by decomposing the product $a(X) \cdot b(X)$. The
+[`decomp_product_poly`] implements the decomposition that reduces a
+revdot claim $\revdot{\v{a}}{\v{b}} = c$ to polynomial evaluation
+queries. The construction is derived in the
 [structured vectors chapter](../protocol/prelim/structured_vectors.md#reduction-to-polynomial-queries)
-gives the general construction: for equal-length vectors
-$\v{a}, \v{b} \in \F^n$, the product polynomial
-$c(X) = a(X) \cdot b(X)$ of degree $2n - 2$ can be written as
+and specialized to the trace polynomials in the
+[NARK chapter](../protocol/core/nark.md#the-decomposition-trick).
 
-$$
-c(X) = X^{n-1}\, p(X^{-1}) + X^n\, q(X)
-$$
-
-where $p$ is formed by reversing the lower $n$ coefficients of $c$ and
-$q$ collects the upper $n - 1$ coefficients. The key property is that
-$p(0) = c_{n-1} = \revdot{\v{a}}{\v{b}}$, turning a coefficient
-extraction into a constant-term query.
-
-[`decomp_product_poly`] implements this step. It calls [`poly_mul`] to
-obtain $c$, splits off the upper half as $q$, and reverses the lower
-half in place to form $p$. The returned pair $(p, q)$ has lengths $n$
-and $n - 1$ respectively (for $n \geq 1$; empty inputs return two
-empty vectors).
-
-### Root Polynomials
-
-[`poly_with_roots`] constructs the monic polynomial
-$\prod_{i} (X - r_i)$ from a list of roots, using a pairwise tree of
-FFT-based multiplications. This is useful for constructing vanishing
-polynomials over explicit root sets.
+It calls [`poly_mul`] to obtain the product, splits off the upper half
+as $q$, and reverses the lower half in place to form $p$. The returned
+pair $(p, q)$ has lengths $n$ and $n - 1$ respectively (for $n \geq 1$;
+empty inputs return two empty vectors).
 
 Together, these primitives support the prover's polynomial workflow:
 the wiring polynomial is synthesized incrementally from circuit
@@ -130,6 +112,5 @@ revdot claims to polynomial queries.
 [`dot`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.dot.html
 [`poly_mul`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.poly_mul.html
 [`decomp_product_poly`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.decomp_product_poly.html
-[`poly_with_roots`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.poly_with_roots.html
 [`Domain::fft`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/struct.Domain.html#method.fft
 [`Domain::ifft`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/struct.Domain.html#method.ifft
