@@ -1,8 +1,14 @@
 [toolchain]
-channel = "1.90.0"
+channel = "1.97.1"
 components = ["clippy"]
 
 # Bumping MSRV
 # * update `toolchain.channel` key in `rust-toolchain.toml` (this file)
 # * update `book/src/guide/requirements.md`
+# * update the requirements bullet in `README.md`
 # * update `workspace.package.rust-version` key in root `Cargo.toml`
+# * update the pinned version named in the `vet` job comment in
+#   `.github/workflows/vet.yml`
+# * if the pinned nightly is now older than the new MSRV, rotate it forward in
+#   `justfile` (`_nightly`) and `.github/actions/rust-nightly-setup/action.yml`;
+#   otherwise `cargo` refuses to build the fuzz harness against these crates

@@ -10,7 +10,7 @@ build *ARGS:
 build_release *ARGS:
   cargo build --release --workspace --all-targets {{ARGS}}
 
-_nightly := "nightly-2026-04-11"
+_nightly := "nightly-2026-05-23"
 
 lint: _typos_setup _book_setup
   cargo clippy --workspace --lib --tests --benches -- -D warnings

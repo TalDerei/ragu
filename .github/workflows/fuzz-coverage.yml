@@ -81,9 +81,9 @@ jobs:
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
       - name: Install cargo-fuzz
-        # Keep this pin in sync with fuzz-cron.yml. An unlocked install
-        # currently resolves cargo-platform 0.3.3, which requires Rust 1.91,
-        # while this step runs under the repository's Rust 1.90 toolchain.
+        # Keep this pin in sync with fuzz-cron.yml. `--locked` keeps the
+        # resolved dependency set reproducible across runs rather than
+        # drifting with whatever cargo-fuzz's manifest ranges admit today.
         run: cargo install --locked cargo-fuzz@0.13.1
 
       - name: Generate coverage report

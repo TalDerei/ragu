@@ -18,5 +18,5 @@ runs:
       id: toolchain
       uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-05-23
       with:
-        toolchain: nightly-2026-04-11
+        toolchain: nightly-2026-05-23
         components: ${{ inputs.components }}
