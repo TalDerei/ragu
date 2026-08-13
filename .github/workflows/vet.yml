@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # cargo-vet only reads manifests; it doesn't compile our crates. Bypass
-    # the workspace's rust-toolchain.toml (which pins 1.90.0 + clippy) so we
+    # the workspace's rust-toolchain.toml (which pins 1.97.1 + clippy) so we
     # use the runner's preinstalled stable and avoid rustup component-install
     # conflicts when cargo runs inside the workspace.
     env:
