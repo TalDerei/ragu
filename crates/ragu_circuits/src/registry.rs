@@ -469,20 +469,16 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         self.interpolate_xy(evals)
     }
 
-    /// Evaluate the registry polynomial at every element of its $W$-domain
-    /// with $X = x$, $Y = y$, returning $m(\omega^j, x, y)$ at index $j$ for
-    /// $j \in [0, n)$, where $\omega$ is the domain generator.
+    /// Evaluate the registry polynomial at every element of its $W$-domain,
+    /// returning $m(\omega^j, x, y)$ at index $j$ for $j \in [0, n)$, where
+    /// $\omega$ generates the domain.
     ///
-    /// The vector is indexed by domain position, not by circuit index: circuit
-    /// $i$ occupies position $j = \text{bitreverse}(i, \log\_2 n)$, so its entry
-    /// lives at `evals[bitreverse(i, log2_n)]`. (This agrees with
-    /// [`CircuitIndex::omega_j`], which computes the same point against the
-    /// field's full $2^S$ domain.)
-    ///
-    /// Each entry is the *whole* registry evaluation at that point, not the
-    /// circuit's $s\_i(x, y)$ alone: it also carries the $W$-independent key
-    /// term, plus the shared global term for masking circuits. Domain
-    /// positions with no registered circuit hold the key term only.
+    /// Entries are indexed by domain position: circuit $i$'s evaluation lives
+    /// at $j = \text{bitreverse}(i, \log\_2 n)$, the same point
+    /// [`CircuitIndex::omega_j`] computes against the field's full $2^S$
+    /// domain. Every entry includes the $W$-independent key term (positions
+    /// with no registered circuit hold it alone), and masking circuits also
+    /// carry the shared global term.
     pub fn wxy_over_domain(&self, x: F, y: F) -> Vec<F> {
         // The key term k * (XY)^{4n-1} has no W factor, so it adds the same
         // scalar to every domain evaluation.

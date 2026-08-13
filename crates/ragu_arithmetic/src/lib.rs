@@ -107,20 +107,6 @@ pub use util::{
     poly_mul, poly_with_roots,
 };
 
-/// N-way parallel join for coarse-grained task parallelism.
-///
-/// Like [`join`] for more than two closures: nests internally and flattens the
-/// result into a single tuple. Each closure may return a different type.
-/// Supports 2..=4 closures — for higher arities prefer a data-parallel
-/// iterator.
-///
-/// ```
-/// use ragu_arithmetic::par_join;
-///
-/// let (a, b, c) = par_join!(|| 1u32, || "two", || 3.0_f64);
-/// assert_eq!((a, b, c), (1, "two", 3.0));
-/// ```
-pub use crate::__ragu_arithmetic_par_join as par_join;
 use crate::ff::{Field, FromUniformBytes, PrimeFieldBits, WithSmallOrderMulGroup};
 pub use crate::pasta_curves::{
     arithmetic::{Coordinates, CurveAffine, CurveExt},

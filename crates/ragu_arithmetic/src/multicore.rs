@@ -10,9 +10,14 @@ pub fn current_num_threads() -> usize {
     1
 }
 
+/// N-way parallel join for coarse-grained task parallelism.
+///
+/// Like [`join`] for more than two closures: nests internally and flattens
+/// the result into a single tuple. Each closure may return a different type.
+/// Supports 2..=4 closures — for higher arities prefer a data-parallel
+/// iterator.
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __ragu_arithmetic_par_join {
+macro_rules! par_join {
     ($a:expr, $b:expr $(,)?) => {
         $crate::join($a, $b)
     };
