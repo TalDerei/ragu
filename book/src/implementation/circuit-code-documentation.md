@@ -32,6 +32,54 @@ emitted constraints.
 Do not repeat this rule in every method. It is the default for all circuit code.
 Document the cases where callers need to know more.
 
+## Determinism
+
+The core rule says circuit code emits constraints *deterministically*. That word
+carries a requirement worth stating on its own, because nothing in the type
+system enforces it.
+
+A circuit is walked more than once, by different drivers: metrics counts gates
+and constraints, the trace driver computes witness data, and the wiring drivers
+evaluate `s(X, Y)`. Each walk runs the same circuit code and must observe the
+same sequence of driver operations. When two walks disagree, the artifacts they
+produce no longer describe a single constraint system.
+
+Circuit code is therefore required to emit the same constraints on every walk,
+and the rest of the system assumes it does. Beyond the `DriverValue` rule above,
+a `&self` receiver does not rule out any of:
+
+- interior mutability (`Cell`, `RefCell`, atomics) in a circuit, gadget, or
+  routine
+- global, thread-local, or lazily initialized state
+- iteration order that varies between runs
+- addresses, pointer identity, or allocation-dependent behavior
+- time, randomness, I/O, or ambient environment
+
+This is a limitation of the language, not an omission. Rust cannot express "this
+closure is pure," so determinism sits with the circuit author.
+
+Local checks catch some violations after the fact. Gate and constraint counts
+that disagree between drivers surface as a structural error when a trace is
+assembled against its floor plan, for instance. Treat these as a backstop for
+one symptom rather than as enforcement: circuit code that emits a *different but
+equally shaped* constraint system on each walk passes all of them. Do not
+describe error handling or local checks as though they make nondeterministic
+circuit code safe.
+
+Do not restate this requirement on every method; like the core rule, it is the
+default. State it where an API accepts caller-supplied circuit behavior — a
+closure, or a `Routine`, `Circuit`, `Step`, or `Stage` implementation — and
+the caller needs to know the behavior runs on each walk and must agree with
+itself every time.
+
+```rust,ignore
+/// # Preconditions
+///
+/// This routine runs once per driver walk. It must emit the same constraints on
+/// each walk; emission that depends on interior mutable or ambient state does
+/// not describe a single constraint system.
+```
+
 ## Gadget Contracts
 
 Gadgets contain wires and may also carry witness data. These are different
@@ -382,6 +430,8 @@ Avoid these patterns:
 - saying a gadget protects invariants about witness data
 - describing promotion from a bare wire as a contract bypass when the promoted
   type does not carry an additional wire contract
+- implying that error handling, local checks, or the type system prevent
+  nondeterministic circuit code
 
 Prefer direct wording:
 
@@ -415,3 +465,6 @@ When documenting or reviewing circuit code, ask:
    add a boilerplate `# Errors` section.
 8. Is a condition described with "enforce"? Verify it is actually forced by
    constraints.
+9. Does the API accept caller-supplied circuit behavior that every driver walk
+   will run? If yes, state the determinism requirement instead of leaving it to
+   be inferred.
