@@ -470,13 +470,19 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial at every element of its $W$-domain
-    /// with $X = x$, $Y = y$, returning evaluations $m(\omega^j, x, y)$ for
-    /// $j \in [0, n)$.
+    /// with $X = x$, $Y = y$, returning $m(\omega^j, x, y)$ at index $j$ for
+    /// $j \in [0, n)$, where $\omega$ is the domain generator.
     ///
-    /// The returned vector is ordered by $j$, not by circuit index — circuit
-    /// $i$'s value $s\_{i}(x, y) = m(\omega\_{j(i)}, x, y)$ lives at
-    /// `evals[bitreverse(i, log2_n)]`. Domain positions with no registered
-    /// circuit hold only the W-independent key contribution.
+    /// The vector is indexed by domain position, not by circuit index: circuit
+    /// $i$ occupies position $j = \text{bitreverse}(i, \log\_2 n)$, so its entry
+    /// lives at `evals[bitreverse(i, log2_n)]`. (This agrees with
+    /// [`CircuitIndex::omega_j`], which computes the same point against the
+    /// field's full $2^S$ domain.)
+    ///
+    /// Each entry is the *whole* registry evaluation at that point, not the
+    /// circuit's $s\_i(x, y)$ alone: it also carries the $W$-independent key
+    /// term, plus the shared global term for masking circuits. Domain
+    /// positions with no registered circuit hold the key term only.
     pub fn wxy_over_domain(&self, x: F, y: F) -> Vec<F> {
         // The key term k * (XY)^{4n-1} has no W factor, so it adds the same
         // scalar to every domain evaluation.
@@ -501,8 +507,12 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// [`wxy_over_domain`](Self::wxy_over_domain) into the monomial-basis
     /// polynomial $m(W, x, y)$ via an inverse FFT.
     ///
-    /// Consumes `evals` and reuses its allocation as the polynomial's
-    /// coefficient buffer. `evals.len()` must equal the registry's domain size.
+    /// `evals` is consumed and transformed in place by the inverse FFT before
+    /// being compressed into sparse block form.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `evals.len()` does not equal the registry's domain size.
     pub fn interpolate_xy(&self, mut evals: Vec<F>) -> sparse::Polynomial<F, R> {
         assert_eq!(evals.len(), self.domain.n());
         self.domain.ifft(&mut evals);
@@ -912,15 +922,13 @@ mod tests {
 
         assert_eq!(evals.len(), registry.domain.n());
 
-        // evals[k] must equal m(omega^k, x, y) = poly.eval(omega^k).
+        // evals[j] must equal m(omega^j, x, y) = poly.eval(omega^j).
         let mut omega_pow = Fp::ONE;
-        for (k, eval) in evals.iter().enumerate() {
+        for (j, eval) in evals.iter().enumerate() {
             assert_eq!(
                 *eval,
                 poly.eval(omega_pow),
-                "evals[{}] should equal poly.eval(omega^{})",
-                k,
-                k
+                "evals[{j}] should equal poly.eval(omega^{j})"
             );
             omega_pow *= registry.domain.omega();
         }
@@ -929,17 +937,19 @@ mod tests {
         // at the bit-reversed domain position.
         let log2_n = registry.log2_domain();
         for i in 0..registry.num_circuits() {
-            let k = bitreverse(i as u32, log2_n) as usize;
+            let j = bitreverse(i as u32, log2_n) as usize;
             let omega_j = CircuitIndex::new(i).omega_j::<Fp>();
-            assert_eq!(evals[k], poly.eval(omega_j));
+            assert_eq!(evals[j], poly.eval(omega_j));
         }
 
-        // interpolate_xy on the evals reproduces xy() (compared via
-        // evaluation at random off-domain points).
+        // interpolate_xy must agree with `wxy`, which reaches the same value
+        // through the independent Lagrange-cache path. Comparing against
+        // `poly` here would be vacuous: `xy` is defined as exactly this
+        // composition, so such an assertion could never fail.
         let interpolated = registry.interpolate_xy(evals);
         for _ in 0..4 {
             let probe = Fp::random(&mut rand::rng());
-            assert_eq!(interpolated.eval(probe), poly.eval(probe));
+            assert_eq!(interpolated.eval(probe), registry.wxy(probe, x, y));
         }
 
         Ok(())
