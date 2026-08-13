@@ -6,7 +6,7 @@
 //! lazily computed from [`bridge_alpha`](ProofBuilder::bridge_alpha) and the
 //! native commitments already on the builder.
 
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use core::cell::OnceCell;
 
 use ragu_arithmetic::{Cycle, ff::Field};
@@ -112,7 +112,7 @@ macro_rules! bridge_pair {
             commitment: C::NestedCurve,
         ) {
             assert!(self.$rx.is_none(), concat!("double-set: ", stringify!($rx)));
-            self.$rx = Some(rx);
+            self.$rx = Some(Arc::new(rx));
             self.$commitment = Some(commitment);
         }
 
@@ -125,7 +125,7 @@ macro_rules! bridge_pair {
 
 /// Produces `pub(crate) fn $name(&mut self, poly, commitment)` that stores a
 /// native polynomial in an `Option` field and its pre-computed commitment in a
-/// `Cell` cache. Used for a/b/p whose commitments are computed via non-standard
+/// `OnceCell` cache. Used for a/b/p whose commitments are computed via non-standard
 /// techniques rather than lazy evaluation.
 macro_rules! native_poly_with_commitment_setter {
     ($name:ident, $poly:ident, $cache:ident) => {
@@ -148,7 +148,7 @@ macro_rules! native_poly_with_commitment_setter {
 }
 
 /// Produces `pub(crate) fn $getter(&self) -> C::HostCurve` that reads a
-/// pre-computed native commitment from a `Cell`. Used for a/b/p whose
+/// pre-computed native commitment from a `OnceCell`. Used for a/b/p whose
 /// commitments are set explicitly via a special setter rather than lazily.
 macro_rules! explicit_commitment_getter {
     ($getter:ident, $cache:ident, $setter:ident) => {
@@ -163,7 +163,7 @@ macro_rules! explicit_commitment_getter {
     };
 }
 
-/// Produces `pub(crate) fn $rx(&self) -> Result<&sparse::Polynomial<...>>`
+/// Produces `pub(crate) fn $rx(&self) -> Result<&Arc<sparse::Polynomial<...>>>`
 /// and `pub(crate) fn $commitment(&self) -> Result<C::NestedCurve>` that
 /// lazily derive a cached bridge. On first call, `$rx` builds a
 /// `nested::stages::$stage::Witness` from the given getter methods, derives
@@ -177,7 +177,7 @@ macro_rules! explicit_commitment_getter {
 macro_rules! cached_bridge {
     ($rx:ident, $commitment:ident,
      $idx:expr, $stage:ident, { $($wit_field:ident : $getter:ident()),* }) => {
-        pub(crate) fn $rx(&self) -> Result<&sparse::Polynomial<C::ScalarField, R>> {
+        pub(crate) fn $rx(&self) -> Result<&Arc<sparse::Polynomial<C::ScalarField, R>>> {
             if let Some(rx) = self.$rx.get() {
                 return Ok(rx);
             }
@@ -189,7 +189,7 @@ macro_rules! cached_bridge {
             )?;
             // The early return above guarantees the cell is empty, so
             // `get_or_init` will always run the closure and store `rx`.
-            Ok(self.$rx.get_or_init(|| rx))
+            Ok(self.$rx.get_or_init(|| Arc::new(rx)))
         }
 
         pub(crate) fn $commitment(&self) -> Result<C::NestedCurve> {
@@ -235,28 +235,28 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     native_compute_v_rx: Option<sparse::Polynomial<C::CircuitField, R>>,
 
     // Bridge rx polynomials + commitments (set together by caller)
-    bridge_preamble_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_preamble_rx: Option<Arc<sparse::Polynomial<C::ScalarField, R>>>,
     bridge_preamble_commitment: Option<C::NestedCurve>,
-    bridge_s_prime_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_s_prime_rx: Option<Arc<sparse::Polynomial<C::ScalarField, R>>>,
     bridge_s_prime_commitment: Option<C::NestedCurve>,
-    bridge_inner_error_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_inner_error_rx: Option<Arc<sparse::Polynomial<C::ScalarField, R>>>,
     bridge_inner_error_commitment: Option<C::NestedCurve>,
-    bridge_f_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_f_rx: Option<Arc<sparse::Polynomial<C::ScalarField, R>>>,
     bridge_f_commitment: Option<C::NestedCurve>,
 
     // Cached bridge rx polynomials (lazily derived from `bridge_alpha` +
     // native commitments). Parallels the native rx/commitment split: the rx
     // slot is populated on first access, and the commitment slot is derived
     // lazily from it.
-    bridge_outer_error_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_ab_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_query_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_eval_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_outer_error_rx: OnceCell<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_ab_rx: OnceCell<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_query_rx: OnceCell<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_eval_rx: OnceCell<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling data
     nested_endoscaling_step_rxs: Option<Vec<sparse::Polynomial<C::ScalarField, R>>>,
     nested_endoscalar_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    nested_points_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    nested_points_rx: Option<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling commitment caches (lazily computed from polynomials)
     nested_endoscaling_step_commitments: OnceCell<Vec<C::NestedCurve>>,
@@ -415,9 +415,22 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     ref_getter!(native_b_poly, native_b_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_registry_xy_poly, native_registry_xy_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_p_poly, native_p_poly, sparse::Polynomial<C::CircuitField, R>);
-    ref_getter!(nested_points_rx, nested_points_rx, sparse::Polynomial<C::ScalarField, R>);
-    ref_getter!(bridge_s_prime_rx, bridge_s_prime_rx, sparse::Polynomial<C::ScalarField, R>);
-    ref_getter!(bridge_inner_error_rx, bridge_inner_error_rx, sparse::Polynomial<C::ScalarField, R>);
+
+    ref_getter!(
+        nested_points_rx,
+        nested_points_rx,
+        Arc<sparse::Polynomial<C::ScalarField, R>>
+    );
+    ref_getter!(
+        bridge_s_prime_rx,
+        bridge_s_prime_rx,
+        Arc<sparse::Polynomial<C::ScalarField, R>>
+    );
+    ref_getter!(
+        bridge_inner_error_rx,
+        bridge_inner_error_rx,
+        Arc<sparse::Polynomial<C::ScalarField, R>>
+    );
 
     lazy_commitment!(
         native,
@@ -572,7 +585,13 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         Vec<sparse::Polynomial<C::ScalarField, R>>
     );
     setter!(set_nested_endoscalar_rx, nested_endoscalar_rx, sparse::Polynomial<C::ScalarField, R>);
-    setter!(set_nested_points_rx, nested_points_rx, sparse::Polynomial<C::ScalarField, R>);
+    pub(crate) fn set_nested_points_rx(&mut self, v: sparse::Polynomial<C::ScalarField, R>) {
+        assert!(
+            self.nested_points_rx.is_none(),
+            "double-set: nested_points_rx"
+        );
+        self.nested_points_rx = Some(Arc::new(v));
+    }
 
     /// Lazily computes and caches commitments for all endoscaling step rx
     /// polynomials. Returns the cached slice.

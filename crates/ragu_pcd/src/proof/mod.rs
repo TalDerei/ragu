@@ -11,7 +11,7 @@
 
 pub(crate) mod builder;
 
-use alloc::{vec, vec::Vec};
+use alloc::{sync::Arc, vec, vec::Vec};
 
 pub(crate) use builder::ProofBuilder;
 use ragu_arithmetic::{Cycle, ff::Field};
@@ -42,7 +42,7 @@ use crate::{
 /// Wraps a value that can be recomputed from primary proof data. Used to
 /// distinguish commitment caches from primary polynomial fields at the type
 /// level. Immutable once constructed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Cached<T>(T);
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
@@ -83,25 +83,25 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Clone for Pcd<C, R, H> {
 /// check copying circuit claims.
 #[derive(Clone)]
 pub(crate) struct ChildStageRx<F: ragu_arithmetic::ff::PrimeField, R: Rank> {
-    pub points_stage: sparse::Polynomial<F, R>,
-    pub bridge_s_prime: sparse::Polynomial<F, R>,
-    pub bridge_inner_error: sparse::Polynomial<F, R>,
-    pub bridge_outer_error: sparse::Polynomial<F, R>,
-    pub bridge_ab: sparse::Polynomial<F, R>,
-    pub bridge_query: sparse::Polynomial<F, R>,
-    pub bridge_eval: sparse::Polynomial<F, R>,
+    pub points_stage: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_s_prime: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_inner_error: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_outer_error: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_ab: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_query: Arc<sparse::Polynomial<F, R>>,
+    pub bridge_eval: Arc<sparse::Polynomial<F, R>>,
 }
 
 impl<F: ragu_arithmetic::ff::PrimeField, R: Rank> ChildStageRx<F, R> {
     /// Dispatch to the bridge-stage rx polynomial named by `kind`.
     pub(crate) fn bridge_at(&self, kind: ChildBridgeKind) -> &sparse::Polynomial<F, R> {
         match kind {
-            ChildBridgeKind::SPrime => &self.bridge_s_prime,
-            ChildBridgeKind::InnerError => &self.bridge_inner_error,
-            ChildBridgeKind::OuterError => &self.bridge_outer_error,
-            ChildBridgeKind::AB => &self.bridge_ab,
-            ChildBridgeKind::Query => &self.bridge_query,
-            ChildBridgeKind::Eval => &self.bridge_eval,
+            ChildBridgeKind::SPrime => self.bridge_s_prime.as_ref(),
+            ChildBridgeKind::InnerError => self.bridge_inner_error.as_ref(),
+            ChildBridgeKind::OuterError => self.bridge_outer_error.as_ref(),
+            ChildBridgeKind::AB => self.bridge_ab.as_ref(),
+            ChildBridgeKind::Query => self.bridge_query.as_ref(),
+            ChildBridgeKind::Eval => self.bridge_eval.as_ref(),
         }
     }
 }
@@ -109,19 +109,15 @@ impl<F: ragu_arithmetic::ff::PrimeField, R: Rank> ChildStageRx<F, R> {
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Extract stage rx polynomials from this proof for storage as child
     /// data in a parent proof.
-    //
-    // TODO: wrap each child polynomial in `Arc` so this extraction can
-    // share ownership instead of cloning every rx polynomial.
     pub(crate) fn as_child_stage_rx(&self) -> ChildStageRx<C::ScalarField, R> {
         ChildStageRx {
-            points_stage: self.nested_points_rx.clone(),
-            bridge_s_prime: self.bridge_s_prime_rx.clone(),
-            bridge_inner_error: self.bridge_inner_error_rx.clone(),
-            // .0 = polynomial (these are (poly, commitment) tuples from cached_bridge!)
-            bridge_outer_error: self.bridge_outer_error_rx.0.clone(),
-            bridge_ab: self.bridge_ab_rx.0.clone(),
-            bridge_query: self.bridge_query_rx.0.clone(),
-            bridge_eval: self.bridge_eval_rx.0.clone(),
+            points_stage: Arc::clone(&self.nested_points_rx),
+            bridge_s_prime: Arc::clone(&self.bridge_s_prime_rx),
+            bridge_inner_error: Arc::clone(&self.bridge_inner_error_rx),
+            bridge_outer_error: Arc::clone(&self.bridge_outer_error_rx.0),
+            bridge_ab: Arc::clone(&self.bridge_ab_rx.0),
+            bridge_query: Arc::clone(&self.bridge_query_rx.0),
+            bridge_eval: Arc::clone(&self.bridge_eval_rx.0),
         }
     }
 }
@@ -160,21 +156,21 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) native_compute_v_rx: sparse::Polynomial<C::CircuitField, R>,
 
     // Bridge rx polynomials (non-cached, set by caller)
-    pub(crate) bridge_preamble_rx: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) bridge_s_prime_rx: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) bridge_inner_error_rx: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) bridge_f_rx: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) bridge_preamble_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
+    pub(crate) bridge_s_prime_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
+    pub(crate) bridge_inner_error_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
+    pub(crate) bridge_f_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
 
     // Bridge rx polynomials (cached, derived from bridge_alpha + native commitments)
-    bridge_outer_error_rx: Cached<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_ab_rx: Cached<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_query_rx: Cached<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_eval_rx: Cached<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_outer_error_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_query_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_eval_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling data (ScalarField, NestedCurve commitment)
     pub(crate) nested_endoscaling_step_rxs: Vec<sparse::Polynomial<C::ScalarField, R>>,
     pub(crate) nested_endoscalar_rx: sparse::Polynomial<C::ScalarField, R>,
-    pub(crate) nested_points_rx: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) nested_points_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
 
     // Nested endoscaling commitment caches
     nested_endoscaling_step_commitments: Vec<Cached<C::NestedCurve>>,
@@ -266,16 +262,16 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
         match idx {
             EndoscalingStep(step) => &self.nested_endoscaling_step_rxs[step as usize],
             EndoscalarStage => &self.nested_endoscalar_rx,
-            PointsStage => &self.nested_points_rx,
-            BridgePreamble => &self.bridge_preamble_rx,
-            BridgeSPrime => &self.bridge_s_prime_rx,
-            BridgeInnerError => &self.bridge_inner_error_rx,
-            BridgeOuterError => &self.bridge_outer_error_rx.0,
-            BridgeAB => &self.bridge_ab_rx.0,
-            BridgeQuery => &self.bridge_query_rx.0,
-            BridgeF => &self.bridge_f_rx,
-            BridgeEval => &self.bridge_eval_rx.0,
-            ChildPointsStage(side) => &self.child_stage_rx(side).points_stage,
+            PointsStage => self.nested_points_rx.as_ref(),
+            BridgePreamble => self.bridge_preamble_rx.as_ref(),
+            BridgeSPrime => self.bridge_s_prime_rx.as_ref(),
+            BridgeInnerError => self.bridge_inner_error_rx.as_ref(),
+            BridgeOuterError => self.bridge_outer_error_rx.0.as_ref(),
+            BridgeAB => self.bridge_ab_rx.0.as_ref(),
+            BridgeQuery => self.bridge_query_rx.0.as_ref(),
+            BridgeF => self.bridge_f_rx.as_ref(),
+            BridgeEval => self.bridge_eval_rx.0.as_ref(),
+            ChildPointsStage(side) => self.child_stage_rx(side).points_stage.as_ref(),
             ChildBridge(kind, side) => self.child_stage_rx(side).bridge_at(kind),
         }
     }
@@ -685,25 +681,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         // child rx must match the proof's own rx. Force lazy evaluation of
         // cached bridges first so we can clone them.
         let trivial_child = ChildStageRx {
-            points_stage: builder.nested_points_rx().clone(),
-            bridge_s_prime: builder.bridge_s_prime_rx().clone(),
-            bridge_inner_error: builder.bridge_inner_error_rx().clone(),
-            bridge_outer_error: builder
-                .bridge_outer_error_rx()
-                .expect("trivial bridge_outer_error_rx")
-                .clone(),
-            bridge_ab: builder
-                .bridge_ab_rx()
-                .expect("trivial bridge_ab_rx")
-                .clone(),
-            bridge_query: builder
-                .bridge_query_rx()
-                .expect("trivial bridge_query_rx")
-                .clone(),
-            bridge_eval: builder
-                .bridge_eval_rx()
-                .expect("trivial bridge_eval_rx")
-                .clone(),
+            points_stage: Arc::clone(builder.nested_points_rx()),
+            bridge_s_prime: Arc::clone(builder.bridge_s_prime_rx()),
+            bridge_inner_error: Arc::clone(builder.bridge_inner_error_rx()),
+            bridge_outer_error: Arc::clone(
+                builder
+                    .bridge_outer_error_rx()
+                    .expect("trivial bridge_outer_error_rx"),
+            ),
+            bridge_ab: Arc::clone(builder.bridge_ab_rx().expect("trivial bridge_ab_rx")),
+            bridge_query: Arc::clone(builder.bridge_query_rx().expect("trivial bridge_query_rx")),
+            bridge_eval: Arc::clone(builder.bridge_eval_rx().expect("trivial bridge_eval_rx")),
         };
         builder.set_child_left_stage_rx(trivial_child.clone());
         builder.set_child_right_stage_rx(trivial_child);
