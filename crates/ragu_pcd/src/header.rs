@@ -16,7 +16,12 @@ use ragu_primitives::{allocator::Allocator, io::Write};
 /// * `0` is reserved for all circuits that have a fixed ID, used internally for
 ///   recursion. This is not used by actual [`Header`] implementations.
 /// * `1` is reserved for the trivial header.
-const NUM_INTERNAL_SUFFIXES: u8 = 2;
+/// * `2` is reserved for the bootstrap frontier sentinel that marks the empty
+///   predecessor slots of a genesis leaf (see [`Suffix::bootstrap`]). It is
+///   never produced by a [`Header`] implementation, so no application proof can
+///   present it — which is what confines base-case detection to genuine
+///   bootstrap dummies.
+const NUM_INTERNAL_SUFFIXES: u8 = 3;
 
 /// Internal representation of a [`Suffix`] distinguishing internal vs.
 /// application suffixes.
@@ -65,14 +70,27 @@ impl Suffix {
             suffix: HeaderSuffix::Internal(value),
         }
     }
+
+    /// The reserved sentinel suffix marking the empty predecessor slots of a
+    /// genesis (bootstrap) leaf.
+    ///
+    /// Only the internally-synthesized bootstrap dummy carries this suffix in
+    /// its recorded predecessor headers. Base-case detection keys on it so that
+    /// real application proofs — including those carrying a trivial `()` output
+    /// — are never mistaken for bootstrap leaves. Only called internally by
+    /// Ragu.
+    pub(crate) const fn bootstrap() -> Self {
+        Suffix::internal(2)
+    }
 }
 
 #[test]
 fn test_suffix_map() {
     assert_eq!(Suffix::internal(0).get(), 0);
     assert_eq!(Suffix::internal(1).get(), 1);
-    assert_eq!(Suffix::new(0).get(), 2);
-    assert_eq!(Suffix::new(1).get(), 3);
+    assert_eq!(Suffix::bootstrap().get(), 2);
+    assert_eq!(Suffix::new(0).get(), 3);
+    assert_eq!(Suffix::new(1).get(), 4);
 }
 
 /// Headers are succinct representations of data, essentially used as public

@@ -18,10 +18,16 @@
 //!
 //! ### Base case handling
 //!
-//! When both child proofs are trivial (the "base case"), the prover may witness
-//! any [$c$] value without constraint. This allows seeding the recursion with
+//! When both child proofs are genesis (bootstrap) leaves — the internally
+//! synthesized dummies that [`seed`] folds in, identified by the reserved
+//! bootstrap suffix on their predecessor headers — the prover may witness any
+//! [$c$] value without constraint. This allows seeding the recursion with
 //! initial proofs that don't yet carry meaningful revdot claims. The constraint
-//! is enforced only when [`is_base_case`] returns false.
+//! is enforced only when [`is_base_case`] returns false; a real application
+//! proof, even one whose output is the trivial `()` header, never carries that
+//! suffix and so always has its revdot claim enforced.
+//!
+//! [`seed`]: crate::Application::seed
 //!
 //! ### $k(y)$ consistency
 //!
@@ -207,8 +213,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             let witnessed_c = unified_output.c.receive(dr, allocator)?;
 
             // Enforce witnessed_c == computed_c, but only when NOT in base case.
-            // In base case (both children are trivial proofs), the prover may
-            // witness any c value to seed the recursion.
+            // In base case (both children are genesis bootstrap leaves), the
+            // prover may witness any c value to seed the recursion.
             preamble
                 .is_base_case(dr, allocator)?
                 .not(dr)

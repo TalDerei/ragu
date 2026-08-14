@@ -532,8 +532,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         let mut builder = ProofBuilder::new(self.params, C::ScalarField::ONE);
 
         builder.set_circuit_id(CircuitIndex::new(0));
-        builder.set_left_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
-        builder.set_right_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
+
+        // Mark this synthesized dummy as a genesis leaf. It has no real
+        // predecessors, so its recorded child headers carry the reserved
+        // bootstrap suffix in their final slot. Base-case detection keys on this
+        // suffix (see [`is_bootstrap_leaf`]), which is what keeps real
+        // `()`-output application proofs out of the base case.
+        //
+        // [`is_bootstrap_leaf`]: crate::internal::native::stages::preamble::ProofInputs::is_bootstrap_leaf
+        let bootstrap_header = || {
+            let mut header = vec![C::CircuitField::ZERO; HEADER_SIZE];
+            header[HEADER_SIZE - 1] =
+                C::CircuitField::from(crate::header::Suffix::bootstrap().get());
+            header
+        };
+        builder.set_left_header(bootstrap_header());
+        builder.set_right_header(bootstrap_header());
 
         // Native rx polynomials (all trivial ones)
         builder.set_native_application_rx(ones_host.clone());

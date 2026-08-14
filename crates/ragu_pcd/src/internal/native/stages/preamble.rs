@@ -20,7 +20,12 @@ use ragu_primitives::{
     vec::{CollectFixed, ConstLen, FixedVec},
 };
 
-use crate::{Proof, header::Header, internal::native::unified, step::internal::padded};
+use crate::{
+    Proof,
+    header::{Header, Suffix},
+    internal::native::unified,
+    step::internal::padded,
+};
 
 type HeaderVec<'dr, D, const HEADER_SIZE: usize> = FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>;
 
@@ -138,14 +143,26 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
         ky.finish_ky(dr)
     }
 
-    /// Returns true if this child proof is a trivial proof (output header suffix == 1).
-    pub fn is_trivial(
+    /// Returns true when this child proof is a genesis (bootstrap) leaf.
+    ///
+    /// A genesis leaf is the internally-synthesized dummy that
+    /// [`seed`](crate::Application::seed) folds in to bootstrap the recursion.
+    /// It is the only proof whose recorded predecessor headers carry the
+    /// reserved [bootstrap suffix](Suffix::bootstrap); every real application
+    /// proof records predecessor headers with an ordinary suffix (`>= 1`), even
+    /// when its own output is the trivial `()` header. Keying base-case
+    /// detection on this suffix — rather than on the `()` output-header suffix,
+    /// which real unit-output proofs reuse — is what stops a claim-bearing child
+    /// from receiving base-case treatment.
+    pub fn is_bootstrap_leaf(
         &self,
         dr: &mut D,
         allocator: &mut impl Allocator<'dr, D>,
     ) -> Result<Boolean<'dr, D>> {
-        let suffix = &self.output_header[HEADER_SIZE - 1];
-        suffix.is_equal(dr, allocator, &Element::one())
+        let bootstrap = Element::constant(dr, D::F::from(Suffix::bootstrap().get()));
+        let left = self.children.left[HEADER_SIZE - 1].is_equal(dr, allocator, &bootstrap)?;
+        let right = self.children.right[HEADER_SIZE - 1].is_equal(dr, allocator, &bootstrap)?;
+        left.and(dr, &right)
     }
 }
 
@@ -236,15 +253,16 @@ pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEAD
 impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEADER_SIZE: usize>
     Output<'dr, D, C, HEADER_SIZE>
 {
-    /// Returns true if both child proofs are trivial proofs.
+    /// Returns true when both child proofs are genesis (bootstrap) leaves, i.e.
+    /// this fuse is the base case that seeds the recursion.
     pub fn is_base_case(
         &self,
         dr: &mut D,
         allocator: &mut impl Allocator<'dr, D>,
     ) -> Result<Boolean<'dr, D>> {
-        let left_is_trivial = self.left.is_trivial(dr, allocator)?;
-        let right_is_trivial = self.right.is_trivial(dr, allocator)?;
-        left_is_trivial.and(dr, &right_is_trivial)
+        let left_is_leaf = self.left.is_bootstrap_leaf(dr, allocator)?;
+        let right_is_leaf = self.right.is_bootstrap_leaf(dr, allocator)?;
+        left_is_leaf.and(dr, &right_is_leaf)
     }
 }
 

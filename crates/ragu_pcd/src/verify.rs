@@ -361,24 +361,38 @@ mod tests {
     }
 
     #[test]
-    fn exploit_unit_header_base_case_bypasses_child_revdot_soundness() {
+    fn base_case_scoped_to_genesis_rejects_invalid_unit_children() {
+        // Regression test for the base-case over-broadness closed by scoping
+        // detection to the reserved bootstrap suffix (see
+        // [`is_bootstrap_leaf`]).
+        //
+        // Previously any fuse whose children carried a `()` output header was
+        // treated as a base case, so the child revdot claim was skipped and a
+        // corrupted `Pcd<()>` slipped through. Now the base case fires only for
+        // genuine genesis leaves, so the children's claims are enforced and the
+        // forgery is rejected.
+        //
+        // [`is_bootstrap_leaf`]: crate::internal::native::stages::preamble::ProofInputs::is_bootstrap_leaf
         let pasta = Pasta::baked();
         let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
             .register(UnitStep::<0>)
             .expect("register seed step")
             .register(UnitStep::<1>)
-            .expect("register exploit step")
+            .expect("register fuse step")
             .finalize(pasta)
             .expect("failed to create test application");
 
+        // Genuine seed still works: the base case still fires for real
+        // bootstrap dummies, so an honestly produced unit proof verifies.
         let mut rng = StdRng::seed_from_u64(1);
         let (valid_unit, ()) = app.seed(&mut rng, UnitStep::<0>, ()).expect("seed");
         assert!(
             app.verify(&valid_unit, StdRng::seed_from_u64(2))
                 .expect("valid child verify should not error"),
-            "honestly produced unit proof should verify"
+            "honestly produced unit proof should still verify"
         );
 
+        // Corrupt the produced unit proof so it no longer verifies on its own.
         let (mut invalid_child, ()) = valid_unit.into_parts();
         invalid_child
             .native_a_poly
@@ -393,20 +407,59 @@ mod tests {
             "corrupted child proof should not verify on its own"
         );
 
-        let (forged_parent, ()) = app
-            .fuse(
-                &mut rng,
-                UnitStep::<1>,
-                (),
-                invalid_child.clone(),
-                invalid_child,
-            )
-            .expect("fuse corrupted unit children");
+        // Fusing the corrupted `()` children through a unit step no longer
+        // receives base-case treatment: their predecessor headers carry the
+        // ordinary `()` suffix, not the bootstrap sentinel, so the revdot claim
+        // is enforced. The forgery must be rejected — either the fuse fails to
+        // assemble a satisfying trace, or the resulting parent fails to verify.
+        match app.fuse(
+            &mut rng,
+            UnitStep::<1>,
+            (),
+            invalid_child.clone(),
+            invalid_child,
+        ) {
+            Err(_) => {
+                // Prover could not satisfy the now-enforced revdot claim.
+            }
+            Ok((parent, ())) => {
+                assert!(
+                    !app.verify(&parent, StdRng::seed_from_u64(4))
+                        .expect("parent verify should not error"),
+                    "a parent fused from invalid non-genesis children must not verify"
+                );
+            }
+        }
+    }
 
+    #[test]
+    fn rerandomize_unit_proof_still_verifies() {
+        // A `Pcd<()>` from the middle of a chain used to trip the over-broad
+        // base case during rerandomization (both fuse inputs carry a `()`
+        // output), silently dropping its revdot claim. With detection scoped to
+        // the bootstrap sentinel, neither input is a genesis leaf, so
+        // rerandomize now takes the normal claim-enforcing path — and must
+        // still preserve verification.
+        let pasta = Pasta::baked();
+        let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
+            .register(UnitStep::<0>)
+            .expect("register seed step")
+            .finalize(pasta)
+            .expect("failed to create test application");
+
+        let mut rng = StdRng::seed_from_u64(7);
+        let (unit, ()) = app.seed(&mut rng, UnitStep::<0>, ()).expect("seed");
         assert!(
-            app.verify(&forged_parent, StdRng::seed_from_u64(4))
-                .expect("forged parent verify should not error"),
-            "parent proof verifies even though both child proofs are invalid"
+            app.verify(&unit, StdRng::seed_from_u64(8))
+                .expect("verify should not error"),
+            "seeded unit proof should verify"
+        );
+
+        let rerandomized = app.rerandomize(unit, &mut rng).expect("rerandomize");
+        assert!(
+            app.verify(&rerandomized, StdRng::seed_from_u64(9))
+                .expect("verify should not error"),
+            "rerandomized unit proof should still verify through the enforced path"
         );
     }
 }
