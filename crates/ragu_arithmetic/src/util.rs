@@ -342,8 +342,6 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
 
     let result_len = a.len() + b.len() - 1;
     let n = result_len.next_power_of_two();
-    // TODO(cnode): instantiate Domain{...} in-line instead of using new(...),
-    // which loops `F::S - k` times to derive the generator via halvings.
     let domain = Domain::new(n.ilog2());
 
     // Lay out both evaluation forms back-to-back in `out`: lower half will

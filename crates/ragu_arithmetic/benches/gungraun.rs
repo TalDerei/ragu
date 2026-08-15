@@ -8,7 +8,9 @@ use ragu_arithmetic::{
     pasta_curves::{EpAffine, Fp, Fq},
     poly_with_roots,
 };
-use setup::{f, setup_domain_ell, setup_domain_fft, setup_rng, setup_with_rng, vec_affine, vec_f};
+use setup::{
+    f, setup_domain_fft, setup_domain_lagrange_evals, setup_rng, setup_with_rng, vec_affine, vec_f,
+};
 
 #[library_benchmark(setup = setup_rng)]
 #[benches::with_setup(
@@ -33,15 +35,15 @@ fn fft((domain, mut data): (Domain<Fp>, Vec<Fp>)) {
     black_box(data);
 }
 
-#[library_benchmark(setup = setup_domain_ell)]
+#[library_benchmark(setup = setup_domain_lagrange_evals)]
 #[benches::multiple(10, 14)]
-fn ell((domain, x, n): (Domain<Fp>, Fp, usize)) {
-    black_box(domain.ell(x, n));
+fn lagrange_evals((domain, x, n): (Domain<Fp>, Fp, usize)) {
+    let _ = black_box(domain.lagrange_evals(x, n));
 }
 
 library_benchmark_group!(
     name = domain_ops;
-    benchmarks = fft, ell
+    benchmarks = fft, lagrange_evals
 );
 
 #[library_benchmark(setup = setup_rng)]

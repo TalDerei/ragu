@@ -654,7 +654,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Returns a [`RegistryAt`] that can be used to evaluate the registry
     /// polynomial at multiple $X$/$Y$ points without recomputing the W-restriction.
     pub fn at(&self, w: F) -> RegistryAt<'_, F, R> {
-        let cache = if let Some(coeffs) = self.domain.ell(w, self.domain.n()) {
+        let cache = if let Ok(coeffs) = self.domain.lagrange_evals(w, self.domain.n()) {
             // w is not a domain point; the Lagrange coefficients evaluate the
             // registry interpolation there.
             LagrangeCache::Arbitrary(coeffs)
@@ -953,8 +953,8 @@ mod tests {
 
     /// `OmegaKey::from` only looks at the low 64 bits (after 5 times), so
     /// different field elements can map to the same key. `Registry::at`
-    /// handles this by checking `domain.ell` before `omega_lookup`. Here
-    /// we forge a collision and verify evaluations are still correct.
+    /// handles this by checking `domain.lagrange_evals` before `omega_lookup`.
+    /// Here we forge a collision and verify evaluations are still correct.
     #[test]
     fn test_omega_key_collision() -> Result<()> {
         let registry = TestRegistryBuilder::new()
