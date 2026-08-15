@@ -361,18 +361,15 @@ mod tests {
     }
 
     #[test]
-    fn base_case_scoped_to_genesis_rejects_invalid_unit_children() {
-        // Regression test for the base-case over-broadness closed by scoping
-        // detection to the reserved bootstrap suffix (see
-        // [`is_bootstrap_leaf`]).
+    fn base_case_confined_to_bootstrap_rejects_invalid_unit_children() {
+        // Regression test for the base-case over-broadness closed by confining
+        // the base case to the internal `Trivial` step (see `is_base_case`).
         //
-        // Previously any fuse whose children carried a `()` output header was
-        // treated as a base case, so the child revdot claim was skipped and a
-        // corrupted `Pcd<()>` slipped through. Now the base case fires only for
-        // genuine genesis leaves, so the children's claims are enforced and the
-        // forgery is rejected.
-        //
-        // [`is_bootstrap_leaf`]: crate::internal::native::stages::preamble::ProofInputs::is_bootstrap_leaf
+        // Previously any fuse whose step declared `()` inputs was treated as a
+        // base case, so the child revdot claim was skipped and a corrupted
+        // `Pcd<()>` slipped through. Now only a step declaring `Bootstrap`
+        // inputs triggers it, so an application step's children always have
+        // their claims enforced and the forgery is rejected.
         let pasta = Pasta::baked();
         let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
             .register(UnitStep::<0>)
@@ -382,8 +379,8 @@ mod tests {
             .finalize(pasta)
             .expect("failed to create test application");
 
-        // Genuine seed still works: the base case still fires for real
-        // bootstrap dummies, so an honestly produced unit proof verifies.
+        // Genuine seed still works: it now fuses against the bootstrapped
+        // seeded-trivial proof, so an honestly produced unit proof verifies.
         let mut rng = StdRng::seed_from_u64(1);
         let (valid_unit, ()) = app.seed(&mut rng, UnitStep::<0>, ()).expect("seed");
         assert!(
@@ -407,11 +404,11 @@ mod tests {
             "corrupted child proof should not verify on its own"
         );
 
-        // Fusing the corrupted `()` children through a unit step no longer
-        // receives base-case treatment: their predecessor headers carry the
-        // ordinary `()` suffix, not the bootstrap sentinel, so the revdot claim
-        // is enforced. The forgery must be rejected — either the fuse fails to
-        // assemble a satisfying trace, or the resulting parent fails to verify.
+        // Fusing the corrupted children through a unit step no longer receives
+        // base-case treatment: `UnitStep` declares `()` inputs, not `Bootstrap`,
+        // so the revdot claim is enforced. The forgery must be rejected — either
+        // the fuse fails to assemble a satisfying trace, or the resulting parent
+        // fails to verify.
         match app.fuse(
             &mut rng,
             UnitStep::<1>,
@@ -426,7 +423,149 @@ mod tests {
                 assert!(
                     !app.verify(&parent, StdRng::seed_from_u64(4))
                         .expect("parent verify should not error"),
-                    "a parent fused from invalid non-genesis children must not verify"
+                    "a parent fused from invalid children must not verify"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn registration_rejects_an_application_header_claiming_a_reserved_suffix() {
+        // The base case fires when the current step declares the `Bootstrap`
+        // suffix for both inputs, so an application header must never be able to
+        // encode to a reserved suffix. `Bootstrap` itself is crate-private, but
+        // the encoded suffix is just a number, so registration guards the number
+        // rather than the type.
+        use crate::header::{Header, Suffix};
+
+        struct ReservedHeader;
+
+        impl Header<<Pasta as Cycle>::CircuitField> for ReservedHeader {
+            // Reach the reserved value directly; `Suffix::new` separately
+            // prevents reaching it by overflowing the application offset.
+            const SUFFIX: Suffix = Suffix::bootstrap();
+            type Data = ();
+            type Output = ();
+
+            fn encode<
+                'dr,
+                D: Driver<'dr, F = <Pasta as Cycle>::CircuitField>,
+                A: ragu_primitives::allocator::Allocator<'dr, D>,
+            >(
+                _: &mut D,
+                _: &mut A,
+                _: DriverValue<D, Self::Data>,
+            ) -> Result<ragu_core::gadgets::Bound<'dr, D, Self::Output>> {
+                Ok(())
+            }
+        }
+
+        struct ReservedStep;
+
+        impl Step<Pasta> for ReservedStep {
+            const INDEX: Index = Index::new(0);
+
+            type Witness<'source> = ();
+            type Aux<'source> = ();
+            type Left = ReservedHeader;
+            type Right = ReservedHeader;
+            type Output = ();
+
+            fn witness<
+                'dr,
+                'source: 'dr,
+                D: Driver<'dr, F = <Pasta as Cycle>::CircuitField>,
+                const HS: usize,
+            >(
+                &self,
+                dr: &mut D,
+                _: DriverValue<D, Self::Witness<'source>>,
+                left: DriverValue<D, ()>,
+                right: DriverValue<D, ()>,
+            ) -> Result<(
+                (
+                    Encoded<'dr, D, Self::Left, HS>,
+                    Encoded<'dr, D, Self::Right, HS>,
+                    Encoded<'dr, D, Self::Output, HS>,
+                ),
+                DriverValue<D, ()>,
+                DriverValue<D, ()>,
+            )>
+            where
+                Self: 'dr,
+            {
+                let allocator = &mut Standard::new();
+                Ok((
+                    (
+                        Encoded::new(dr, allocator, left)?,
+                        Encoded::new(dr, allocator, right)?,
+                        Encoded::from_gadget(()),
+                    ),
+                    D::unit(),
+                    D::unit(),
+                ))
+            }
+        }
+
+        assert!(
+            ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
+                .register(ReservedStep)
+                .is_err(),
+            "registering an application header on a reserved suffix must fail"
+        );
+    }
+
+    #[test]
+    fn forged_child_headers_cannot_trigger_the_base_case() {
+        // Base-case detection reads the suffix of the header the *current* step
+        // declared for each child, which `padded::for_header` emits as a circuit
+        // constant. It is not read from the child proof, so writing the reserved
+        // `Bootstrap` suffix into a child's stored headers — which a prover fully
+        // controls, and which `verify` only length-checks — must not buy
+        // base-case treatment.
+        let pasta = Pasta::baked();
+        let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
+            .register(UnitStep::<0>)
+            .expect("register seed step")
+            .register(UnitStep::<1>)
+            .expect("register fuse step")
+            .finalize(pasta)
+            .expect("failed to create test application");
+
+        let mut rng = StdRng::seed_from_u64(11);
+        let (valid_unit, ()) = app.seed(&mut rng, UnitStep::<0>, ()).expect("seed");
+
+        let (mut invalid_child, ()) = valid_unit.into_parts();
+        invalid_child
+            .native_a_poly
+            .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
+                <Pasta as Cycle>::CircuitField::ONE,
+            ]));
+
+        // Stamp the reserved bootstrap suffix into the child's stored headers.
+        let mut forged = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE];
+        forged[HEADER_SIZE - 1] =
+            <Pasta as Cycle>::CircuitField::from(crate::header::Suffix::bootstrap().get());
+        invalid_child.left_header = forged.clone();
+        invalid_child.right_header = forged;
+
+        let invalid_child = invalid_child.carry::<()>(());
+
+        match app.fuse(
+            &mut rng,
+            UnitStep::<1>,
+            (),
+            invalid_child.clone(),
+            invalid_child,
+        ) {
+            Err(_) => {
+                // Prover could not satisfy the still-enforced revdot claim.
+            }
+            Ok((parent, ())) => {
+                assert!(
+                    !app.verify(&parent, StdRng::seed_from_u64(12))
+                        .expect("parent verify should not error"),
+                    "forged bootstrap suffixes in child headers must not trigger the base case"
                 );
             }
         }
@@ -434,12 +573,11 @@ mod tests {
 
     #[test]
     fn rerandomize_unit_proof_still_verifies() {
-        // A `Pcd<()>` from the middle of a chain used to trip the over-broad
-        // base case during rerandomization (both fuse inputs carry a `()`
-        // output), silently dropping its revdot claim. With detection scoped to
-        // the bootstrap sentinel, neither input is a genesis leaf, so
-        // rerandomize now takes the normal claim-enforcing path — and must
-        // still preserve verification.
+        // A `Pcd<()>` used to trip the over-broad base case during
+        // rerandomization (both fuse inputs carried a `()` output), silently
+        // dropping its revdot claim. With the base case confined to `Trivial`,
+        // `Rerandomize` never triggers it, so rerandomize takes the normal
+        // claim-enforcing path — and must still preserve verification.
         let pasta = Pasta::baked();
         let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
             .register(UnitStep::<0>)

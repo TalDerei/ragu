@@ -18,16 +18,24 @@
 //!
 //! ### Base case handling
 //!
-//! When both child proofs are genesis (bootstrap) leaves — the internally
-//! synthesized dummies that [`seed`] folds in, identified by the reserved
-//! bootstrap suffix on their predecessor headers — the prover may witness any
-//! [$c$] value without constraint. This allows seeding the recursion with
-//! initial proofs that don't yet carry meaningful revdot claims. The constraint
-//! is enforced only when [`is_base_case`] returns false; a real application
-//! proof, even one whose output is the trivial `()` header, never carries that
-//! suffix and so always has its revdot claim enforced.
+//! When the current step declares [`Bootstrap`] for both of its inputs — which
+//! only the internal [`Trivial`] step does — the prover may witness any [$c$]
+//! value without constraint. This is what lets [`seeded_trivial_pcd`] fold two
+//! synthesized dummies, which carry no meaningful revdot claim, into a proof
+//! that verifies. The constraint is enforced whenever [`is_base_case`] returns
+//! false.
 //!
-//! [`seed`]: crate::Application::seed
+//! The suffix read here traces back to a constant that [`padded::for_header`]
+//! bakes into the step's application circuit, so no application step can present
+//! the [`Bootstrap`] suffix and every application fuse has its child claims
+//! enforced — including one whose children carry the trivial `()` header. See
+//! [`is_bootstrap_input`] for how that binding is established.
+//!
+//! [`Bootstrap`]: crate::header::Bootstrap
+//! [`Trivial`]: crate::step::internal::trivial::Trivial
+//! [`seeded_trivial_pcd`]: crate::Application::seeded_trivial_pcd
+//! [`padded::for_header`]: crate::step::internal::padded::for_header
+//! [`is_bootstrap_input`]: super::super::stages::preamble::ProofInputs::is_bootstrap_input
 //!
 //! ### $k(y)$ consistency
 //!
@@ -213,8 +221,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             let witnessed_c = unified_output.c.receive(dr, allocator)?;
 
             // Enforce witnessed_c == computed_c, but only when NOT in base case.
-            // In base case (both children are genesis bootstrap leaves), the
-            // prover may witness any c value to seed the recursion.
+            // In base case (the current step declares Bootstrap inputs), the
+            // prover may witness any c value to bootstrap the recursion.
             preamble
                 .is_base_case(dr, allocator)?
                 .not(dr)

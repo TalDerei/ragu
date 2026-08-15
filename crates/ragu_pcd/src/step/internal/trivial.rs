@@ -1,7 +1,18 @@
-//! Internal step that produces a valid proof with trivial header.
+//! Internal step that bootstraps the recursion.
 //!
-//! Used in rerandomization to create a properly-structured trivial proof that
-//! can be folded with a valid proof without causing C value mismatches.
+//! This is the only step that declares [`Bootstrap`] inputs, and therefore the
+//! only step whose fuse is treated as the base case. Fusing two synthesized
+//! [`trivial_pcd`] dummies through it yields a genuine, verifying `Pcd<()>`,
+//! which [`seed`] and [`rerandomize`] then consume as ordinary children.
+//!
+//! Confining the base case here keeps it off application steps: a step's
+//! declared input suffix is a circuit constant, so no application step can
+//! present the [`Bootstrap`] suffix, and every fuse other than this one has its
+//! child claims enforced.
+//!
+//! [`trivial_pcd`]: crate::Application::trivial_pcd
+//! [`seed`]: crate::Application::seed
+//! [`rerandomize`]: crate::Application::rerandomize
 
 use ragu_arithmetic::Cycle;
 use ragu_core::{
@@ -11,7 +22,7 @@ use ragu_core::{
 use ragu_primitives::allocator::Standard;
 
 use super::super::{Encoded, Index, Step};
-use crate::Header;
+use crate::{Header, header::Bootstrap};
 pub(crate) use crate::step::InternalStepIndex::Trivial as INTERNAL_ID;
 
 pub(crate) struct Trivial;
@@ -28,8 +39,8 @@ impl<C: Cycle> Step<C> for Trivial {
     type Witness<'source> = ();
     type Aux<'source> = ();
 
-    type Left = ();
-    type Right = ();
+    type Left = Bootstrap;
+    type Right = Bootstrap;
     type Output = ();
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(

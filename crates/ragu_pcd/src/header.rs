@@ -16,11 +16,13 @@ use ragu_primitives::{allocator::Allocator, io::Write};
 /// * `0` is reserved for all circuits that have a fixed ID, used internally for
 ///   recursion. This is not used by actual [`Header`] implementations.
 /// * `1` is reserved for the trivial header.
-/// * `2` is reserved for the bootstrap frontier sentinel that marks the empty
-///   predecessor slots of a genesis leaf (see [`Suffix::bootstrap`]). It is
-///   never produced by a [`Header`] implementation, so no application proof can
-///   present it — which is what confines base-case detection to genuine
-///   bootstrap dummies.
+/// * `2` is reserved for the [`Bootstrap`] header, the input type of the
+///   internal [`Trivial`] step. It is the only suffix that triggers the base
+///   case, and no application [`Step`] can declare it as an input, which is
+///   what confines the base case to genuine bootstrapping.
+///
+/// [`Trivial`]: crate::step::internal::trivial::Trivial
+/// [`Step`]: crate::step::Step
 const NUM_INTERNAL_SUFFIXES: u8 = 3;
 
 /// Internal representation of a [`Suffix`] distinguishing internal vs.
@@ -43,7 +45,24 @@ pub struct Suffix {
 
 impl Suffix {
     /// Creates a new application-defined [`Header`] suffix.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `value` is large enough that offsetting it past the internal
+    /// suffixes would overflow. Without this bound an application suffix could
+    /// wrap onto a reserved internal one — in particular onto the bootstrap
+    /// suffix, which would let an application [`Step`] present the suffix that
+    /// triggers the base case. Overflow checks are disabled in release builds,
+    /// so this bound is enforced explicitly rather than relying on the addition
+    /// to trap.
+    ///
+    /// [`Step`]: crate::step::Step
     pub const fn new(value: usize) -> Self {
+        assert!(
+            value <= usize::MAX - NUM_INTERNAL_SUFFIXES as usize,
+            "application header suffix would overflow onto a reserved internal suffix"
+        );
+
         Suffix {
             suffix: HeaderSuffix::Application(value),
         }
@@ -71,14 +90,8 @@ impl Suffix {
         }
     }
 
-    /// The reserved sentinel suffix marking the empty predecessor slots of a
-    /// genesis (bootstrap) leaf.
-    ///
-    /// Only the internally-synthesized bootstrap dummy carries this suffix in
-    /// its recorded predecessor headers. Base-case detection keys on it so that
-    /// real application proofs — including those carrying a trivial `()` output
-    /// — are never mistaken for bootstrap leaves. Only called internally by
-    /// Ragu.
+    /// The reserved suffix of the [`Bootstrap`] header. Only called internally
+    /// by Ragu.
     pub(crate) const fn bootstrap() -> Self {
         Suffix::internal(2)
     }
@@ -91,6 +104,17 @@ fn test_suffix_map() {
     assert_eq!(Suffix::bootstrap().get(), 2);
     assert_eq!(Suffix::new(0).get(), 3);
     assert_eq!(Suffix::new(1).get(), 4);
+}
+
+#[test]
+#[should_panic(expected = "overflow onto a reserved internal suffix")]
+fn application_suffix_cannot_wrap_onto_a_reserved_suffix() {
+    // Offsetting past the internal suffixes must not wrap an application suffix
+    // onto a reserved one. `usize::MAX` would otherwise encode to
+    // `Suffix::bootstrap()`, letting an application `Step` declare the input
+    // type that triggers the base case. Overflow checks are off in release
+    // builds, so the bound is enforced explicitly.
+    let _ = Suffix::new(usize::MAX);
 }
 
 /// Headers are succinct representations of data, essentially used as public
@@ -124,6 +148,42 @@ pub trait Header<F: Field>: Send + Sync + Any {
 /// Trivial header that encodes no data.
 impl<F: Field> Header<F> for () {
     const SUFFIX: Suffix = Suffix::internal(1);
+
+    type Data = ();
+    type Output = ();
+
+    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
+        _: &mut D,
+        _: &mut A,
+        _: DriverValue<D, Self::Data>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Ok(())
+    }
+}
+
+/// The reserved header marking the inputs consumed when bootstrapping the
+/// recursion.
+///
+/// This header encodes no data; it exists only for its
+/// [suffix](Suffix::bootstrap). The internal
+/// [`Trivial`](crate::step::internal::trivial::Trivial) step is the only step
+/// that declares it as an input type, so it is the only step whose fuse is
+/// treated as the base case.
+///
+/// Base-case detection rests on a property of the current step rather than on
+/// anything the child proofs carry: the suffix traces back to a constant that
+/// [`padded::for_header`](crate::step::internal::padded::for_header) bakes into
+/// the step's application circuit. See
+/// [`is_bootstrap_input`](crate::internal::native::stages::preamble::ProofInputs::is_bootstrap_input)
+/// for how that binding is established.
+///
+/// This rests in turn on no application header being able to encode to this
+/// suffix, which [`Suffix::new`] and
+/// [`ApplicationBuilder`](crate::ApplicationBuilder) enforce.
+pub(crate) struct Bootstrap;
+
+impl<F: Field> Header<F> for Bootstrap {
+    const SUFFIX: Suffix = Suffix::bootstrap();
 
     type Data = ();
     type Output = ();

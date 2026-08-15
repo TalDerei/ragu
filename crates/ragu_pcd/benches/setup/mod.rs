@@ -45,7 +45,20 @@ pub fn setup_seed() -> (
         .unwrap()
         .finalize(pasta)
         .unwrap();
-    (app, poseidon_params, StdRng::seed_from_u64(1234))
+
+    let mut rng = StdRng::seed_from_u64(1234);
+
+    // Warm the cached bootstrap proof, which `seed` builds lazily on first use.
+    // Leaving it cold would fold that one-time cost into the first measured
+    // `seed`, making it read as roughly twice its steady-state cost.
+    app.seed(
+        &mut rng,
+        nontrivial::WitnessLeaf { poseidon_params },
+        Fp::from(0u64),
+    )
+    .unwrap();
+
+    (app, poseidon_params, rng)
 }
 
 pub fn setup_fuse() -> (

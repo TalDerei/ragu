@@ -91,7 +91,7 @@ fn test_internal_circuit_constraint_counts() {
     check_constraints!(Hashes1Circuit,        mul = 1451, lin = 2068);
     check_constraints!(Hashes2Circuit,        mul = 1999, lin = 2951);
     check_constraints!(InnerCollapseCircuit,  mul = 1876, lin = 1918);
-    check_constraints!(OuterCollapseCircuit,  mul = 2048, lin = 3054);
+    check_constraints!(OuterCollapseCircuit,  mul = 2043, lin = 3042);
     check_constraints!(ComputeVCircuit,       mul = 1255, lin = 1773);
 }
 
@@ -197,7 +197,7 @@ fn test_native_registry_digest() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x28f8f365bdbf5c6416f0d6551c2c31bc1737b8aea17283e2b2d8e35ec315414e);
+    let expected = fp!(0x186368eb40f4d2c79a2a0879bc92ec40dc5705b447170f89656a1509152d1386);
 
     assert_eq!(
         app.native_registry.digest(),

@@ -509,7 +509,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             .expect("NUM_ENDOSCALING_POINTS guarantees at least one interstitial"))
     }
 
-    pub(crate) fn trivial_pcd(&self) -> Pcd<C, R, ()> {
+    /// A synthesized dummy that stands in for the absent predecessors when
+    /// bootstrapping.
+    ///
+    /// This proof does not verify on its own; it is only ever consumed by the
+    /// internal [`Trivial`](crate::step::internal::trivial::Trivial) step, whose
+    /// fuse is the base case and therefore does not enforce its children's
+    /// claims. It carries the [`Bootstrap`] header so that it can occupy that
+    /// step's input slots.
+    ///
+    /// [`Bootstrap`]: crate::header::Bootstrap
+    pub(crate) fn trivial_pcd(&self) -> Pcd<C, R, crate::header::Bootstrap> {
         self.trivial_proof().carry(())
     }
 
@@ -533,21 +543,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 
         builder.set_circuit_id(CircuitIndex::new(0));
 
-        // Mark this synthesized dummy as a genesis leaf. It has no real
-        // predecessors, so its recorded child headers carry the reserved
-        // bootstrap suffix in their final slot. Base-case detection keys on this
-        // suffix (see [`is_bootstrap_leaf`]), which is what keeps real
-        // `()`-output application proofs out of the base case.
-        //
-        // [`is_bootstrap_leaf`]: crate::internal::native::stages::preamble::ProofInputs::is_bootstrap_leaf
-        let bootstrap_header = || {
-            let mut header = vec![C::CircuitField::ZERO; HEADER_SIZE];
-            header[HEADER_SIZE - 1] =
-                C::CircuitField::from(crate::header::Suffix::bootstrap().get());
-            header
-        };
-        builder.set_left_header(bootstrap_header());
-        builder.set_right_header(bootstrap_header());
+        builder.set_left_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
+        builder.set_right_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
 
         // Native rx polynomials (all trivial ones)
         builder.set_native_application_rx(ones_host.clone());

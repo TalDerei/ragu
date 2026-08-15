@@ -143,26 +143,49 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
         ky.finish_ky(dr)
     }
 
-    /// Returns true when this child proof is a genesis (bootstrap) leaf.
+    /// Returns true when this child was consumed as a [`Bootstrap`] input.
     ///
-    /// A genesis leaf is the internally-synthesized dummy that
-    /// [`seed`](crate::Application::seed) folds in to bootstrap the recursion.
-    /// It is the only proof whose recorded predecessor headers carry the
-    /// reserved [bootstrap suffix](Suffix::bootstrap); every real application
-    /// proof records predecessor headers with an ordinary suffix (`>= 1`), even
-    /// when its own output is the trivial `()` header. Keying base-case
-    /// detection on this suffix — rather than on the `()` output-header suffix,
-    /// which real unit-output proofs reuse — is what stops a claim-bearing child
-    /// from receiving base-case treatment.
-    pub fn is_bootstrap_leaf(
+    /// This reads the suffix slot of the header the *current* step declared for
+    /// this child, rather than anything the child proof carries about itself.
+    /// Only the internal [`Trivial`] step declares [`Bootstrap`] inputs, so the
+    /// base case holds exactly when bootstrapping the recursion; every other
+    /// fuse — including one whose children carry the trivial `()` header — has
+    /// its child claims enforced.
+    ///
+    /// ## What binds this value
+    ///
+    /// Within *this* circuit the header is witnessed ([`ProofInputs::alloc`]),
+    /// so the binding is deferred to whoever consumes the resulting proof, in
+    /// two steps:
+    ///
+    /// 1. [`hashes_1`] publishes these headers in its instance, which the
+    ///    consumer pins via its `unified_bridge_ky` claim; and
+    /// 2. the consumer's `application_ky` claim pins the proof's stored headers
+    ///    to the constants that [`padded::for_header`] baked into the step's
+    ///    application circuit, which are fixed by the step's
+    ///    [`Left`](crate::step::Step::Left) and [`Right`](crate::step::Step::Right)
+    ///    types.
+    ///
+    /// So the suffix ultimately traces back to a per-step circuit constant, not
+    /// to prover-chosen data. A proof whose claims are never enforced this way
+    /// is only ever consumed by the base case itself, which ignores both
+    /// children and outputs `()`.
+    ///
+    /// The remaining requirement is that no application header can encode to the
+    /// [`Bootstrap`] suffix; [`Suffix::new`] and
+    /// [`ApplicationBuilder`](crate::ApplicationBuilder) enforce that.
+    ///
+    /// [`Bootstrap`]: crate::header::Bootstrap
+    /// [`Trivial`]: crate::step::internal::trivial::Trivial
+    /// [`padded::for_header`]: crate::step::internal::padded::for_header
+    /// [`hashes_1`]: crate::internal::native::circuits::hashes_1
+    pub fn is_bootstrap_input(
         &self,
         dr: &mut D,
         allocator: &mut impl Allocator<'dr, D>,
     ) -> Result<Boolean<'dr, D>> {
         let bootstrap = Element::constant(dr, D::F::from(Suffix::bootstrap().get()));
-        let left = self.children.left[HEADER_SIZE - 1].is_equal(dr, allocator, &bootstrap)?;
-        let right = self.children.right[HEADER_SIZE - 1].is_equal(dr, allocator, &bootstrap)?;
-        left.and(dr, &right)
+        self.output_header[HEADER_SIZE - 1].is_equal(dr, allocator, &bootstrap)
     }
 }
 
@@ -253,16 +276,18 @@ pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEAD
 impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>, const HEADER_SIZE: usize>
     Output<'dr, D, C, HEADER_SIZE>
 {
-    /// Returns true when both child proofs are genesis (bootstrap) leaves, i.e.
-    /// this fuse is the base case that seeds the recursion.
+    /// Returns true when the current step declared [`Bootstrap`] for both of its
+    /// inputs, i.e. this fuse is the base case that bootstraps the recursion.
+    ///
+    /// [`Bootstrap`]: crate::header::Bootstrap
     pub fn is_base_case(
         &self,
         dr: &mut D,
         allocator: &mut impl Allocator<'dr, D>,
     ) -> Result<Boolean<'dr, D>> {
-        let left_is_leaf = self.left.is_bootstrap_leaf(dr, allocator)?;
-        let right_is_leaf = self.right.is_bootstrap_leaf(dr, allocator)?;
-        left_is_leaf.and(dr, &right_is_leaf)
+        let left_is_bootstrap = self.left.is_bootstrap_input(dr, allocator)?;
+        let right_is_bootstrap = self.right.is_bootstrap_input(dr, allocator)?;
+        left_is_bootstrap.and(dr, &right_is_bootstrap)
     }
 }
 

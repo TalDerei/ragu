@@ -55,7 +55,14 @@ pub struct ApplicationBuilder<'params, C: Cycle, R: Rank, const HEADER_SIZE: usi
     native_registry: RegistryBuilder<'params, C::CircuitField, R>,
     nested_registry: RegistryBuilder<'params, C::ScalarField, R>,
     num_application_steps: usize,
-    header_map: BTreeMap<header::Suffix, TypeId>,
+    /// Maps each *encoded* header suffix to the [`Header`] that claimed it.
+    ///
+    /// Keyed on [`Suffix::get`](header::Suffix::get) rather than on the
+    /// [`Suffix`](header::Suffix) itself so that an application header colliding
+    /// with a reserved internal one is visible: the two are distinct `Suffix`
+    /// values but encode to the same field element, and it is the encoded value
+    /// that circuits compare against.
+    header_map: BTreeMap<u64, TypeId>,
     _marker: PhantomData<[(); HEADER_SIZE]>,
 }
 
@@ -72,11 +79,26 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 {
     /// Create an empty [`ApplicationBuilder`] for proof-carrying data.
     pub fn new() -> Self {
+        // Claim the reserved suffixes up front so that any application header
+        // encoding to one of them is rejected by `prevent_duplicate_suffixes`.
+        // This matters most for `Bootstrap`: it is the suffix that triggers the
+        // base case, and an application step reaching it could skip verifying
+        // its children.
+        let mut header_map = BTreeMap::new();
+        header_map.insert(
+            <() as Header<C::CircuitField>>::SUFFIX.get(),
+            TypeId::of::<()>(),
+        );
+        header_map.insert(
+            <header::Bootstrap as Header<C::CircuitField>>::SUFFIX.get(),
+            TypeId::of::<header::Bootstrap>(),
+        );
+
         ApplicationBuilder {
             native_registry: RegistryBuilder::new(),
             nested_registry: RegistryBuilder::new(),
             num_application_steps: 0,
-            header_map: BTreeMap::new(),
+            header_map,
             _marker: PhantomData,
         }
     }
@@ -182,7 +204,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     }
 
     fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
-        match self.header_map.get(&H::SUFFIX) {
+        match self.header_map.get(&H::SUFFIX.get()) {
             Some(ty) => {
                 if *ty != TypeId::of::<H>() {
                     return Err(Error::Initialization(
@@ -191,7 +213,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 }
             }
             None => {
-                self.header_map.insert(H::SUFFIX, TypeId::of::<H>());
+                self.header_map.insert(H::SUFFIX.get(), TypeId::of::<H>());
             }
         }
 
@@ -213,37 +235,54 @@ pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Seed a new computation by running a step with trivial inputs.
     ///
-    /// This is the entry point for creating leaf nodes in a PCD tree.
-    /// Internally creates minimal trivial proofs with `()` headers and fuses
-    /// them with the provided step to produce a valid proof.
+    /// This is the entry point for creating leaf nodes in a PCD tree. The step
+    /// is fused against an internally bootstrapped proof, which is a genuine
+    /// `Pcd<()>`; this is an ordinary fuse whose child claims are enforced, not
+    /// a base case.
     pub fn seed<'source, RNG: CryptoRngCore, S: Step<C, Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
-        self.fuse(rng, step, witness, self.trivial_pcd(), self.trivial_pcd())
+        let left = self.seeded_trivial_pcd(rng)?;
+        let right = self.seeded_trivial_pcd(rng)?;
+        self.fuse(rng, step, witness, left, right)
     }
 
-    /// Returns a seeded trivial proof for use in rerandomization.
+    /// Returns a valid `Pcd<()>` used to bootstrap the recursion.
     ///
-    /// A seeded trivial is a trivial proof that has been through `seed()`
-    /// (folded with itself). This gives it valid proof structure, avoiding
-    /// base case detection issues.
+    /// This is the one place the base case is used: two synthesized
+    /// [`trivial_pcd`](Self::trivial_pcd) dummies — which cannot verify on
+    /// their own — are fused through the internal
+    /// [`Trivial`](step::internal::trivial::Trivial) step, the only step
+    /// declaring [`Bootstrap`](header::Bootstrap) inputs. The result is a
+    /// genuine proof that verifies, so [`seed`](Self::seed) and
+    /// [`rerandomize`](Self::rerandomize) can consume it as an ordinary child.
     ///
     /// The proof is lazily created on first use and cached; subsequent calls
     /// return the same (non-random) proof.
-    fn seeded_trivial_pcd<RNG: CryptoRngCore>(&self, rng: &mut RNG) -> Pcd<C, R, ()> {
-        self.seeded_trivial
-            .get_or_init(|| {
-                self.seed(rng, step::internal::trivial::Trivial::new(), ())
-                    .expect("seeded trivial seed should not fail")
-                    .0
-                    .into_parts()
-                    .0
-            })
+    fn seeded_trivial_pcd<RNG: CryptoRngCore>(&self, rng: &mut RNG) -> Result<Pcd<C, R, ()>> {
+        if self.seeded_trivial.get().is_none() {
+            let (pcd, ()) = self.fuse(
+                rng,
+                step::internal::trivial::Trivial::new(),
+                (),
+                self.trivial_pcd(),
+                self.trivial_pcd(),
+            )?;
+
+            // A concurrent initialization cannot happen behind `&self` here, and
+            // either proof would be equally valid regardless.
+            let _ = self.seeded_trivial.set(pcd.into_parts().0);
+        }
+
+        Ok(self
+            .seeded_trivial
+            .get()
+            .expect("seeded trivial was just initialized")
             .clone()
-            .carry(())
+            .carry(()))
     }
 
     /// Rerandomize proof-carrying data.
@@ -260,7 +299,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<Pcd<C, R, H>> {
         // Seed a trivial proof for rerandomization.
         // TODO: this is a temporary hack that allows the base case logic to be simple
-        let seeded_trivial = self.seeded_trivial_pcd(rng);
+        let seeded_trivial = self.seeded_trivial_pcd(rng)?;
 
         // The Rerandomize step's witness() returns the left input's data as
         // output data, preserving it through rerandomization.
