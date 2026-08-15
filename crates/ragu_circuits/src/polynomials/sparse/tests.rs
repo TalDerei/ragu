@@ -404,7 +404,7 @@ proptest! {
 
         // Compute commitment from the dense representation directly.
         let dense = poly.to_dense();
-        let dense_commit: <Pasta as Cycle>::HostCurve = ragu_arithmetic::mul(
+        let dense_commit: <Pasta as Cycle>::HostCurve = ragu_arithmetic::msm(
             dense.iter(),
             generators.g().iter().take(dense.len()),
         )

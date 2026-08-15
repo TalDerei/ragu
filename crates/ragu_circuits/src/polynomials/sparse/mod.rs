@@ -461,7 +461,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         assert!(generators.g().len() >= R::num_coeffs());
 
         let g = generators.g();
-        ragu_arithmetic::mul(
+        ragu_arithmetic::msm(
             self.blocks.iter().flat_map(|(_, data)| data.iter()),
             self.blocks
                 .iter()

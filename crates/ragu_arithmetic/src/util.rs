@@ -185,7 +185,7 @@ pub fn batch_to_affine<C: CurveAffine, const N: usize>(projectives: [C::Curve; N
 ///
 /// The caller must ensure that `coeffs` and `bases` yield the same number of
 /// elements.
-pub fn mul<
+pub fn msm<
     'a,
     C: CurveAffine,
     A: IntoIterator<Item = &'a C::Scalar>,
@@ -742,7 +742,7 @@ mod proptests {
 }
 
 #[test]
-fn test_mul() {
+fn test_msm() {
     use crate::pasta_curves::group::{Curve, CurveAffine};
 
     let mut coeffs = vec![];
@@ -765,7 +765,7 @@ fn test_mul() {
         |acc, (scalar, point)| acc + point * scalar,
     );
 
-    assert_eq!(mul(coeffs.iter(), bases.iter()), expected);
+    assert_eq!(msm(coeffs.iter(), bases.iter()), expected);
 }
 
 #[test]

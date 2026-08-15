@@ -4,7 +4,7 @@ use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_arithmetic::{
-    Domain, dot, eval, factor, geosum, mul,
+    Domain, dot, eval, factor, geosum, msm,
     pasta_curves::{EpAffine, Fp, Fq},
     poly_with_roots,
 };
@@ -18,7 +18,7 @@ use setup::{f, setup_domain_ell, setup_domain_fft, setup_rng, setup_with_rng, ve
     ((vec_f::< 4096, Fq>, vec_affine::< 4096>)),
 )]
 fn msm_mul((coeffs, bases): (Vec<Fq>, Vec<EpAffine>)) {
-    black_box(mul(coeffs.iter(), bases.iter()));
+    black_box(msm(coeffs.iter(), bases.iter()));
 }
 
 library_benchmark_group!(
