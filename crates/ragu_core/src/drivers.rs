@@ -138,6 +138,10 @@ pub trait DriverTypes {
     /// method by default and discards the `Extra`. Only code that needs an
     /// unconstrained $D$ wire should call `gate` directly.
     ///
+    /// The `values` closure must return assignments $(a, b, c)$ for the wires
+    /// $(A, B, C)$ satisfying $a \cdot b = c$. Drivers are not required to
+    /// check this equation, and most do not.
+    ///
     /// The provided closure may be called by the driver if assignments are
     /// needed. If it is called, any errors are propagated from it, and the
     /// closure can rely on [`Witness<Self, T>::take`](crate::maybe::Maybe::take)
@@ -169,6 +173,10 @@ pub trait DriverTypes {
     /// Overrides the default $D = 0$ assignment for a gate, consuming the
     /// [`Extra`](Self::Extra) token returned by [`gate`](Self::gate) and
     /// returning the $D$ wire.
+    ///
+    /// The gate's $C \cdot D = 0$ constraint remains in force: a non-zero
+    /// assignment is only valid when the gate's $C$ wire is assigned zero.
+    /// Drivers are not required to check this, and most do not.
     ///
     /// The provided closure follows the same purity contract as [`gate`](Self::gate):
     /// it may be called zero or more times, should be side-effect-free, and
@@ -262,6 +270,10 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     ///
     /// This is a convenience wrapper around [`DriverTypes::gate`] that drops
     /// the auxiliary $D$ wire. Most circuit code should use this method.
+    ///
+    /// The `values` closure must return assignments $(a, b, c)$ for the wires
+    /// $(A, B, C)$ satisfying $a \cdot b = c$. Drivers are not required to
+    /// check this equation, and most do not.
     ///
     /// The provided closure may be called by the driver if an assignment is
     /// needed. If it is called, any errors are propagated from it, and the
