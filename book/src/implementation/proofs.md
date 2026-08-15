@@ -82,8 +82,8 @@ Consider a simple application that aggregates values:
 // Step 1: Leaf step - introduces a single value
 struct LeafStep { value: u64 }
 impl Step<C> for LeafStep {
-    type Left = ();           // No left child (trivial)
-    type Right = ();          // No right child (trivial)
+    type Left = Leaf;         // No left child
+    type Right = Leaf;        // No right child
     type Output = ValueHeader; // Outputs a value commitment
 }
 
@@ -114,20 +114,21 @@ let (proof, aux) = app.seed(&mut rng, MyLeafStep { ... }, witness)?;
 let pcd = proof.carry(aux);
 ```
 
-Internally, `seed` fuses the step with trivial proofs. Steps used with `seed`
-must have `Left = ()` and `Right = ()`.
+Internally, `seed` fuses the step with the application's _bootstrap proof_ as
+both children. Steps used with `seed` must have `Left = Leaf` and
+`Right = Leaf`.
 
-#### Trivial Proofs
+#### The Bootstrap Proof
 
-A _trivial proof_ is a dummy proof used to seed the base case of
-recursion. It does not encode any real computation; instead, it
-provides a well-formed starting proof that allows the recursive
-machinery to bootstrap. Internally, trivial proofs use non-degenerate
-polynomials and deterministic challenges.
+The base case of the recursion lives in a single internal step, the only one
+whose fuse does not verify its children. `ApplicationBuilder::finalize` runs it
+once over two synthesized _trivial proofs_ — which do not verify on their own —
+to produce the bootstrap proof, which carries the reserved `Leaf` header.
 
-Trivial proofs are not meant to verify independently—they exist
-solely to provide valid input structure for `seed()` when no real
-child proofs are available.
+The bootstrap proof attests nothing, and any prover can produce one; it exists
+only so that the recursion has a valid leaf to start from. No other step may
+produce `Leaf`, and a step may declare it for both inputs or neither, so the
+base case sits only beneath the leaves of the graph.
 
 ### `fuse`
 
@@ -183,10 +184,8 @@ let fresh_pcd = app.rerandomize(pcd, &mut rng)?;
 This is useful for privacy-preserving applications where proof linkability
 must be prevented.
 
-Internally, rerandomization folds the input proof with a _seeded
-trivial proof_ using a dedicated rerandomization step. The fresh
-randomness from `rng` ensures the output proof is unlinkable to the
-original.
+Internally, rerandomization folds the input proof with itself using a dedicated
+rerandomization step.
 
 ## Unified Accumulator Structure
 

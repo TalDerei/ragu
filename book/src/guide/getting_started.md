@@ -116,6 +116,7 @@ This step creates leaf proofs from raw values:
 
 ```rust
 use ragu_arithmetic::Cycle;
+use ragu_pcd::header::Leaf;
 use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_primitives::poseidon::Sponge;
 
@@ -128,8 +129,8 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
 
     type Witness<'source> = C::CircuitField;  // Input: field element
     type Aux<'source> = ();                   // Output: hash result
-    type Left = ();                           // No left input
-    type Right = ();                          // No right input
+    type Left = Leaf;                         // No left input
+    type Right = Leaf;                        // No right input
     type Output = LeafNode;                   // Produces LeafNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(

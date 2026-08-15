@@ -106,14 +106,16 @@ ideas.
 However, as with any PCD construction, there must exist a base case of the
 recursive statement: the computation graph must have leaves that do not
 represent a transition from prior certified data, since no predecessor can exist
-by definition. Ragu handles this base case by allowing the two child PCD
-instances of any node to be invalid so long as they carry trivial data that
-represents no prior computational effort.
+by definition. Ragu confines this base case to a single internal step, the only
+one whose two child PCD instances may be invalid; every application step has the
+claims of both children enforced.
 
-Ragu provides a built-in implementation of [`Header`] for the unit type `()` to
-signify this trivial state. In order to lift non-trivial data into the
-computational graph, applications specify a [`Step`] over these trivial states
-and use a special [`seed`] function to transform a leaf state into valid PCD.
+That step outputs a reserved header, `Leaf`, which no application step may
+produce. In order to lift non-trivial data into the computational graph,
+applications specify a [`Step`] declaring `Leaf` for both inputs and use a
+special [`seed`] function to transform a leaf state into valid PCD. Such steps
+are the only ones that consume the base case's output, so it sits only beneath
+the leaves of the graph.
 
 ## Succinctness and Rerandomization
 

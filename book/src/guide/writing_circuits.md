@@ -99,8 +99,8 @@ This is where the circuit logic is implemented. The function:
 Seed steps create the first proofs in a tree - they have no proof inputs:
 
 ```rust
-type Left = ();   // No left input
-type Right = ();  // No right input
+type Left = Leaf;   // No left input
+type Right = Leaf;  // No right input
 type Output = LeafNode;
 ```
 
@@ -172,8 +172,8 @@ allocator.
 ### Pattern 1: Seed Steps (Create Initial Proofs)
 
 ```rust
-type Left = ();   // No left input
-type Right = ();  // No right input
+type Left = Leaf;   // No left input
+type Right = Leaf;  // No right input
 type Output = YourHeader;
 ```
 
