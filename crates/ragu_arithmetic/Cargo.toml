@@ -59,15 +59,15 @@ criterion = { workspace = true }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 
 [[bench]]
-name = "arithmetic"
+name = "gungraun"
 harness = false
 
 [[bench]]
-name = "msm_criterion"
+name = "criterion_msm"
 path = "benches/criterion/msm.rs"
 harness = false
 
 [[bench]]
-name = "fft_criterion"
+name = "criterion_fft"
 path = "benches/criterion/fft.rs"
 harness = false

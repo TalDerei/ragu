@@ -68,15 +68,15 @@ ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 proptest = { workspace = true }
 
 [[bench]]
-name = "pcd"
+name = "gungraun"
 harness = false
 
 [[bench]]
-name = "fuse_criterion"
+name = "criterion_fuse"
 path = "benches/criterion/fuse.rs"
 harness = false
 
 [[bench]]
-name = "registry_criterion"
+name = "criterion_registry"
 path = "benches/criterion/registry.rs"
 harness = false
