@@ -570,10 +570,10 @@ mod tests {
         assert_eq!(constant_poly, vec![F::ONE]);
     }
 
-    /// Like [`strategies::prime_field_element`], but returns `F::ZERO` with
-    /// probability `1/10`, so vectors built from this strategy exercise
-    /// sparse polynomials and the case where the highest-degree coefficient
-    /// is zero.
+    /// Like [`strategies::prime_field_element`], but with an explicit
+    /// `F::ZERO` branch biasing the strategy further toward zero, so vectors
+    /// built from it exercise sparse polynomials and the case where the
+    /// highest-degree coefficient is zero.
     fn arb_fe_with_zeros() -> impl Strategy<Value = F> {
         prop_oneof![
             9 => strategies::prime_field_element::<F>(),
