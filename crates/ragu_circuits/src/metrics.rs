@@ -376,8 +376,8 @@ impl<F: FromUniformBytes<64>> WireMap<F> for ReinitWires<F> {
     type Src = Counter<F>;
     type Dst = Counter<F>;
 
-    fn convert_wire(&mut self, _: &WireEval<F>) -> Result<WireEval<F>> {
-        Ok(WireEval::Value(self.mint()))
+    fn convert_wire(&mut self, _: &F) -> Result<F> {
+        Ok(self.mint())
     }
 }
 
@@ -567,11 +567,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         // Collect the raw output-wire values BEFORE parent-context remap
         // so the deep hash binds their positions relative to the child's
         // scope, not the parent's.
-        let one = self.one;
-        let output_wires = extract_wires(&output, move |w: &WireEval<F>| match *w {
-            WireEval::One => one,
-            WireEval::Value(v) => v,
-        })?;
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
         // Build the fingerprint from the child's Horner accumulator,
         // segment counts, collected output wires, and accumulated child
@@ -718,11 +714,7 @@ pub(crate) mod tests {
 
         // Collect output wire values before any parent-context remap
         // (there is no parent here, but the ordering mirrors Counter::routine).
-        let one = counter.one;
-        let output_wires = extract_wires(&output, move |w: &WireEval<F>| match *w {
-            WireEval::One => one,
-            WireEval::Value(v) => v,
-        })?;
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.

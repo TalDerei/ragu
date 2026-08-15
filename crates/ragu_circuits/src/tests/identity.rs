@@ -2052,7 +2052,8 @@ where
     where
         Self: 'dr,
     {
-        Element::alloc(dr, instance)
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
@@ -2063,8 +2064,9 @@ where
     where
         Self: 'dr,
     {
-        let a = Element::alloc(dr, witness.clone())?;
-        let b = Element::alloc(dr, witness)?;
+        let allocator = &mut Standard::new();
+        let a = Element::alloc(dr, allocator, witness.clone())?;
+        let b = Element::alloc(dr, allocator, witness)?;
         let output = dr.routine(self.0.clone(), (a, b))?;
         Ok(WithAux::new(output, D::just(|| ())))
     }
