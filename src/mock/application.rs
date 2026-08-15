@@ -8,17 +8,23 @@ use ragu_core::{Error, Result};
 
 use super::{
     ctx::StepCtx,
-    header::{Header, Suffix},
+    header::{Header, Leaf, Suffix},
     hooks::FrameworkHooks,
     proof::{self, PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::Step,
 };
 
 /// Mocks `ragu_pcd::ApplicationBuilder`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ApplicationBuilder {
     num_application_steps: usize,
     header_map: BTreeMap<Suffix, TypeId>,
+}
+
+impl Default for ApplicationBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Mocks `ragu_pcd::Application`.
@@ -30,12 +36,23 @@ pub struct Application {
 impl ApplicationBuilder {
     #[must_use]
     pub fn new() -> Self {
+        // Match the real builder by claiming every reserved header modeled by
+        // the mock before application registration begins. In particular, a
+        // distinct Header can copy `()::SUFFIX`, so leaving this map empty would
+        // accept an application that the real builder rejects.
+        let mut header_map = BTreeMap::new();
+        header_map.insert(<() as Header>::SUFFIX, TypeId::of::<()>());
+        header_map.insert(Leaf::SUFFIX, TypeId::of::<Leaf>());
+
         Self {
             num_application_steps: 0,
-            header_map: BTreeMap::new(),
+            header_map,
         }
     }
 
+    /// Mirrors `ragu_pcd::ApplicationBuilder::register`. A step declaring
+    /// [`Leaf`] for both inputs is a leaf step, run with
+    /// [`Application::seed`].
     pub fn register<S: Step>(mut self, _step: S) -> Result<Self> {
         S::INDEX.assert_sequential(self.num_application_steps)?;
 
@@ -43,6 +60,10 @@ impl ApplicationBuilder {
         self.prevent_duplicate_suffix::<S::Left>()?;
         self.prevent_duplicate_suffix::<S::Right>()?;
 
+        self.bump_step_count()
+    }
+
+    fn bump_step_count(mut self) -> Result<Self> {
         self.num_application_steps = self
             .num_application_steps
             .checked_add(1)
@@ -73,15 +94,17 @@ impl ApplicationBuilder {
 }
 
 impl Application {
-    /// Delegates to [`fuse`](Self::fuse) with trivial PCDs.
-    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
+    /// Mirrors `ragu_pcd::Application::seed`: runs a leaf step over the
+    /// bootstrap proof (header [`Leaf`]) as both children, via
+    /// [`fuse`](Self::fuse).
+    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = Leaf, Right = Leaf>>(
         &self,
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
     ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
-        let left = Proof::trivial().carry::<()>(());
-        let right = Proof::trivial().carry::<()>(());
+        let left = Proof::bootstrap().carry::<Leaf>(());
+        let right = Proof::bootstrap().carry::<Leaf>(());
         self.fuse(rng, step, witness, left, right)
     }
 

@@ -8,7 +8,7 @@ use ragu_core::{Error, Result};
 use ragu_pasta::{Ep, Eq, Fp, Fq};
 
 use crate::{
-    Application, ApplicationBuilder, Header, Index, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
+    Application, ApplicationBuilder, Header, Index, Leaf, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
     StepCtx, Suffix,
 };
 
@@ -34,13 +34,13 @@ impl Header for TestHeader {
     }
 }
 
-struct SeedStep;
+struct ValueSeed;
 
-impl Step for SeedStep {
+impl Step for ValueSeed {
     type Aux<'source> = ();
-    type Left = ();
     type Output = TestHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
@@ -87,13 +87,13 @@ impl Step for MergeStep {
 fn seed_then_verify() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
 
     let valid = app.verify(&pcd, &mut rng).expect("verify should succeed");
@@ -104,13 +104,13 @@ fn seed_then_verify() {
 fn verify_rejects_wrong_data() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
     let bad_pcd = pcd.proof.carry::<TestHeader>(TestHeaderData { value: 999 });
 
@@ -124,15 +124,15 @@ fn verify_rejects_wrong_data() {
 fn fuse_then_verify() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .register(MergeStep)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
-    let (pcd_a, ()) = app.seed(&mut rng, SeedStep, 10u64).expect("seed a");
-    let (pcd_b, ()) = app.seed(&mut rng, SeedStep, 20u64).expect("seed b");
+    let (pcd_a, ()) = app.seed(&mut rng, ValueSeed, 10u64).expect("seed a");
+    let (pcd_b, ()) = app.seed(&mut rng, ValueSeed, 20u64).expect("seed b");
 
     let (merged_pcd, ()) = app
         .fuse(&mut rng, MergeStep, (), pcd_a, pcd_b)
@@ -148,15 +148,15 @@ fn fuse_then_verify() {
 fn fuse_rejects_wrong_sum() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register")
         .register(MergeStep)
         .expect("register")
         .finalize()
         .expect("finalize");
 
-    let (pcd_a, ()) = app.seed(&mut rng, SeedStep, 10u64).expect("seed a");
-    let (pcd_b, ()) = app.seed(&mut rng, SeedStep, 20u64).expect("seed b");
+    let (pcd_a, ()) = app.seed(&mut rng, ValueSeed, 10u64).expect("seed a");
+    let (pcd_b, ()) = app.seed(&mut rng, ValueSeed, 20u64).expect("seed b");
 
     let (merged_pcd, ()) = app
         .fuse(&mut rng, MergeStep, (), pcd_a, pcd_b)
@@ -173,7 +173,7 @@ fn fuse_rejects_wrong_sum() {
 fn deep_fuse_chain() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register")
         .register(MergeStep)
         .expect("register")
@@ -182,7 +182,7 @@ fn deep_fuse_chain() {
 
     let mut pcds = Vec::new();
     for val in 1u64..=4 {
-        let (pcd, ()) = app.seed(&mut rng, SeedStep, val).expect("seed");
+        let (pcd, ()) = app.seed(&mut rng, ValueSeed, val).expect("seed");
         pcds.push(pcd);
     }
 
@@ -220,16 +220,16 @@ fn deep_fuse_chain() {
 fn different_merge_trees_same_header() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register")
         .register(MergeStep)
         .expect("register")
         .finalize()
         .expect("finalize");
 
-    let (pa, ()) = app.seed(&mut rng, SeedStep, 1u64).expect("seed a");
-    let (pb, ()) = app.seed(&mut rng, SeedStep, 2u64).expect("seed b");
-    let (pc, ()) = app.seed(&mut rng, SeedStep, 3u64).expect("seed c");
+    let (pa, ()) = app.seed(&mut rng, ValueSeed, 1u64).expect("seed a");
+    let (pb, ()) = app.seed(&mut rng, ValueSeed, 2u64).expect("seed b");
+    let (pc, ()) = app.seed(&mut rng, ValueSeed, 3u64).expect("seed c");
 
     // Tree shape 1: fuse(fuse(a, b), c)
     let (ab, ()) = app
@@ -259,9 +259,9 @@ struct AuxSeedStep;
 
 impl Step for AuxSeedStep {
     type Aux<'source> = Vec<u64>;
-    type Left = ();
     type Output = TestHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
@@ -340,13 +340,13 @@ fn aux_data_flows_through_seed_and_fuse() {
 fn serialized_proof_still_verifies() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
     let saved_data = pcd.data.clone();
 
@@ -364,13 +364,13 @@ fn serialized_proof_still_verifies() {
 fn serialized_proof_rejects_mismatched_header_data() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
 
     let bytes: [u8; PROOF_SIZE_COMPRESSED] = pcd.proof.into();
@@ -390,13 +390,13 @@ fn serialized_proof_rejects_mismatched_header_data() {
 fn tampered_serialized_proof_fails_to_deserialize() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
 
     let mut bytes: [u8; PROOF_SIZE_COMPRESSED] = pcd.proof.into();
@@ -411,13 +411,13 @@ fn tampered_serialized_proof_fails_to_deserialize() {
 fn rerandomize_preserves_validity() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
     let original_proof = pcd.proof.clone();
 
@@ -453,14 +453,49 @@ impl Header for ConflictingHeader {
     }
 }
 
+/// Distinct Header type that copies the reserved suffix belonging to `()`.
+struct ReservedUnitSuffixHeader;
+
+impl Header for ReservedUnitSuffixHeader {
+    type Data = ();
+
+    const SUFFIX: Suffix = <() as Header>::SUFFIX;
+
+    fn encode(_data: &Self::Data) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>) {
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+    }
+}
+
+struct ReservedUnitSuffixStep;
+
+impl Step for ReservedUnitSuffixStep {
+    type Aux<'source> = ();
+    type Output = ReservedUnitSuffixHeader;
+    type Left = Leaf;
+    type Right = Leaf;
+    type Witness<'source> = ();
+
+    const INDEX: Index = Index::new(0);
+
+    fn witness<'source>(
+        &self,
+        _ctx: &mut StepCtx<'_>,
+        _witness: Self::Witness<'source>,
+        _left: <Self::Left as Header>::Data,
+        _right: <Self::Right as Header>::Data,
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
+        Ok(((), ()))
+    }
+}
+
 /// Second seed step claiming `Index::new(0)` for the duplicate-index test.
 struct DuplicateIndexStep;
 
 impl Step for DuplicateIndexStep {
     type Aux<'source> = ();
-    type Left = ();
     type Output = TestHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = ();
 
     const INDEX: Index = Index::new(0);
@@ -482,9 +517,9 @@ struct SuffixCollisionStep;
 
 impl Step for SuffixCollisionStep {
     type Aux<'source> = ();
-    type Left = ();
     type Output = ConflictingHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = ();
 
     const INDEX: Index = Index::new(1);
@@ -503,7 +538,7 @@ impl Step for SuffixCollisionStep {
 #[test]
 fn duplicate_index_rejects_registration() {
     let result = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register first step should succeed")
         .register(DuplicateIndexStep);
     assert!(result.is_err(), "duplicate INDEX must be rejected");
@@ -521,7 +556,7 @@ fn non_sequential_index_rejects_registration() {
 #[test]
 fn duplicate_suffix_distinct_types_rejects_registration() {
     let result = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register first step should succeed")
         .register(SuffixCollisionStep);
     assert!(
@@ -531,9 +566,20 @@ fn duplicate_suffix_distinct_types_rejects_registration() {
 }
 
 #[test]
+fn reserved_suffixes_are_preclaimed_by_all_constructors() {
+    for builder in [ApplicationBuilder::new(), ApplicationBuilder::default()] {
+        let result = builder.register(ReservedUnitSuffixStep);
+        assert!(
+            result.is_err(),
+            "a distinct Header copying the reserved unit suffix must be rejected"
+        );
+    }
+}
+
+#[test]
 fn same_suffix_same_type_succeeds_registration() {
     let result = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register SeedStep should succeed")
         .register(MergeStep);
     assert!(
@@ -547,9 +593,9 @@ fn internal_step_index_rejects_registration() {
     struct InternalIndexStep;
     impl Step for InternalIndexStep {
         type Aux<'source> = ();
-        type Left = ();
         type Output = TestHeader;
-        type Right = ();
+        type Left = Leaf;
+        type Right = Leaf;
         type Witness<'source> = ();
 
         const INDEX: Index = Index::internal(0);
@@ -576,7 +622,7 @@ fn internal_step_index_rejects_registration() {
 fn verify_rejects_unregistered_step_index() {
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
@@ -621,13 +667,13 @@ fn verify_rejects_swapped_header_type() {
 
     let mut rng = StdRng::seed_from_u64(0);
     let app = ApplicationBuilder::new()
-        .register(SeedStep)
+        .register(ValueSeed)
         .expect("register should succeed")
         .finalize()
         .expect("finalize should succeed");
 
     let (pcd, ()) = app
-        .seed(&mut rng, SeedStep, 42u64)
+        .seed(&mut rng, ValueSeed, 42u64)
         .expect("seed should succeed");
 
     let swapped_pcd: Pcd<SwappedHeader> = pcd
@@ -671,9 +717,9 @@ struct PointSeedStep;
 
 impl Step for PointSeedStep {
     type Aux<'source> = ();
-    type Left = ();
     type Output = PointHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = Eq;
 
     const INDEX: Index = Index::new(0);
@@ -762,10 +808,10 @@ fn identity_point_in_input_header_fails_fuse() {
         .finalize()
         .expect("finalize");
 
-    let bad_left = Proof::trivial().carry::<PointHeader>(PointHeaderData {
+    let bad_left = Proof::bootstrap().carry::<PointHeader>(PointHeaderData {
         commitment: Eq::identity(),
     });
-    let right = Proof::trivial().carry::<()>(());
+    let right = Proof::bootstrap().carry::<()>(());
 
     assert!(
         matches!(

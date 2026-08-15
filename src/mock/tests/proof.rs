@@ -5,7 +5,7 @@ use ragu_core::Result;
 use ragu_pasta::{Ep, Eq, Fp, Fq};
 
 use crate::{
-    Application, ApplicationBuilder, Header, Index, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
+    Application, ApplicationBuilder, Header, Index, Leaf, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
     StepCtx, Suffix,
 };
 
@@ -32,9 +32,9 @@ struct ValueSeedStep;
 
 impl Step for ValueSeedStep {
     type Aux<'source> = ();
-    type Left = ();
     type Output = ValueHeader;
-    type Right = ();
+    type Left = Leaf;
+    type Right = Leaf;
     type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
