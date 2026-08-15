@@ -152,7 +152,7 @@ impl<RNG: crate::rand::CryptoRng + crate::rand::RngCore + ?Sized> CryptoRngCore 
 /// The trait is designed as a zero-sized marker type, with runtime parameters
 /// (generators, Poseidon constants) stored in the associated
 /// [`Params`](Cycle::Params) type as necessary.
-pub trait Cycle: Copy + Clone + Default + Send + Sync + 'static {
+pub trait Cycle: Copy + Default + Send + Sync + 'static {
     /// The field that circuit developers will primarily work with, and the
     /// scalar field of the [`HostCurve`](Cycle::HostCurve).
     type CircuitField: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + DeferredField;
