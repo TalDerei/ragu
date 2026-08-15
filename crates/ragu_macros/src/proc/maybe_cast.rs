@@ -39,59 +39,64 @@ fn generate_impl_for_size(size: usize) -> TokenStream {
     }
 }
 
-#[test]
-fn test_generate_2tuple() {
-    let output = generate_impl_for_size(2);
-    let expected = quote! {
-        impl<T0: Send, T1: Send, K: MaybeKind> MaybeCast<(T0, T1,), K> for (T0, T1,) {
-            type Output = (Perhaps<K, T0>, Perhaps<K, T1>,);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-            fn empty() -> Self::Output {
-                (K::empty(), K::empty(),)
+    #[test]
+    fn test_generate_2tuple() {
+        let output = generate_impl_for_size(2);
+        let expected = quote! {
+            impl<T0: Send, T1: Send, K: MaybeKind> MaybeCast<(T0, T1,), K> for (T0, T1,) {
+                type Output = (Perhaps<K, T0>, Perhaps<K, T1>,);
+
+                fn empty() -> Self::Output {
+                    (K::empty(), K::empty(),)
+                }
+
+                fn cast(self) -> Self::Output {
+                    (K::maybe_just(|| self.0), K::maybe_just(|| self.1),)
+                }
             }
+        };
+        assert_eq!(output.to_string(), expected.to_string());
+    }
 
-            fn cast(self) -> Self::Output {
-                (K::maybe_just(|| self.0), K::maybe_just(|| self.1),)
-            }
-        }
-    };
-    assert_eq!(output.to_string(), expected.to_string());
-}
+    #[test]
+    fn test_evaluate() {
+        use syn::parse_quote;
 
-#[test]
-fn test_evaluate() {
-    use syn::parse_quote;
+        // Test with 3 to generate implementations for sizes 2 and 3 (inclusive)
+        let input: LitInt = parse_quote!(3);
+        let output = evaluate(input).unwrap();
+        assert!(!output.is_empty());
 
-    // Test with 3 to generate implementations for sizes 2 and 3 (inclusive)
-    let input: LitInt = parse_quote!(3);
-    let output = evaluate(input).unwrap();
-    assert!(!output.is_empty());
+        // Verify it contains impl for 2-tuple and 3-tuple, but not 4-tuple
+        let output_str = output.to_string();
+        assert!(output_str.contains("T0"));
+        assert!(output_str.contains("T1"));
+        assert!(output_str.contains("T2"));
+        assert!(!output_str.contains("T3"));
+    }
 
-    // Verify it contains impl for 2-tuple and 3-tuple, but not 4-tuple
-    let output_str = output.to_string();
-    assert!(output_str.contains("T0"));
-    assert!(output_str.contains("T1"));
-    assert!(output_str.contains("T2"));
-    assert!(!output_str.contains("T3"));
-}
+    #[test]
+    fn test_evaluate_minimum() {
+        use syn::parse_quote;
 
-#[test]
-fn test_evaluate_minimum() {
-    use syn::parse_quote;
+        // Test minimum valid input (2 generates only 2-tuple)
+        let input: LitInt = parse_quote!(2);
+        let output = evaluate(input).unwrap();
+        let output_str = output.to_string();
+        assert!(output_str.contains("T0"));
+        assert!(output_str.contains("T1"));
+        assert!(!output_str.contains("T2"));
+    }
 
-    // Test minimum valid input (2 generates only 2-tuple)
-    let input: LitInt = parse_quote!(2);
-    let output = evaluate(input).unwrap();
-    let output_str = output.to_string();
-    assert!(output_str.contains("T0"));
-    assert!(output_str.contains("T1"));
-    assert!(!output_str.contains("T2"));
-}
+    #[test]
+    fn test_evaluate_rejects_small_max() {
+        use syn::parse_quote;
 
-#[test]
-fn test_evaluate_rejects_small_max() {
-    use syn::parse_quote;
-
-    let input: LitInt = parse_quote!(1);
-    assert!(evaluate(input).is_err());
+        let input: LitInt = parse_quote!(1);
+        assert!(evaluate(input).is_err());
+    }
 }

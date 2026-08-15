@@ -55,7 +55,7 @@ pub(crate) fn fold<T: Foldable<F>, F: Field>(
 /// The parameters here collapse as much as $m \cdot n$ claims into a single
 /// claim using roughly $f(m, n) = nm^2 + n^2 - n + 3$ gates
 /// (using nested Horner evaluation).
-pub trait Parameters: 'static + Send + Sync + Clone + Copy + Default {
+pub trait Parameters: 'static + Send + Sync + Copy + Default {
     type NumGroups: Len;
     type GroupSize: Len;
 }

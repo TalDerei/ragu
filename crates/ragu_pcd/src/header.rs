@@ -67,14 +67,6 @@ impl Suffix {
     }
 }
 
-#[test]
-fn test_suffix_map() {
-    assert_eq!(Suffix::internal(0).get(), 0);
-    assert_eq!(Suffix::internal(1).get(), 1);
-    assert_eq!(Suffix::new(0).get(), 2);
-    assert_eq!(Suffix::new(1).get(), 3);
-}
-
 /// Headers are succinct representations of data, essentially used as public
 /// inputs to recursive proofs in order to represent the current state of the
 /// computation.
@@ -123,5 +115,18 @@ impl<F: Field> Header<F> for () {
         _: DriverValue<D, Self::Data>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_suffix_map() {
+        assert_eq!(Suffix::internal(0).get(), 0);
+        assert_eq!(Suffix::internal(1).get(), 1);
+        assert_eq!(Suffix::new(0).get(), 2);
+        assert_eq!(Suffix::new(1).get(), 3);
     }
 }

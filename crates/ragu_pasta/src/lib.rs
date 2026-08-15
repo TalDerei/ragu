@@ -169,7 +169,13 @@ mod baked {
             &PASTA_PARAMETERS
         }
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "baked")]
     #[test]
     fn test_baked_params() {
         use ragu_arithmetic::{Cycle, FixedGenerators};

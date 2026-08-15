@@ -44,40 +44,45 @@ pub fn evaluate(input: Input, ragu_core_path: RaguCorePath) -> syn::Result<Token
     }
 }
 
-#[rustfmt::skip]
-#[test]
-fn test_evaluate() {
-    use syn::parse_quote;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert_eq!(
-        evaluate(
-            parse_quote!(F; MyGadget<'_, _, C, 5>),
-            RaguCorePath::default()
-        )
-        .unwrap()
-        .to_string(),
-        quote!(
-            <MyGadget<'static, ::core::marker::PhantomData<F>, C, 5> as ::ragu_core::gadgets::Gadget<'static, ::core::marker::PhantomData<F>>>::Kind
-        )
-        .to_string()
-    );
-}
+    #[rustfmt::skip]
+    #[test]
+    fn test_evaluate() {
+        use syn::parse_quote;
 
-#[rustfmt::skip]
-#[test]
-fn test_extra() {
-    use syn::parse_quote;
+        assert_eq!(
+            evaluate(
+                parse_quote!(F; MyGadget<'_, _, C, 5>),
+                RaguCorePath::default()
+            )
+            .unwrap()
+            .to_string(),
+            quote!(
+                <MyGadget<'static, ::core::marker::PhantomData<F>, C, 5> as ::ragu_core::gadgets::Gadget<'static, ::core::marker::PhantomData<F>>>::Kind
+            )
+            .to_string()
+        );
+    }
 
-    assert_eq!(
-        evaluate(
-            parse_quote!(F; @EndoscalingOutput<'_, _, C>),
-            RaguCorePath::default()
-        )
-        .unwrap()
-        .to_string(),
-        quote!(
-            EndoscalingOutput<'static, ::core::marker::PhantomData<F>, C>
-        )
-        .to_string()
-    );
+    #[rustfmt::skip]
+    #[test]
+    fn test_extra() {
+        use syn::parse_quote;
+
+        assert_eq!(
+            evaluate(
+                parse_quote!(F; @EndoscalingOutput<'_, _, C>),
+                RaguCorePath::default()
+            )
+            .unwrap()
+            .to_string(),
+            quote!(
+                EndoscalingOutput<'static, ::core::marker::PhantomData<F>, C>
+            )
+            .to_string()
+        );
+    }
 }

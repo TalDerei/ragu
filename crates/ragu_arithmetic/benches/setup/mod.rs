@@ -67,7 +67,7 @@ pub fn setup_domain_fft(k: u32) -> (Domain<Fp>, Vec<Fp>) {
     (domain, data)
 }
 
-pub fn setup_domain_ell(k: u32) -> (Domain<Fp>, Fp, usize) {
+pub fn setup_domain_lagrange_evals(k: u32) -> (Domain<Fp>, Fp, usize) {
     let mut rng = StdRng::seed_from_u64(1234);
     let domain = Domain::new(k);
     let n = domain.n();

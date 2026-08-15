@@ -3,23 +3,16 @@ use alloc::{vec, vec::Vec};
 use proptest::prelude::*;
 use ragu_arithmetic::ff::Field;
 use ragu_pasta::Fp;
+use ragu_testing::strategies;
 
 use super::{Polynomial, View};
 use crate::polynomials::{Rank, TestRank};
 
 type R = TestRank;
 
-fn arb_fe() -> impl Strategy<Value = Fp> {
-    any::<u64>().prop_map(Fp::from)
-}
-
-fn arb_nonzero_fe() -> impl Strategy<Value = Fp> {
-    arb_fe().prop_filter("nonzero", |f| bool::from(!f.is_zero()))
-}
-
 /// Wire vector with random length 0..=n, all entries random.
 fn arb_wire_vec() -> impl Strategy<Value = Vec<Fp>> {
-    proptest::collection::vec(arb_fe(), 0..=R::n())
+    proptest::collection::vec(strategies::prime_field_element::<Fp>(), 0..=R::n())
 }
 
 /// Wire vector that mimics the alloc optimization pattern: mostly zeros with
@@ -30,7 +23,7 @@ fn arb_sparse_wire_vec() -> impl Strategy<Value = Vec<Fp>> {
         proptest::collection::vec(
             prop_oneof![
                 8 => Just(Fp::ZERO),
-                2 => any::<u64>().prop_map(Fp::from),
+                2 => strategies::prime_field_element::<Fp>(),
             ],
             len,
         )
@@ -97,7 +90,7 @@ fn arb_sparse_from_coeffs_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     proptest::collection::vec(
         prop_oneof![
             8 => Just(Fp::ZERO),
-            2 => any::<u64>().prop_map(Fp::from),
+            2 => strategies::prime_field_element::<Fp>(),
         ],
         R::num_coeffs(),
     )
@@ -118,11 +111,11 @@ fn arb_any_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
 
 fn arb_dense_coeffs() -> impl Strategy<Value = Vec<Fp>> {
     prop_oneof![
-        1 => proptest::collection::vec(arb_fe(), 0..=R::num_coeffs()),
+        1 => proptest::collection::vec(strategies::prime_field_element::<Fp>(), 0..=R::num_coeffs()),
         1 => proptest::collection::vec(
             prop_oneof![
                 8 => Just(Fp::ZERO),
-                2 => any::<u64>().prop_map(Fp::from),
+                2 => strategies::prime_field_element::<Fp>(),
             ],
             0..=R::num_coeffs(),
         ),
@@ -234,14 +227,14 @@ proptest! {
     }
 
     #[test]
-    fn eval_matches_dense(poly in arb_any_poly(), x in arb_fe()) {
+    fn eval_matches_dense(poly in arb_any_poly(), x in strategies::prime_field_element::<Fp>()) {
         let dense = poly.to_dense();
         let expected = ragu_arithmetic::eval(&dense, x);
         prop_assert_eq!(poly.eval(x), expected);
     }
 
     #[test]
-    fn dilate_correct(poly in arb_any_poly(), x in arb_fe(), z in arb_fe()) {
+    fn dilate_correct(poly in arb_any_poly(), x in strategies::prime_field_element::<Fp>(), z in strategies::prime_field_element::<Fp>()) {
         let original_eval = poly.eval(x * z);
         let mut dilated = poly.clone();
         dilated.dilate(z);
@@ -268,7 +261,7 @@ proptest! {
     }
 
     #[test]
-    fn add_assign_correct(a in arb_any_poly(), b in arb_any_poly(), x in arb_fe()) {
+    fn add_assign_correct(a in arb_any_poly(), b in arb_any_poly(), x in strategies::prime_field_element::<Fp>()) {
         let expected = a.eval(x) + b.eval(x);
         let mut sum = a;
         sum.add_assign(&b);
@@ -288,7 +281,7 @@ proptest! {
     }
 
     #[test]
-    fn sub_assign_correct(a in arb_any_poly(), b in arb_any_poly(), x in arb_fe()) {
+    fn sub_assign_correct(a in arb_any_poly(), b in arb_any_poly(), x in strategies::prime_field_element::<Fp>()) {
         let expected = a.eval(x) - b.eval(x);
         let mut diff = a;
         diff.sub_assign(&b);
@@ -313,7 +306,7 @@ proptest! {
     }
 
     #[test]
-    fn scale_correct(poly in arb_any_poly(), c in arb_fe(), x in arb_fe()) {
+    fn scale_correct(poly in arb_any_poly(), c in strategies::prime_field_element::<Fp>(), x in strategies::prime_field_element::<Fp>()) {
         let expected = c * poly.eval(x);
         let mut scaled = poly;
         scaled.scale(c);
@@ -321,7 +314,7 @@ proptest! {
     }
 
     #[test]
-    fn negate_correct(poly in arb_any_poly(), x in arb_fe()) {
+    fn negate_correct(poly in arb_any_poly(), x in strategies::prime_field_element::<Fp>()) {
         let expected = -poly.eval(x);
         let mut negated = poly;
         negated.negate();
@@ -358,8 +351,8 @@ proptest! {
         p1 in arb_any_poly(),
         p2 in arb_any_poly(),
         p3 in arb_any_poly(),
-        alpha in arb_nonzero_fe(),
-        x in arb_fe(),
+        alpha in strategies::nonzero_prime_field_element::<Fp>(),
+        x in strategies::prime_field_element::<Fp>(),
     ) {
         // fold([p1, p2, p3], alpha) = alpha^2 * p1 + alpha * p2 + p3
         let folded = Polynomial::<Fp, R>::fold([&p1, &p2, &p3], alpha);
@@ -368,7 +361,7 @@ proptest! {
     }
 
     #[test]
-    fn fold_single(poly in arb_any_poly(), alpha in arb_fe(), x in arb_fe()) {
+    fn fold_single(poly in arb_any_poly(), alpha in strategies::prime_field_element::<Fp>(), x in strategies::prime_field_element::<Fp>()) {
         let folded = Polynomial::<Fp, R>::fold([&poly], alpha);
         prop_assert_eq!(folded.eval(x), poly.eval(x));
     }
@@ -404,7 +397,7 @@ proptest! {
 
         // Compute commitment from the dense representation directly.
         let dense = poly.to_dense();
-        let dense_commit: <Pasta as Cycle>::HostCurve = ragu_arithmetic::mul(
+        let dense_commit: <Pasta as Cycle>::HostCurve = ragu_arithmetic::msm(
             dense.iter(),
             generators.g().iter().take(dense.len()),
         )

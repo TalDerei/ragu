@@ -616,14 +616,18 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 }
 
 #[cfg(test)]
-mod root_of_unity_tests {
-    use alloc::{vec, vec::Vec};
+mod tests {
+    use alloc::{format, vec, vec::Vec};
 
-    use ragu_arithmetic::ff::Field;
+    use proptest::prelude::*;
     use ragu_pasta::{Fp, fp};
+    use ragu_testing::strategies;
 
     use super::*;
-    use crate::{Simulator, allocator::Standard};
+    use crate::allocator::Standard;
+
+    type F = Fp;
+    type Simulator = crate::Simulator<F>;
 
     // (omega, k, should_pass)
     fn test_cases() -> Vec<(Fp, u32, bool)> {
@@ -695,21 +699,62 @@ mod root_of_unity_tests {
 
         Ok(())
     }
-}
 
-#[cfg(test)]
-mod proptests {
-    use alloc::format;
+    #[test]
+    fn test_divide() -> Result<()> {
+        let alloc = |a: F, b: F| {
+            let sim = Simulator::simulate((a, b), |dr, witness| {
+                let (a, b) = witness.cast();
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, a.clone())?;
+                let b = Element::alloc(dr, allocator, b.clone())?;
+                let b = b.enforce_nonzero(dr)?;
+                dr.reset();
 
-    use proptest::prelude::*;
-    use ragu_core::maybe::Maybe;
-    use ragu_testing::strategies;
+                let quotient = a.divide(dr, &b)?;
 
-    use super::*;
+                assert_eq!(
+                    *quotient.value().take(),
+                    *a.value().take() * b.value().take().invert().unwrap()
+                );
 
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-    use crate::allocator::Standard;
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
+            Ok(())
+        };
+
+        alloc(F::from(4578u64), F::from(372u64))?;
+        alloc(F::ZERO, F::from(372u64))?;
+        assert!(alloc(F::from(4578u64), F::ZERO).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_invert() -> Result<()> {
+        let inv = |a: F| {
+            let sim = Simulator::simulate(a, |dr, witness| {
+                let allocator = &mut Standard::new();
+                let a = Element::alloc(dr, allocator, witness.clone())?;
+                dr.reset();
+                let ainv = a.invert(dr)?;
+
+                assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
+
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
+            Ok(())
+        };
+
+        inv(F::from(4578u64))?;
+        assert!(inv(F::ZERO).is_err());
+
+        Ok(())
+    }
 
     proptest! {
         #[test]
@@ -751,73 +796,5 @@ mod proptests {
 
             prop_assert_eq!(actual, Some((a_fe * b_fe, b_fe * a_fe)));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::allocator::Standard;
-
-    #[test]
-    fn test_divide() -> Result<()> {
-        type F = ragu_pasta::Fp;
-        type Simulator = crate::Simulator<F>;
-
-        let alloc = |a: F, b: F| {
-            let sim = Simulator::simulate((a, b), |dr, witness| {
-                let (a, b) = witness.cast();
-                let allocator = &mut Standard::new();
-                let a = Element::alloc(dr, allocator, a.clone())?;
-                let b = Element::alloc(dr, allocator, b.clone())?;
-                let b = b.enforce_nonzero(dr)?;
-                dr.reset();
-
-                let quotient = a.divide(dr, &b)?;
-
-                assert_eq!(
-                    *quotient.value().take(),
-                    *a.value().take() * b.value().take().invert().unwrap()
-                );
-
-                Ok(())
-            })?;
-            assert_eq!(sim.num_gates(), 1);
-            assert_eq!(sim.num_constraints(), 2);
-            Ok(())
-        };
-
-        alloc(F::from(4578u64), F::from(372u64))?;
-        alloc(F::ZERO, F::from(372u64))?;
-        assert!(alloc(F::from(4578u64), F::ZERO).is_err());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_invert() -> Result<()> {
-        type F = ragu_pasta::Fp;
-        type Simulator = crate::Simulator<F>;
-
-        let inv = |a: F| {
-            let sim = Simulator::simulate(a, |dr, witness| {
-                let allocator = &mut Standard::new();
-                let a = Element::alloc(dr, allocator, witness.clone())?;
-                dr.reset();
-                let ainv = a.invert(dr)?;
-
-                assert_eq!(*ainv.value().take(), a.value().take().invert().unwrap());
-
-                Ok(())
-            })?;
-            assert_eq!(sim.num_gates(), 1);
-            assert_eq!(sim.num_constraints(), 2);
-            Ok(())
-        };
-
-        inv(F::from(4578u64))?;
-        assert!(inv(F::ZERO).is_err());
-
-        Ok(())
     }
 }

@@ -82,7 +82,7 @@ _bench_macos *ARGS:
     docker attach --no-stdin $container
 
 _bench_linux *ARGS: _gungraun_setup
-    cargo bench --workspace --bench arithmetic --bench circuits --bench pcd --bench primitives {{ARGS}}
+    cargo bench --workspace --bench gungraun {{ARGS}}
 
 # generate flamegraph in target/*.svg
 flamegraph PACKAGE GROUP TARGET *ARGS:
@@ -112,8 +112,7 @@ _flamegraph_macos PACKAGE GROUP TARGET *ARGS:
 _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
     #!/bin/sh
     set -e
-    bench_name=$(echo {{PACKAGE}} | sed 's/^ragu_//')
-    bench_file="crates/{{PACKAGE}}/benches/${bench_name}.rs"
+    bench_file="crates/{{PACKAGE}}/benches/gungraun.rs"
     if [ ! -f "$bench_file" ]; then
         echo "error: bench file not found: $bench_file" >&2; exit 1
     fi
@@ -127,7 +126,7 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
         func_idx=$((func_idx + 1))
     done
     CARGO_TARGET_DIR=/tmp/ragu-target CARGO_PROFILE_RELEASE_DEBUG=true \
-        cargo flamegraph --release -p {{PACKAGE}} --bench "$bench_name" \
+        cargo flamegraph --release -p {{PACKAGE}} --bench gungraun \
         -o "target/flamegraph-{{PACKAGE}}-{{GROUP}}-{{TARGET}}.svg" {{ARGS}} \
         -- --gungraun-run {{GROUP}} "$func_idx" 0
 

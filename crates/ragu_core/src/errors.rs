@@ -75,95 +75,100 @@ pub enum Error {
     Initialization(#[source] Box<dyn error::Error + Send + Sync + 'static>),
 }
 
-#[test]
-fn test_error_display() {
-    use alloc::format;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert_eq!(
-        format!("{}", Error::GateBoundExceeded { limit: 1024 }),
-        "exceeded the maximum number of gates (1024)"
-    );
-    assert_eq!(
-        format!("{}", Error::ConstraintBoundExceeded { limit: 4096 }),
-        "exceeded the maximum number of constraints (4096)"
-    );
-    assert_eq!(
-        format!("{}", Error::CircuitBoundExceeded { limit: 256 }),
-        "exceeded the maximum number of circuits (256)"
-    );
-    assert_eq!(
-        format!("{}", Error::DegreeBoundExceeded { limit: 64 }),
-        "exceeded the maximum degree of a polynomial (64)"
-    );
-    assert_eq!(
-        format!("{}", Error::InvalidWitness("division by zero".into())),
-        "invalid witness: division by zero"
-    );
-    assert_eq!(
-        format!("{}", Error::MalformedEncoding("stream ended".into())),
-        "malformed encoding: stream ended"
-    );
-    assert_eq!(
-        format!(
-            "{}",
-            Error::VectorLengthMismatch {
-                expected: 10,
-                actual: 5
-            }
-        ),
-        "vector does not have the expected length: (expected 10, actual 5)"
-    );
-    assert_eq!(
-        format!(
-            "{}",
-            Error::Initialization("registry registration failed".into())
-        ),
-        "initialization failed: registry registration failed"
-    );
-}
+    #[test]
+    fn test_error_display() {
+        use alloc::format;
 
-/// Verifies that `source()` returns `Some` for wrapping variants and `None` for
-/// non-wrapping variants, confirming that `#[source]` annotations and
-/// `#[non_exhaustive]` are correctly applied.
-#[test]
-fn test_error_source() {
-    use error::Error as _;
+        assert_eq!(
+            format!("{}", Error::GateBoundExceeded { limit: 1024 }),
+            "exceeded the maximum number of gates (1024)"
+        );
+        assert_eq!(
+            format!("{}", Error::ConstraintBoundExceeded { limit: 4096 }),
+            "exceeded the maximum number of constraints (4096)"
+        );
+        assert_eq!(
+            format!("{}", Error::CircuitBoundExceeded { limit: 256 }),
+            "exceeded the maximum number of circuits (256)"
+        );
+        assert_eq!(
+            format!("{}", Error::DegreeBoundExceeded { limit: 64 }),
+            "exceeded the maximum degree of a polynomial (64)"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidWitness("division by zero".into())),
+            "invalid witness: division by zero"
+        );
+        assert_eq!(
+            format!("{}", Error::MalformedEncoding("stream ended".into())),
+            "malformed encoding: stream ended"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Error::VectorLengthMismatch {
+                    expected: 10,
+                    actual: 5
+                }
+            ),
+            "vector does not have the expected length: (expected 10, actual 5)"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                Error::Initialization("registry registration failed".into())
+            ),
+            "initialization failed: registry registration failed"
+        );
+    }
 
-    // Wrapping variants should chain the inner error via source().
-    let err = Error::InvalidWitness("inner".into());
-    assert!(
-        err.source().is_some(),
-        "InvalidWitness should have a source"
-    );
+    /// Verifies that `source()` returns `Some` for wrapping variants and `None` for
+    /// non-wrapping variants, confirming that `#[source]` annotations and
+    /// `#[non_exhaustive]` are correctly applied.
+    #[test]
+    fn test_error_source() {
+        use error::Error as _;
 
-    let err = Error::MalformedEncoding("inner".into());
-    assert!(
-        err.source().is_some(),
-        "MalformedEncoding should have a source"
-    );
+        // Wrapping variants should chain the inner error via source().
+        let err = Error::InvalidWitness("inner".into());
+        assert!(
+            err.source().is_some(),
+            "InvalidWitness should have a source"
+        );
 
-    let err = Error::Initialization("inner".into());
-    assert!(
-        err.source().is_some(),
-        "Initialization should have a source"
-    );
+        let err = Error::MalformedEncoding("inner".into());
+        assert!(
+            err.source().is_some(),
+            "MalformedEncoding should have a source"
+        );
 
-    // Bound variants and VectorLengthMismatch should not chain an inner error.
-    let err = Error::GateBoundExceeded { limit: 1 };
-    assert!(err.source().is_none());
+        let err = Error::Initialization("inner".into());
+        assert!(
+            err.source().is_some(),
+            "Initialization should have a source"
+        );
 
-    let err = Error::ConstraintBoundExceeded { limit: 1 };
-    assert!(err.source().is_none());
+        // Bound variants and VectorLengthMismatch should not chain an inner error.
+        let err = Error::GateBoundExceeded { limit: 1 };
+        assert!(err.source().is_none());
 
-    let err = Error::CircuitBoundExceeded { limit: 1 };
-    assert!(err.source().is_none());
+        let err = Error::ConstraintBoundExceeded { limit: 1 };
+        assert!(err.source().is_none());
 
-    let err = Error::DegreeBoundExceeded { limit: 1 };
-    assert!(err.source().is_none());
+        let err = Error::CircuitBoundExceeded { limit: 1 };
+        assert!(err.source().is_none());
 
-    let err = Error::VectorLengthMismatch {
-        expected: 3,
-        actual: 2,
-    };
-    assert!(err.source().is_none());
+        let err = Error::DegreeBoundExceeded { limit: 1 };
+        assert!(err.source().is_none());
+
+        let err = Error::VectorLengthMismatch {
+            expected: 3,
+            actual: 2,
+        };
+        assert!(err.source().is_none());
+    }
 }

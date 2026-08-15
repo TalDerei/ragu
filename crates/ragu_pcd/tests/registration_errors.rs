@@ -170,7 +170,7 @@ fn register_steps_success_and_finalize() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "steps must be registered in sequential order")]
 fn register_steps_out_of_order_should_fail() {
     ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step1)
@@ -178,7 +178,7 @@ fn register_steps_out_of_order_should_fail() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "two different Header implementations using the same suffix")]
 fn register_steps_duplicate_suffix_should_fail() {
     ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)

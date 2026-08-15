@@ -2,14 +2,13 @@
 name = "ragu_pcd"
 version.workspace = true
 authors.workspace = true
-description = """
-Intended for internal use in the Ragu project
-"""
+description = "Top-level API for building proof-carrying data (PCD) applications for the Ragu project"
 license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 readme = "README.md"
+homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/ragu_pcd"
 categories = [
@@ -19,7 +18,7 @@ categories = [
   "development-tools",
   "no-std",
 ]
-keywords = []
+keywords = ["cryptography", "zero-knowledge", "proof-carrying-data", "pcd", "recursion"]
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
@@ -69,15 +68,15 @@ ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 proptest = { workspace = true }
 
 [[bench]]
-name = "pcd"
+name = "gungraun"
 harness = false
 
 [[bench]]
-name = "fuse_criterion"
+name = "criterion_fuse"
 path = "benches/criterion/fuse.rs"
 harness = false
 
 [[bench]]
-name = "registry_criterion"
+name = "criterion_registry"
 path = "benches/criterion/registry.rs"
 harness = false

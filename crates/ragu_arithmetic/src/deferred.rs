@@ -8,7 +8,7 @@ use crate::ff::Field;
 /// [`reduce`](DeferredField::reduce) to obtain the canonical field element.
 pub trait DeferredField: Field {
     /// The accumulator used for unreduced or eagerly-reduced products.
-    type Accumulator: Copy + Clone + fmt::Debug + Default;
+    type Accumulator: Copy + fmt::Debug + Default;
 
     /// Multiplies `a` by `b` and adds the product into `acc`.
     fn mul_accumulate(acc: &mut Self::Accumulator, a: &Self, b: &Self);

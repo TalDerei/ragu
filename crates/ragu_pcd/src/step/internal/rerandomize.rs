@@ -76,70 +76,77 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
     }
 }
 
-#[test]
-fn test_rerandomize_consistency() {
-    use ragu_circuits::polynomials;
-    use ragu_core::{
-        Result,
-        drivers::{Driver, DriverValue},
-        gadgets::{Bound, Kind},
-        maybe::Maybe,
-    };
-    use ragu_pasta::{Fp, Pasta};
-    use ragu_primitives::{Element, allocator::Allocator};
-    use ragu_testing::registry::TestRegistryBuilder;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    use crate::header::{Header, Suffix};
+    #[test]
+    fn test_rerandomize_consistency() {
+        use ragu_circuits::polynomials;
+        use ragu_core::{
+            Result,
+            drivers::{Driver, DriverValue},
+            gadgets::{Bound, Kind},
+            maybe::Maybe,
+        };
+        use ragu_pasta::{Fp, Pasta};
+        use ragu_primitives::{Element, allocator::Allocator};
+        use ragu_testing::registry::TestRegistryBuilder;
 
-    const HEADER_SIZE: usize = 4;
-    type R = polynomials::TestRank;
+        use crate::header::{Header, Suffix};
 
-    struct Single;
-    impl Header<Fp> for Single {
-        const SUFFIX: Suffix = Suffix::new(0);
-        type Data = Fp;
-        type Output = Kind![Fp; Element<'_, _>];
-        fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
-            dr: &mut D,
-            allocator: &mut A,
-            witness: DriverValue<D, Self::Data>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            Element::alloc(dr, allocator, witness)
+        const HEADER_SIZE: usize = 4;
+        type R = polynomials::TestRank;
+
+        struct Single;
+        impl Header<Fp> for Single {
+            const SUFFIX: Suffix = Suffix::new(0);
+            type Data = Fp;
+            type Output = Kind![Fp; Element<'_, _>];
+            fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
+                dr: &mut D,
+                allocator: &mut A,
+                witness: DriverValue<D, Self::Data>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                Element::alloc(dr, allocator, witness)
+            }
         }
-    }
 
-    struct Pair;
-    impl Header<Fp> for Pair {
-        const SUFFIX: Suffix = Suffix::new(1);
-        type Data = (Fp, Fp);
-        type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
-        fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
-            dr: &mut D,
-            allocator: &mut A,
-            witness: DriverValue<D, Self::Data>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            let (a, b) = witness.cast();
-            let a = Element::alloc(dr, allocator, a)?;
-            let b = Element::alloc(dr, allocator, b)?;
+        struct Pair;
+        impl Header<Fp> for Pair {
+            const SUFFIX: Suffix = Suffix::new(1);
+            type Data = (Fp, Fp);
+            type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+            fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
+                dr: &mut D,
+                allocator: &mut A,
+                witness: DriverValue<D, Self::Data>,
+            ) -> Result<Bound<'dr, D, Self::Output>> {
+                let (a, b) = witness.cast();
+                let a = Element::alloc(dr, allocator, a)?;
+                let b = Element::alloc(dr, allocator, b)?;
 
-            Ok((a, b))
+                Ok((a, b))
+            }
         }
+
+        let circuit_single =
+            super::super::adapter::Adapter::<Pasta, Rerandomize<Single>, R, HEADER_SIZE>::new(
+                Rerandomize::new(),
+            );
+        let circuit_pair =
+            super::super::adapter::Adapter::<Pasta, Rerandomize<Pair>, R, HEADER_SIZE>::new(
+                Rerandomize::new(),
+            );
+
+        let mut builder: TestRegistryBuilder<'_, _, R> = TestRegistryBuilder::new();
+        let single_h = builder.register_circuit(circuit_single).unwrap();
+        let pair_h = builder.register_circuit(circuit_pair).unwrap();
+        let registry = builder.finalize().unwrap();
+
+        let x = Fp::from(5u64);
+        let y = Fp::from(17u64);
+
+        assert_eq!(registry.xy(single_h, x, y), registry.xy(pair_h, x, y),);
     }
-
-    let circuit_single = super::adapter::Adapter::<Pasta, Rerandomize<Single>, R, HEADER_SIZE>::new(
-        Rerandomize::new(),
-    );
-    let circuit_pair = super::adapter::Adapter::<Pasta, Rerandomize<Pair>, R, HEADER_SIZE>::new(
-        Rerandomize::new(),
-    );
-
-    let mut builder: TestRegistryBuilder<'_, _, R> = TestRegistryBuilder::new();
-    let single_h = builder.register_circuit(circuit_single).unwrap();
-    let pair_h = builder.register_circuit(circuit_pair).unwrap();
-    let registry = builder.finalize().unwrap();
-
-    let x = Fp::from(5u64);
-    let y = Fp::from(17u64);
-
-    assert_eq!(registry.xy(single_h, x, y), registry.xy(pair_h, x, y),);
 }

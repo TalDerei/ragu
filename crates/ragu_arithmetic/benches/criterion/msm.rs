@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ragu_arithmetic::{
     ff::Field,
-    mul,
+    msm,
     pasta_curves::{EpAffine, Fq, group::CurveAffine},
     rand::{SeedableRng, rngs::StdRng},
 };
@@ -17,7 +17,7 @@ fn msm_bench(c: &mut Criterion) {
             .collect();
 
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
-            b.iter(|| mul(coeffs.iter(), bases.iter()));
+            b.iter(|| msm(coeffs.iter(), bases.iter()));
         });
     }
 

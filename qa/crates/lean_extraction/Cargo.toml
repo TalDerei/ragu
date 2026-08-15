@@ -2,9 +2,11 @@
 name = "lean_extraction"
 version.workspace = true
 authors.workspace = true
+description = "Extracts Ragu circuit instances for formal verification in Lean"
 license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
