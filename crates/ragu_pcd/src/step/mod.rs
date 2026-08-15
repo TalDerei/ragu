@@ -111,36 +111,6 @@ impl Index {
     }
 }
 
-#[test]
-fn test_index_map() -> Result<()> {
-    let num_application_steps = 10;
-    let app_offset = NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM;
-
-    // Internal steps come after internal circuits
-    assert_eq!(
-        Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
-        CircuitIndex::new(InternalCircuitIndex::NUM)
-    );
-    assert_eq!(
-        Index::internal(InternalStepIndex::Trivial).circuit_index(num_application_steps)?,
-        CircuitIndex::new(InternalCircuitIndex::NUM + 1)
-    );
-
-    // Application steps occupy indices (InternalCircuitIndex::NUM + NUM_INTERNAL_STEPS)..
-    assert_eq!(
-        Index::new(0).circuit_index(num_application_steps)?,
-        CircuitIndex::new(app_offset)
-    );
-    assert_eq!(
-        Index::new(1).circuit_index(num_application_steps)?,
-        CircuitIndex::new(app_offset + 1)
-    );
-    Index::new(999).assert_index(999)?;
-    assert!(Index::new(10).circuit_index(num_application_steps).is_err());
-
-    Ok(())
-}
-
 /// Represents a node in the computational graph (or the proof-carrying data
 /// tree) that represents the merging of two pieces of proof-carrying data.
 ///
@@ -188,4 +158,39 @@ pub trait Step<C: Cycle>: Sized + Send + Sync {
     )>
     where
         Self: 'dr;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_index_map() -> Result<()> {
+        let num_application_steps = 10;
+        let app_offset = NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM;
+
+        // Internal steps come after internal circuits
+        assert_eq!(
+            Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
+            CircuitIndex::new(InternalCircuitIndex::NUM)
+        );
+        assert_eq!(
+            Index::internal(InternalStepIndex::Trivial).circuit_index(num_application_steps)?,
+            CircuitIndex::new(InternalCircuitIndex::NUM + 1)
+        );
+
+        // Application steps occupy indices (InternalCircuitIndex::NUM + NUM_INTERNAL_STEPS)..
+        assert_eq!(
+            Index::new(0).circuit_index(num_application_steps)?,
+            CircuitIndex::new(app_offset)
+        );
+        assert_eq!(
+            Index::new(1).circuit_index(num_application_steps)?,
+            CircuitIndex::new(app_offset + 1)
+        );
+        Index::new(999).assert_index(999)?;
+        assert!(Index::new(10).circuit_index(num_application_steps).is_err());
+
+        Ok(())
+    }
 }

@@ -145,52 +145,56 @@ macro_rules! impl_rank_for_R {
 
 impl_rank_for_R! {7, 13}
 
-#[test]
-fn test_tz() {
+#[cfg(test)]
+mod tests {
     use ragu_pasta::Fp;
 
-    type DemoR = TestRank;
+    use super::*;
 
-    // Construct a polynomial with all a and b wires = ONE.
-    let mut view = sparse::View::<_, DemoR, _>::trace();
-    for _ in 0..DemoR::n() {
-        view.a.push(Fp::ONE);
-        view.b.push(Fp::ONE);
+    #[test]
+    fn test_tz() {
+        type DemoR = TestRank;
+
+        // Construct a polynomial with all a and b wires = ONE.
+        let mut view = sparse::View::<_, DemoR, _>::trace();
+        for _ in 0..DemoR::n() {
+            view.a.push(Fp::ONE);
+            view.b.push(Fp::ONE);
+        }
+        let mut poly = view.build();
+        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+        poly.dilate(z);
+        poly.negate();
+        let poly_dense = poly.to_dense();
+
+        // Construct the expected tz via wiring view with c[i] = poly[2n+i] + poly[2n-1-i].
+        let n = DemoR::n();
+        let mut expected_view = sparse::View::<_, DemoR, _>::wiring();
+        for i in 0..n {
+            expected_view
+                .c
+                .push(poly_dense[2 * n + i] + poly_dense[2 * n - 1 - i]);
+        }
+        let expected_tz = expected_view.build().to_dense();
+
+        assert_eq!(expected_tz, DemoR::tz::<Fp>(z).to_dense());
     }
-    let mut poly = view.build();
-    let z = Fp::random(&mut ragu_arithmetic::rand::rng());
-    poly.dilate(z);
-    poly.negate();
-    let poly_dense = poly.to_dense();
 
-    // Construct the expected tz via wiring view with c[i] = poly[2n+i] + poly[2n-1-i].
-    let n = DemoR::n();
-    let mut expected_view = sparse::View::<_, DemoR, _>::wiring();
-    for i in 0..n {
-        expected_view
-            .c
-            .push(poly_dense[2 * n + i] + poly_dense[2 * n - 1 - i]);
+    #[test]
+    fn test_txz_consistency() {
+        type DemoR = TestRank;
+        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let txz = DemoR::txz(x, z);
+        let tx0 = DemoR::txz(x, Fp::ZERO);
+        let t0z: Fp = DemoR::txz(Fp::ZERO, z);
+        let t00 = DemoR::txz(Fp::ZERO, Fp::ZERO);
+        assert_eq!(txz, DemoR::tz::<Fp>(z).eval(x));
+        assert_eq!(tx0, DemoR::tz::<Fp>(Fp::ZERO).eval(x));
+        assert_eq!(txz, DemoR::tx::<Fp>(x).eval(z));
+        assert_eq!(t0z, DemoR::tx::<Fp>(Fp::ZERO).eval(z));
+
+        assert_eq!(t00, DemoR::tz::<Fp>(Fp::ZERO).eval(Fp::ZERO));
+        assert_eq!(t00, DemoR::tx::<Fp>(Fp::ZERO).eval(Fp::ZERO));
     }
-    let expected_tz = expected_view.build().to_dense();
-
-    assert_eq!(expected_tz, DemoR::tz::<Fp>(z).to_dense());
-}
-
-#[test]
-fn test_txz_consistency() {
-    use ragu_pasta::Fp;
-    type DemoR = TestRank;
-    let z = Fp::random(&mut ragu_arithmetic::rand::rng());
-    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-    let txz = DemoR::txz(x, z);
-    let tx0 = DemoR::txz(x, Fp::ZERO);
-    let t0z: Fp = DemoR::txz(Fp::ZERO, z);
-    let t00 = DemoR::txz(Fp::ZERO, Fp::ZERO);
-    assert_eq!(txz, DemoR::tz::<Fp>(z).eval(x));
-    assert_eq!(tx0, DemoR::tz::<Fp>(Fp::ZERO).eval(x));
-    assert_eq!(txz, DemoR::tx::<Fp>(x).eval(z));
-    assert_eq!(t0z, DemoR::tx::<Fp>(Fp::ZERO).eval(z));
-
-    assert_eq!(t00, DemoR::tz::<Fp>(Fp::ZERO).eval(Fp::ZERO));
-    assert_eq!(t00, DemoR::tx::<Fp>(Fp::ZERO).eval(Fp::ZERO));
 }

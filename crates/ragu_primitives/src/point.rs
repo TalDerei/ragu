@@ -317,166 +317,148 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Consistent<'dr, D> for Po
     }
 }
 
-#[test]
-fn test_point_alloc() -> Result<()> {
-    use ragu_arithmetic::group::CurveAffine;
-
-    type F = ragu_pasta::Fp;
-    type C = ragu_pasta::EpAffine;
-    type Simulator = crate::Simulator<F>;
-
-    let alloc = |point: C| {
-        Simulator::simulate(point, |dr, point| {
-            Point::alloc(dr, point.clone())?;
-
-            Ok(())
-        })
-    };
-
-    alloc(C::generator())?;
-    assert!(alloc(C::identity()).is_err());
-
-    Ok(())
-}
-
-#[test]
-fn test_point_double() -> Result<()> {
-    use ragu_arithmetic::group::{CurveAffine, Group};
-
-    type F = ragu_pasta::Fp;
-    type C = ragu_pasta::EpAffine;
-    type Simulator = crate::Simulator<F>;
-
-    let double = |point: C| {
-        let sim = Simulator::simulate(point, |dr, point| {
-            let p = Point::alloc(dr, point.clone())?;
-            dr.reset();
-            let q = p.double(dr)?;
-            assert_eq!(
-                point.take().to_curve().double(),
-                C::from_xy(*q.x.value().take(), *q.y.value().take())
-                    .unwrap()
-                    .into()
-            );
-
-            Ok(())
-        })?;
-        assert_eq!(sim.num_gates(), 4);
-        assert_eq!(sim.num_constraints(), 8);
-        Ok(())
-    };
-
-    double(C::generator())?;
-
-    Ok(())
-}
-
-#[test]
-fn test_add_incomplete() -> Result<()> {
-    use alloc::vec;
-
-    use ragu_arithmetic::{
-        CurveExt,
-        group::{CurveAffine, Group},
-    };
-
-    type F = ragu_pasta::Fp;
-    type C = ragu_pasta::EpAffine;
-    type Simulator = crate::Simulator<F>;
-
-    let generator = C::generator();
-
-    let points = vec![
-        generator,
-        -generator,
-        generator.to_curve().endo().into(),
-        (-generator.to_curve().endo()).into(),
-        generator.to_curve().double().into(),
-        (-generator.to_curve().double()).into(),
-        generator.to_curve().double().endo().into(),
-    ];
-
-    for p in &points {
-        for q in &points {
-            let sim = Simulator::simulate((*p, *q), |dr, witness| {
-                let (p, q) = witness.cast();
-                let p_gadget = Point::alloc(dr, p.clone())?;
-                let q_gadget = Point::alloc(dr, q.clone())?;
-                dr.reset();
-                let mut bank = NonzeroBank::new_unchecked();
-                let r_gadget = p_gadget.add_incomplete(dr, &q_gadget, &mut bank)?;
-                let expected = p.take().to_curve() + q.take().to_curve();
-                let expected_affine =
-                    C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
-                assert_eq!(expected_affine, expected.into());
-                Ok(())
-            });
-
-            if p.coordinates().unwrap().x() == q.coordinates().unwrap().x() {
-                assert!(sim.is_err());
-            } else {
-                let sim = sim?;
-                assert_eq!(sim.num_gates(), 3);
-                assert_eq!(sim.num_constraints(), 6);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_double_and_add_incomplete() -> Result<()> {
+#[cfg(test)]
+mod tests {
     use alloc::{vec, vec::Vec};
 
     use ragu_arithmetic::{
         CurveExt,
-        group::{CurveAffine, Group},
+        group::{CurveAffine as _, Group},
     };
+
+    use super::*;
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
     type Simulator = crate::Simulator<F>;
 
-    let generator = C::generator();
+    #[test]
+    fn test_point_alloc() -> Result<()> {
+        let alloc = |point: C| {
+            Simulator::simulate(point, |dr, point| {
+                Point::alloc(dr, point.clone())?;
 
-    let points: Vec<C> = vec![
-        generator,
-        generator.to_curve().double().into(),
-        -generator,
-        (-generator.to_curve().double()).into(),
-        (-generator.to_curve().double().double()).into(),
-        generator,
-        generator.to_curve().endo().into(),
-        (-generator.to_curve().endo()).into(),
-    ];
-
-    for p in &points {
-        for q in &points {
-            let sim = Simulator::simulate((*p, *q), |dr, witness| {
-                let (p, q) = witness.cast();
-                let p_gadget = Point::alloc(dr, p.clone())?;
-                let q_gadget = Point::alloc(dr, q.clone())?;
-                dr.reset();
-                let mut bank = NonzeroBank::new_unchecked();
-                let r_gadget = p_gadget.double_and_add_incomplete(dr, &q_gadget, &mut bank)?;
-                let expected = p.take().to_curve().double() + q.take().to_curve();
-                let expected_affine =
-                    C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
-                assert_eq!(expected_affine, expected.into());
                 Ok(())
-            });
+            })
+        };
 
-            if p.coordinates().unwrap().x() == q.coordinates().unwrap().x()
-                || (p.to_curve().double() + q.to_curve()).is_identity().into()
-            {
-                assert!(sim.is_err());
-            } else {
-                let sim = sim?;
-                assert_eq!(sim.num_gates(), 5);
-                assert_eq!(sim.num_constraints(), 10);
+        alloc(C::generator())?;
+        assert!(alloc(C::identity()).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_point_double() -> Result<()> {
+        let double = |point: C| {
+            let sim = Simulator::simulate(point, |dr, point| {
+                let p = Point::alloc(dr, point.clone())?;
+                dr.reset();
+                let q = p.double(dr)?;
+                assert_eq!(
+                    point.take().to_curve().double(),
+                    C::from_xy(*q.x.value().take(), *q.y.value().take())
+                        .unwrap()
+                        .into()
+                );
+
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 4);
+            assert_eq!(sim.num_constraints(), 8);
+            Ok(())
+        };
+
+        double(C::generator())?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_add_incomplete() -> Result<()> {
+        let generator = C::generator();
+
+        let points = vec![
+            generator,
+            -generator,
+            generator.to_curve().endo().into(),
+            (-generator.to_curve().endo()).into(),
+            generator.to_curve().double().into(),
+            (-generator.to_curve().double()).into(),
+            generator.to_curve().double().endo().into(),
+        ];
+
+        for p in &points {
+            for q in &points {
+                let sim = Simulator::simulate((*p, *q), |dr, witness| {
+                    let (p, q) = witness.cast();
+                    let p_gadget = Point::alloc(dr, p.clone())?;
+                    let q_gadget = Point::alloc(dr, q.clone())?;
+                    dr.reset();
+                    let mut bank = NonzeroBank::new_unchecked();
+                    let r_gadget = p_gadget.add_incomplete(dr, &q_gadget, &mut bank)?;
+                    let expected = p.take().to_curve() + q.take().to_curve();
+                    let expected_affine =
+                        C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
+                    assert_eq!(expected_affine, expected.into());
+                    Ok(())
+                });
+
+                if p.coordinates().unwrap().x() == q.coordinates().unwrap().x() {
+                    assert!(sim.is_err());
+                } else {
+                    let sim = sim?;
+                    assert_eq!(sim.num_gates(), 3);
+                    assert_eq!(sim.num_constraints(), 6);
+                }
             }
         }
+
+        Ok(())
     }
-    Ok(())
+
+    #[test]
+    fn test_double_and_add_incomplete() -> Result<()> {
+        let generator = C::generator();
+
+        let points: Vec<C> = vec![
+            generator,
+            generator.to_curve().double().into(),
+            -generator,
+            (-generator.to_curve().double()).into(),
+            (-generator.to_curve().double().double()).into(),
+            generator,
+            generator.to_curve().endo().into(),
+            (-generator.to_curve().endo()).into(),
+        ];
+
+        for p in &points {
+            for q in &points {
+                let sim = Simulator::simulate((*p, *q), |dr, witness| {
+                    let (p, q) = witness.cast();
+                    let p_gadget = Point::alloc(dr, p.clone())?;
+                    let q_gadget = Point::alloc(dr, q.clone())?;
+                    dr.reset();
+                    let mut bank = NonzeroBank::new_unchecked();
+                    let r_gadget = p_gadget.double_and_add_incomplete(dr, &q_gadget, &mut bank)?;
+                    let expected = p.take().to_curve().double() + q.take().to_curve();
+                    let expected_affine =
+                        C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
+                    assert_eq!(expected_affine, expected.into());
+                    Ok(())
+                });
+
+                if p.coordinates().unwrap().x() == q.coordinates().unwrap().x()
+                    || (p.to_curve().double() + q.to_curve()).is_identity().into()
+                {
+                    assert!(sim.is_err());
+                } else {
+                    let sim = sim?;
+                    assert_eq!(sim.num_gates(), 5);
+                    assert_eq!(sim.num_constraints(), 10);
+                }
+            }
+        }
+        Ok(())
+    }
 }

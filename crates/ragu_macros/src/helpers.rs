@@ -18,26 +18,6 @@ pub fn attr_is(attr: &Attribute, needle: &str) -> bool {
     }
 }
 
-#[cfg(test)]
-use syn::parse_quote;
-
-#[test]
-fn test_attr_is() {
-    let attr: Attribute = parse_quote!(#[ragu(driver)]);
-    assert!(attr_is(&attr, "driver"));
-    assert!(!attr_is(&attr, "not_driver"));
-
-    let attr: Attribute = parse_quote!(#[ragu(not_driver)]);
-    assert!(!attr_is(&attr, "driver"));
-    assert!(attr_is(&attr, "not_driver"));
-
-    let attr: Attribute = parse_quote!(#[ragu]);
-    assert!(!attr_is(&attr, "driver"));
-
-    let attr: Attribute = parse_quote!(#[not_ragu(driver)]);
-    assert!(!attr_is(&attr, "driver"));
-}
-
 pub struct GenericDriver {
     pub ident: Ident,
     pub lifetime: Lifetime,
@@ -106,42 +86,66 @@ impl GenericDriver {
     }
 }
 
-#[test]
-fn test_extract_generic_driver() {
-    let generics = parse_quote!(<#[ragu(driver)] D: ragu_core::Driver<'dr>>);
-    let driver = GenericDriver::extract(&generics).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr>>);
-    let driver = GenericDriver::extract(&generics).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    // Shouldn't cause an error in the macro to have a spurious driver type argument
-    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, T>>);
-    let driver = GenericDriver::extract(&generics).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-
-    let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, 'another_dr>>);
-    assert!(GenericDriver::extract(&generics).is_err());
-
-    let generics = parse_quote!(<#[ragu(driver)] D: Driver>);
-    assert!(GenericDriver::extract(&generics).is_err());
-
-    let generics = parse_quote!(<#[ragu(driver)] D: 'a>);
-    assert!(GenericDriver::extract(&generics).is_err());
-
-    let generics = parse_quote!(<D: Driver<'dr>>);
-    let driver = GenericDriver::extract(&generics).unwrap();
-    assert_eq!(driver.ident.to_string(), "D");
-    assert_eq!(driver.lifetime.to_string(), "'dr");
-}
-
 pub fn macro_body<F>(f: F) -> proc_macro::TokenStream
 where
     F: FnOnce() -> Result<TokenStream>,
 {
     f().unwrap_or_else(|e| e.into_compile_error()).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use syn::parse_quote;
+
+    use super::*;
+
+    #[test]
+    fn test_attr_is() {
+        let attr: Attribute = parse_quote!(#[ragu(driver)]);
+        assert!(attr_is(&attr, "driver"));
+        assert!(!attr_is(&attr, "not_driver"));
+
+        let attr: Attribute = parse_quote!(#[ragu(not_driver)]);
+        assert!(!attr_is(&attr, "driver"));
+        assert!(attr_is(&attr, "not_driver"));
+
+        let attr: Attribute = parse_quote!(#[ragu]);
+        assert!(!attr_is(&attr, "driver"));
+
+        let attr: Attribute = parse_quote!(#[not_ragu(driver)]);
+        assert!(!attr_is(&attr, "driver"));
+    }
+
+    #[test]
+    fn test_extract_generic_driver() {
+        let generics = parse_quote!(<#[ragu(driver)] D: ragu_core::Driver<'dr>>);
+        let driver = GenericDriver::extract(&generics).unwrap();
+        assert_eq!(driver.ident.to_string(), "D");
+        assert_eq!(driver.lifetime.to_string(), "'dr");
+
+        let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr>>);
+        let driver = GenericDriver::extract(&generics).unwrap();
+        assert_eq!(driver.ident.to_string(), "D");
+        assert_eq!(driver.lifetime.to_string(), "'dr");
+
+        // Shouldn't cause an error in the macro to have a spurious driver type argument
+        let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, T>>);
+        let driver = GenericDriver::extract(&generics).unwrap();
+        assert_eq!(driver.ident.to_string(), "D");
+        assert_eq!(driver.lifetime.to_string(), "'dr");
+
+        let generics = parse_quote!(<#[ragu(driver)] D: Driver<'dr, 'another_dr>>);
+        assert!(GenericDriver::extract(&generics).is_err());
+
+        let generics = parse_quote!(<#[ragu(driver)] D: Driver>);
+        assert!(GenericDriver::extract(&generics).is_err());
+
+        let generics = parse_quote!(<#[ragu(driver)] D: 'a>);
+        assert!(GenericDriver::extract(&generics).is_err());
+
+        let generics = parse_quote!(<D: Driver<'dr>>);
+        let driver = GenericDriver::extract(&generics).unwrap();
+        assert_eq!(driver.ident.to_string(), "D");
+        assert_eq!(driver.lifetime.to_string(), "'dr");
+    }
 }

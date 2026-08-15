@@ -142,30 +142,6 @@ fn bucket_lookup(n: usize) -> usize {
     cur
 }
 
-#[test]
-fn test_bucket_lookup_thresholds() {
-    for n in 0..8886111 {
-        // This is heuristic behavior that uses floating point intrinsics to
-        // succinctly estimate the correct bucket size for multiscalar
-        // multiplication. These intrinsics are only available in the standard
-        // library, so we replicate them (to sufficient extent) through a lookup
-        // table.
-        let expected = {
-            if n < 4 {
-                1
-            } else if n < 32 {
-                3
-            } else {
-                (f64::from(n as u32)).ln().ceil() as usize
-            }
-        };
-        let actual = bucket_lookup(n);
-        if expected != actual {
-            panic!("n = {}: expected {}, got {}", n, expected, actual);
-        }
-    }
-}
-
 /// Batch-convert projective points to affine using a single field inversion
 /// (Montgomery's trick).
 pub fn batch_to_affine<C: CurveAffine, const N: usize>(projectives: [C::Curve; N]) -> [C; N] {
@@ -505,12 +481,39 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
 }
 
 #[cfg(test)]
-mod poly_with_roots_tests {
+mod tests {
     use proptest::prelude::*;
     use ragu_testing::strategies;
 
     use super::*;
-    use crate::{ff::Field, pasta_curves::Fp as F};
+    use crate::{
+        ff::{Field, PrimeField},
+        pasta_curves::Fp as F,
+    };
+
+    #[test]
+    fn test_bucket_lookup_thresholds() {
+        for n in 0..8886111 {
+            // This is heuristic behavior that uses floating point intrinsics to
+            // succinctly estimate the correct bucket size for multiscalar
+            // multiplication. These intrinsics are only available in the standard
+            // library, so we replicate them (to sufficient extent) through a lookup
+            // table.
+            let expected = {
+                if n < 4 {
+                    1
+                } else if n < 32 {
+                    3
+                } else {
+                    (f64::from(n as u32)).ln().ceil() as usize
+                }
+            };
+            let actual = bucket_lookup(n);
+            if expected != actual {
+                panic!("n = {}: expected {}, got {}", n, expected, actual);
+            }
+        }
+    }
 
     fn check(roots: &[F]) -> Result<(), TestCaseError> {
         let poly = poly_with_roots(roots);
@@ -546,62 +549,34 @@ mod poly_with_roots_tests {
             check(&roots)?;
         }
     }
-}
 
-#[test]
-fn test_poly_with_roots() {
-    use crate::pasta_curves::Fp as F;
+    #[test]
+    fn test_poly_with_roots() {
+        let roots = vec![F::from(1), F::from(2), F::from(3)];
+        let poly = poly_with_roots(&roots);
 
-    let roots = vec![F::from(1), F::from(2), F::from(3)];
-    let poly = poly_with_roots(&roots);
+        for &root in &roots {
+            assert_eq!(eval(&poly, root), F::ZERO);
+        }
 
-    for &root in &roots {
-        assert_eq!(eval(&poly, root), F::ZERO);
+        let non_root = F::from(5);
+        assert_ne!(eval(&poly, non_root), F::ZERO);
+
+        let expected_coeffs = vec![F::from(6).neg(), F::from(11), F::from(6).neg(), F::ONE];
+        assert_eq!(poly, expected_coeffs);
+
+        let empty_roots: Vec<F> = vec![];
+        let constant_poly = poly_with_roots(&empty_roots);
+        assert_eq!(constant_poly, vec![F::ONE]);
     }
 
-    let non_root = F::from(5);
-    assert_ne!(eval(&poly, non_root), F::ZERO);
-
-    let expected_coeffs = vec![F::from(6).neg(), F::from(11), F::from(6).neg(), F::ONE];
-    assert_eq!(poly, expected_coeffs);
-
-    let empty_roots: Vec<F> = vec![];
-    let constant_poly = poly_with_roots(&empty_roots);
-    assert_eq!(constant_poly, vec![F::ONE]);
-}
-
-#[cfg(test)]
-mod proptests {
-    use proptest::prelude::*;
-
-    use super::*;
-    use crate::{
-        ff::{Field, PrimeField},
-        pasta_curves::Fp as F,
-    };
-
-    fn arb_fe() -> impl Strategy<Value = F> {
-        (any::<u64>(), any::<u64>())
-            .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
-    }
-
-    /// Random nonzero field element. With probability `1/10` each, returns
-    /// `F::ONE` or `-F::ONE`, exercising boundary points that uniformly
-    /// random elements would essentially never reach.
-    fn arb_fe_nonzero() -> impl Strategy<Value = F> {
-        prop_oneof![
-            8 => arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero())),
-            1 => Just(F::ONE),
-            1 => Just(-F::ONE),
-        ]
-    }
-
-    /// Like `arb_fe`, but returns `F::ZERO` with probability `1/10`, so
-    /// vectors built from this strategy exercise sparse polynomials and
-    /// the case where the highest-degree coefficient is zero.
+    /// Like [`strategies::prime_field_element`], but returns `F::ZERO` with
+    /// probability `1/10`, so vectors built from this strategy exercise
+    /// sparse polynomials and the case where the highest-degree coefficient
+    /// is zero.
     fn arb_fe_with_zeros() -> impl Strategy<Value = F> {
         prop_oneof![
-            9 => arb_fe(),
+            9 => strategies::prime_field_element::<F>(),
             1 => Just(F::ZERO),
         ]
     }
@@ -645,7 +620,7 @@ mod proptests {
 
     proptest! {
         #[test]
-        fn eval_dot_equivalence(x in arb_fe(), coeffs in proptest::collection::vec(arb_fe(), 1..32)) {
+        fn eval_dot_equivalence(x in strategies::prime_field_element::<F>(), coeffs in proptest::collection::vec(strategies::prime_field_element::<F>(), 1..32)) {
             let mut powers = Vec::with_capacity(coeffs.len());
             let mut p = F::ONE;
             for _ in 0..coeffs.len() {
@@ -657,9 +632,9 @@ mod proptests {
 
         #[test]
         fn factor_quotient_identity(
-            p in proptest::collection::vec(arb_fe(), 2..16),
-            b in arb_fe(),
-            y in arb_fe(),
+            p in proptest::collection::vec(strategies::prime_field_element::<F>(), 2..16),
+            b in strategies::prime_field_element::<F>(),
+            y in strategies::prime_field_element::<F>(),
         ) {
             let q = factor(p.iter().copied(), b);
             let lhs = eval(&p, y);
@@ -668,7 +643,7 @@ mod proptests {
         }
 
         #[test]
-        fn geosum_matches_naive(r in arb_fe(), m in 1usize..64) {
+        fn geosum_matches_naive(r in strategies::prime_field_element::<F>(), m in 1usize..64) {
             let mut naive = F::ZERO;
             let mut power = F::ONE;
             for _ in 0..m {
@@ -680,8 +655,8 @@ mod proptests {
 
         #[test]
         fn poly_mul_convolution(
-            a in proptest::collection::vec(arb_fe(), 1..64),
-            b in proptest::collection::vec(arb_fe(), 1..64),
+            a in proptest::collection::vec(strategies::prime_field_element::<F>(), 1..64),
+            b in proptest::collection::vec(strategies::prime_field_element::<F>(), 1..64),
         ) {
             let mut c = Vec::new();
             poly_mul(&a, &b, &mut c);
@@ -699,7 +674,7 @@ mod proptests {
         #[test]
         fn decomp_product_poly_identity(
             (a, b) in arb_equal_length_pair(),
-            x in arb_fe_nonzero(),
+            x in strategies::nonzero_prime_field_element::<F>(),
         ) {
             let n = a.len();
             let (p, q) = decomp_product_poly(&a, &b);
@@ -783,152 +758,146 @@ mod proptests {
         poly_mul(&one, &a, &mut out);
         assert_eq!(out, a);
     }
-}
 
-#[test]
-fn test_msm() {
-    use crate::pasta_curves::group::{Curve, CurveAffine};
+    #[test]
+    fn test_msm() {
+        use crate::pasta_curves::group::{Curve, CurveAffine};
 
-    let mut coeffs = vec![];
-    for i in 0..1000 {
-        coeffs.push(
-            crate::pasta_curves::Fp::from(i) * crate::pasta_curves::Fp::MULTIPLICATIVE_GENERATOR,
+        let mut coeffs = vec![];
+        for i in 0..1000 {
+            coeffs.push(
+                crate::pasta_curves::Fp::from(i)
+                    * crate::pasta_curves::Fp::MULTIPLICATIVE_GENERATOR,
+            );
+        }
+
+        let mut bases = vec![];
+        for i in 0..1000 {
+            bases.push(
+                (crate::pasta_curves::EqAffine::generator() * crate::pasta_curves::Fp::from(i))
+                    .to_affine(),
+            );
+        }
+
+        let expected = coeffs.iter().zip(bases.iter()).fold(
+            crate::pasta_curves::Eq::identity(),
+            |acc, (scalar, point)| acc + point * scalar,
+        );
+
+        assert_eq!(msm(coeffs.iter(), bases.iter()), expected);
+    }
+
+    #[test]
+    fn test_dot() {
+        let powers = [
+            F::ONE,
+            F::DELTA,
+            F::DELTA.square(),
+            F::DELTA.square() * F::DELTA,
+            F::DELTA.square().square(),
+        ];
+        let coeffs = [F::from(1), F::from(2), F::from(3), F::from(4), F::from(5)];
+
+        assert_eq!(
+            dot(powers.iter(), coeffs.iter()),
+            eval(coeffs.iter(), F::DELTA)
         );
     }
 
-    let mut bases = vec![];
-    for i in 0..1000 {
-        bases.push(
-            (crate::pasta_curves::EqAffine::generator() * crate::pasta_curves::Fp::from(i))
-                .to_affine(),
-        );
+    #[test]
+    fn test_factor() {
+        let poly = vec![
+            F::DELTA,
+            F::DELTA.square(),
+            F::from(348) * F::DELTA,
+            F::from(438) * F::MULTIPLICATIVE_GENERATOR,
+        ];
+        let x = F::TWO_INV;
+        let v = eval(poly.iter(), x);
+        let quot = factor(poly.clone(), x);
+        let mut quot_iter = factor_iter(poly.clone(), x).collect::<Vec<_>>();
+        quot_iter.reverse();
+        assert_eq!(quot, quot_iter);
+        let y = F::DELTA + F::from(100);
+        assert_eq!(eval(quot.iter(), y) * (y - x), eval(poly.iter(), y) - v);
     }
 
-    let expected = coeffs.iter().zip(bases.iter()).fold(
-        crate::pasta_curves::Eq::identity(),
-        |acc, (scalar, point)| acc + point * scalar,
-    );
-
-    assert_eq!(msm(coeffs.iter(), bases.iter()), expected);
-}
-
-#[test]
-fn test_dot() {
-    use crate::pasta_curves::Fp as F;
-
-    let powers = [
-        F::ONE,
-        F::DELTA,
-        F::DELTA.square(),
-        F::DELTA.square() * F::DELTA,
-        F::DELTA.square().square(),
-    ];
-    let coeffs = [F::from(1), F::from(2), F::from(3), F::from(4), F::from(5)];
-
-    assert_eq!(
-        dot(powers.iter(), coeffs.iter()),
-        eval(coeffs.iter(), F::DELTA)
-    );
-}
-
-#[test]
-fn test_factor() {
-    use crate::pasta_curves::Fp as F;
-
-    let poly = vec![
-        F::DELTA,
-        F::DELTA.square(),
-        F::from(348) * F::DELTA,
-        F::from(438) * F::MULTIPLICATIVE_GENERATOR,
-    ];
-    let x = F::TWO_INV;
-    let v = eval(poly.iter(), x);
-    let quot = factor(poly.clone(), x);
-    let mut quot_iter = factor_iter(poly.clone(), x).collect::<Vec<_>>();
-    quot_iter.reverse();
-    assert_eq!(quot, quot_iter);
-    let y = F::DELTA + F::from(100);
-    assert_eq!(eval(quot.iter(), y) * (y - x), eval(poly.iter(), y) - v);
-}
-
-#[test]
-fn test_geosum() {
-    use crate::pasta_curves::Fp as F;
-
-    fn geosum_slow<F: Field>(r: F, m: usize) -> F {
-        let mut sum = F::ZERO;
-        let mut power = F::ONE;
-        for _ in 0..m {
-            sum += power;
-            power *= r;
-        }
-        sum
-    }
-
-    let r = F::from(42u64) * F::MULTIPLICATIVE_GENERATOR;
-    for m in 0..33 {
-        assert_eq!(geosum(F::ZERO, m), geosum_slow(F::ZERO, m));
-        assert_eq!(geosum(F::ONE, m), geosum_slow(F::ONE, m));
-        assert_eq!(geosum(r, m), geosum_slow(r, m));
-    }
-}
-
-#[test]
-fn test_batched_quotient_streaming() {
-    use crate::{ff::Field, pasta_curves::Fp as F};
-
-    let polys: Vec<Vec<F>> = vec![
-        vec![F::from(1), F::from(2), F::from(3), F::from(4)],
-        vec![F::from(5), F::from(6), F::from(7), F::from(8)],
-        vec![F::from(9), F::from(10), F::from(11), F::from(12)],
-    ];
-    let x = F::from(42);
-    let alpha = F::from(7);
-
-    let f_coeffs: Vec<F> = {
-        let mut iters: Vec<_> = polys
-            .iter()
-            .map(|p| factor_iter(p.iter().copied(), x))
-            .collect();
-
-        let mut coeffs_rev = Vec::new();
-        while let Some(first) = iters[0].next() {
-            let c = iters[1..]
-                .iter_mut()
-                .fold(first, |acc, iter| alpha * acc + iter.next().unwrap());
-            coeffs_rev.push(c);
-        }
-        coeffs_rev.reverse();
-        coeffs_rev
-    };
-
-    let f_expected: Vec<F> = {
-        let quotients: Vec<Vec<F>> = polys.iter().map(|p| factor(p.iter().copied(), x)).collect();
-
-        let n = quotients.len();
-        let max_len = quotients.iter().map(|q| q.len()).max().unwrap();
-        let mut f = vec![F::ZERO; max_len];
-        for (i, q) in quotients.iter().enumerate() {
-            let alpha_i = alpha.pow([(n - 1 - i) as u64]);
-            for (j, &c) in q.iter().enumerate() {
-                f[j] += alpha_i * c;
+    #[test]
+    fn test_geosum() {
+        fn geosum_slow<F: Field>(r: F, m: usize) -> F {
+            let mut sum = F::ZERO;
+            let mut power = F::ONE;
+            for _ in 0..m {
+                sum += power;
+                power *= r;
             }
+            sum
         }
-        f
-    };
 
-    assert_eq!(f_coeffs, f_expected);
+        let r = F::from(42u64) * F::MULTIPLICATIVE_GENERATOR;
+        for m in 0..33 {
+            assert_eq!(geosum(F::ZERO, m), geosum_slow(F::ZERO, m));
+            assert_eq!(geosum(F::ONE, m), geosum_slow(F::ONE, m));
+            assert_eq!(geosum(r, m), geosum_slow(r, m));
+        }
+    }
 
-    let y = F::from(100);
-    let f_at_y = eval(f_coeffs.iter(), y);
-    let n = polys.len();
-    let expected_at_y: F = polys
-        .iter()
-        .enumerate()
-        .map(|(i, p)| {
-            let q_at_y = eval(factor(p.iter().copied(), x).iter(), y);
-            alpha.pow([(n - 1 - i) as u64]) * q_at_y
-        })
-        .sum();
-    assert_eq!(f_at_y, expected_at_y);
+    #[test]
+    fn test_batched_quotient_streaming() {
+        let polys: Vec<Vec<F>> = vec![
+            vec![F::from(1), F::from(2), F::from(3), F::from(4)],
+            vec![F::from(5), F::from(6), F::from(7), F::from(8)],
+            vec![F::from(9), F::from(10), F::from(11), F::from(12)],
+        ];
+        let x = F::from(42);
+        let alpha = F::from(7);
+
+        let f_coeffs: Vec<F> = {
+            let mut iters: Vec<_> = polys
+                .iter()
+                .map(|p| factor_iter(p.iter().copied(), x))
+                .collect();
+
+            let mut coeffs_rev = Vec::new();
+            while let Some(first) = iters[0].next() {
+                let c = iters[1..]
+                    .iter_mut()
+                    .fold(first, |acc, iter| alpha * acc + iter.next().unwrap());
+                coeffs_rev.push(c);
+            }
+            coeffs_rev.reverse();
+            coeffs_rev
+        };
+
+        let f_expected: Vec<F> = {
+            let quotients: Vec<Vec<F>> =
+                polys.iter().map(|p| factor(p.iter().copied(), x)).collect();
+
+            let n = quotients.len();
+            let max_len = quotients.iter().map(|q| q.len()).max().unwrap();
+            let mut f = vec![F::ZERO; max_len];
+            for (i, q) in quotients.iter().enumerate() {
+                let alpha_i = alpha.pow([(n - 1 - i) as u64]);
+                for (j, &c) in q.iter().enumerate() {
+                    f[j] += alpha_i * c;
+                }
+            }
+            f
+        };
+
+        assert_eq!(f_coeffs, f_expected);
+
+        let y = F::from(100);
+        let f_at_y = eval(f_coeffs.iter(), y);
+        let n = polys.len();
+        let expected_at_y: F = polys
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let q_at_y = eval(factor(p.iter().copied(), x).iter(), y);
+                alpha.pow([(n - 1 - i) as u64]) * q_at_y
+            })
+            .sum();
+        assert_eq!(f_at_y, expected_at_y);
+    }
 }

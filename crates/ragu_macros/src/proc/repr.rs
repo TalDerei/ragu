@@ -27,51 +27,56 @@ pub fn evaluate(lit: LitInt) -> syn::Result<TokenStream> {
     Ok(quote!([ #( #digits ),* ]))
 }
 
-#[test]
-fn test_evaluate() {
-    use syn::parse_quote;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert!(
-        evaluate(parse_quote!(
-            0x010000000000000000000000000000000000000000000000000000000000000000
-        ))
-        .is_err()
-    );
+    #[test]
+    fn test_evaluate() {
+        use syn::parse_quote;
 
-    assert_eq!(
-        evaluate(parse_quote!(
-            0x2c56d224724e82fc9983be57033ecc0b4318967a9394691f790efdd9cee6e373
-        ))
-        .unwrap()
-        .to_string(),
-        quote!([
-            8723188640184198003u64,
-            4834779653188380959u64,
-            11061894390677949451u64,
-            3194972039644349180u64
-        ])
-        .to_string()
-    );
+        assert!(
+            evaluate(parse_quote!(
+                0x010000000000000000000000000000000000000000000000000000000000000000
+            ))
+            .is_err()
+        );
 
-    assert_eq!(
-        evaluate(parse_quote!(0)).unwrap().to_string(),
-        quote!([0u64, 0u64, 0u64, 0u64]).to_string()
-    );
+        assert_eq!(
+            evaluate(parse_quote!(
+                0x2c56d224724e82fc9983be57033ecc0b4318967a9394691f790efdd9cee6e373
+            ))
+            .unwrap()
+            .to_string(),
+            quote!([
+                8723188640184198003u64,
+                4834779653188380959u64,
+                11061894390677949451u64,
+                3194972039644349180u64
+            ])
+            .to_string()
+        );
 
-    let max = u64::MAX;
+        assert_eq!(
+            evaluate(parse_quote!(0)).unwrap().to_string(),
+            quote!([0u64, 0u64, 0u64, 0u64]).to_string()
+        );
 
-    assert_eq!(
-        evaluate(parse_quote!(
-            0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-        ))
-        .unwrap()
-        .to_string(),
-        quote!([
-            #max,
-            #max,
-            #max,
-            #max
-        ])
-        .to_string()
-    );
+        let max = u64::MAX;
+
+        assert_eq!(
+            evaluate(parse_quote!(
+                0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            ))
+            .unwrap()
+            .to_string(),
+            quote!([
+                #max,
+                #max,
+                #max,
+                #max
+            ])
+            .to_string()
+        );
+    }
 }

@@ -108,131 +108,136 @@ pub fn derive(
     Ok(consistent_impl)
 }
 
-#[rustfmt::skip]
-#[test]
-fn test_consistent_derive() {
-    use syn::parse_quote;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let input: DeriveInput = parse_quote! {
-        #[derive(Consistent)]
-        struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
-            #[ragu(gadget)]
-            point: Point<'mydr, MyD>,
-            #[ragu(wire)]
-            wire_field: MyD::Wire,
-            #[ragu(value)]
-            value_field: DriverValue<MyD, bool>,
-        }
-    };
+    #[rustfmt::skip]
+    #[test]
+    fn test_consistent_derive() {
+        use syn::parse_quote;
 
-    let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'mydr, MyD: Driver<'mydr> > ::ragu_primitives::consistent::Consistent<'mydr, MyD> for MyGadget<'mydr, MyD> {
-                fn enforce_consistent(&self, dr: &mut MyD) -> ::ragu_core::Result<()> {
-                    ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point, dr)?;
-                    Ok(())
-                }
+        let input: DeriveInput = parse_quote! {
+            #[derive(Consistent)]
+            struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
+                #[ragu(gadget)]
+                point: Point<'mydr, MyD>,
+                #[ragu(wire)]
+                wire_field: MyD::Wire,
+                #[ragu(value)]
+                value_field: DriverValue<MyD, bool>,
             }
-        ).to_string()
-    );
-}
+        };
 
-#[rustfmt::skip]
-#[test]
-fn test_consistent_derive_no_gadgets() {
-    use syn::parse_quote;
+        let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
 
-    // Test a struct with no gadget fields - should just return Ok(())
-    let input: DeriveInput = parse_quote! {
-        #[derive(Consistent)]
-        struct SimpleGadget<'dr, D: Driver<'dr>> {
-            #[ragu(wire)]
-            wire: D::Wire,
-            #[ragu(value)]
-            value: DriverValue<D, bool>,
-        }
-    };
-
-    let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for SimpleGadget<'dr, D> {
-                fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
-                    Ok(())
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'mydr, MyD: Driver<'mydr> > ::ragu_primitives::consistent::Consistent<'mydr, MyD> for MyGadget<'mydr, MyD> {
+                    fn enforce_consistent(&self, dr: &mut MyD) -> ::ragu_core::Result<()> {
+                        ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point, dr)?;
+                        Ok(())
+                    }
                 }
+            ).to_string()
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_consistent_derive_no_gadgets() {
+        use syn::parse_quote;
+
+        // Test a struct with no gadget fields - should just return Ok(())
+        let input: DeriveInput = parse_quote! {
+            #[derive(Consistent)]
+            struct SimpleGadget<'dr, D: Driver<'dr>> {
+                #[ragu(wire)]
+                wire: D::Wire,
+                #[ragu(value)]
+                value: DriverValue<D, bool>,
             }
-        ).to_string()
-    );
-}
+        };
 
-#[rustfmt::skip]
-#[test]
-fn test_consistent_derive_multiple_gadgets() {
-    use syn::parse_quote;
+        let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
 
-    let input: DeriveInput = parse_quote! {
-        #[derive(Consistent)]
-        struct CompositeGadget<'dr, D: Driver<'dr>> {
-            #[ragu(gadget)]
-            point_a: Point<'dr, D>,
-            #[ragu(gadget)]
-            point_b: Point<'dr, D>,
-            #[ragu(wire)]
-            wire: D::Wire,
-        }
-    };
-
-    let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for CompositeGadget<'dr, D> {
-                fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
-                    ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point_a, dr)?;
-                    ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point_b, dr)?;
-                    Ok(())
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for SimpleGadget<'dr, D> {
+                    fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
+                        Ok(())
+                    }
                 }
+            ).to_string()
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_consistent_derive_multiple_gadgets() {
+        use syn::parse_quote;
+
+        let input: DeriveInput = parse_quote! {
+            #[derive(Consistent)]
+            struct CompositeGadget<'dr, D: Driver<'dr>> {
+                #[ragu(gadget)]
+                point_a: Point<'dr, D>,
+                #[ragu(gadget)]
+                point_b: Point<'dr, D>,
+                #[ragu(wire)]
+                wire: D::Wire,
             }
-        ).to_string()
-    );
-}
+        };
 
-#[rustfmt::skip]
-#[test]
-fn test_consistent_derive_unannotated_defaults_to_gadget() {
-    use syn::parse_quote;
+        let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
 
-    // Unannotated fields should be treated as gadgets (matching Gadget derive behavior)
-    let input: DeriveInput = parse_quote! {
-        #[derive(Consistent)]
-        struct CompositeGadget<'dr, D: Driver<'dr>> {
-            unannotated: Point<'dr, D>,  // No annotation - should be treated as gadget
-            #[ragu(wire)]
-            wire: D::Wire,
-        }
-    };
-
-    let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for CompositeGadget<'dr, D> {
-                fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
-                    ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.unannotated, dr)?;
-                    Ok(())
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for CompositeGadget<'dr, D> {
+                    fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
+                        ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point_a, dr)?;
+                        ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.point_b, dr)?;
+                        Ok(())
+                    }
                 }
+            ).to_string()
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_consistent_derive_unannotated_defaults_to_gadget() {
+        use syn::parse_quote;
+
+        // Unannotated fields should be treated as gadgets (matching Gadget derive behavior)
+        let input: DeriveInput = parse_quote! {
+            #[derive(Consistent)]
+            struct CompositeGadget<'dr, D: Driver<'dr>> {
+                unannotated: Point<'dr, D>,  // No annotation - should be treated as gadget
+                #[ragu(wire)]
+                wire: D::Wire,
             }
-        ).to_string()
-    );
+        };
+
+        let result = derive(input, RaguCorePath::default(), RaguPrimitivesPath::default()).unwrap();
+
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'dr, D: Driver<'dr> > ::ragu_primitives::consistent::Consistent<'dr, D> for CompositeGadget<'dr, D> {
+                    fn enforce_consistent(&self, dr: &mut D) -> ::ragu_core::Result<()> {
+                        ::ragu_primitives::consistent::Consistent::enforce_consistent(&self.unannotated, dr)?;
+                        Ok(())
+                    }
+                }
+            ).to_string()
+        );
+    }
 }

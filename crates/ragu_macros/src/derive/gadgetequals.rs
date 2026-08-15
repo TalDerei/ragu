@@ -167,83 +167,88 @@ pub fn derive(
     })
 }
 
-#[rustfmt::skip]
-#[test]
-fn test_gadgetequals_derive() {
-    use syn::parse_quote;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let input: DeriveInput = parse_quote! {
-        #[derive(GadgetEquals)]
-        struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
-            #[ragu(wire)]
-            wire: MyD::Wire,
-            field: Element<'mydr, MyD>,
-            #[ragu(value)]
-            value: DriverValue<MyD, bool>,
-            #[ragu(phantom)]
-            marker: ::core::marker::PhantomData<()>,
-        }
-    };
+    #[rustfmt::skip]
+    #[test]
+    fn test_gadgetequals_derive() {
+        use syn::parse_quote;
 
-    let result = derive(
-        input,
-        RaguArithmeticPath::default(),
-        RaguCorePath::default(),
-        RaguPrimitivesPath::default(),
-    )
-    .unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_primitives::comparison::GadgetEquals<DriverField>
-                for MyGadget<'static, ::core::marker::PhantomData<DriverField> >
-            {
-                fn enforce_equal_gadget<
-                    'mydr,
-                    D1: ::ragu_core::drivers::Driver<'mydr, F = DriverField>,
-                    D2: ::ragu_core::drivers::Driver<
-                        'mydr,
-                        F = DriverField,
-                        Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire,
-                    >,
-                >(
-                    dr: &mut D1,
-                    a: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
-                    b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
-                ) -> ::ragu_core::Result<()>
-                {
-                    ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire, &b.wire)?;
-                    ::ragu_primitives::GadgetExt::enforce_equal(&a.field, dr, &b.field)?;
-                    Ok(())
-                }
+        let input: DeriveInput = parse_quote! {
+            #[derive(GadgetEquals)]
+            struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
+                #[ragu(wire)]
+                wire: MyD::Wire,
+                field: Element<'mydr, MyD>,
+                #[ragu(value)]
+                value: DriverValue<MyD, bool>,
+                #[ragu(phantom)]
+                marker: ::core::marker::PhantomData<()>,
             }
-        ).to_string()
-    );
-}
+        };
 
-#[test]
-fn test_gadgetequals_derive_rejects_where_clause() {
-    use syn::parse_quote;
-
-    let input: DeriveInput = parse_quote! {
-        #[derive(GadgetEquals)]
-        struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>>
-        where
-            MyD: Clone,
-        {
-            field: Element<'mydr, MyD>,
-        }
-    };
-
-    assert!(
-        derive(
+        let result = derive(
             input,
             RaguArithmeticPath::default(),
             RaguCorePath::default(),
-            RaguPrimitivesPath::default()
+            RaguPrimitivesPath::default(),
         )
-        .is_err()
-    );
+        .unwrap();
+
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_primitives::comparison::GadgetEquals<DriverField>
+                    for MyGadget<'static, ::core::marker::PhantomData<DriverField> >
+                {
+                    fn enforce_equal_gadget<
+                        'mydr,
+                        D1: ::ragu_core::drivers::Driver<'mydr, F = DriverField>,
+                        D2: ::ragu_core::drivers::Driver<
+                            'mydr,
+                            F = DriverField,
+                            Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire,
+                        >,
+                    >(
+                        dr: &mut D1,
+                        a: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
+                        b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
+                    ) -> ::ragu_core::Result<()>
+                    {
+                        ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire, &b.wire)?;
+                        ::ragu_primitives::GadgetExt::enforce_equal(&a.field, dr, &b.field)?;
+                        Ok(())
+                    }
+                }
+            ).to_string()
+        );
+    }
+
+    #[test]
+    fn test_gadgetequals_derive_rejects_where_clause() {
+        use syn::parse_quote;
+
+        let input: DeriveInput = parse_quote! {
+            #[derive(GadgetEquals)]
+            struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>>
+            where
+                MyD: Clone,
+            {
+                field: Element<'mydr, MyD>,
+            }
+        };
+
+        assert!(
+            derive(
+                input,
+                RaguArithmeticPath::default(),
+                RaguCorePath::default(),
+                RaguPrimitivesPath::default()
+            )
+            .is_err()
+        );
+    }
 }

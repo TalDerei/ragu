@@ -37,8 +37,8 @@ impl<'dr, S: Driver<'dr, F = D::F>, D: Driver<'dr>, A: Allocator<'dr, D>, B: Buf
     }
 }
 
-#[test]
-fn test_pipe_between_wireless_emulators() -> Result<()> {
+#[cfg(test)]
+mod tests {
     use alloc::vec::Vec;
 
     use ragu_core::{
@@ -47,31 +47,36 @@ fn test_pipe_between_wireless_emulators() -> Result<()> {
     };
     use ragu_pasta::Fp;
 
-    // Create first wireless emulator and allocate some elements
-    let mut source_dr: Emulator<Wireless<Always<()>, Fp>> = Emulator::execute();
-    let values = [Fp::from(42u64), Fp::from(123u64), Fp::from(999u64)];
-    let source_elements: Vec<Element<'_, _>> = values
-        .iter()
-        .map(|&v| Element::alloc(&mut source_dr, &mut (), Always::maybe_just(|| v)))
-        .collect::<Result<_>>()?;
+    use super::*;
 
-    // Create second wireless emulator and use pipe to transfer elements
-    let mut dest_dr: Emulator<Wireless<Always<()>, Fp>> = Emulator::execute();
-    let mut dest_buffer: Vec<Element<'_, _>> = Vec::new();
-    let mut dest_allocator = ();
+    #[test]
+    fn test_pipe_between_wireless_emulators() -> Result<()> {
+        // Create first wireless emulator and allocate some elements
+        let mut source_dr: Emulator<Wireless<Always<()>, Fp>> = Emulator::execute();
+        let values = [Fp::from(42u64), Fp::from(123u64), Fp::from(999u64)];
+        let source_elements: Vec<Element<'_, _>> = values
+            .iter()
+            .map(|&v| Element::alloc(&mut source_dr, &mut (), Always::maybe_just(|| v)))
+            .collect::<Result<_>>()?;
 
-    {
-        let mut pipe = Pipe::new(&mut dest_dr, &mut dest_allocator, &mut dest_buffer);
-        for elem in &source_elements {
-            pipe.write(&mut source_dr, elem)?;
+        // Create second wireless emulator and use pipe to transfer elements
+        let mut dest_dr: Emulator<Wireless<Always<()>, Fp>> = Emulator::execute();
+        let mut dest_buffer: Vec<Element<'_, _>> = Vec::new();
+        let mut dest_allocator = ();
+
+        {
+            let mut pipe = Pipe::new(&mut dest_dr, &mut dest_allocator, &mut dest_buffer);
+            for elem in &source_elements {
+                pipe.write(&mut source_dr, elem)?;
+            }
         }
-    }
 
-    // Verify destination buffer has the same values
-    assert_eq!(dest_buffer.len(), values.len());
-    for (dest_elem, &expected_value) in dest_buffer.iter().zip(values.iter()) {
-        assert_eq!(*dest_elem.value().take(), expected_value);
-    }
+        // Verify destination buffer has the same values
+        assert_eq!(dest_buffer.len(), values.len());
+        for (dest_elem, &expected_value) in dest_buffer.iter().zip(values.iter()) {
+            assert_eq!(*dest_elem.value().take(), expected_value);
+        }
 
-    Ok(())
+        Ok(())
+    }
 }

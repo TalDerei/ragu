@@ -117,7 +117,7 @@ impl<F: Field> Add for Coeff<F> {
 }
 
 #[cfg(test)]
-mod proptests {
+mod tests {
     use proptest::prelude::*;
     use ragu_testing::strategies;
 

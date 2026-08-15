@@ -290,324 +290,329 @@ pub fn derive(
     })
 }
 
-#[test]
-fn test_fail_enum() {
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        enum Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
-            Is(MyD::W),
-            Not(MyD::W)
-        }
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert!(
-        derive(
-            input,
-            RaguArithmeticPath::default(),
-            RaguCorePath::default()
-        )
-        .is_err(),
-        "Expected error for enum usage"
-    );
-}
+    #[test]
+    fn test_fail_enum() {
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            enum Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
+                Is(MyD::W),
+                Not(MyD::W)
+            }
+        };
 
-#[test]
-fn test_fail_where_clause() {
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
-            where MyD: Any
-        {
-            #[ragu(wire)]
-            wire: MyD::W,
-            #[ragu(value)]
-            value: DriverValue<MyD, bool>,
-        }
-    };
-
-    assert!(
-        derive(
-            input,
-            RaguArithmeticPath::default(),
-            RaguCorePath::default()
-        )
-        .is_err(),
-        "Expected error for where clause"
-    );
-}
-
-#[test]
-fn test_fail_multi_annotations() {
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
-            #[ragu(wire)]
-            wire: MyD::W,
-            #[ragu(value)]
-            #[ragu(wire)]
-            value: DriverValue<MyD, bool>,
-        }
-    };
-
-    assert!(
-        derive(
-            input,
-            RaguArithmeticPath::default(),
-            RaguCorePath::default()
-        )
-        .is_err(),
-        "Expected error for multiple annotations on field"
-    );
-}
-
-#[test]
-fn test_fail_unnamed_struct() {
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
-        (
-            MyD::W,
-            Witness<'my_dr, MyD, bool>,
+        assert!(
+            derive(
+                input,
+                RaguArithmeticPath::default(),
+                RaguCorePath::default()
+            )
+            .is_err(),
+            "Expected error for enum usage"
         );
-    };
+    }
 
-    assert!(
-        derive(
-            input,
-            RaguArithmeticPath::default(),
-            RaguCorePath::default()
-        )
-        .is_err(),
-        "Expected error for unnamed struct fields"
-    );
-}
-
-#[rustfmt::skip]
-#[test]
-fn test_gadget_derive_boolean_customdriver() {
-    use syn::parse_quote;
-
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
-            #[ragu(wire)]
-            wire: MyD::W,
-            #[ragu(value)]
-            value: DriverValue<MyD, bool>,
-        }
-    };
-
-    let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::core::clone::Clone for Boolean<'my_dr, MyD> {
-                fn clone(&self) -> Self {
-                    Boolean {
-                        wire: ::core::clone::Clone::clone(&self.wire),
-                        value: {
-                            use ::ragu_core::maybe::Maybe;
-                            MyD::just(|| self.value.as_ref().take().clone())
-                        },
-                    }
-                }
-            }
-            #[automatically_derived]
-            impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::ragu_core::gadgets::Gadget<'my_dr, MyD>
-                for Boolean<'my_dr, MyD>
+    #[test]
+    fn test_fail_where_clause() {
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
+                where MyD: Any
             {
-                type Kind =
-                    Boolean<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'my_dr> >::F> >;
+                #[ragu(wire)]
+                wire: MyD::W,
+                #[ragu(value)]
+                value: DriverValue<MyD, bool>,
             }
-            #[automatically_derived]
-            unsafe impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
-                for Boolean<'static, ::core::marker::PhantomData<DriverField> >
-            {
-                type Rebind<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>> =
-                    Boolean<'my_dr, MyD>;
+        };
 
-                fn map_gadget<'my_dr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
-                    this: &::ragu_core::gadgets::Bound<'my_dr, WM::Src, Self>,
-                    wm: &mut WM,
-                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
-                    fn is_send<T: Send>(_: &T) { }
-                    fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
-                        <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)
+        assert!(
+            derive(
+                input,
+                RaguArithmeticPath::default(),
+                RaguCorePath::default()
+            )
+            .is_err(),
+            "Expected error for where clause"
+        );
+    }
+
+    #[test]
+    fn test_fail_multi_annotations() {
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
+                #[ragu(wire)]
+                wire: MyD::W,
+                #[ragu(value)]
+                #[ragu(wire)]
+                value: DriverValue<MyD, bool>,
+            }
+        };
+
+        assert!(
+            derive(
+                input,
+                RaguArithmeticPath::default(),
+                RaguCorePath::default()
+            )
+            .is_err(),
+            "Expected error for multiple annotations on field"
+        );
+    }
+
+    #[test]
+    fn test_fail_unnamed_struct() {
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>>
+            (
+                MyD::W,
+                Witness<'my_dr, MyD, bool>,
+            );
+        };
+
+        assert!(
+            derive(
+                input,
+                RaguArithmeticPath::default(),
+                RaguCorePath::default()
+            )
+            .is_err(),
+            "Expected error for unnamed struct fields"
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_gadget_derive_boolean_customdriver() {
+        use syn::parse_quote;
+
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            struct Boolean<'my_dr, #[ragu(driver)] MyD: ragu_core::Driver<'my_dr>> {
+                #[ragu(wire)]
+                wire: MyD::W,
+                #[ragu(value)]
+                value: DriverValue<MyD, bool>,
+            }
+        };
+
+        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
+
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::core::clone::Clone for Boolean<'my_dr, MyD> {
+                    fn clone(&self) -> Self {
+                        Boolean {
+                            wire: ::core::clone::Clone::clone(&self.wire),
+                            value: {
+                                use ::ragu_core::maybe::Maybe;
+                                MyD::just(|| self.value.as_ref().take().clone())
+                            },
+                        }
+                    }
+                }
+                #[automatically_derived]
+                impl<'my_dr, MyD: ragu_core::Driver<'my_dr> > ::ragu_core::gadgets::Gadget<'my_dr, MyD>
+                    for Boolean<'my_dr, MyD>
+                {
+                    type Kind =
+                        Boolean<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'my_dr> >::F> >;
+                }
+                #[automatically_derived]
+                unsafe impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
+                    for Boolean<'static, ::core::marker::PhantomData<DriverField> >
+                {
+                    type Rebind<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>> =
+                        Boolean<'my_dr, MyD>;
+
+                    fn map_gadget<'my_dr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
+                        this: &::ragu_core::gadgets::Bound<'my_dr, WM::Src, Self>,
+                        wm: &mut WM,
+                    ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
+                        fn is_send<T: Send>(_: &T) { }
+                        fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
+                            <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)
+                        }
+
+                        Ok(Boolean {
+                            wire: ::ragu_core::convert::WireMap::convert_wire(wm, &this.wire)?,
+                            value: {
+                                use ::ragu_core::maybe::Maybe;
+
+                                let tmp = just::<WM::Dst, _>(|| this.value.as_ref().take().clone());
+                                is_send(&tmp);
+                                tmp
+                            },
+                        })
                     }
 
-                    Ok(Boolean {
-                        wire: ::ragu_core::convert::WireMap::convert_wire(wm, &this.wire)?,
-                        value: {
-                            use ::ragu_core::maybe::Maybe;
-
-                            let tmp = just::<WM::Dst, _>(|| this.value.as_ref().take().clone());
-                            is_send(&tmp);
-                            tmp
-                        },
-                    })
-                }
-
-                fn enforce_conservative_equal_gadget<
-                    'my_dr,
-                    D1: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>,
-                    D2: ::ragu_core::drivers::Driver<
-                            'my_dr,
-                            F = DriverField,
-                            Wire = <D1 as ::ragu_core::drivers::Driver<'my_dr>>::Wire>>
-                (
-                    eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'my_dr, D1>,
-                    a: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
-                    b: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
-                ) -> ::ragu_core::Result<()> {
-                    eq.enforce_conservative_equal(&a.wire, &b.wire)?;
-                    Ok(())
-                }
-            }
-        ).to_string()
-    );
-}
-
-#[rustfmt::skip]
-#[test]
-fn test_gadget_derive() {
-    use syn::parse_quote;
-
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        pub struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> {
-            #[ragu(value)]
-            witness_field: DriverValue<MyD, MyD::F>,
-            #[ragu(wire)]
-            wire_field: MyD::W,
-            #[ragu(gadget)]
-            map_field: Lol<'mydr, MyD>,
-            #[ragu(phantom)]
-            phantom_field: ::core::marker::PhantomData<C>,
-        }
-    };
-
-    let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
-
-    assert_eq!(
-        result.to_string(),
-        quote!(
-            #[automatically_derived]
-            impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::core::clone::Clone for MyGadget<'mydr, MyD, C, N> {
-                fn clone(&self) -> Self {
-                    MyGadget {
-                        witness_field: {
-                            use ::ragu_core::maybe::Maybe;
-                            MyD::just(|| self.witness_field.as_ref().take().clone())
-                        },
-                        wire_field: ::core::clone::Clone::clone(&self.wire_field),
-                        map_field: ::core::clone::Clone::clone(&self.map_field),
-                        phantom_field: ::core::clone::Clone::clone(&self.phantom_field),
+                    fn enforce_conservative_equal_gadget<
+                        'my_dr,
+                        D1: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>,
+                        D2: ::ragu_core::drivers::Driver<
+                                'my_dr,
+                                F = DriverField,
+                                Wire = <D1 as ::ragu_core::drivers::Driver<'my_dr>>::Wire>>
+                    (
+                        eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'my_dr, D1>,
+                        a: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
+                        b: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
+                    ) -> ::ragu_core::Result<()> {
+                        eq.enforce_conservative_equal(&a.wire, &b.wire)?;
+                        Ok(())
                     }
                 }
+            ).to_string()
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_gadget_derive() {
+        use syn::parse_quote;
+
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            pub struct MyGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> {
+                #[ragu(value)]
+                witness_field: DriverValue<MyD, MyD::F>,
+                #[ragu(wire)]
+                wire_field: MyD::W,
+                #[ragu(gadget)]
+                map_field: Lol<'mydr, MyD>,
+                #[ragu(phantom)]
+                phantom_field: ::core::marker::PhantomData<C>,
             }
+        };
 
-            #[automatically_derived]
-            impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::ragu_core::gadgets::Gadget<'mydr, MyD> for MyGadget<'mydr, MyD, C, N> {
-                type Kind = MyGadget<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'mydr> >::F >, C, N>;
-            }
+        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
 
-            #[automatically_derived]
-            unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
-                for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
-            {
-                type Rebind<'mydr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
+        assert_eq!(
+            result.to_string(),
+            quote!(
+                #[automatically_derived]
+                impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::core::clone::Clone for MyGadget<'mydr, MyD, C, N> {
+                    fn clone(&self) -> Self {
+                        MyGadget {
+                            witness_field: {
+                                use ::ragu_core::maybe::Maybe;
+                                MyD::just(|| self.witness_field.as_ref().take().clone())
+                            },
+                            wire_field: ::core::clone::Clone::clone(&self.wire_field),
+                            map_field: ::core::clone::Clone::clone(&self.map_field),
+                            phantom_field: ::core::clone::Clone::clone(&self.phantom_field),
+                        }
+                    }
+                }
 
-                fn map_gadget<'mydr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'mydr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
-                    this: &::ragu_core::gadgets::Bound<'mydr, WM::Src, Self>,
-                    wm: &mut WM,
-                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
-                    fn is_send<T: Send>(_: &T) { }
-                    fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
-                        <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)
+                #[automatically_derived]
+                impl<'mydr, MyD: Driver<'mydr>, C: Blah<MyD::F>, const N: usize> ::ragu_core::gadgets::Gadget<'mydr, MyD> for MyGadget<'mydr, MyD, C, N> {
+                    type Kind = MyGadget<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'mydr> >::F >, C, N>;
+                }
+
+                #[automatically_derived]
+                unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
+                    for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
+                {
+                    type Rebind<'mydr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
+
+                    fn map_gadget<'mydr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'mydr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
+                        this: &::ragu_core::gadgets::Bound<'mydr, WM::Src, Self>,
+                        wm: &mut WM,
+                    ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
+                        fn is_send<T: Send>(_: &T) { }
+                        fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
+                            <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)
+                        }
+
+                        Ok(MyGadget {
+                            witness_field: {
+                                use ::ragu_core::maybe::Maybe;
+
+                                let tmp = just::<WM::Dst, _>(|| this.witness_field.as_ref().take().clone());
+                                is_send(&tmp);
+                                tmp
+                            },
+                            wire_field: ::ragu_core::convert::WireMap::convert_wire(wm, &this.wire_field)?,
+                            map_field: ::ragu_core::gadgets::Gadget::map(&this.map_field, wm)?,
+                            phantom_field: ::core::marker::PhantomData,
+                        })
                     }
 
-                    Ok(MyGadget {
-                        witness_field: {
-                            use ::ragu_core::maybe::Maybe;
-
-                            let tmp = just::<WM::Dst, _>(|| this.witness_field.as_ref().take().clone());
-                            is_send(&tmp);
-                            tmp
-                        },
-                        wire_field: ::ragu_core::convert::WireMap::convert_wire(wm, &this.wire_field)?,
-                        map_field: ::ragu_core::gadgets::Gadget::map(&this.map_field, wm)?,
-                        phantom_field: ::core::marker::PhantomData,
-                    })
+                    fn enforce_conservative_equal_gadget<
+                        'mydr,
+                        D1: ::ragu_core::drivers::Driver<'mydr, F = DriverField>,
+                        D2: ::ragu_core::drivers::Driver<
+                                'mydr,
+                                F = DriverField,
+                                Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire>>
+                    (
+                        eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'mydr, D1>,
+                        a: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
+                        b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
+                    ) -> ::ragu_core::Result<()> {
+                        eq.enforce_conservative_equal(&a.wire_field, &b.wire_field)?;
+                        eq.enforce_conservative_equal_gadget(&a.map_field, &b.map_field)?;
+                        Ok(())
+                    }
                 }
 
-                fn enforce_conservative_equal_gadget<
-                    'mydr,
-                    D1: ::ragu_core::drivers::Driver<'mydr, F = DriverField>,
-                    D2: ::ragu_core::drivers::Driver<
-                            'mydr,
-                            F = DriverField,
-                            Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire>>
-                (
-                    eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'mydr, D1>,
-                    a: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
-                    b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
-                ) -> ::ragu_core::Result<()> {
-                    eq.enforce_conservative_equal(&a.wire_field, &b.wire_field)?;
-                    eq.enforce_conservative_equal_gadget(&a.map_field, &b.map_field)?;
-                    Ok(())
-                }
+            ).to_string()
+        );
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_gadget_derive_default_gadget() {
+        use syn::parse_quote;
+
+        // Test that gadget fields are assumed by default (no annotation needed)
+        let input: DeriveInput = parse_quote! {
+            #[derive(Gadget)]
+            pub struct CompositeGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
+                // No annotation: should default to gadget
+                field_a: SomeGadget<'mydr, MyD>,
+                // Explicit annotation still works
+                #[ragu(gadget)]
+                field_b: AnotherGadget<'mydr, MyD>,
+                // Wire and value still need explicit annotations
+                #[ragu(wire)]
+                wire_field: MyD::W,
+                #[ragu(value)]
+                value_field: DriverValue<MyD, bool>,
             }
+        };
 
-        ).to_string()
-    );
-}
+        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
 
-#[rustfmt::skip]
-#[test]
-fn test_gadget_derive_default_gadget() {
-    use syn::parse_quote;
+        // Verify both field_a (no annotation) and field_b (explicit annotation) are treated as gadgets
+        let result_str = result.to_string();
 
-    // Test that gadget fields are assumed by default (no annotation needed)
-    let input: DeriveInput = parse_quote! {
-        #[derive(Gadget)]
-        pub struct CompositeGadget<'mydr, #[ragu(driver)] MyD: Driver<'mydr>> {
-            // No annotation: should default to gadget
-            field_a: SomeGadget<'mydr, MyD>,
-            // Explicit annotation still works
-            #[ragu(gadget)]
-            field_b: AnotherGadget<'mydr, MyD>,
-            // Wire and value still need explicit annotations
-            #[ragu(wire)]
-            wire_field: MyD::W,
-            #[ragu(value)]
-            value_field: DriverValue<MyD, bool>,
-        }
-    };
+        // Both should call Gadget::map
+        assert!(result_str.contains("Gadget :: map (& this . field_a"), "missing Gadget::map for field_a");
+        assert!(result_str.contains("Gadget :: map (& this . field_b"), "missing Gadget::map for field_b");
 
-    let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
+        // Both should recurse via WireEqualizer::enforce_conservative_equal_gadget
+        assert!(
+            result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_a"),
+            "missing enforce_conservative_equal_gadget for field_a"
+        );
+        assert!(
+            result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_b"),
+            "missing enforce_conservative_equal_gadget for field_b"
+        );
 
-    // Verify both field_a (no annotation) and field_b (explicit annotation) are treated as gadgets
-    let result_str = result.to_string();
+        // Wire should use the WireEqualizer adapter
+        assert!(result_str.contains("eq . enforce_conservative_equal (& a . wire_field"), "missing eq.enforce_conservative_equal for wire_field");
 
-    // Both should call Gadget::map
-    assert!(result_str.contains("Gadget :: map (& this . field_a"), "missing Gadget::map for field_a");
-    assert!(result_str.contains("Gadget :: map (& this . field_b"), "missing Gadget::map for field_b");
-
-    // Both should recurse via WireEqualizer::enforce_conservative_equal_gadget
-    assert!(
-        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_a"),
-        "missing enforce_conservative_equal_gadget for field_a"
-    );
-    assert!(
-        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_b"),
-        "missing enforce_conservative_equal_gadget for field_b"
-    );
-
-    // Wire should use the WireEqualizer adapter
-    assert!(result_str.contains("eq . enforce_conservative_equal (& a . wire_field"), "missing eq.enforce_conservative_equal for wire_field");
-
-    // Wire should use WireMap::convert_wire
-    assert!(result_str.contains("WireMap :: convert_wire (wm , & this . wire_field"), "missing WireMap::convert_wire");
+        // Wire should use WireMap::convert_wire
+        assert!(result_str.contains("WireMap :: convert_wire (wm , & this . wire_field"), "missing WireMap::convert_wire");
+    }
 }

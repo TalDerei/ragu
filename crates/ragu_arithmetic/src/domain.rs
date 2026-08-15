@@ -280,137 +280,121 @@ impl<F: PrimeField> Domain<F> {
     }
 }
 
-#[test]
-fn test_fft() {
-    use crate::{eval, ff::Field, pasta_curves::Fp as F};
-
-    for log2_n in 1..=8 {
-        let params = Domain::<F>::new(log2_n);
-
-        let coeffs = (0..params.n)
-            .map(|i| F::DELTA.pow([(i + 1) as u64]))
-            .collect::<Vec<_>>();
-        let mut evals = coeffs.clone();
-
-        params.fft(&mut evals);
-
-        {
-            let mut p = F::ONE;
-            for e in evals.iter().take(params.n) {
-                assert_eq!(*e, eval(&coeffs, p));
-                p *= params.omega;
-            }
-        }
-
-        let mut coeffs_recovered = evals.clone();
-        params.ifft(&mut coeffs_recovered);
-        assert_eq!(coeffs, coeffs_recovered);
-    }
-}
-
-#[test]
-fn test_lagrange_evals() {
-    use alloc::vec;
-
-    use crate::{eval, ff::Field, pasta_curves::Fp as F};
-
-    let params = Domain::<F>::new(5);
-
-    let mut lagrange_polys = vec![];
-    for i in 0..params.n {
-        assert_eq!(
-            params.lagrange_evals(params.omega.pow([i as u64]), params.n),
-            Err(i)
-        );
-        let mut tmp = vec![F::ZERO; params.n];
-        tmp[i] = F::ONE;
-        params.ifft(&mut tmp);
-        for j in 0..params.n {
-            assert_eq!(
-                eval(&tmp, params.omega.pow([j as u64])),
-                if i == j { F::ONE } else { F::ZERO }
-            );
-        }
-        lagrange_polys.push(tmp);
-    }
-
-    let x = F::DELTA;
-
-    let expected = params.lagrange_evals(x, params.n).unwrap();
-    for (i, expected) in expected.iter().enumerate() {
-        assert_eq!(eval(&lagrange_polys[i], x), *expected);
-    }
-}
-
-#[test]
-fn test_contains() {
-    use crate::{ff::Field, pasta_curves::Fp as F};
-
-    let domain = Domain::<F>::new(5);
-
-    // All powers of omega should be in the domain
-    let mut omega_pow = F::ONE;
-    for _ in 0..domain.n() {
-        assert!(domain.contains(omega_pow), "omega^i should be in domain");
-        omega_pow *= domain.omega();
-    }
-
-    // Random field elements should (almost certainly) not be in the domain
-    assert!(!domain.contains(F::from(2u64)));
-    assert!(!domain.contains(F::from(3u64)));
-    assert!(!domain.contains(F::DELTA));
-}
-
-#[test]
-fn test_elements() {
-    use crate::{ff::Field, pasta_curves::Fp as F};
-
-    let domain = Domain::<F>::new(5);
-
-    let elements = domain.elements();
-    assert_eq!(elements.len(), domain.n());
-
-    let mut omega_pow = F::ONE;
-    for element in elements {
-        assert_eq!(element, omega_pow);
-        omega_pow *= domain.omega();
-    }
-}
-
-#[test]
-fn test_new_constructs_consistent_domains() {
-    use crate::{ff::Field, pasta_curves::Fp as F};
-
-    for k in 1..=8 {
-        let domain = Domain::<F>::new(k);
-        assert_eq!(domain.omega() * domain.omega_inv(), F::ONE);
-        assert_eq!(domain.n_inv() * F::from(domain.n() as u64), F::ONE);
-        // omega has order exactly n: omega^n = 1 but omega^(n/2) != 1.
-        assert_eq!(domain.pow_n(domain.omega()), F::ONE);
-        assert_ne!(domain.omega().pow([(domain.n() / 2) as u64]), F::ONE);
-    }
-
-    let trivial = Domain::<F>::new(0);
-    assert_eq!(trivial.n(), 1);
-    assert_eq!(trivial.omega(), F::ONE);
-    assert_eq!(trivial.n_inv(), F::ONE);
-}
-
 #[cfg(test)]
-mod proptests {
+mod tests {
     use proptest::prelude::*;
+    use ragu_testing::strategies;
 
     use super::*;
-    use crate::pasta_curves::Fp as F;
+    use crate::{eval, ff::Field, pasta_curves::Fp as F};
 
-    fn arb_fe() -> impl Strategy<Value = F> {
-        (any::<u64>(), any::<u64>())
-            .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
+    #[test]
+    fn test_fft() {
+        for log2_n in 1..=8 {
+            let params = Domain::<F>::new(log2_n);
+
+            let coeffs = (0..params.n)
+                .map(|i| F::DELTA.pow([(i + 1) as u64]))
+                .collect::<Vec<_>>();
+            let mut evals = coeffs.clone();
+
+            params.fft(&mut evals);
+
+            {
+                let mut p = F::ONE;
+                for e in evals.iter().take(params.n) {
+                    assert_eq!(*e, eval(&coeffs, p));
+                    p *= params.omega;
+                }
+            }
+
+            let mut coeffs_recovered = evals.clone();
+            params.ifft(&mut coeffs_recovered);
+            assert_eq!(coeffs, coeffs_recovered);
+        }
+    }
+
+    #[test]
+    fn test_lagrange_evals() {
+        let params = Domain::<F>::new(5);
+
+        let mut lagrange_polys = vec![];
+        for i in 0..params.n {
+            assert_eq!(
+                params.lagrange_evals(params.omega.pow([i as u64]), params.n),
+                Err(i)
+            );
+            let mut tmp = vec![F::ZERO; params.n];
+            tmp[i] = F::ONE;
+            params.ifft(&mut tmp);
+            for j in 0..params.n {
+                assert_eq!(
+                    eval(&tmp, params.omega.pow([j as u64])),
+                    if i == j { F::ONE } else { F::ZERO }
+                );
+            }
+            lagrange_polys.push(tmp);
+        }
+
+        let x = F::DELTA;
+
+        let expected = params.lagrange_evals(x, params.n).unwrap();
+        for (i, expected) in expected.iter().enumerate() {
+            assert_eq!(eval(&lagrange_polys[i], x), *expected);
+        }
+    }
+
+    #[test]
+    fn test_contains() {
+        let domain = Domain::<F>::new(5);
+
+        // All powers of omega should be in the domain
+        let mut omega_pow = F::ONE;
+        for _ in 0..domain.n() {
+            assert!(domain.contains(omega_pow), "omega^i should be in domain");
+            omega_pow *= domain.omega();
+        }
+
+        // Random field elements should (almost certainly) not be in the domain
+        assert!(!domain.contains(F::from(2u64)));
+        assert!(!domain.contains(F::from(3u64)));
+        assert!(!domain.contains(F::DELTA));
+    }
+
+    #[test]
+    fn test_elements() {
+        let domain = Domain::<F>::new(5);
+
+        let elements = domain.elements();
+        assert_eq!(elements.len(), domain.n());
+
+        let mut omega_pow = F::ONE;
+        for element in elements {
+            assert_eq!(element, omega_pow);
+            omega_pow *= domain.omega();
+        }
+    }
+
+    #[test]
+    fn test_new_constructs_consistent_domains() {
+        for k in 1..=8 {
+            let domain = Domain::<F>::new(k);
+            assert_eq!(domain.omega() * domain.omega_inv(), F::ONE);
+            assert_eq!(domain.n_inv() * F::from(domain.n() as u64), F::ONE);
+            // omega has order exactly n: omega^n = 1 but omega^(n/2) != 1.
+            assert_eq!(domain.pow_n(domain.omega()), F::ONE);
+            assert_ne!(domain.omega().pow([(domain.n() / 2) as u64]), F::ONE);
+        }
+
+        let trivial = Domain::<F>::new(0);
+        assert_eq!(trivial.n(), 1);
+        assert_eq!(trivial.omega(), F::ONE);
+        assert_eq!(trivial.n_inv(), F::ONE);
     }
 
     proptest! {
         #[test]
-        fn fft_ifft_roundtrip(log2_n in 1u32..=8, seed in arb_fe()) {
+        fn fft_ifft_roundtrip(log2_n in 1u32..=8, seed in strategies::prime_field_element::<F>()) {
             let domain = Domain::<F>::new(log2_n);
             let coeffs: Vec<F> = (0..domain.n())
                 .map(|i| seed * F::from((i + 1) as u64))
@@ -421,13 +405,11 @@ mod proptests {
             prop_assert_eq!(buf, coeffs);
         }
     }
-}
 
-#[test]
-#[should_panic]
-fn test_domain_exceeds_max_boundary_panics() {
-    use crate::pasta_curves::Fp as F;
-
-    let over_max = F::S + 1;
-    let _domain = Domain::<F>::new(over_max);
+    #[test]
+    #[should_panic(expected = "tried to create a domain of size")]
+    fn test_domain_exceeds_max_boundary_panics() {
+        let over_max = F::S + 1;
+        let _domain = Domain::<F>::new(over_max);
+    }
 }

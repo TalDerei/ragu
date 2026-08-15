@@ -16,8 +16,6 @@ use ragu_core::{
     maybe::Maybe,
 };
 
-#[cfg(test)]
-use crate::allocator::Standard;
 use crate::{
     Element, GadgetExt,
     allocator::Allocator,
@@ -312,188 +310,193 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     }
 }
 
-#[test]
-fn test_boolean_alloc() -> Result<()> {
+#[cfg(test)]
+mod tests {
+    use alloc::format;
+
+    use proptest::prelude::*;
+    use ragu_testing::strategies;
+
+    use super::*;
+    use crate::allocator::Standard;
+
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
 
-    let alloc = |bit: bool| {
-        let sim = Simulator::simulate(bit, |dr, bit| {
-            let allocated_bit = Boolean::alloc(dr, &mut (), bit.clone())?;
+    #[test]
+    fn test_boolean_alloc() -> Result<()> {
+        let alloc = |bit: bool| {
+            let sim = Simulator::simulate(bit, |dr, bit| {
+                let allocated_bit = Boolean::alloc(dr, &mut (), bit.clone())?;
 
-            assert_eq!(allocated_bit.value().take(), bit.clone().take());
-            assert_eq!(*allocated_bit.wire(), bit.fe().take());
+                assert_eq!(allocated_bit.value().take(), bit.clone().take());
+                assert_eq!(*allocated_bit.wire(), bit.fe().take());
+
+                Ok(())
+            })?;
+            assert_eq!(sim.num_gates(), 1);
+            assert_eq!(sim.num_constraints(), 2);
+            Ok(())
+        };
+
+        alloc(false)?;
+        alloc(true)?;
+
+        Ok(())
+    }
+
+    /// Standard reuses the Boolean gate's spare D wire for the Element.
+    #[test]
+    fn test_boolean_alloc_reclaim() -> Result<()> {
+        let sim_without = Simulator::simulate(true, |dr, bit| {
+            let _b = Boolean::alloc(dr, &mut (), bit)?;
+            Element::alloc(dr, &mut (), Simulator::just(|| F::from(42u64)))?;
+            Ok(())
+        })?;
+        let sim_with = Simulator::simulate(true, |dr, bit| {
+            let allocator = &mut Standard::new();
+            let _b = Boolean::alloc(dr, allocator, bit)?;
+            Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
+            Ok(())
+        })?;
+
+        assert_eq!(sim_without.num_gates(), 2);
+        assert_eq!(sim_with.num_gates(), 1);
+
+        Ok(())
+    }
+
+    /// Multiple Boolean donations pool up and serve later allocations.
+    #[test]
+    fn test_pool_allocator_multiple_donations() -> Result<()> {
+        let sim = Simulator::simulate((true, false, true), |dr, witness| {
+            let (b0, b1, b2) = witness.cast();
+            let allocator = &mut Standard::new();
+
+            let _b0 = Boolean::alloc(dr, allocator, b0)?;
+            let _b1 = Boolean::alloc(dr, allocator, b1)?;
+            let _b2 = Boolean::alloc(dr, allocator, b2)?;
+
+            let _e0 = Element::alloc(dr, allocator, Simulator::just(|| F::from(1u64)))?;
+            let _e1 = Element::alloc(dr, allocator, Simulator::just(|| F::from(2u64)))?;
+            let _e2 = Element::alloc(dr, allocator, Simulator::just(|| F::from(3u64)))?;
 
             Ok(())
         })?;
+
+        assert_eq!(sim.num_gates(), 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_conditional_select() -> Result<()> {
+        // condition = true (returns b)
+        Simulator::simulate((true, F::from(1u64), F::from(2u64)), |dr, witness| {
+            let (cond, a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let cond = Boolean::alloc(dr, &mut (), cond)?;
+            let a = Element::alloc(dr, allocator, a)?;
+            let b = Element::alloc(dr, allocator, b)?;
+
+            let result = cond.conditional_select(dr, &a, &b)?;
+            assert_eq!(*result.value().take(), F::from(2u64));
+
+            Ok(())
+        })?;
+
+        // condition = false (returns a)
+        Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
+            let (cond, a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let cond = Boolean::alloc(dr, &mut (), cond)?;
+            let a = Element::alloc(dr, allocator, a)?;
+            let b = Element::alloc(dr, allocator, b)?;
+
+            let result = cond.conditional_select(dr, &a, &b)?;
+            assert_eq!(*result.value().take(), F::from(1u64));
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_conditional_enforce_equal() -> Result<()> {
+        // When condition is true, a == b should be enforced (and satisfied)
+        let sim = Simulator::simulate((true, F::from(42u64), F::from(42u64)), |dr, witness| {
+            let (cond, a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let cond = Boolean::alloc(dr, &mut (), cond)?;
+            let a = Element::alloc(dr, allocator, a)?;
+            let b = Element::alloc(dr, allocator, b)?;
+
+            dr.reset();
+            cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
+            Ok(())
+        })?;
+
         assert_eq!(sim.num_gates(), 1);
-        assert_eq!(sim.num_constraints(), 2);
-        Ok(())
-    };
+        assert_eq!(sim.num_constraints(), 3);
 
-    alloc(false)?;
-    alloc(true)?;
+        // When condition is false, constraint is trivially satisfied even if a != b
+        Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
+            let (cond, a, b) = witness.cast();
+            let allocator = &mut Standard::new();
+            let cond = Boolean::alloc(dr, &mut (), cond)?;
+            let a = Element::alloc(dr, allocator, a)?;
+            let b = Element::alloc(dr, allocator, b)?;
 
-    Ok(())
-}
-
-/// Standard reuses the Boolean gate's spare D wire for the Element.
-#[test]
-fn test_boolean_alloc_reclaim() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    let sim_without = Simulator::simulate(true, |dr, bit| {
-        let _b = Boolean::alloc(dr, &mut (), bit)?;
-        Element::alloc(dr, &mut (), Simulator::just(|| F::from(42u64)))?;
-        Ok(())
-    })?;
-    let sim_with = Simulator::simulate(true, |dr, bit| {
-        let allocator = &mut Standard::new();
-        let _b = Boolean::alloc(dr, allocator, bit)?;
-        Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
-        Ok(())
-    })?;
-
-    assert_eq!(sim_without.num_gates(), 2);
-    assert_eq!(sim_with.num_gates(), 1);
-
-    Ok(())
-}
-
-/// Multiple Boolean donations pool up and serve later allocations.
-#[test]
-fn test_pool_allocator_multiple_donations() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    let sim = Simulator::simulate((true, false, true), |dr, witness| {
-        let (b0, b1, b2) = witness.cast();
-        let allocator = &mut Standard::new();
-
-        let _b0 = Boolean::alloc(dr, allocator, b0)?;
-        let _b1 = Boolean::alloc(dr, allocator, b1)?;
-        let _b2 = Boolean::alloc(dr, allocator, b2)?;
-
-        let _e0 = Element::alloc(dr, allocator, Simulator::just(|| F::from(1u64)))?;
-        let _e1 = Element::alloc(dr, allocator, Simulator::just(|| F::from(2u64)))?;
-        let _e2 = Element::alloc(dr, allocator, Simulator::just(|| F::from(3u64)))?;
+            cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
+            Ok(())
+        })?;
 
         Ok(())
-    })?;
+    }
 
-    assert_eq!(sim.num_gates(), 3);
+    #[test]
+    fn test_multipack() -> Result<()> {
+        let bits = (0..1000).map(|i| i % 2 == 0).collect::<Vec<_>>();
 
-    Ok(())
-}
+        Simulator::simulate(bits, |dr, bits| {
+            let bits = (0..1000)
+                .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
+                .collect::<Result<Vec<_>>>()?;
 
-#[test]
-fn test_conditional_select() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+            let vals = multipack(dr, &bits)?;
+            assert_eq!(vals.len(), 4);
 
-    // condition = true (returns b)
-    Simulator::simulate((true, F::from(1u64), F::from(2u64)), |dr, witness| {
-        let (cond, a, b) = witness.cast();
-        let allocator = &mut Standard::new();
-        let cond = Boolean::alloc(dr, &mut (), cond)?;
-        let a = Element::alloc(dr, allocator, a)?;
-        let b = Element::alloc(dr, allocator, b)?;
+            for val in vals {
+                assert_eq!(val.value().take(), val.wire());
+            }
 
-        let result = cond.conditional_select(dr, &a, &b)?;
-        assert_eq!(*result.value().take(), F::from(2u64));
+            Ok(())
+        })?;
 
         Ok(())
-    })?;
+    }
 
-    // condition = false (returns a)
-    Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
-        let (cond, a, b) = witness.cast();
-        let allocator = &mut Standard::new();
-        let cond = Boolean::alloc(dr, &mut (), cond)?;
-        let a = Element::alloc(dr, allocator, a)?;
-        let b = Element::alloc(dr, allocator, b)?;
+    #[test]
+    fn test_multipack_vector() -> Result<()> {
+        use alloc::vec;
 
-        let result = cond.conditional_select(dr, &a, &b)?;
-        assert_eq!(*result.value().take(), F::from(1u64));
+        let bits = vec![false, true, true, false, true]; // 0b10110 = 22
+        Simulator::simulate(bits, |dr, bits| {
+            let bits = (0..5)
+                .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
+                .collect::<Result<Vec<_>>>()?;
 
-        Ok(())
-    })?;
+            let vals = multipack(dr, &bits)?;
+            assert_eq!(vals.len(), 1);
+            assert_eq!(*vals[0].value().take(), F::from(22));
+            assert_eq!(*vals[0].wire(), F::from(22));
 
-    Ok(())
-}
-
-#[test]
-fn test_conditional_enforce_equal() -> Result<()> {
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    // When condition is true, a == b should be enforced (and satisfied)
-    let sim = Simulator::simulate((true, F::from(42u64), F::from(42u64)), |dr, witness| {
-        let (cond, a, b) = witness.cast();
-        let allocator = &mut Standard::new();
-        let cond = Boolean::alloc(dr, &mut (), cond)?;
-        let a = Element::alloc(dr, allocator, a)?;
-        let b = Element::alloc(dr, allocator, b)?;
-
-        dr.reset();
-        cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
-        Ok(())
-    })?;
-
-    assert_eq!(sim.num_gates(), 1);
-    assert_eq!(sim.num_constraints(), 3);
-
-    // When condition is false, constraint is trivially satisfied even if a != b
-    Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
-        let (cond, a, b) = witness.cast();
-        let allocator = &mut Standard::new();
-        let cond = Boolean::alloc(dr, &mut (), cond)?;
-        let a = Element::alloc(dr, allocator, a)?;
-        let b = Element::alloc(dr, allocator, b)?;
-
-        cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
-        Ok(())
-    })?;
-
-    Ok(())
-}
-
-#[test]
-fn test_multipack() -> Result<()> {
-    use alloc::vec::Vec;
-
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    let bits = (0..1000).map(|i| i % 2 == 0).collect::<Vec<_>>();
-
-    Simulator::simulate(bits, |dr, bits| {
-        let bits = (0..1000)
-            .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
-            .collect::<Result<Vec<_>>>()?;
-
-        let vals = multipack(dr, &bits)?;
-        assert_eq!(vals.len(), 4);
-
-        for val in vals {
-            assert_eq!(val.value().take(), val.wire());
-        }
+            Ok(())
+        })?;
 
         Ok(())
-    })?;
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use ragu_core::maybe::Maybe;
-
-    use super::*;
-
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
+    }
 
     #[test]
     fn test_is_equal_same() -> Result<()> {
@@ -533,20 +536,6 @@ mod tests {
 
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod proptests {
-    use alloc::format;
-
-    use proptest::prelude::*;
-    use ragu_core::maybe::Maybe;
-    use ragu_testing::strategies;
-
-    use super::*;
-
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
 
     proptest! {
         #[test]
@@ -598,28 +587,4 @@ mod proptests {
             prop_assert_eq!(actual, Some(expected));
         }
     }
-}
-
-#[test]
-fn test_multipack_vector() -> Result<()> {
-    use alloc::{vec, vec::Vec};
-
-    type F = ragu_pasta::Fp;
-    type Simulator = crate::Simulator<F>;
-
-    let bits = vec![false, true, true, false, true]; // 0b10110 = 22
-    Simulator::simulate(bits, |dr, bits| {
-        let bits = (0..5)
-            .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
-            .collect::<Result<Vec<_>>>()?;
-
-        let vals = multipack(dr, &bits)?;
-        assert_eq!(vals.len(), 1);
-        assert_eq!(*vals[0].value().take(), F::from(22));
-        assert_eq!(*vals[0].wire(), F::from(22));
-
-        Ok(())
-    })?;
-
-    Ok(())
 }

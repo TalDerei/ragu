@@ -66,7 +66,8 @@ where
     .boxed()
 }
 
-fn nonzero_prime_field_element<F>() -> BoxedStrategy<F>
+/// Generates non-zero field elements with mixed edge-biased and broad coverage.
+pub fn nonzero_prime_field_element<F>() -> BoxedStrategy<F>
 where
     F: PrimeField + From<u64> + 'static,
 {

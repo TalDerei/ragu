@@ -188,21 +188,18 @@ mod tests {
     use ragu_core::maybe::Maybe;
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::{GadgetExt, Simulator};
+    use ragu_testing::strategies;
 
     use super::*;
 
     type Sim = Simulator<Fp>;
-
-    fn arb_field() -> impl Strategy<Value = Fp> {
-        any::<u64>().prop_map(Fp::from)
-    }
 
     fn arb_tag() -> impl Strategy<Value = Vec<u8>> {
         prop::collection::vec(any::<u8>(), 1..=32)
     }
 
     fn arb_values(n: impl Into<prop::collection::SizeRange>) -> impl Strategy<Value = Vec<Fp>> {
-        prop::collection::vec(arb_field(), n)
+        prop::collection::vec(strategies::prime_field_element::<Fp>(), n)
     }
 
     #[derive(Debug, Clone)]
@@ -212,7 +209,10 @@ mod tests {
     }
 
     fn arb_op() -> impl Strategy<Value = Op> {
-        prop_oneof![arb_field().prop_map(Op::Absorb), Just(Op::Squeeze),]
+        prop_oneof![
+            strategies::prime_field_element::<Fp>().prop_map(Op::Absorb),
+            Just(Op::Squeeze),
+        ]
     }
 
     fn apply_ops<P: PoseidonPermutation<Fp>>(
@@ -234,7 +234,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn proptest_domain_separation(v in arb_field(), t1 in arb_tag(), t2 in arb_tag()) {
+        fn proptest_domain_separation(v in strategies::prime_field_element::<Fp>(), t1 in arb_tag(), t2 in arb_tag()) {
             prop_assume!(t1 != t2);
             let params = Pasta::baked();
             let mut dr = Sim::new();
@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn proptest_squeezes_distinct(v in arb_field()) {
+        fn proptest_squeezes_distinct(v in strategies::prime_field_element::<Fp>()) {
             let params = Pasta::baked();
             let mut dr = Sim::new();
 
@@ -305,7 +305,7 @@ mod tests {
         #[test]
         fn proptest_save_resume_continuity(
             before_prefix in prop::collection::vec(arb_op(), 0..=5),
-            before_final  in arb_field(),
+            before_final  in strategies::prime_field_element::<Fp>(),
             after_rest    in prop::collection::vec(arb_op(), 0..=4),
         ) {
             let params = Pasta::baked();
@@ -349,7 +349,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(
+        expected = "must squeeze at least once before transitioning back to absorb mode"
+    )]
     fn test_skip_squeeze_after_resume() {
         let params = Pasta::baked();
         let mut dr = Sim::new();
