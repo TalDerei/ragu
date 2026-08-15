@@ -15,7 +15,7 @@ use ragu_core::{
 use ragu_pasta::Fp;
 use ragu_primitives::allocator::Allocator;
 
-use crate::{Circuit, WithAux};
+use crate::{Circuit, WithAux, polynomials::TestRank};
 
 /// Maximum number of wire allocations generated at any one point in a scope.
 const MAX_ALLOCS: usize = 6;
@@ -170,8 +170,31 @@ impl Circuit<Fp> for TreeCircuit {
 }
 
 proptest! {
+    /// Cross-evaluator polynomial consistency: verifies that all three
+    /// independent evaluators (sxy, sx, sy) agree on the polynomial value
+    /// for random routine trees.
+    ///
+    /// Each evaluator computes the wiring polynomial via a different
+    /// strategy (full-point Horner, partial-X coefficients, partial-Y
+    /// structured form). Agreement confirms that all three correctly
+    /// handle routine scope jumps, segment offsets, and Horner
+    /// accumulation across arbitrary nesting topologies.
+    #[test]
+    fn polynomial_consistency(tree in arb_tree()) {
+        let circuit = TreeCircuit(tree);
+        // Skip trees that exceed TestRank's multiplication bound.
+        let circuit_obj = match crate::into_wiring_object::<_, _, TestRank>(circuit) {
+            Ok(obj) => obj,
+            Err(_) => return Ok(()),
+        };
+        super::consistency_checks(&*circuit_obj);
+    }
+
     /// Checks that [`crate::metrics::eval`] and [`crate::trace::eval`] agree on
-    /// segment count and per-segment gate counts.
+    /// segment count and per-segment gate counts, and that
+    /// [`crate::metrics::eval`] constraint counts agree with the floor
+    /// plan derived from its own segment records (which the sxy evaluator
+    /// asserts against during [`polynomial_consistency`]).
     ///
     /// The two evaluators are implemented independently. Agreement confirms
     /// that both traverse the routine call tree in the same DFS order and
@@ -191,14 +214,28 @@ proptest! {
             "segment count mismatch"
         );
 
-        for (i, (m, t)) in metrics.segments.iter().zip(trace.segments.iter()).enumerate() {
+        let plan = crate::floor_planner::floor_plan(&metrics.segments);
+
+        for (i, ((m, t), fp)) in metrics.segments.iter()
+            .zip(trace.segments.iter())
+            .zip(plan.iter())
+            .enumerate()
+        {
             prop_assert_eq!(
                 m.num_gates(),
                 t.a.len(),
-                "segment {}: mul count mismatch (metrics={}, trace={})",
+                "segment {}: gate count mismatch (metrics={}, trace={})",
                 i,
                 m.num_gates(),
                 t.a.len(),
+            );
+            prop_assert_eq!(
+                m.num_constraints(),
+                fp.num_constraints,
+                "segment {}: constraint count mismatch (metrics={}, floor_plan={})",
+                i,
+                m.num_constraints(),
+                fp.num_constraints,
             );
         }
     }

@@ -11,7 +11,8 @@ use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 use crate::{
     Circuit, WithAux,
-    metrics::{self, RoutineFingerprint, RoutineIdentity},
+    metrics::{self, DeepFingerprint, RoutineIdentity},
+    polynomials::TestRank,
 };
 
 /// Canonical single-square routine.
@@ -184,11 +185,11 @@ impl Routine<Fp> for Duplicate {
 
 /// Passthrough — returns input unchanged. No constraints.
 ///
-/// With [`DropFirst`], forms a pair whose `(scalar, mul_count,
-/// linear_count)` triples are identical: neither routine calls
-/// `enforce_zero`, so both leave the Horner accumulator at the initial
-/// seed `h`, and neither emits any gate. Only the `TypeId` of `Input`
-/// distinguishes them.
+/// With [`DropFirst`], forms a pair whose [`BaseFingerprint`] fields
+/// `(scalar, num_gates, num_constraints)` are identical: neither routine
+/// calls `enforce_zero` (the zero-seeded Horner accumulator stays at 0),
+/// and neither emits any gate. Only the `TypeId` of `Input`
+/// distinguishes them via the deep hash.
 #[derive(Clone)]
 struct Passthrough;
 
@@ -218,8 +219,7 @@ impl Routine<Fp> for Passthrough {
 /// Takes two inputs, returns the first. No constraints.
 ///
 /// Paired with [`Passthrough`]: both have zero body constraints and
-/// identical Horner scalars (the untouched seed `h`), but different
-/// `Input` types.
+/// identical zero-valued Horner scalars, but different `Input` types.
 #[derive(Clone)]
 struct DropFirst;
 
@@ -658,11 +658,11 @@ impl Routine<Fp> for AllocThenAddEnforce {
     }
 }
 
-/// Like SquareOnce but preceded by two trivial enforce_zero calls (empty linear
-/// combination). The $s(X, Y)$ polynomial differs because the real constraints
-/// land at $Y^2$ and $Y^3$ instead of $Y^0$ and $Y^1$. The nonzero Horner seed
-/// `h` ensures the leading empty constraints shift the accumulator (via
-/// `h * y^k`), so the scalars also differ.
+/// Like [`SquareOnce`] but preceded by two trivial `enforce_zero` calls
+/// (empty linear combination). The two leading empty constraints
+/// contribute zero to the zero-seeded Horner accumulator, so the final
+/// eval scalar is identical to [`SquareOnce`]; the pair is discriminated
+/// solely by `num_constraints` (2 vs 4) in [`BaseFingerprint`].
 #[derive(Clone)]
 struct SquareOnceWithLeadingTrivial;
 
@@ -832,8 +832,8 @@ impl Routine<Fp> for DelegateAllocEnforceFirst {
 
 /// Three input wires, returns first. Paired with [`PassthroughQuad`]:
 /// neither routine calls `enforce_zero`, so both leave the Horner
-/// accumulator at the initial seed `h`. Only the `TypeId` of `Input`
-/// distinguishes them.
+/// accumulator at zero and produce identical [`BaseFingerprint`]s.
+/// Only the input `TypeId` distinguishes them via the deep hash.
 #[derive(Clone)]
 struct PassthroughTriple;
 
@@ -1267,7 +1267,7 @@ impl Routine<Fp> for OneWireEnforcePair {
 
 fn fingerprint_triple(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, (Element<'_, _>, Element<'_, _>))]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1286,7 +1286,7 @@ fn fingerprint_quad(
         Fp,
         Input = Kind![Fp; ((Element<'_, _>, Element<'_, _>), (Element<'_, _>, Element<'_, _>))],
     >,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1303,7 +1303,7 @@ fn fingerprint_quad(
 
 fn fingerprint_elem(
     routine: &impl Routine<Fp, Input = Kind![Fp; Element<'_, _>]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let mut sim = Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let input = Element::alloc(&mut sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1313,7 +1313,7 @@ fn fingerprint_elem(
     }
 }
 
-fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> RoutineFingerprint {
+fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> DeepFingerprint {
     match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &()).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
@@ -1322,7 +1322,7 @@ fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> Routin
 
 fn fingerprint_pair(
     routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)]>,
-) -> RoutineFingerprint {
+) -> DeepFingerprint {
     let sim = &mut Simulator::<Fp>::new();
     let allocator = &mut Standard::new();
     let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
@@ -1335,7 +1335,7 @@ fn fingerprint_pair(
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
 /// through `Counter::routine` (the production path for input remapping).
-fn fingerprint_via_eval<Ro>(routine: &Ro) -> RoutineFingerprint
+fn fingerprint_via_eval<Ro>(routine: &Ro) -> DeepFingerprint
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
         + Clone
@@ -1494,7 +1494,10 @@ fn test_nesting() {
     assert_ne!(pure, extra);
 }
 
-/// Zero-constraint routines are distinguished by TypeId pairs alone.
+/// Degenerate routines: EmptyRoutine (() → ()) allocates nothing while
+/// Produce (() → Element) allocates one wire (1 mul gate), so their
+/// routine fingerprints differ by constraint count. Duplicate vs
+/// SquareOnce differ in constraints too.
 #[test]
 fn test_degenerate_cases() {
     assert_ne!(fingerprint_unit(&EmptyRoutine), fingerprint_unit(&Produce));
@@ -1556,12 +1559,15 @@ fn test_mixed_constraints() {
     assert_ne!(mixed, fingerprint_elem(&LinearOnly));
 }
 
-/// Pure delegation wrappers are nesting-depth-invariant; metrics produces correct segment count.
+/// Pure delegation wrappers share the same base fingerprint (same constraint
+/// shape) but differ in their deep fingerprint (different recursive subtree).
 #[test]
 fn test_triple_nesting() {
     let triple = fingerprint_elem(&TripleNesting);
-    assert_eq!(triple, fingerprint_elem(&PureNesting));
-    assert_ne!(triple, fingerprint_elem(&SquareOnce));
+    let single = fingerprint_elem(&PureNesting);
+    assert_eq!(triple.base(), single.base());
+    assert_ne!(triple.deep(), single.deep());
+    assert_ne!(triple.base(), fingerprint_elem(&SquareOnce).base());
 
     let metrics = metrics::eval(&SingleRoutineCircuit(TripleNesting)).unwrap();
     assert_eq!(metrics.segments.len(), 4);
@@ -1588,8 +1594,8 @@ fn test_aliasing_delegate_vs_alloc_enforce() {
 }
 
 /// Pure delegation wrapper vs local alloc with no constraints.  With no
-/// `enforce_zero` calls the scalars are both equal to the Horner seed
-/// `h`, but the mul counts differ (0 vs 1).
+/// `enforce_zero` calls the scalars are both zero (the Horner seed), but
+/// the gate counts differ (0 vs 1), so the base fingerprints differ.
 #[test]
 fn test_aliasing_delegate_vs_alloc_no_constraints() {
     assert_ne!(fingerprint_elem(&PureNesting), fingerprint_elem(&AllocOnly),);
@@ -1607,11 +1613,12 @@ fn test_aliasing_propagates_through_linear_combinations() {
     );
 }
 
-/// SquareOnce (2 constraints) vs SquareOnceWithLeadingTrivial
-/// (2 leading empty `enforce_zero` + 2 from square = 4 total).  The
-/// nonzero Horner seed makes leading empty constraints visible: the
-/// seed shifts through extra powers of $y$, producing distinct scalars.
-/// Constraint counts also differ (2 vs 4).
+/// [`SquareOnce`] (2 constraints) vs [`SquareOnceWithLeadingTrivial`]
+/// (2 leading empty `enforce_zero` + 2 from square = 4 total). Leading
+/// empty constraints are invisible to the zero-seeded Horner accumulator
+/// (both routines produce the same eval scalar), but `num_constraints`
+/// — part of [`BaseFingerprint`] — differs (2 vs 4), so the fingerprints
+/// differ.
 #[test]
 fn test_aliasing_leading_trivial_constraints() {
     assert_ne!(
@@ -1707,9 +1714,10 @@ fn test_cross_path_consistency() {
     ];
 }
 
-/// Regression: via `eval`, PureNesting and AllocOnly have identical
-/// scalars (both equal to the Horner seed `h`, since neither has
-/// `enforce_zero` calls) but differ in mul count (0 vs 1).
+/// Via `eval`, [`PureNesting`] and [`AllocOnly`] have identical (zero)
+/// scalars — neither calls `enforce_zero`, so the Horner accumulator
+/// stays at its zero seed — but differ in gate count (0 vs 1), and are
+/// therefore distinguished by `num_gates` in [`BaseFingerprint`].
 #[test]
 fn test_missing_counts_via_eval() {
     assert_ne!(
@@ -1718,9 +1726,10 @@ fn test_missing_counts_via_eval() {
     );
 }
 
-/// Regression: via `eval`, SquareOnce and SquareOnceWithLeadingTrivial
-/// now produce distinct scalars thanks to the nonzero Horner seed.
-/// They also differ in constraint count (2 vs 4).
+/// Via `eval`, [`SquareOnce`] and [`SquareOnceWithLeadingTrivial`] produce
+/// identical Horner scalars (leading zero LCs vanish under the zero-seeded
+/// accumulator) but differ in `num_constraints` (2 vs 4), so they are
+/// distinguished by [`BaseFingerprint::num_constraints`].
 #[test]
 fn test_vanishing_leading_trivial_via_eval() {
     assert_ne!(
@@ -1759,102 +1768,120 @@ fn test_wire_collision_via_eval_metrics_identical() {
 }
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
-/// Element)) have zero body constraints, so both leave the Horner
-/// accumulator at the initial seed `h`. Without `input_kind` in the
-/// fingerprint, these would collide.
+/// Element)) have zero body constraints, identical Horner scalars, and
+/// both forward the first input wire (so output wires are positionally
+/// identical). Under relaxed fungibility the input Rust type alone must
+/// not distinguish them — the deep hashes collide as well.
 #[test]
-fn test_typeid_necessary_for_input_discrimination() {
+fn test_input_type_does_not_distinguish_fingerprint() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
-    // Confirm the scalar component is identical (both equal to the
-    // untouched Horner seed `h`).
-    assert_eq!(a.eval(), b.eval());
-
-    // The fingerprints must still differ — only TypeId saves us.
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// `Passthrough` (Output = Element) and `Duplicate` (Output =
-/// (Element, Element)) share the same Input type and have zero body
-/// constraints, so their `(scalar, mul_count, linear_count)` triples
-/// are identical.  Without `output_kind` in the fingerprint, these
-/// would collide.
+/// `Passthrough` (Output = Element, 1 wire) vs `Duplicate`
+/// (Output = (Element, Element), 2 wires) share the same input type and
+/// algebraic contribution, but their output wire vectors differ in
+/// length and content. The deep hash absorbs `output_wires` and
+/// `output_wires.len()`, so the fingerprints remain distinct even with
+/// type identity removed.
 #[test]
-fn test_typeid_necessary_for_output_discrimination() {
+fn test_output_arity_distinguishes_fingerprint() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_elem(&Duplicate);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.base(), b.base());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
-/// 3 vs 4 input wires both leave the Horner accumulator at the initial
-/// seed `h` (no `enforce_zero` calls); only `input_kind` distinguishes them.
+/// 3 vs 4 input wires, both routines forward the first input. The first
+/// input is at the same position (`x_remap`) in either case, so output
+/// wires match. Under relaxed fungibility the input arity alone must
+/// not distinguish.
 #[test]
-fn test_typeid_triple_vs_quad_input_wires() {
+fn test_input_arity_does_not_distinguish_when_outputs_align() {
     let a = fingerprint_triple(&PassthroughTriple);
     let b = fingerprint_quad(&PassthroughQuad);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Trivial enforce_zero (empty LC) with 1 vs 2 input wires.
+/// Trivial enforce_zero (empty LC) with 1 vs 2 input wires, output is
+/// the first input wire in both cases. Input type must not distinguish.
 #[test]
-fn test_typeid_trivial_enforce_zero() {
+fn test_trivial_enforce_zero_input_type_irrelevant() {
     let a = fingerprint_elem(&TrivialEnforce);
     let b = fingerprint_pair(&TrivialEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Input-dependent enforce_zero with 1 vs 2 input wires.
+/// Input-dependent enforce_zero with 1 vs 2 input wires; both forward
+/// the first input. Input type must not distinguish.
 #[test]
-fn test_typeid_enforce_first_input() {
+fn test_first_input_enforce_input_type_irrelevant() {
     let a = fingerprint_elem(&EnforceInput);
     let b = fingerprint_pair(&EnforceInputPair);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// SquareOnce (Output = Element) vs SquareDuplicate (Output = (Element, Element)):
-/// identical body constraints, distinguished by output TypeId.
+/// `SquareOnce` (Output = Element, 1 wire) vs `SquareDuplicate`
+/// (Output = (Element, Element), 2 wires) share input type and body
+/// constraints, but differ in output arity. The deep hash distinguishes
+/// them via `output_wires.len()`.
 #[test]
-fn test_typeid_output_with_square() {
+fn test_output_arity_with_square_distinguishes() {
     let a = fingerprint_elem(&SquareOnce);
     let b = fingerprint_elem(&SquareDuplicate);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.base(), b.base());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
-/// Passthrough (Element → Element) vs PairPassthrough ((Element, Element) →
-/// (Element, Element)): both TypeIds differ simultaneously.
+/// `Passthrough` (Element → Element) vs `PairPassthrough`
+/// ((Element, Element) → (Element, Element)): both input *and* output
+/// arity differ. The deep hash distinguishes them via
+/// `output_wires.len()` regardless of type identity.
 #[test]
-fn test_typeid_both_differ() {
+fn test_input_and_output_arity_both_differ() {
     let a = fingerprint_elem(&Passthrough);
     let b = fingerprint_pair(&PairPassthrough);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.base(), b.base());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
-/// Internal-only constraint (alloc + enforce_zero) with 1 vs 2 input wires.
+/// Internal-only constraint (alloc + enforce_zero) with 1 vs 2 input
+/// wires; output is unaffected by the extra unused input. Input type
+/// must not distinguish.
 #[test]
-fn test_typeid_internal_only_constraints() {
+fn test_internal_only_constraints_input_type_irrelevant() {
     let a = fingerprint_elem(&InternalEnforce);
     let b = fingerprint_pair(&InternalEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Production path cross-check: Passthrough via eval vs DropFirst via pair.
+/// Production path cross-check: `Passthrough` via `metrics::eval` vs
+/// `DropFirst` via the test-only `fingerprint_pair`. Both paths must
+/// produce identical fingerprints under relaxed fungibility.
 #[test]
-fn test_typeid_production_path() {
+fn test_production_path_input_type_irrelevant() {
     let a = fingerprint_via_eval(&Passthrough);
     let b = fingerprint_pair(&DropFirst);
 
@@ -1862,36 +1889,292 @@ fn test_typeid_production_path() {
         fingerprint_via_eval(&Passthrough),
         fingerprint_elem(&Passthrough),
     );
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// Nested delegation with 1 vs 2 input wires.
+/// Nested delegation with 1 vs 2 input wires. The extra input shifts
+/// where the child's output lands in the parent's `x_remap` sequence,
+/// so `output_wires` content differs and the deep hash distinguishes —
+/// independent of type identity.
 #[test]
-fn test_typeid_nested_with_pairing() {
+fn test_input_arity_affects_nested_output_position() {
     let a = fingerprint_elem(&PureNesting);
     let b = fingerprint_pair(&PureNestingPair);
 
-    assert_eq!(a.eval(), b.eval());
+    assert_eq!(a.base(), b.base());
+    assert_ne!(a.deep(), b.deep());
     assert_ne!(a, b);
 }
 
-/// Three Horner steps (3× enforce_zero) with 1 vs 2 input wires.
+/// Three Horner steps (3× enforce_zero) with 1 vs 2 input wires; both
+/// forward the first input. Input type must not distinguish.
 #[test]
-fn test_typeid_multiple_horner_steps() {
+fn test_multiple_horner_steps_input_type_irrelevant() {
     let a = fingerprint_elem(&TripleEnforceInput);
     let b = fingerprint_pair(&TripleEnforceInputPair);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
 }
 
-/// ONE wire reference in enforce_zero with 1 vs 2 input wires.
+/// ONE wire reference in enforce_zero with 1 vs 2 input wires; both
+/// forward the first input. Input type must not distinguish.
 #[test]
-fn test_typeid_one_wire_constraint() {
+fn test_one_wire_constraint_input_type_irrelevant() {
     let a = fingerprint_elem(&OneWireEnforce);
     let b = fingerprint_pair(&OneWireEnforcePair);
 
-    assert_eq!(a.eval(), b.eval());
-    assert_ne!(a, b);
+    assert_eq!(a.base(), b.base());
+    assert_eq!(a.deep(), b.deep());
+    assert_eq!(a, b);
+}
+
+/// Allocates `w1` then `w2`, both zero, and enforces `w1 + w2 = 0`.
+/// Returns `(w1, w2)`. Paired with [`SwapOrderReordered`], which swaps
+/// the allocation order.
+#[derive(Clone)]
+struct SwapOrderIdentity;
+
+impl Routine<Fp> for SwapOrderIdentity {
+    type Input = Kind![Fp; ()];
+    type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        _input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        let w1 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let w2 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        w1.add(dr, &w2).enforce_zero(dr)?;
+        Ok((w1, w2))
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::just(|| ())))
+    }
+}
+
+/// Same shape as [`SwapOrderIdentity`] but allocates `w2` before `w1`.
+/// Still enforces `w1 + w2 = 0` and returns `(w1, w2)`, so the output
+/// gadget is identical; only the underlying wire values are swapped.
+#[derive(Clone)]
+struct SwapOrderReordered;
+
+impl Routine<Fp> for SwapOrderReordered {
+    type Input = Kind![Fp; ()];
+    type Output = Kind![Fp; (Element<'_, _>, Element<'_, _>)];
+    type Aux<'dr> = ();
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        _input: Bound<'dr, D, Self::Input>,
+        _aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        // Allocations in opposite order: first alloc is labelled `w2`.
+        let w2 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        let w1 = Element::alloc(dr, allocator, D::just(|| Fp::ZERO))?;
+        w1.add(dr, &w2).enforce_zero(dr)?;
+        Ok((w1, w2))
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        _dr: &mut D,
+        _input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        Ok(Prediction::Unknown(D::just(|| ())))
+    }
+}
+
+/// Two routines with identical local shape and the same symmetric LC
+/// `w1 + w2 = 0`, but opposite allocation order. Their base fingerprints
+/// match (same `num_gates`, `num_constraints`, and Horner scalar). Their
+/// deep fingerprints differ because the output-wire sequence — captured
+/// in the deep hash before any parent-context remap — encodes the
+/// swapped underlying wire values.
+#[test]
+fn test_swap_allocation_order_base_matches_deep_differs() {
+    let a = fingerprint_unit(&SwapOrderIdentity);
+    let b = fingerprint_unit(&SwapOrderReordered);
+
+    assert_eq!(
+        a.base(),
+        b.base(),
+        "symmetric LC + identical shape ⇒ identical base fingerprint",
+    );
+    assert_ne!(
+        a, b,
+        "swapped output-wire order ⇒ different deep fingerprint",
+    );
+}
+
+/// Circuit wrapper for `(Element, Element) → Element` routines.
+///
+/// Allocates two input wires via paired allocation (consuming one
+/// multiplication gate, matching [`SingleRoutineCircuit`]'s root
+/// structure), then calls the routine.
+struct PairRoutineCircuit<Ro: Clone>(Ro);
+
+impl<Ro> Circuit<Fp> for PairRoutineCircuit<Ro>
+where
+    Ro: Routine<
+            Fp,
+            Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
+            Output = Kind![Fp; Element<'_, _>],
+        > + Clone
+        + Send
+        + Sync,
+    for<'dr> Ro::Aux<'dr>: Send + Clone,
+{
+    type Instance<'source> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'source> = Fp;
+    type Aux<'source> = ();
+
+    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'source>>,
+    ) -> Result<Bound<'dr, D, Self::Output>>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
+    }
+
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'source>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        let a = Element::alloc(dr, allocator, witness.clone())?;
+        let b = Element::alloc(dr, allocator, witness)?;
+        let output = dr.routine(self.0.clone(), (a, b))?;
+        Ok(WithAux::new(output, D::just(|| ())))
+    }
+}
+
+/// Verifies that routines with matching [`BaseFingerprint`] (same
+/// polynomial contribution) produce identical circuit polynomials, even
+/// when their TypeIds differ.
+///
+/// This is the test that catches over-capture: if TypeIds affected the
+/// polynomial, these assertions would fail. Each pair wraps a
+/// single-input routine in [`SingleRoutineCircuit`] and a pair-input
+/// routine in [`PairRoutineCircuit`]. Both wrappers allocate via paired
+/// allocation (one mul gate), so the root segments are structurally
+/// identical. The routines have matching `(eval, num_mul, num_lc)` but
+/// different `Input` TypeIds.
+///
+/// [`BaseFingerprint`]: crate::BaseFingerprint
+#[test]
+fn test_typeid_does_not_affect_polynomial() {
+    let x = Fp::random(&mut rand::rng());
+    let y = Fp::random(&mut rand::rng());
+
+    /// Compares s(x,y) for a single-input circuit vs a pair-input circuit
+    /// whose routines share the same `BaseFingerprint`.
+    fn assert_same_polynomial<RoElem, RoPair>(
+        elem_routine: RoElem,
+        pair_routine: RoPair,
+        x: Fp,
+        y: Fp,
+        label: &str,
+    ) where
+        RoElem: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
+            + Clone
+            + Send
+            + Sync,
+        for<'dr> RoElem::Aux<'dr>: Send + Clone,
+        RoPair: Routine<
+                Fp,
+                Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
+                Output = Kind![Fp; Element<'_, _>],
+            > + Clone
+            + Send
+            + Sync,
+        for<'dr> RoPair::Aux<'dr>: Send + Clone,
+    {
+        // Confirm the routine fingerprints (polynomial identity) match.
+        let fp_elem = fingerprint_elem(&elem_routine);
+        let fp_pair = fingerprint_pair(&pair_routine);
+        assert_eq!(
+            fp_elem.base(),
+            fp_pair.base(),
+            "{label}: BaseFingerprint mismatch — test premise violated"
+        );
+
+        let obj_elem =
+            crate::into_wiring_object::<Fp, _, TestRank>(SingleRoutineCircuit(elem_routine))
+                .unwrap();
+        let obj_pair =
+            crate::into_wiring_object::<Fp, _, TestRank>(PairRoutineCircuit(pair_routine)).unwrap();
+
+        let fp_elem = crate::floor_planner::floor_plan(obj_elem.segment_records());
+        let fp_pair = crate::floor_planner::floor_plan(obj_pair.segment_records());
+
+        let sxy_elem = obj_elem.sxy(x, y, &fp_elem);
+        let sxy_pair = obj_pair.sxy(x, y, &fp_pair);
+
+        assert_eq!(
+            sxy_elem, sxy_pair,
+            "{label}: same BaseFingerprint but different s(x,y) — \
+             TypeIds affect the polynomial (this would be a soundness issue)"
+        );
+    }
+
+    assert_same_polynomial(Passthrough, DropFirst, x, y, "Passthrough vs DropFirst");
+    assert_same_polynomial(
+        TrivialEnforce,
+        TrivialEnforcePair,
+        x,
+        y,
+        "TrivialEnforce vs TrivialEnforcePair",
+    );
+    assert_same_polynomial(
+        EnforceInput,
+        EnforceInputPair,
+        x,
+        y,
+        "EnforceInput vs EnforceInputPair",
+    );
+    assert_same_polynomial(
+        InternalEnforce,
+        InternalEnforcePair,
+        x,
+        y,
+        "InternalEnforce vs InternalEnforcePair",
+    );
+    assert_same_polynomial(
+        OneWireEnforce,
+        OneWireEnforcePair,
+        x,
+        y,
+        "OneWireEnforce vs OneWireEnforcePair",
+    );
+    assert_same_polynomial(
+        TripleEnforceInput,
+        TripleEnforceInputPair,
+        x,
+        y,
+        "TripleEnforceInput vs TripleEnforceInputPair",
+    );
 }

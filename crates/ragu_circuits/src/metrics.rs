@@ -10,31 +10,41 @@
 //!
 //! # Fingerprinting
 //!
-//! A routine's fingerprint is the tuple `(TypeId(Input), TypeId(Output),
-//! eval, num_mul, num_lc)`. The [`TypeId`] pairs cheaply narrow equivalence
-//! candidates by type; the constraint counts further partition by emitted
-//! constraints; the scalar confirms structural equivalence via random evaluation
-//! (Schwartz–Zippel).
+//! Every routine invocation is recorded with two fingerprints, separating
+//! polynomial equivalence (floor planning) from memoization safety
+//! (cache keys):
 //!
-//! The fingerprint is wrapped in [`RoutineIdentity`], an enum that
-//! distinguishes the root circuit body ([`Root`](RoutineIdentity::Root)) from
-//! actual routine invocations ([`Routine`](RoutineIdentity::Routine)).
-//! `RoutineIdentity` deliberately does **not** implement comparison or hashing
-//! traits, forcing callers to explicitly handle the root variant rather than
-//! accidentally including it in equivalence maps.
+//! - [`BaseFingerprint`] — `(num_gates, num_constraints, eval)`. Captures
+//!   the routine's local $s(X,Y)$ contribution: the gate/constraint shape of
+//!   its base segment and the Schwartz–Zippel evaluation scalar obtained by
+//!   running the routine on four independent geometric sequences (one per
+//!   `a`/`b`/`c`/`d` wire) with constraint coefficients folded via Horner in
+//!   `y`. Two routines with the same `BaseFingerprint` contribute the same
+//!   thing to $s(X,Y)$ with overwhelming probability.
 //!
-//! The scalar is the routine's $s(X,Y)$ contribution (see
-//! [`sxy::eval`](super::wiring::sxy::eval)) evaluated at deterministic
-//! pseudorandom points derived from a domain-separated BLAKE2b hash: four
-//! independent geometric sequences are assigned to the $a$, $b$, $c$, $d$
-//! wires and constraint values are accumulated via Horner's rule. If two
-//! routines produce the same fingerprint, they are structurally equivalent with
-//! overwhelming probability.
+//! - [`DeepFingerprint`] — `{ base, deep }`. Extends the base fingerprint
+//!   with a recursive 64-bit BLAKE2b digest that binds the raw
+//!   geometric-sequence evaluations of the routine's output-gadget wires
+//!   and the deep fingerprints of every direct child routine. Two invocations
+//!   with the same `DeepFingerprint` are structurally identical at every
+//!   nesting level and can be memoized together with their entire subtree.
 //!
-//! [`TypeId`]: core::any::TypeId
+//! Type identity is deliberately *not* part of the fingerprint. Under the
+//! relaxed-fungibility model, routine equivalence is layout-keyed: two routines
+//! that contribute identically to $s(X, Y)$ and produce the same wire layout
+//! are equivalent for memoization purposes regardless of the Rust types of
+//! their `Input` or `Output` gadgets. Allocation determinism on `GadgetKind`
+//! ensures that reconstructing the typed output gadget from cached wire values
+//! yields the correct result independent of static type identity.
+//!
+//! Fingerprints are wrapped in [`RoutineIdentity`], an enum that distinguishes
+//! the root circuit body ([`Root`](RoutineIdentity::Root)) from actual routine
+//! invocations ([`Routine`](RoutineIdentity::Routine)). `RoutineIdentity`
+//! deliberately does **not** implement comparison or hashing traits, forcing
+//! callers to handle the root variant explicitly rather than accidentally
+//! including it in equivalence maps.
 
 use alloc::vec::Vec;
-use core::any::TypeId;
 
 use ragu_arithmetic::{
     Coeff,
@@ -42,7 +52,7 @@ use ragu_arithmetic::{
 };
 use ragu_core::{
     Result,
-    convert::WireMap,
+    convert::{WireMap, extract_wires},
     drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind as _},
     maybe::Empty,
@@ -63,61 +73,144 @@ use super::{Circuit, raw::RawCircuit};
 /// and handle [`Root`](RoutineIdentity::Root) separately.
 #[derive(Clone, Copy, Debug)]
 pub enum RoutineIdentity {
-    /// The root circuit body (record 0). Cannot be floated or memoized.
+    /// The root circuit body (segment 0). Cannot be floated or memoized.
     Root,
-    /// An actual routine invocation with a Schwartz–Zippel fingerprint.
-    Routine(RoutineFingerprint),
+    /// An actual routine invocation with a full deep fingerprint.
+    Routine(DeepFingerprint),
 }
 
-/// A Schwartz–Zippel fingerprint for a routine invocation's constraint
-/// structure.
+/// Polynomial-equivalence fingerprint for a single routine invocation.
 ///
-/// Two routines share a fingerprint when they have matching [`TypeId`] pairs,
-/// matching evaluation scalars, and matching constraint counts. The scalar is
-/// the low 64 bits of the field element produced by running the routine on the
-/// `Counter` driver.
+/// Captures the routine's local contribution to the wiring polynomial
+/// $s(X, Y)$: the gate/constraint shape of its base segment together with a
+/// Schwartz–Zippel evaluation scalar. Two routines sharing a
+/// `BaseFingerprint` make the same contribution to $s(X, Y)$ with
+/// overwhelming probability.
 ///
-/// The 64-bit truncation gives ~2^{-64} collision probability per pair,
-/// adequate for floor-planner equivalence classes. If fingerprints are
-/// ever used for security-critical decisions, store the full field
-/// representation (`[u8; 32]`) instead — the cost is negligible.
+/// `BaseFingerprint` is what the floor planner uses to group segments with
+/// the same polynomial shape. Nested-subtree information is deliberately
+/// excluded — it does not affect the polynomial contribution of the base
+/// segment alone; it lives only in the enclosing [`DeepFingerprint`].
 ///
-/// The constraint counts duplicate the values in the enclosing
-/// [`SegmentRecord`]. This is intentional: it makes the fingerprint a
-/// self-contained `Hash + Eq` key so callers can use it directly in
-/// equivalence maps without also comparing the segment record.
-///
-/// [`TypeId`]: core::any::TypeId
+/// The 64-bit `eval` truncation gives ~2^{-64} collision probability per pair,
+/// which is adequate for floor-planner and intra-circuit memoization
+/// equivalence classes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RoutineFingerprint {
-    input_kind: TypeId,
-    output_kind: TypeId,
+pub struct BaseFingerprint {
+    num_gates: usize,
+    num_constraints: usize,
     eval: u64,
-    local_num_gates: usize,
-    local_num_constraints: usize,
 }
 
-impl RoutineFingerprint {
-    /// Constructs a [`RoutineFingerprint`] from a routine's `Input`/`Output`
-    /// type ids, a field element evaluation, and local constraint counts.
-    fn of<F: PrimeField, Ro: Routine<F>>(
-        eval: F,
-        local_num_gates: usize,
-        local_num_constraints: usize,
-    ) -> Self {
+impl BaseFingerprint {
+    fn new<F: PrimeField>(eval: F, num_gates: usize, num_constraints: usize) -> Self {
         Self {
-            input_kind: TypeId::of::<Ro::Input>(),
-            output_kind: TypeId::of::<Ro::Output>(),
+            num_gates,
+            num_constraints,
             eval: ragu_arithmetic::low_u64(&eval),
-            local_num_gates,
-            local_num_constraints,
         }
     }
 
-    /// Returns the raw evaluation scalar.
+    /// The number of gates in the routine's base segment.
+    pub fn num_gates(&self) -> usize {
+        self.num_gates
+    }
+
+    /// The number of constraints in the routine's base segment.
+    pub fn num_constraints(&self) -> usize {
+        self.num_constraints
+    }
+}
+
+/// Full recursive fingerprint for a routine invocation.
+///
+/// Augments [`BaseFingerprint`] with a 64-bit BLAKE2b digest that recursively
+/// folds in the raw values of the routine's output-gadget wires (which carry
+/// positional information relative to the routine's own scope) and the deep
+/// fingerprints of every direct child routine. Two invocations with matching
+/// `DeepFingerprint`s are structurally identical at every nesting level —
+/// same base shape, same output wire placement, same recursive subtree.
+///
+/// Type identity is *not* part of the digest: under relaxed fungibility,
+/// routines whose outputs differ only in Rust type wrapper (e.g. `Element`
+/// vs a newtype wrapping it, with the same wire layout) are treated as
+/// equivalent. Allocation determinism on `GadgetKind` is what makes
+/// substitution between such routines safe at memoization time.
+///
+/// The separation from [`BaseFingerprint`] matters because deep equivalence is
+/// a stronger claim than base equivalence and enables stronger memoization
+/// (caching an entire routine subtree, not just the base segment).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DeepFingerprint {
+    base: BaseFingerprint,
+    deep: u64,
+}
+
+/// Domain tag for the deep fingerprint hash.
+const DEEP_HASH_PERSONAL: &[u8; 16] = b"ragu_deep_hash__";
+
+impl DeepFingerprint {
+    /// Builds a [`DeepFingerprint`] from a routine's base segment shape,
+    /// output-gadget wire values, and direct child deep hashes.
+    ///
+    /// The deep hash absorbs, in order:
+    ///
+    /// 1. all [`BaseFingerprint`] fields: `eval`, `num_gates`,
+    ///    `num_constraints`;
+    /// 2. the number of output-gadget wires (length-bound to avoid
+    ///    concatenation ambiguity on the subsequent stream) followed by
+    ///    each output wire's raw field-element value in canonical byte
+    ///    repr;
+    /// 3. the number of direct child routines (length-bound) followed by
+    ///    each child's deep hash.
+    ///
+    /// Hashing output-wire values directly (rather than collapsing them
+    /// to a single scalar first) keeps the hash sensitive to wire-order
+    /// permutations that leave the output gadget tuple-equal. The stored
+    /// `deep` is the first 8 bytes of the BLAKE2b digest interpreted as a
+    /// little-endian `u64`.
+    fn new<F: PrimeField, Ro: Routine<F>>(
+        base: BaseFingerprint,
+        output_wires: &[F],
+        children: &[u64],
+    ) -> Self {
+        let _ = core::marker::PhantomData::<Ro>;
+        let mut state = blake2b_simd::Params::new()
+            .personal(DEEP_HASH_PERSONAL)
+            .to_state();
+        state.update(&base.eval.to_le_bytes());
+        state.update(&(base.num_gates as u64).to_le_bytes());
+        state.update(&(base.num_constraints as u64).to_le_bytes());
+        state.update(&(output_wires.len() as u64).to_le_bytes());
+        for w in output_wires {
+            state.update(w.to_repr().as_ref());
+        }
+        state.update(&(children.len() as u64).to_le_bytes());
+        for child in children {
+            state.update(&child.to_le_bytes());
+        }
+        let bytes = state.finalize();
+        let bytes = bytes.as_array();
+        let deep = u64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]);
+        Self { base, deep }
+    }
+
+    /// Returns the base fingerprint (polynomial equivalence only).
+    pub fn base(&self) -> &BaseFingerprint {
+        &self.base
+    }
+
+    /// Returns the recursive deep hash.
+    pub fn deep(&self) -> u64 {
+        self.deep
+    }
+
+    /// Returns the raw constraint evaluation scalar.
     #[cfg(test)]
     pub(crate) fn eval(&self) -> u64 {
-        self.eval
+        self.base.eval
     }
 }
 
@@ -226,16 +319,66 @@ struct CounterScope<F> {
     /// Running monomial for $d$ wires: $x_3^{i+1}$ at gate $i$.
     current_d: F,
 
-    /// Running value for [`WireMap::convert_wire`] in this scope: each call
-    /// returns the current value and multiplies by `Counter::x_remap`.
-    /// Initialized to `x_remap` on every scope push, so each routine's input
-    /// remap mints the same prefix `x_remap, x_remap^2, …` regardless of
-    /// caller context. This is what makes structurally identical routine
-    /// invocations produce identical fingerprints.
-    remap_current: F,
+    /// Per-scope remap sequence for [`WireMap`]-driven interface wire minting.
+    /// Initialized fresh on every scope push (`cur = base`), so each routine's
+    /// input-gadget wires mint the same `base, base^2, …` prefix regardless
+    /// of caller context.
+    remap: ReinitWires<F>,
 
-    /// Horner accumulator for the fingerprint evaluation result.
+    /// Horner accumulator for the fingerprint evaluation result. Seeded to
+    /// `F::ZERO` on every scope push.
     result: F,
+
+    /// Deep hashes of direct child routines, collected during execution.
+    /// Folded into this scope's own `DeepFingerprint` on exit.
+    child_deep_hashes: Vec<u64>,
+}
+
+/// A [`WireMap`] that mints each source wire as a fresh value from an
+/// independent geometric sequence.
+///
+/// Holds a never-mutated `base` (the geometric ratio) and a running `cur`
+/// that advances by `base` on every [`convert_wire`](ReinitWires::convert_wire)
+/// call. Keeps the base and the running counter co-located so the "base is
+/// only read" invariant is auditable in one place.
+///
+/// Each routine scope owns its own `ReinitWires` and re-initializes it on
+/// entry (`cur = base`), so input-gadget wires observe the same prefix
+/// `base, base^2, …` regardless of caller context — which is what makes
+/// structurally identical routine invocations produce identical fingerprints.
+/// On return to the parent scope, the parent's `ReinitWires` is restored and
+/// continues from where it left off, appending the child's output-gadget
+/// wires to the parent's sequence.
+struct ReinitWires<F> {
+    /// Geometric ratio. Never mutated after construction.
+    base: F,
+    /// Running counter. Each call to [`mint`](Self::mint) returns the current
+    /// value, then multiplies it by `base`.
+    cur: F,
+}
+
+impl<F: Copy + core::ops::MulAssign> ReinitWires<F> {
+    fn new(base: F) -> Self {
+        Self { base, cur: base }
+    }
+
+    fn mint(&mut self) -> F {
+        let v = self.cur;
+        self.cur *= self.base;
+        v
+    }
+}
+
+/// [`WireMap`] for `Counter`→`Counter`: every source wire is replaced by a
+/// fresh value from this `ReinitWires` sequence. No gates are allocated and
+/// no constraint counts change.
+impl<F: FromUniformBytes<64>> WireMap<F> for ReinitWires<F> {
+    type Src = Counter<F>;
+    type Dst = Counter<F>;
+
+    fn convert_wire(&mut self, _: &F) -> Result<F> {
+        Ok(self.mint())
+    }
 }
 
 /// A [`Driver`] that simultaneously counts constraints and computes routine
@@ -250,7 +393,8 @@ struct CounterScope<F> {
 /// Nested routine outputs are treated as auxiliary inputs to the caller: on
 /// return, output wires are remapped to fresh allocations in the parent scope
 /// rather than folding the child's fingerprint scalar. This makes each
-/// routine's fingerprint capture only its *internal* constraint structure.
+/// routine's base fingerprint capture only its *internal* constraint structure;
+/// the deep fingerprint captures the full recursive subtree.
 struct Counter<F> {
     scope: CounterScope<F>,
     num_constraints: usize,
@@ -269,39 +413,19 @@ struct Counter<F> {
     /// Base for the $d$-wire geometric sequence.
     x3: F,
 
-    /// Base for the remap geometric sequence used by [`WireMap::convert_wire`].
-    /// Independent from `x0..x3` so remap-minted wire values cannot collide
-    /// with allocated wire values. The running counter (`remap_current`) lives
-    /// on [`CounterScope`] and is reset on every scope push.
+    /// Immutable base for the remap geometric sequence used by
+    /// [`ReinitWires`]. Read once when each scope's `remap` is constructed;
+    /// never mutated. Independent from `x0..x3` so remap-minted wire values
+    /// cannot collide with allocated wire values.
     x_remap: F,
 
     /// Multiplier for Horner accumulation, applied per [`enforce_zero`] call.
     ///
     /// [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
     y: F,
-
-    /// Initial value of the Horner accumulator for each routine scope.
-    ///
-    /// A nonzero seed derived from the same BLAKE2b PRF ensures that leading
-    /// `enforce_zero` calls with zero-valued linear combinations still shift
-    /// the accumulator (via `result = h * y + lc_value`), preventing
-    /// degenerate collisions. Without this, a routine whose first linear
-    /// combination evaluates to zero (`lc_value = 0`) would produce
-    /// `0 * y^{n-1} + c_2 * y^{n-2} + …`, colliding with a shorter routine
-    /// that starts at `c_2`. The nonzero seed lifts the accumulator to
-    /// `h * y^n + c_1 * y^{n-1} + …`, making the leading power of `y`
-    /// always visible.
-    h: F,
 }
 
 impl<F: FromUniformBytes<64>> Counter<F> {
-    /// Mints the next fresh wire value from the `x_remap` geometric sequence.
-    fn next_remap(&mut self) -> F {
-        let v = self.scope.remap_current;
-        self.scope.remap_current *= self.x_remap;
-        v
-    }
-
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -315,8 +439,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let x2 = point(2);
         let x3 = point(3);
         let y = point(4);
-        let h = point(5);
-        let x_remap = point(6);
+        let x_remap = point(5);
 
         Self {
             scope: CounterScope {
@@ -325,8 +448,9 @@ impl<F: FromUniformBytes<64>> Counter<F> {
                 current_b: x1,
                 current_c: x2,
                 current_d: x3,
-                remap_current: x_remap,
-                result: h,
+                remap: ReinitWires::new(x_remap),
+                result: F::ZERO,
+                child_deep_hashes: Vec::new(),
             },
             num_constraints: 0,
             num_gates: 0,
@@ -340,7 +464,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
             x2,
             x3,
             y,
-            h,
             x_remap,
         }
     }
@@ -407,7 +530,7 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         routine: Ro,
         input: Bound<'dr, Self, Ro::Input>,
     ) -> Result<Bound<'dr, Self, Ro::Output>> {
-        // Push new segment with placeholder identity.
+        // Push a new segment with placeholder identity (overwritten at exit).
         self.segments.push(SegmentRecord {
             num_gates: 0,
             num_constraints: 0,
@@ -424,56 +547,51 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
                 current_b: self.x1,
                 current_c: self.x2,
                 current_d: self.x3,
-                remap_current: self.x_remap,
-                result: self.h,
+                remap: ReinitWires::new(self.x_remap),
+                result: F::ZERO,
+                child_deep_hashes: Vec::new(),
             },
         );
 
         // Remap input wires to fresh tokens disjoint from the routine's
-        // geometric sequences, so the fingerprint captures only internal
-        // structure, not caller context. The remap mints values from
-        // `x_remap` and does not advance the geometric sequences or
-        // increment any counts.
-        let new_input = Ro::Input::map_gadget(&input, self)?;
+        // geometric sequences so the fingerprint captures only internal
+        // structure, not caller context. Uses the child scope's fresh
+        // `ReinitWires`, so wires observe the same positional prefix every
+        // invocation.
+        let new_input = Ro::Input::map_gadget(&input, &mut self.scope.remap)?;
 
-        // Predict and execute.
+        // Predict and execute the routine on this driver.
         let aux = Emulator::predict(&routine, &new_input)?.into_aux();
         let output = routine.execute(self, new_input, aux)?;
 
-        // Extract fingerprint from the child's Horner accumulator and counts.
-        let seg = &self.segments[segment_idx];
-        self.segments[segment_idx].identity =
-            RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
-                self.scope.result,
-                seg.num_gates,
-                seg.num_constraints,
-            ));
+        // Collect the raw output-wire values BEFORE parent-context remap
+        // so the deep hash binds their positions relative to the child's
+        // scope, not the parent's.
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
-        // Restore parent scope.
+        // Build the fingerprint from the child's Horner accumulator,
+        // segment counts, collected output wires, and accumulated child
+        // deep hashes.
+        let seg = &self.segments[segment_idx];
+        let base = BaseFingerprint::new(self.scope.result, seg.num_gates, seg.num_constraints);
+        let fingerprint =
+            DeepFingerprint::new::<F, Ro>(base, &output_wires, &self.scope.child_deep_hashes);
+        self.segments[segment_idx].identity = RoutineIdentity::Routine(fingerprint);
+
+        // Restore parent scope, then record this child's deep hash so the
+        // parent's own deep fingerprint (computed when the parent itself
+        // returns) binds it.
         self.scope = saved;
+        self.scope.child_deep_hashes.push(fingerprint.deep);
 
         // Remap child output wires as fresh tokens in the parent context.
-        // The child's geometric sequences share bases with the parent (both
-        // start at x0..x3), so child-allocated values overlap systematically
-        // with parent-allocated values; the remap re-tokenizes them onto
-        // the parent's `x_remap` sequence to keep them distinct.
-        let parent_output = Ro::Output::map_gadget(&output, self)?;
+        // The child's geometric sequences share bases with the parent
+        // (both start at x0..x3), so child-allocated values overlap
+        // systematically with parent-allocated values; the remap
+        // re-tokenizes them onto the parent's `ReinitWires` sequence.
+        let parent_output = Ro::Output::map_gadget(&output, &mut self.scope.remap)?;
 
         Ok(parent_output)
-    }
-}
-
-/// [`WireMap`] for `Counter`→`Counter`: each source wire is replaced by a
-/// fresh value from the dedicated `x_remap` geometric sequence. No gates are
-/// allocated and no constraint counts change — remap-minted wires are purely
-/// distinct field-element tokens used to keep routine fingerprints
-/// independent of caller context.
-impl<F: FromUniformBytes<64>> WireMap<F> for Counter<F> {
-    type Src = Self;
-    type Dst = Self;
-
-    fn convert_wire(&mut self, _: &F) -> Result<F> {
-        Ok(self.next_remap())
     }
 }
 
@@ -552,7 +670,7 @@ pub(crate) mod tests {
         type Dst = Counter<F>;
 
         fn convert_wire(&mut self, _: &Src::ImplWire) -> Result<F> {
-            Ok(self.counter.next_remap())
+            Ok(self.counter.scope.remap.mint())
         }
     }
 
@@ -592,15 +710,20 @@ pub(crate) mod tests {
 
         // Predict (on a wireless emulator) then execute on the counter.
         let aux = Emulator::predict(routine, &new_input)?.into_aux();
-        routine.execute(&mut counter, new_input, aux)?;
+        let output = routine.execute(&mut counter, new_input, aux)?;
+
+        // Collect output wire values before any parent-context remap
+        // (there is no parent here, but the ordering mirrors Counter::routine).
+        let output_wires = extract_wires(&output, |w: &F| *w)?;
 
         // Segment 0 holds only this routine's own constraints; nested
         // routine constraints live in their own segments.
         let seg = &counter.segments[0];
-        Ok(RoutineIdentity::Routine(RoutineFingerprint::of::<F, Ro>(
-            counter.scope.result,
-            seg.num_gates,
-            seg.num_constraints,
+        let base = BaseFingerprint::new(counter.scope.result, seg.num_gates, seg.num_constraints);
+        Ok(RoutineIdentity::Routine(DeepFingerprint::new::<F, Ro>(
+            base,
+            &output_wires,
+            &counter.scope.child_deep_hashes,
         )))
     }
 
