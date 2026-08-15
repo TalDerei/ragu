@@ -38,11 +38,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let z = C::CircuitField::random(&mut rng);
 
         // The proof's circuit_id selects which wiring polynomial the verifier
-        // checks against. Every domain point is a wiring polynomial, so any
-        // in-domain id is well defined: it is either a registered circuit or the
-        // zero wiring polynomial (bonding-shaped, so it cannot satisfy a circuit
-        // revdot claim). Rejecting out-of-domain ids confines the selection to
-        // those slots rather than a Lagrange interpolation across circuits.
+        // checks against, and every domain point carries one, so an in-domain id
+        // is always well defined. It need not name a circuit: the domain also
+        // holds registered bonding polynomials and, at unassigned points, the
+        // zero polynomial, which is itself a bonding polynomial. Letting the
+        // prover choose freely among them is safe because this check expects a
+        // circuit and so fixes k_0 = 1, which no bonding polynomial (s(X, 0) =
+        // 0) can satisfy. Rejecting out-of-domain ids keeps the selection inside
+        // that argument, rather than an evaluation of the registry interpolation
+        // at an arbitrary point.
         // (Internal circuit IDs are constants and don't need this check.)
         if !self
             .native_registry
