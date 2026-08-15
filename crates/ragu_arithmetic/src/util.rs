@@ -320,19 +320,24 @@ pub fn geosum<F: Field>(mut r: F, mut m: usize) -> F {
     sum
 }
 
-/// Writes $c(X) = a(X) \cdot b(X)$ into `out` via FFT.
+/// Writes $c(X) = a(X) \cdot b(X)$ into `out`.
 ///
 /// If either input is empty, `out` is cleared and the function returns.
-/// Otherwise `out.len()` becomes `a.len() + b.len() - 1` on return, with
-/// capacity left at `≥ 2 · next_power_of_two(a.len() + b.len() - 1)` (the
-/// function uses the upper half of the buffer as FFT scratch); one-shot
-/// callers that care about the slack should `shrink_to_fit` before handing
-/// the buffer to consumers.
+/// Otherwise `out.len()` becomes `a.len() + b.len() - 1` on return. `out`
+/// may be left with excess capacity; callers performing repeated products
+/// can reuse the buffer across calls.
+///
+/// Outside of [`poly_with_roots`] and [`decomp_product_poly`], this function
+/// has no callers in this workspace yet; it is groundwork for the upcoming
+/// revdot-reduction prover.
 ///
 /// # Panics
 ///
-/// Panics if the required FFT domain size exceeds the field's 2-adicity,
-/// i.e., if `(a.len() + b.len() - 1).next_power_of_two().ilog2() > F::S`.
+/// Small products are computed by schoolbook convolution and large ones via
+/// FFT, chosen by an internal cost heuristic. Panics if the product is
+/// computed via FFT and the required domain size exceeds the field's
+/// 2-adicity, i.e., if
+/// `(a.len() + b.len() - 1).next_power_of_two().ilog2() > F::S`.
 pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     out.clear();
 
@@ -340,6 +345,36 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
         return;
     }
 
+    // Schoolbook convolution costs `a.len() * b.len()` field multiplications;
+    // the FFT path costs roughly 16 multiplications per point of its
+    // power-of-two evaluation domain (measured empirically on the Pasta
+    // fields). Take the cheaper path.
+    let schoolbook_cost = a.len().saturating_mul(b.len());
+    let fft_cost = (a.len() + b.len() - 1)
+        .next_power_of_two()
+        .saturating_mul(16);
+    if schoolbook_cost <= fft_cost {
+        poly_mul_schoolbook(a, b, out);
+    } else {
+        poly_mul_fft(a, b, out);
+    }
+}
+
+/// Computes the product by schoolbook convolution; this is [`poly_mul`]'s
+/// path for small inputs. Expects `out` to be empty and both inputs to be
+/// non-empty.
+fn poly_mul_schoolbook<F: Field>(a: &[F], b: &[F], out: &mut Vec<F>) {
+    out.resize(a.len() + b.len() - 1, F::ZERO);
+    for (i, &ai) in a.iter().enumerate() {
+        for (j, &bj) in b.iter().enumerate() {
+            out[i + j] += ai * bj;
+        }
+    }
+}
+
+/// Computes the product via FFT; this is [`poly_mul`]'s path for large
+/// inputs. Expects `out` to be empty and both inputs to be non-empty.
+fn poly_mul_fft<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
     let result_len = a.len() + b.len() - 1;
     let n = result_len.next_power_of_two();
     let domain = Domain::new(n.ilog2());
@@ -371,7 +406,8 @@ pub fn poly_mul<F: PrimeField>(a: &[F], b: &[F], out: &mut Vec<F>) {
 /// This is the polynomial-decomposition step in the protocol's reduction
 /// from a revdot claim to a polynomial query; see the
 /// [book](https://tachyon.z.cash/ragu/protocol/prelim/structured_vectors.html#reduction-to-polynomial-queries)
-/// for how the protocol consumes it.
+/// for how the protocol consumes it. This function has no callers in this
+/// workspace yet; it is groundwork for the upcoming revdot-reduction prover.
 ///
 /// Equal length is required: the identity is parameterized by a single $n$
 /// where $|\mathbf{a}| = |\mathbf{b}| = n$. With $c = a \cdot b$ of length
@@ -425,21 +461,19 @@ pub fn decomp_product_poly<F: PrimeField>(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) 
 
     let q = c.split_off(n);
     c.reverse();
-    // `poly_mul` resized `out` to `2 · next_power_of_two(2n - 1)` (the upper
-    // half was used as scratch for `FFT(b)`) and then truncated to `2n - 1`,
-    // leaving slack in `c`'s capacity. `split_off` preserves that capacity,
-    // so shrink before returning so `p` doesn't carry it.
+    // `split_off` preserves `c`'s capacity, which may include scratch slack
+    // left by `poly_mul`; shrink so `p` doesn't carry it.
     c.shrink_to_fit();
     (c, q)
 }
 
-/// Computes the lowest degree monic polynomial
+/// Computes the monic polynomial
 ///
 /// $$
 /// \prod_{i=0}^{n-1} (X - r_i)
 /// $$
 ///
-/// where $r_i$ are the provided values. Multiplicity is maintained, i.e. if a
+/// whose roots are the provided values. Multiplicity is maintained, i.e. if a
 /// root appears $k$ times in the input, it will appear $k$ times in the output
 /// polynomial.
 pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
@@ -448,29 +482,23 @@ pub fn poly_with_roots<F: PrimeField>(roots: &[F]) -> Vec<F> {
     }
 
     let mut polys: Vec<Vec<F>> = roots.iter().map(|&root| vec![-root, F::ONE]).collect();
-    // `poly_mul` uses `out` itself as scratch and grows it to twice the FFT
-    // domain size; pre-allocate for the largest multiply we'll do.
-    let max_n = (roots.len() + 1).next_power_of_two();
-    let mut out = Vec::with_capacity(2 * max_n);
+    let mut out = Vec::new();
 
     while polys.len() > 1 {
-        let pairs = polys.len() / 2;
-        let has_odd = polys.len() % 2 == 1;
+        let mut next = Vec::with_capacity(polys.len().div_ceil(2));
+        let mut iter = polys.into_iter();
+        while let Some(mut first) = iter.next() {
+            if let Some(second) = iter.next() {
+                poly_mul(&first, &second, &mut out);
 
-        for i in 0..pairs {
-            poly_mul(&polys[2 * i], &polys[2 * i + 1], &mut out);
-            polys[i].clear();
-            polys[i].extend_from_slice(&out);
-        }
-
-        if has_odd {
-            let last_idx = polys.len() - 1;
-            if pairs < last_idx {
-                polys.swap(pairs, last_idx);
+                // Swap rather than copy: the product buffer moves into the
+                // tree and `first`'s old buffer becomes the next multiply's
+                // scratch.
+                core::mem::swap(&mut first, &mut out);
             }
+            next.push(first);
         }
-
-        polys.truncate(pairs + if has_odd { 1 } else { 0 });
+        polys = next;
     }
 
     polys.into_iter().next().unwrap()
@@ -579,12 +607,13 @@ mod proptests {
     }
 
     /// Draws two vectors of independently random field elements with a
-    /// common random length in `1..=32`. Coefficients occasionally land
-    /// on zero, exercising sparse polynomials and the case where the
-    /// highest-degree coefficient is zero — relevant to the no-trim
-    /// contract on `decomp_product_poly`'s `q`.
+    /// common random length in `1..=64`, straddling the schoolbook/FFT
+    /// crossover so both [`poly_mul`] paths are exercised. Coefficients
+    /// occasionally land on zero, exercising sparse polynomials and the
+    /// case where the highest-degree coefficient is zero — relevant to the
+    /// no-trim contract on [`decomp_product_poly`]'s `q`.
     fn arb_equal_length_pair() -> impl Strategy<Value = (Vec<F>, Vec<F>)> {
-        (1usize..=32).prop_flat_map(|n| {
+        (1usize..=64).prop_flat_map(|n| {
             (
                 proptest::collection::vec(arb_fe_with_zeros(), n..=n),
                 proptest::collection::vec(arb_fe_with_zeros(), n..=n),
@@ -651,8 +680,8 @@ mod proptests {
 
         #[test]
         fn poly_mul_convolution(
-            a in proptest::collection::vec(arb_fe(), 1..32),
-            b in proptest::collection::vec(arb_fe(), 1..32),
+            a in proptest::collection::vec(arb_fe(), 1..64),
+            b in proptest::collection::vec(arb_fe(), 1..64),
         ) {
             let mut c = Vec::new();
             poly_mul(&a, &b, &mut c);
@@ -714,6 +743,23 @@ mod proptests {
         let a = vec![F::ONE, F::ONE];
         let b = vec![F::ONE];
         let _ = decomp_product_poly(&a, &b);
+    }
+
+    #[test]
+    fn poly_mul_paths_agree() {
+        let mut school_out = Vec::new();
+        let mut fft_out = Vec::new();
+        for m in [1usize, 2, 3, 17, 33, 45, 46, 64] {
+            let a: Vec<F> = (0..m)
+                .map(|i| F::from(i as u64 + 2) * F::MULTIPLICATIVE_GENERATOR)
+                .collect();
+            let b: Vec<F> = (0..m).map(|i| F::from(i as u64 + 5) * F::DELTA).collect();
+            school_out.clear();
+            poly_mul_schoolbook(&a, &b, &mut school_out);
+            fft_out.clear();
+            poly_mul_fft(&a, &b, &mut fft_out);
+            assert_eq!(school_out, fft_out, "paths disagree at m = {}", m);
+        }
     }
 
     #[test]
