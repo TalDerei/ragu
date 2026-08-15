@@ -53,7 +53,7 @@
 //!
 //! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 
 use blake2b_simd::Params;
 use ragu_arithmetic::{
@@ -255,29 +255,11 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             .map(|circuit| crate::floor_planner::floor_plan(circuit.segment_records()))
             .collect();
 
-        // Build omega^j -> i lookup table.
-        let mut omega_lookup = BTreeMap::new();
-
-        for i in 0..circuits.len() {
-            // Rather than assigning the `i`th circuit to `omega^i` in the final
-            // domain, we will assign it to `omega^j` where `j` is the
-            // `log2_circuits` bit-reversal of `i`. This has the property that
-            // `omega^j` = `F::ROOT_OF_UNITY^m` where `m` is the `F::S` bit
-            // reversal of `i`, which can be computed independently of `omega`
-            // and the actual (ideal) choice of `log2_circuits`. In effect, this
-            // is *implicitly* performing domain extensions as smaller domains
-            // become exhausted.
-            let j = bitreverse(i as u32, log2_circuits) as usize;
-            let omega_j = OmegaKey::from(domain.omega().pow([j as u64]));
-            omega_lookup.insert(omega_j, i);
-        }
-
         // Create provisional registry (key not yet computed)
         let mut registry = Registry {
             domain,
             circuits,
             floor_plans,
-            omega_lookup,
             key: Key::default(),
         };
         registry.key = Key::new(registry.compute_registry_digest());
@@ -367,10 +349,6 @@ pub struct Registry<'params, F: PrimeField, R: Rank> {
     /// Per-circuit floor plans computed during finalization.
     floor_plans: Vec<Vec<ConstraintSegment>>,
 
-    /// Maps from the OmegaKey (which represents some `omega^j`) to the index `i`
-    /// of the circuits vector.
-    omega_lookup: BTreeMap<OmegaKey, usize>,
-
     /// Registry key used to bind circuits to this registry.
     key: Key<F>,
 }
@@ -401,22 +379,6 @@ pub struct RegistryAt<'a, F: PrimeField, R: Rank> {
     registry: &'a Registry<'a, F, R>,
     cache: LagrangeCache<F>,
     mask_coeff_sum: F,
-}
-
-/// Represents a key for identifying a unique $\omega^j$ value where $\omega$ is
-/// a $2^k$-th root of unity.
-#[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
-struct OmegaKey(u64);
-
-impl<F: PrimeField> From<F> for OmegaKey {
-    fn from(f: F) -> Self {
-        // Multiplication by 5 ensures the least significant 64 bits of the
-        // field element can be used as a key for all elements of order 2^k.
-        // TODO: This only holds for the Pasta curves. See issue #51
-        let product = f.double().double() + f;
-
-        OmegaKey(ragu_arithmetic::low_u64(&product))
-    }
 }
 
 impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
@@ -479,6 +441,13 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         self.circuits.len()
     }
 
+    /// Converts between a domain position and its circuit index: circuit `i`
+    /// is assigned to domain position `bitreverse(i)` over `log2_n` bits, and
+    /// the map is its own inverse.
+    fn bitreversed_index(&self, i: usize) -> usize {
+        bitreverse(i as u32, self.domain.log2_n()) as usize
+    }
+
     /// Evaluates the registry key contribution $k \cdot (XY)^{4n-1}$
     /// at $(x, y)$, returning a scalar.
     fn key_sxy(&self, x: F, y: F) -> F {
@@ -498,7 +467,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         // global term to each mask slot inline.
         let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
         for (i, circuit) in self.circuits.iter().enumerate() {
-            let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
+            let j = self.bitreversed_index(i);
             let mut v = circuit.sxy(x, y, &self.floor_plans[i]);
             if circuit.is_mask() {
                 v += global_xy;
@@ -599,7 +568,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                 // coefficients we need to use to separate each (partial) circuit
                 // evaluation.
                 for (j, coeff) in coeffs.iter().enumerate() {
-                    let i = bitreverse(j as u32, self.domain.log2_n()) as usize;
+                    let i = self.bitreversed_index(j);
                     if let Some(circuit) = self.circuits.get(i) {
                         add_poly(&**circuit, &self.floor_plans[i], *coeff, &mut result);
                     }
@@ -630,7 +599,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                 let mut sum = F::ZERO;
                 for (i, circuit) in self.circuits.iter().enumerate() {
                     if circuit.is_mask() {
-                        let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
+                        let j = self.bitreversed_index(i);
                         sum += coeffs[j];
                     }
                 }
@@ -654,18 +623,30 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Returns a [`RegistryAt`] that can be used to evaluate the registry
     /// polynomial at multiple $X$/$Y$ points without recomputing the W-restriction.
     pub fn at(&self, w: F) -> RegistryAt<'_, F, R> {
-        let cache = if let Ok(coeffs) = self.domain.lagrange_evals(w, self.domain.n()) {
-            // w is not a domain point; the Lagrange coefficients evaluate the
-            // registry interpolation there.
-            LagrangeCache::Arbitrary(coeffs)
-        } else if let Some(&i) = self.omega_lookup.get(&OmegaKey::from(w)) {
-            // w is a domain point (omega^j) with a wiring polynomial registered
-            // at index i.
-            LagrangeCache::Assigned(i)
-        } else {
-            // w is a domain point with nothing explicitly registered; its wiring
-            // polynomial is implicitly the zero polynomial.
-            LagrangeCache::Zero
+        let cache = match self.domain.lagrange_evals(w, self.domain.n()) {
+            Ok(coeffs) => {
+                // w is not a domain point; the Lagrange coefficients evaluate
+                // the registry interpolation there.
+                LagrangeCache::Arbitrary(coeffs)
+            }
+            Err(j) => {
+                // w is the domain point omega^j. The i-th circuit is assigned
+                // to omega^bitreverse(i) rather than omega^i — the domain-local
+                // half of `CircuitIndex::omega_j`'s size-independent mapping,
+                // which in effect *implicitly* performs domain extensions as
+                // smaller domains become exhausted. Inverting that assignment,
+                // the wiring polynomial registered at omega^j (if any) sits at
+                // the bit-reversed index.
+                let i = self.bitreversed_index(j);
+                if i < self.circuits.len() {
+                    LagrangeCache::Assigned(i)
+                } else {
+                    // w is a padded domain point with nothing explicitly
+                    // registered; its wiring polynomial is implicitly the
+                    // zero polynomial.
+                    LagrangeCache::Zero
+                }
+            }
         };
         let mask_coeff_sum = self.mask_coeff_sum(&cache);
         RegistryAt {
@@ -805,8 +786,6 @@ impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::{BTreeSet, btree_map::BTreeMap};
-
     use ragu_arithmetic::{
         Domain, bitreverse,
         ff::{Field, PrimeField},
@@ -814,7 +793,7 @@ mod tests {
     use ragu_core::Result;
     use ragu_pasta::Fp;
 
-    use super::{CircuitIndex, OmegaKey, RegistryBuilder};
+    use super::{CircuitIndex, RegistryBuilder};
     use crate::{polynomials::TestRank, tests::SquareCircuit};
     type TestRegistryBuilder<'a> = RegistryBuilder<'a, Fp, TestRank>;
 
@@ -951,59 +930,27 @@ mod tests {
         Ok(())
     }
 
-    /// `OmegaKey::from` only looks at the low 64 bits (after 5 times), so
-    /// different field elements can map to the same key. `Registry::at`
-    /// handles this by checking `domain.lagrange_evals` before `omega_lookup`.
-    /// Here we forge a collision and verify evaluations are still correct.
     #[test]
-    fn test_omega_key_collision() -> Result<()> {
-        let registry = TestRegistryBuilder::new()
-            .register_circuit(SquareCircuit { times: 2 })?
-            .register_circuit(SquareCircuit { times: 5 })?
-            .finalize()?;
-
-        let omega = registry.domain.omega();
-
-        let mut repr = (omega.double().double() + omega).to_repr();
-        repr.as_mut()[8] ^= 1;
-        let w = Fp::from_repr(repr).unwrap() * Fp::from(5u64).invert().unwrap();
-
-        assert_eq!(OmegaKey::from(w), OmegaKey::from(omega));
-        assert!(!registry.domain.contains(w));
-
-        let x = Fp::from(42u64);
-        let y = Fp::from(43u64);
-        assert_ne!(registry.at(w).xy(x, y), registry.at(omega).xy(x, y));
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_omega_lookup_correctness() -> Result<()> {
-        let log2_circuits = 8;
-        let domain = Domain::<Fp>::new(log2_circuits);
-        let domain_size = 1 << log2_circuits;
-
-        let mut omega_lookup = BTreeMap::new();
-        let mut omega_power = Fp::ONE;
-
-        for i in 0..domain_size {
-            omega_lookup.insert(OmegaKey::from(omega_power), i);
-            omega_power *= domain.omega();
+    fn test_all_domain_points_match_interpolation_non_pow2() -> Result<()> {
+        // 5 circuits pad the domain to size 8; indices 5..8 carry the zero
+        // polynomial. Every domain point — registered (`Assigned` fast path)
+        // and padded (`Zero` fast path) — must agree with the interpolation
+        // evaluated there, key term included.
+        let mut builder = TestRegistryBuilder::new();
+        for i in 1..=5 {
+            builder = builder.register_circuit(SquareCircuit { times: i })?;
         }
+        let registry = builder.finalize()?;
+        assert_eq!(registry.domain.n(), 8);
 
-        omega_power = Fp::ONE;
-        for i in 0..domain_size {
-            let looked_up_index = omega_lookup.get(&OmegaKey::from(omega_power)).copied();
+        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let xy_poly = registry.xy(x, y);
 
-            assert_eq!(
-                looked_up_index,
-                Some(i),
-                "Failed to lookup omega^{} correctly",
-                i
-            );
-
-            omega_power *= domain.omega();
+        let mut w = Fp::ONE;
+        for _ in 0..registry.domain.n() {
+            assert_eq!(registry.wxy(w, x, y), xy_poly.eval(w));
+            w *= registry.domain.omega();
         }
 
         Ok(())
@@ -1041,24 +988,6 @@ mod tests {
         }
 
         Ok(())
-    }
-
-    #[test]
-    fn test_omega_key_uniqueness() {
-        let max_circuits = 1024;
-        let mut seen_keys = BTreeSet::new();
-
-        for i in 0..max_circuits {
-            let omega = CircuitIndex::new(i).omega_j::<Fp>();
-            let key = OmegaKey::from(omega);
-
-            assert!(
-                !seen_keys.contains(&key),
-                "OmegaKey collision at index {}",
-                i
-            );
-            seen_keys.insert(key);
-        }
     }
 
     #[test]
