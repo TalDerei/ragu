@@ -424,7 +424,7 @@ mismatches at link time.
   (`fuzz_witness_pinning`, `fuzz_circuit_cheat`, `fuzz_advice_patcher`)
   and the shared `ragu_testing_fuzz::substrate`: all op-stream targets migrated
   onto it, and the constraint-level targets generalized from the two fixed
-  dummy circuits to arbitrary generated ones.
+  trivial circuits to arbitrary generated ones.
 - Talks/papers referenced in the PR descriptions for technique
   attribution (Aztec BigField, Aztec Noir/Brillig, TU Vienna Circus,
   zksecurity "Towards Fuzzing Zero-Knowledge Proof Circuits").

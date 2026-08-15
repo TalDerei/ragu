@@ -1,9 +1,28 @@
 //! Rerandomization step for PCDs.
 //!
-//! This is a simple step: it takes any left header and combines it with the
-//! trivial header `()` to produce the same left header. In order to ensure that
-//! this rerandomization step emits the same constraints no matter what the
-//! left header is, we use a _uniform_ encoding of the left header.
+//! This is a simple step: it takes a header and folds the proof carrying it
+//! with itself, producing the same header. To keep the circuit identical no
+//! matter what the header is, we use a _uniform_ encoding — which makes every
+//! header slot, including the suffix, a witness wire rather than a constant.
+//!
+//! That witnessed suffix is the one place outside the bootstrap step where a
+//! prover could try to present the [`Dummy`] suffix and take the base case.
+//! Two things stop it. All three header slots — both inputs and the output —
+//! are the *same* wires, so the output header is pinned equal to the input
+//! (no relabelling on the way through) and both children must carry the same
+//! encoded header; `test_rerandomize_consistency` pins that structurally. And
+//! [`Encoded::new_uniform`] constrains the suffix wire away from `Dummy`,
+//! making the base case unsatisfiable here.
+//!
+//! The circuit binds the children to the same *header*, not the same *proof*:
+//! an honest prover passes one proof twice, and any valid proof of that header
+//! on the right is equally harmless, since its claims are folded and enforced
+//! but it contributes nothing to the output. Folding a proof with itself is
+//! what lets rerandomization avoid consuming the bootstrap proof, leaving that
+//! to seed steps alone.
+//!
+//! [`Dummy`]: crate::header::Dummy
+//! [`Encoded::new_uniform`]: crate::step::Encoded::new_uniform
 
 use core::marker::PhantomData;
 
@@ -38,7 +57,7 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
     type Aux<'source> = ();
 
     type Left = H;
-    type Right = ();
+    type Right = H;
     type Output = H;
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
@@ -46,7 +65,7 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
         left: DriverValue<D, H::Data>,
-        right: DriverValue<D, ()>,
+        _right: DriverValue<D, H::Data>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -57,22 +76,25 @@ impl<C: Cycle, H: Header<C::CircuitField>> Step<C> for Rerandomize<H> {
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let allocator = &mut Standard::new();
-        // Use uniform encoding for left to ensure circuit uniformity across header types
-        let left_encoded = Encoded::new_uniform(dr, allocator, left.clone())?;
-        // Use standard encoding for right (trivial header)
-        let right = Encoded::new(dr, allocator, right)?;
+
+        // Uniform encoding keeps this circuit identical across header types and
+        // constrains the witnessed suffix away from `Dummy` (see
+        // `Encoded::new_uniform`). One wire set serves as left input, right
+        // input, and output header (see the module docs), so `right`
+        // contributes nothing here beyond its type.
+        let encoded = Encoded::new_uniform(dr, allocator, left.clone())?;
 
         // TODO(ebfull): It's possible that the witness for this step needs to
         // be populated with some random data, for actual re-randomization
         // (zero-knowledge), though it's not certain at this stage in
-        // development. It's possible some other component(s) of the proof being
-        // randomized is sufficient, which would be nice since it would avoid
-        // extra work here. It would also be complicated to add random wires
-        // here if the amount of wires needed depended on HEADER_SIZE and R:
-        // Rank, both of which are not in scope here.
+        // development. Note that random wires here would only randomize this
+        // step's own application polynomial, which is already blinded; the
+        // folded accumulator of the resulting proof is a deterministic function
+        // of the input proof and the public challenges, so hiding it would need
+        // a fold-level randomizer claim rather than extra witness here.
 
         // Return left's data as the output data - this preserves it!
-        Ok(((left_encoded.clone(), right, left_encoded), left, D::unit()))
+        Ok(((encoded.clone(), encoded.clone(), encoded), left, D::unit()))
     }
 }
 
@@ -139,14 +161,66 @@ mod tests {
                 Rerandomize::new(),
             );
 
+        // `Rerandomize<()>` is the instantiation `finalize` actually registers.
+        let circuit_unit =
+            super::super::adapter::Adapter::<Pasta, Rerandomize<()>, R, HEADER_SIZE>::new(
+                Rerandomize::new(),
+            );
+
+        // A frozen twin of `Rerandomize`, written from primitives: exactly one
+        // uniform-encoded header, whose wires serve as left input, right
+        // input, and output. `Rerandomize` must stay wiring-identical to this,
+        // which pins the load-bearing fact that its three header slots are one
+        // wire set — a separately encoded slot (fresh wires) would let a prover
+        // relabel the header on the way through, and no end-to-end test can
+        // express that witness while the wires are shared.
+        struct OneWireSet;
+        impl Step<Pasta> for OneWireSet {
+            const INDEX: Index = Index::internal(INTERNAL_ID);
+            type Witness<'source> = ();
+            type Aux<'source> = ();
+            type Left = ();
+            type Right = ();
+            type Output = ();
+            fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>, const HS: usize>(
+                &self,
+                dr: &mut D,
+                _: DriverValue<D, ()>,
+                left: DriverValue<D, ()>,
+                _right: DriverValue<D, ()>,
+            ) -> Result<(
+                (
+                    Encoded<'dr, D, (), HS>,
+                    Encoded<'dr, D, (), HS>,
+                    Encoded<'dr, D, (), HS>,
+                ),
+                DriverValue<D, ()>,
+                DriverValue<D, ()>,
+            )> {
+                let allocator = &mut ragu_primitives::allocator::Standard::new();
+                let encoded = Encoded::<'dr, D, (), HS>::new_uniform(dr, allocator, left.clone())?;
+                Ok(((encoded.clone(), encoded.clone(), encoded), left, D::unit()))
+            }
+        }
+        let circuit_twin =
+            super::super::adapter::Adapter::<Pasta, OneWireSet, R, HEADER_SIZE>::new(OneWireSet);
+
         let mut builder: TestRegistryBuilder<'_, _, R> = TestRegistryBuilder::new();
         let single_h = builder.register_circuit(circuit_single).unwrap();
         let pair_h = builder.register_circuit(circuit_pair).unwrap();
+        let unit_h = builder.register_circuit(circuit_unit).unwrap();
+        let twin_h = builder.register_circuit(circuit_twin).unwrap();
         let registry = builder.finalize().unwrap();
 
         let x = Fp::from(5u64);
         let y = Fp::from(17u64);
 
-        assert_eq!(registry.xy(single_h, x, y), registry.xy(pair_h, x, y),);
+        assert_eq!(registry.xy(single_h, x, y), registry.xy(pair_h, x, y));
+        assert_eq!(registry.xy(single_h, x, y), registry.xy(unit_h, x, y));
+        assert_eq!(
+            registry.xy(unit_h, x, y),
+            registry.xy(twin_h, x, y),
+            "Rerandomize must use one uniform wire set for its left, right, and output header slots"
+        );
     }
 }

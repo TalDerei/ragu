@@ -8,7 +8,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_pcd::{
-    header::{Header, Suffix},
+    header::{Header, Leaf, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::{
@@ -166,9 +166,9 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = C::CircuitField;
     type Aux<'source> = ();
-    type Left = ();
-    type Right = ();
     type Output = LeafNode;
+    type Left = Leaf;
+    type Right = Leaf;
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
@@ -194,13 +194,12 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
         sponge.absorb(dr, &leaf)?;
         let leaf = sponge.squeeze(dr)?;
         let leaf_data = leaf.value().map(|v| *v);
-        let leaf_encoded = Encoded::from_gadget(leaf);
 
         Ok((
             (
                 Encoded::from_gadget(()),
                 Encoded::from_gadget(()),
-                leaf_encoded,
+                Encoded::from_gadget(leaf),
             ),
             leaf_data,
             D::unit(),

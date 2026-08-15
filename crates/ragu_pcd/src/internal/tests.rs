@@ -45,7 +45,7 @@ where
 // Then copy-paste the output into the check_constraints! calls in the test below.
 pub const HEADER_SIZE: usize = 105;
 
-// Number of dummy application circuits to register before testing internal
+// Number of trivial application circuits to register before testing internal
 // circuits. Internal circuit construction depends on the resulting registry
 // domain size, and other tests still build an application with this many
 // placeholder steps.

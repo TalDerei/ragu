@@ -40,11 +40,14 @@ pub mod step;
 mod verify;
 
 use alloc::collections::BTreeMap;
-use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
+use core::{any::TypeId, marker::PhantomData};
 
 use header::Header;
 pub use proof::{Pcd, Proof};
-use ragu_arithmetic::{Cycle, rand::CryptoRng};
+use ragu_arithmetic::{
+    Cycle,
+    rand::{CryptoRng, SeedableRng, rngs::StdRng},
+};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
@@ -119,12 +122,40 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// provided [`Step`]'s [`INDEX`](Step::INDEX) must be the next sequential
     /// index that has not been inserted yet.
     ///
+    /// A step declaring [`Leaf`](header::Leaf) for **both** of its inputs is a
+    /// *leaf step*: it has no children and is run with
+    /// [`seed`](Application::seed) rather than [`fuse`](Application::fuse).
+    /// Declaring `Leaf` for only one input, or producing it, is a compile-time
+    /// error — the bootstrap proof is the only proof carrying that header, and
+    /// it belongs only beneath a leaf.
+    ///
     /// # Errors
     ///
     /// Returns an error if the step's index is not the next sequential index,
     /// or if any of the step's header suffixes conflict with an
     /// already-registered header type.
     pub fn register<S: Step<C> + 'params>(mut self, step: S) -> Result<Self> {
+        const {
+            assert!(
+                <S::Left as Header<C::CircuitField>>::SUFFIX.get()
+                    != <header::Dummy as Header<C::CircuitField>>::SUFFIX.get()
+                    && <S::Right as Header<C::CircuitField>>::SUFFIX.get()
+                        != <header::Dummy as Header<C::CircuitField>>::SUFFIX.get(),
+                "a Step cannot declare the Dummy header: only the internal Bootstrap step may, \
+                 and its fuse is the base case"
+            );
+            assert!(
+                <S::Output as Header<C::CircuitField>>::SUFFIX.get() != header::Leaf::SUFFIX_VALUE,
+                "a Step cannot produce the Leaf header"
+            );
+            assert!(
+                (<S::Left as Header<C::CircuitField>>::SUFFIX.get() == header::Leaf::SUFFIX_VALUE)
+                    == (<S::Right as Header<C::CircuitField>>::SUFFIX.get()
+                        == header::Leaf::SUFFIX_VALUE),
+                "a Step must declare the Leaf header for both inputs or neither"
+            );
+        }
+
         S::INDEX.assert_index(self.num_application_steps)?;
 
         self.prevent_duplicate_suffixes::<S::Output>()?;
@@ -157,10 +188,15 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// Perform finalization and optimization steps to produce the
     /// [`Application`].
     ///
+    /// This also bootstraps the recursion: it fuses two synthesized dummies
+    /// through an internal step — the only fuse treated as the base case — to
+    /// produce the bootstrap proof that [`seed`](Application::seed) consumes as
+    /// a child. This costs one fuse, once per application.
+    ///
     /// # Errors
     ///
-    /// Returns an error if internal circuit registration or registry
-    /// finalization fails.
+    /// Returns an error if internal circuit registration, registry
+    /// finalization, or the bootstrap fuse fails.
     pub fn finalize(
         mut self,
         params: &'params C::Params,
@@ -179,16 +215,15 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             log2_circuits,
         )?;
 
-        // Then, register internal steps
+        // Then, register internal steps. `Bootstrap` is registered directly
+        // because it is the one step allowed to declare `Dummy` inputs;
+        // every other internal step goes through `register_internal_step`,
+        // which rejects them.
+        self = self.register_internal_step(step::internal::rerandomize::Rerandomize::<()>::new())?;
         self.native_registry =
             self.native_registry
                 .register_internal_step(Adapter::<C, _, R, HEADER_SIZE>::new(
-                    step::internal::rerandomize::Rerandomize::<()>::new(),
-                ))?;
-        self.native_registry =
-            self.native_registry
-                .register_internal_step(Adapter::<C, _, R, HEADER_SIZE>::new(
-                    step::internal::trivial::Trivial::new(),
+                    step::internal::bootstrap::Bootstrap::new(),
                 ))?;
 
         assert_eq!(
@@ -205,14 +240,65 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // Register nested internal circuits (no application steps, no headers).
         self.nested_registry = internal::nested::register_all::<C, R>(self.nested_registry)?;
 
-        Ok(Application {
+        let mut app = Application {
             native_registry: self.native_registry.finalize()?,
             nested_registry: self.nested_registry.finalize()?,
             params,
             num_application_steps: self.num_application_steps,
-            seeded_trivial: OnceCell::new(),
+            bootstrap: None,
             _marker: PhantomData,
-        })
+        };
+
+        // Bootstrap the recursion once, up front, so that `seed` never pays
+        // for it lazily. The proof carries no secrets — it attests nothing and
+        // is consumed as a public child by every seed — so a fixed seed is
+        // fine. Its bytes are stable for a given `rand` version but must not
+        // be relied on across versions (`StdRng` is not portable), so never
+        // pin them.
+        let mut rng = StdRng::seed_from_u64(0);
+        let (pcd, ()) = app.fuse(
+            &mut rng,
+            step::internal::bootstrap::Bootstrap::new(),
+            (),
+            app.dummy_pcd(),
+            app.dummy_pcd(),
+        )?;
+        app.bootstrap = Some(pcd.into_parts().0);
+
+        Ok(app)
+    }
+
+    /// Registers an internal [`Step`] other than the bootstrap step.
+    ///
+    /// Internal steps do not go through `prevent_duplicate_suffixes`, so this
+    /// is where the invariant that only
+    /// [`Bootstrap`](step::internal::bootstrap::Bootstrap) declares
+    /// [`Dummy`](header::Dummy) inputs is enforced: an internal step
+    /// with `Dummy` inputs would take the base case, and if it also carried
+    /// a data-bearing output it would let a prover attest arbitrary data without
+    /// verifying its children. The check is evaluated at compile time for each
+    /// step registered here.
+    ///
+    /// It covers *declared* (constant) suffixes only. An internal step whose
+    /// input suffix is a witness wire — today only `Rerandomize`, via uniform
+    /// encoding — must instead constrain that wire away from `Dummy`
+    /// itself; see `ProofInputs::is_dummy_input`.
+    fn register_internal_step<S: Step<C> + 'params>(mut self, step: S) -> Result<Self> {
+        const {
+            assert!(
+                <S::Left as Header<C::CircuitField>>::SUFFIX.get()
+                    != header::Suffix::internal(2).get()
+                    && <S::Right as Header<C::CircuitField>>::SUFFIX.get()
+                        != header::Suffix::internal(2).get(),
+                "only the internal Bootstrap step may declare Dummy inputs"
+            );
+        }
+
+        self.native_registry =
+            self.native_registry
+                .register_internal_step(Adapter::<C, S, R, HEADER_SIZE>::new(step))?;
+
+        Ok(self)
     }
 
     fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
@@ -245,73 +331,98 @@ pub struct Application<
     nested_registry: Registry<'params, C::ScalarField, R>,
     params: &'params C::Params,
     num_application_steps: usize,
-    /// Cached seeded trivial proof for rerandomization.
-    seeded_trivial: OnceCell<Proof<C, R>>,
+    /// The proof that bootstraps the recursion: a genuine, verifying
+    /// `Pcd<Leaf>` consumed as a child by every [`seed`](Self::seed).
+    ///
+    /// Always `Some` once [`ApplicationBuilder::finalize`] returns. It is `None`
+    /// only while `finalize` is building it, since doing so runs
+    /// [`fuse`](Self::fuse) on the otherwise complete `Application`.
+    bootstrap: Option<Proof<C, R>>,
     _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
-    /// Seed a new computation by running a step with trivial inputs.
+    /// Seed a new computation by running a *leaf step*: a [`Step`] declaring
+    /// [`Leaf`](header::Leaf) for both of its inputs.
     ///
-    /// This is the entry point for creating leaf nodes in a PCD tree.
-    /// Internally creates minimal trivial proofs with `()` headers and fuses
-    /// them with the provided step to produce a valid proof.
-    pub fn seed<'source, RNG: CryptoRng, S: Step<C, Left = (), Right = ()>>(
+    /// This is the entry point for creating leaf nodes in a PCD tree. The step
+    /// is fused against the bootstrap proof built by
+    /// [`ApplicationBuilder::finalize`] — the only proof carrying the `Leaf`
+    /// header — as both children, so this is an ordinary fuse whose child
+    /// claims are enforced, not a base case.
+    pub fn seed<
+        'source,
+        RNG: CryptoRng,
+        S: Step<C, Left = header::Leaf, Right = header::Leaf>,
+    >(
         &self,
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
-        self.fuse(rng, step, witness, self.trivial_pcd(), self.trivial_pcd())
+        self.fuse(
+            rng,
+            step,
+            witness,
+            self.bootstrap_pcd(),
+            self.bootstrap_pcd(),
+        )
     }
 
-    /// Returns a seeded trivial proof for use in rerandomization.
+    /// Returns the `Pcd<Leaf>` that bootstraps the recursion.
     ///
-    /// A seeded trivial is a trivial proof that has been through `seed()`
-    /// (folded with itself). This gives it valid proof structure, avoiding
-    /// base case detection issues.
+    /// [`ApplicationBuilder::finalize`] builds it once: two synthesized
+    /// [`dummy_pcd`](Self::dummy_pcd) dummies — which cannot verify on
+    /// their own — are fused through the internal
+    /// [`Bootstrap`](step::internal::bootstrap::Bootstrap) step, the only step
+    /// declaring [`Dummy`](header::Dummy) inputs and hence the only
+    /// fuse treated as the base case. The result verifies, so
+    /// [`seed`](Self::seed) consumes it as an ordinary child.
     ///
-    /// The proof is lazily created on first use and cached; subsequent calls
-    /// return the same (non-random) proof.
-    fn seeded_trivial_pcd<RNG: CryptoRng>(&self, rng: &mut RNG) -> Pcd<C, R, ()> {
-        self.seeded_trivial
-            .get_or_init(|| {
-                self.seed(rng, step::internal::trivial::Trivial::new(), ())
-                    .expect("seeded trivial seed should not fail")
-                    .0
-                    .into_parts()
-                    .0
-            })
+    /// The proof attests nothing: `Bootstrap` ignores its children entirely and
+    /// outputs the data-less [`Leaf`](header::Leaf) header. It is a
+    /// public constant of the application, and every call returns a clone of
+    /// the same proof.
+    fn bootstrap_pcd(&self) -> Pcd<C, R, header::Leaf> {
+        self.bootstrap
+            .as_ref()
+            .expect("finalize always sets the bootstrap proof")
             .clone()
             .carry(())
     }
 
     /// Rerandomize proof-carrying data.
     ///
-    /// This will internally fold the [`Pcd`] with a seeded trivial proof
-    /// using an internal rerandomization step, such that the resulting proof
-    /// is valid for the same [`Header`] but reveals nothing else about the
-    /// original proof. As a result, [`Application::verify`] should produce the
-    /// same result on the provided `pcd` as it would the output of this method.
+    /// This will internally fold the [`Pcd`] with itself using an internal
+    /// rerandomization step, producing a fresh proof that is valid for the
+    /// same [`Header`] and carries the same data. [`Application::verify`]
+    /// produces the same result on the provided `pcd` as it would on the
+    /// output of this method.
+    ///
+    /// The intent is that the output be unlinkable to the input. Today that is
+    /// not achieved at all: the output embeds the input's commitments and stage
+    /// polynomials in the clear (as its child data), and its folded accumulator
+    /// is a deterministic function of the input proof and public challenges.
+    /// Achieving witness-hiding of the accumulator needs a fold-level
+    /// randomizer; unlinkability of an uncompressed proof additionally needs
+    /// the child data hidden (compression, or a second randomized pass). Both
+    /// are future work, tracked separately.
     pub fn rerandomize<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: Pcd<C, R, H>,
         rng: &mut RNG,
     ) -> Result<Pcd<C, R, H>> {
-        // Seed a trivial proof for rerandomization.
-        // TODO: this is a temporary hack that allows the base case logic to be simple
-        let seeded_trivial = self.seeded_trivial_pcd(rng);
-
         // The Rerandomize step's witness() returns the left input's data as
-        // output data, preserving it through rerandomization.
+        // output data, preserving it through rerandomization. Both children
+        // are the proof itself, so the bootstrap proof is not involved.
         self.fuse(
             rng,
             step::internal::rerandomize::Rerandomize::new(),
             (),
+            pcd.clone(),
             pcd,
-            seeded_trivial,
         )
         .map(|(pcd, ())| pcd)
     }

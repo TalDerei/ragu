@@ -10,7 +10,7 @@ use ragu_core::{
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
-    header::{Header, Suffix},
+    header::{Header, Leaf, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::{
@@ -57,15 +57,15 @@ impl Step<Pasta> for StepWithData {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = Fp;
     type Aux<'source> = ();
-    type Left = ();
-    type Right = ();
     type Output = HeaderWithData;
+    type Left = Leaf;
+    type Right = Leaf;
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        _left: DriverValue<D, ()>,
+        _right: DriverValue<D, ()>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -76,28 +76,30 @@ impl Step<Pasta> for StepWithData {
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let allocator = &mut Standard::new();
-        let left = Encoded::new(dr, allocator, left)?;
-        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::new(dr, allocator, witness.clone())?;
-        Ok(((left, right, output), witness, D::unit()))
+        Ok((
+            (Encoded::from_gadget(()), Encoded::from_gadget(()), output),
+            witness,
+            D::unit(),
+        ))
     }
 }
 
-// Step0: () , ()  -> HeaderA
+// Step0: seed step -> HeaderA
 struct Step0;
 impl<C: Cycle> Step<C> for Step0 {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = ();
     type Aux<'source> = ();
-    type Left = ();
-    type Right = ();
     type Output = HeaderA;
+    type Left = Leaf;
+    type Right = Leaf;
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
-        dr: &mut D,
+        _: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: DriverValue<D, ()>,
-        right: DriverValue<D, ()>,
+        _left: DriverValue<D, ()>,
+        _right: DriverValue<D, ()>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -107,11 +109,15 @@ impl<C: Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        let allocator = &mut Standard::new();
-        let left = Encoded::new(dr, allocator, left)?;
-        let right = Encoded::new(dr, allocator, right)?;
-        let output = Encoded::from_gadget(());
-        Ok(((left, right, output), D::unit(), D::unit()))
+        Ok((
+            (
+                Encoded::from_gadget(()),
+                Encoded::from_gadget(()),
+                Encoded::from_gadget(()),
+            ),
+            D::unit(),
+            D::unit(),
+        ))
     }
 }
 

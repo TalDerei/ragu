@@ -294,7 +294,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1234);
 
         // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
+        let mut proof = app.dummy_proof();
 
         // Corrupt the circuit_id to be outside the registry domain
         proof.circuit_id = CircuitIndex::new(u32::MAX as usize);
@@ -310,7 +310,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1234);
 
         // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
+        let mut proof = app.dummy_proof();
 
         // Corrupt left_header to have wrong size
         proof.left_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE + 1];
@@ -326,7 +326,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1234);
 
         // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
+        let mut proof = app.dummy_proof();
 
         // Corrupt right_header to have wrong size
         proof.right_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE - 1];
