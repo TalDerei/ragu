@@ -15,7 +15,7 @@ driver-agnostic type information and behavior of a gadget. This is done
 through the [`GadgetKind<F>`][gadgetkind-trait] trait, which is defined as
 
 ```rust
-pub unsafe trait GadgetKind<F: Field>: core::any::Any {
+pub unsafe trait GadgetKind<F: Field>: 'static {
     type Rebind<'dr, D: Driver<'dr, F = F>>: Gadget<'dr, D, Kind = Self>;
 
     // ...

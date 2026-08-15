@@ -227,14 +227,12 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
 /// `Rebind<'dr, D2>` for another driver `D2`. The mapping can leverage the
 /// [`WireMap`] trait to convert wires.
 ///
-/// # `'static` / `Any` bound
+/// # `'static` bound
 ///
-/// This type must be `'static` so that drivers can use dynamic typing to
-/// differentiate between (otherwise opaque) gadgets. Specifically, the
-/// [`Any`](core::any::Any) supertrait bound ensures that [`GadgetKind`] types
-/// are `'static` and can therefore be used as type-level keys, and it enables
-/// [`TypeId`](core::any::Any::type_id)-based dispatch for driver optimizations
-/// such as [routine](crate::routines) memoization and caching.
+/// A kind describes a gadget's driver-agnostic structure and must not borrow
+/// from any driver context; lifetimes appear only through the
+/// [`Rebind`](GadgetKind::Rebind) associated type. The `'static` bound
+/// enforces this.
 ///
 /// # Safety
 ///

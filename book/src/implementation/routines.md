@@ -692,6 +692,5 @@ that omits a necessary field — not only bugs in the memoization code.
 [`mul`]: ragu_core::drivers::Driver::mul
 [`alloc`]: ragu_core::drivers::Driver::alloc
 [`SegmentRecord`]: ragu_circuits::metrics::SegmentRecord
-[`Any`]: core::any::Any
 [conversions]: ../guide/gadgets/conversion.md
 [gadgetkind-page]: ../guide/gadgets/gadgetkind.md
