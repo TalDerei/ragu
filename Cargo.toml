@@ -2,18 +2,17 @@
 name = "ragu"
 version.workspace = true
 authors.workspace = true
-description = """
-Proof-carrying data (PCD) framework for Rust
-"""
+description = "Proof-carrying data (PCD) framework for Rust"
 license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 readme = "README.md"
+homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/ragu"
 categories = ["cryptography", "mathematics", "algorithms", "science", "no-std"]
-keywords = []
+keywords = ["cryptography", "zero-knowledge", "proof-carrying-data", "pcd", "recursion"]
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
@@ -94,6 +93,7 @@ authors = ["Sean Bowe <ewillbefull@gmail.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2024"
 rust-version = "1.97"
+homepage = "https://github.com/tachyon-zcash/ragu"
 repository = "https://github.com/tachyon-zcash/ragu"
 
 [workspace.dependencies]
