@@ -15,6 +15,9 @@ documentation = "https://docs.rs/ragu_macros"
 categories = ["development-tools"]
 keywords = []
 
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]
+
 [lib]
 proc-macro = true
 bench = false
