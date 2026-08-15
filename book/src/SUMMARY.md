@@ -45,7 +45,7 @@
     - [Endoscalars](protocol/extensions/endoscalar.md) <!-- todo -->
     - [Staging](protocol/extensions/staging.md) <!-- todo -->
   - [Recursion](protocol/recursion/index.md)
-    - [Public Inputs](protocol/recursion/public_inputs.md) <!-- todo -->
+    - [Public Inputs](protocol/recursion/public_inputs.md)
   - [Analysis](protocol/analysis.md) <!-- todo -->
   - [Local (Sean's Corner!)]()
     - [Arithmetization](protocol/local/arithmetization.md)
