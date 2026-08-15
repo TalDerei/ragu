@@ -37,7 +37,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = C::CircuitField::random(&mut rng);
         let z = C::CircuitField::random(&mut rng);
 
-        // Validate that the application circuit_id is within the registry domain.
+        // The proof's circuit_id selects which wiring polynomial the verifier
+        // checks against, and every domain point carries one, so an in-domain id
+        // is always well defined. It need not name a circuit: the domain also
+        // holds registered bonding polynomials and, at unassigned points, the
+        // zero polynomial, which is itself a bonding polynomial. Letting the
+        // prover choose freely among them is safe because this check expects a
+        // circuit and so fixes k_0 = 1, which no bonding polynomial (s(X, 0) =
+        // 0) can satisfy. Rejecting out-of-domain ids keeps the selection inside
+        // that argument, rather than an evaluation of the registry interpolation
+        // at an arbitrary point.
         // (Internal circuit IDs are constants and don't need this check.)
         if !self
             .native_registry

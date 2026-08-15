@@ -177,3 +177,35 @@ circuits $C$. This enables incremental circuit registration during
 compilation, where each circuit independently computes its domain
 point, and the registry is finalized only after all circuits are
 known.
+
+## Unregistered Domain Points
+
+Every point of the $2^k$ domain carries a wiring polynomial. Most carry
+one that was explicitly registered — a circuit, or one of the
+[bonding polynomials](../local/wiring.md#bonding-polynomials) Ragu
+registers alongside them — but $2^k$ is the smallest power of two that
+accommodates all of them, so unless that count is itself a power of two
+some domain points are left unassigned. Those points are not invalid:
+the registry interpolates the value $0$ at each of them, so each one
+carries the zero polynomial.
+
+The zero polynomial is not a special case. A bonding polynomial is
+precisely a wiring polynomial that omits the $0$th constraint against
+$\v{k}_0$, giving $s(X, 0) = 0$, and the zero polynomial satisfies that
+definition trivially. Unassigned domain points therefore carry bonding
+polynomials, and the domain holds just two kinds of wiring polynomial,
+told apart by $s(X, 0)$:
+
+| $s(X, 0)$ | kind | occupies |
+|-----------|------|----------|
+| $1$ | circuit wiring polynomial | a point with a registered circuit |
+| $0$ | bonding polynomial | a point with a registered bonding polynomial, or any unassigned point |
+
+This is what makes it safe to let an adversary choose a domain point
+arbitrarily. A verifier that expects a circuit fixes $\v{k}_0 = 1$, and
+no bonding polynomial can satisfy such a claim — so wherever an
+arbitrary choice from the domain is permitted, that choice is already
+confined to the registered circuits by construction. Registered bonding
+polynomials and unassigned points are excluded by the same mechanism,
+and neither needs its own bounds check: within the domain there is no
+"out of bounds" index to guard against.

@@ -8,12 +8,50 @@
 //! Ragu's PCD construction, and so the [`Registry`] structure represents a larger
 //! polynomial $m(W, X, Y)$ that interpolates such that $m(\omega^i, X, Y) =
 //! s_i(X, Y)$ for some $\omega \in \mathbb{F}$ of sufficiently high $2^k$ order
-//! to encode all circuits for both PCD and for application circuits.
+//! to encode all circuits for both PCD and for application circuits. The book's
+//! [registry chapter] gives the full construction, including Lagrange
+//! interpolation at an arbitrary $W$ and the rolling domain extension.
+//!
+//! ## Every domain point is a wiring polynomial
+//!
+//! The domain is padded to a power of two, so it usually has more points than
+//! there are explicitly registered wiring polynomials. Rather than treat the
+//! surplus points as "out of bounds", the registry assigns a wiring polynomial
+//! to *every* domain point: an explicit registration at $\omega^i$ contributes
+//! its $s_i(X, Y)$, and every other domain point is implicitly the zero
+//! polynomial (the interpolation is zero there). A [`CircuitIndex`] is therefore
+//! never out of bounds within the domain — if its $\omega^j$ (the bit-reversed
+//! exponent of its index $i$; see [`CircuitIndex::omega_j`]) is in the domain,
+//! it selects a wiring polynomial.
+//!
+//! The zero polynomial is not a special case: a bonding polynomial is precisely
+//! a wiring polynomial with $s(X, 0) = 0$, so the zero polynomial *is* one. The
+//! domain thus holds circuit wiring polynomials ($s(X, 0) = 1$) and bonding
+//! polynomials ($s(X, 0) = 0$) — the latter being both the explicitly registered
+//! ones (see [`register_bonding`](RegistryBuilder::register_bonding)) and the
+//! unassigned points. See [`BondingObject`] for how this $s(X, 0)$ distinction
+//! keeps one kind from standing in for the other.
+//!
+//! This is why selecting by domain membership alone is safe. A verifier that
+//! expects a circuit fixes $\mathbf{k}_0 = 1$, which no bonding polynomial can
+//! satisfy, so permitting an arbitrary in-domain index already confines the
+//! selection to the registered circuits by construction — registered bonding
+//! polynomials and unassigned points are excluded by that same mechanism, not by
+//! a bounds check.
+//!
+//! [`circuit_in_domain`](Registry::circuit_in_domain) reports domain membership
+//! only; it does *not* report whether anything was explicitly registered at that
+//! point, which is why it is not a registration check. An index whose $\omega^j$
+//! falls *outside* the domain is the general case of [`at`](Registry::at): it
+//! evaluates the registry interpolation at that arbitrary point, mixing all
+//! domain points together, and is what `circuit_in_domain` returns `false` for.
 //!
 //! The [`RegistryBuilder`] structure is used to construct a new [`Registry`] by
 //! inserting circuits and performing a [`finalize`](RegistryBuilder::finalize) step
 //! to compile the added circuits into a registry polynomial representation that can
 //! be efficiently evaluated at different restrictions.
+//!
+//! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 
@@ -31,6 +69,10 @@ use crate::{
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
+///
+/// Any value naming a domain point selects a wiring polynomial: the $s_i(X, Y)$
+/// explicitly registered at that index, or the zero polynomial if nothing was.
+/// See the [module overview](crate::registry).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct CircuitIndex(u32);
@@ -334,13 +376,20 @@ pub struct Registry<'params, F: PrimeField, R: Rank> {
 }
 
 /// Cached Lagrange state for a fixed W point.
+///
+/// Distinguishes the kind of point the registry interpolation is being
+/// evaluated at; see the [module overview](crate::registry).
 enum LagrangeCache<F> {
-    /// Must interpolate across circuits (w not in domain).
-    Interpolate(Vec<F>),
-    /// Direct circuit lookup (w in domain).
-    Direct(usize),
-    /// No circuit at this point.
-    Empty,
+    /// `w` is an arbitrary point, not one of the domain points the registry
+    /// assigns wiring polynomials to. Holds the Lagrange coefficients used to
+    /// evaluate the interpolation there.
+    Arbitrary(Vec<F>),
+    /// `w` is a domain point with a wiring polynomial explicitly registered at
+    /// index `i`.
+    Assigned(usize),
+    /// `w` is a domain point with nothing explicitly registered; its wiring
+    /// polynomial is implicitly the zero polynomial.
+    Zero,
 }
 
 /// A registry bound to a specific W point, with cached Lagrange coefficients.
@@ -397,6 +446,11 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// all-zero (the ONE wire at `d[0] = 1` ensures this), but the
     /// predictable ONE slot can cancel in linear combinations of traces;
     /// a random `alpha` at `a[0]` keeps derived polynomials non-zero.
+    ///
+    /// `circuit` indexes the registered circuits directly (for the floor plan)
+    /// and **panics** if it is not a registered index. Unlike the
+    /// polynomial-evaluation methods, this is the registered-`Vec` view; there
+    /// is no implicit zero-polynomial slot here.
     ///
     /// # Errors
     ///
@@ -469,6 +523,10 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     ///
     /// Wraps [`Registry::at`] and [`RegistryAt::y`].
     /// See [`CircuitIndex::omega_j`] for more details.
+    ///
+    /// Every domain point carries a wiring polynomial; an index with nothing
+    /// explicitly registered carries the zero polynomial. See
+    /// [`circuit_in_domain`](Self::circuit_in_domain).
     pub fn circuit_y(&self, i: CircuitIndex, y: F) -> sparse::Polynomial<F, R> {
         let w: F = i.omega_j();
         self.at(w).y(y)
@@ -477,11 +535,32 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Evaluates $s_i(x, y)$ for circuit `i` at point $(x, y)$.
     ///
     /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
+    ///
+    /// As with [`circuit_y`](Self::circuit_y), an index with nothing explicitly
+    /// registered carries the zero polynomial. See
+    /// [`circuit_in_domain`](Self::circuit_in_domain).
     pub fn circuit_xy(&self, i: CircuitIndex, x: F, y: F) -> F {
         self.wxy(i.omega_j(), x, y)
     }
 
-    /// Returns true if the circuit's $\omega^j$ value is in the registry domain.
+    /// Returns true if this index's $\omega^j$ value lies in the registry's
+    /// domain.
+    ///
+    /// This reports domain membership, and nothing more. Every domain point is a
+    /// wiring polynomial — a registered circuit, a registered bonding
+    /// polynomial, or (at points left over when
+    /// [`num_circuits`](Self::num_circuits) is not a power of two) the zero
+    /// polynomial, which is itself a bonding polynomial. All are selected the
+    /// same way by [`circuit_y`](Self::circuit_y) /
+    /// [`circuit_xy`](Self::circuit_xy), so a `true` result means "in domain",
+    /// not "a circuit is registered here".
+    ///
+    /// A caller expecting a circuit does not need it to mean more than that: it
+    /// fixes $\mathbf{k}_0 = 1$, and no bonding polynomial ($s(X, 0) = 0$) can
+    /// satisfy such a claim; see [`BondingObject`]. An index whose $\omega^j$
+    /// falls *outside* the domain (returns `false`) escapes that argument — it
+    /// evaluates the registry interpolation at an arbitrary point, mixing all
+    /// domain points together.
     ///
     /// See [`CircuitIndex::omega_j`] for details on the $\omega^j$ mapping.
     pub fn circuit_in_domain(&self, i: CircuitIndex) -> bool {
@@ -515,7 +594,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let mut result = init();
 
         match cache {
-            LagrangeCache::Interpolate(coeffs) => {
+            LagrangeCache::Arbitrary(coeffs) => {
                 // The provided `w` was not in the domain, and `coeffs` are the
                 // coefficients we need to use to separate each (partial) circuit
                 // evaluation.
@@ -526,15 +605,16 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                     }
                 }
             }
-            LagrangeCache::Direct(i) => {
+            LagrangeCache::Assigned(i) => {
                 if let Some(circuit) = self.circuits.get(*i) {
                     add_poly(&**circuit, &self.floor_plans[*i], F::ONE, &mut result);
                 }
             }
-            LagrangeCache::Empty => {
-                // No circuit at this domain point; circuit contribution is zero.
-                // The registry key term is added by the caller (`RegistryAt`
-                // methods), so the overall evaluation is not zero.
+            LagrangeCache::Zero => {
+                // This domain point carries the zero polynomial, so it
+                // contributes nothing. The registry key term is still added by
+                // the caller (`RegistryAt` methods), so the evaluation is not
+                // identically zero.
             }
         }
 
@@ -546,7 +626,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Only circuits where [`WiringObject::is_mask`] returns `true` contribute.
     fn mask_coeff_sum(&self, cache: &LagrangeCache<F>) -> F {
         match cache {
-            LagrangeCache::Interpolate(coeffs) => {
+            LagrangeCache::Arbitrary(coeffs) => {
                 let mut sum = F::ZERO;
                 for (i, circuit) in self.circuits.iter().enumerate() {
                     if circuit.is_mask() {
@@ -556,7 +636,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                 }
                 sum
             }
-            LagrangeCache::Direct(i) => {
+            LagrangeCache::Assigned(i) => {
                 // W is exactly omega^bitreverse(i), so the Lagrange
                 // coefficient for circuit i is ONE and all others are ZERO.
                 if self.circuits[*i].is_mask() {
@@ -565,7 +645,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                     F::ZERO
                 }
             }
-            LagrangeCache::Empty => F::ZERO,
+            LagrangeCache::Zero => F::ZERO,
         }
     }
 
@@ -575,14 +655,17 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// polynomial at multiple $X$/$Y$ points without recomputing the W-restriction.
     pub fn at(&self, w: F) -> RegistryAt<'_, F, R> {
         let cache = if let Some(coeffs) = self.domain.ell(w, self.domain.n()) {
-            // w is not in the domain; use Lagrange coefficients to interpolate.
-            LagrangeCache::Interpolate(coeffs)
+            // w is not a domain point; the Lagrange coefficients evaluate the
+            // registry interpolation there.
+            LagrangeCache::Arbitrary(coeffs)
         } else if let Some(&i) = self.omega_lookup.get(&OmegaKey::from(w)) {
-            // w is in the domain (omega^j) and a circuit is registered at index i.
-            LagrangeCache::Direct(i)
+            // w is a domain point (omega^j) with a wiring polynomial registered
+            // at index i.
+            LagrangeCache::Assigned(i)
         } else {
-            // w is in the domain but no circuit registered at that index.
-            LagrangeCache::Empty
+            // w is a domain point with nothing explicitly registered; its wiring
+            // polynomial is implicitly the zero polynomial.
+            LagrangeCache::Zero
         };
         let mask_coeff_sum = self.mask_coeff_sum(&cache);
         RegistryAt {
@@ -1032,6 +1115,52 @@ mod tests {
                 !registry.circuit_in_domain(CircuitIndex::new(i)),
                 "Circuit {} should not be in domain",
                 i
+            );
+        }
+
+        Ok(())
+    }
+
+    /// A registry whose circuit count is not a power of two has padded domain
+    /// points with nothing explicitly registered. Such an index is *in the
+    /// domain* yet carries the zero polynomial, which has $s(X, 0) = 0$ and is
+    /// therefore a bonding polynomial, unlike a registered circuit whose
+    /// $s(X, 0) = 1$. That is what makes an unregistered in-domain id safe: a
+    /// verifier expecting a circuit fixes $\mathbf{k}_0 = 1$, which no bonding
+    /// polynomial can satisfy.
+    #[test]
+    fn test_padded_slot_is_zero_wiring_polynomial() -> Result<()> {
+        // 3 circuits => domain size 4 (next power of two), so index 3 is a
+        // padded, in-domain, unregistered slot.
+        let registry = TestRegistryBuilder::new()
+            .register_circuit(SquareCircuit { times: 1 })?
+            .register_circuit(SquareCircuit { times: 2 })?
+            .register_circuit(SquareCircuit { times: 3 })?
+            .finalize()?;
+
+        assert_eq!(registry.num_circuits(), 3);
+
+        let registered = CircuitIndex::new(0);
+        let padded = CircuitIndex::new(3);
+
+        // The padded index is past the registered range but still in the domain.
+        assert!(usize::from(padded) >= registry.num_circuits());
+        assert!(registry.circuit_in_domain(padded));
+
+        // s(X, 0) distinguishes the two: a bonding polynomial has s(X, 0) = 0,
+        // whereas a circuit wiring polynomial has s(X, 0) = 1.
+        let s_padded = registry.circuit_y(padded, Fp::ZERO);
+        let s_registered = registry.circuit_y(registered, Fp::ZERO);
+        for x in [Fp::from(7u64), Fp::from(11u64)] {
+            assert_eq!(
+                s_padded.eval(x),
+                Fp::ZERO,
+                "padded slot must carry the zero polynomial"
+            );
+            assert_eq!(
+                s_registered.eval(x),
+                Fp::ONE,
+                "registered circuit must have s(X, 0) = 1"
             );
         }
 
