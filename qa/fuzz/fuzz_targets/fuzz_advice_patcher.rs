@@ -558,10 +558,20 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     //    model, so bail.
     //  * only the boolean stack changed — an `is_zero` result flipped. The
     //    patcher vocabulary excludes `ConditionalSelect`, so a flipped
-    //    boolean cannot move any anchored element, and the cluster solver
-    //    re-derives the `is_zero` hint witness (`prod = x·inv`, the result
-    //    bit, the inverse). The element-anchor comparison therefore stays
-    //    valid — no bail.
+    //    boolean cannot move any anchored element, and `repair` re-derives the
+    //    `is_zero` hint witness (`prod = x·inv`, the result bit, the inverse)
+    //    from the input. The element-anchor comparison therefore stays valid
+    //    — no bail.
+    //
+    //    That re-derivation is not free: the hint gates have the input on one
+    //    side and a hint on the other, so while the input is still unknown
+    //    neither gate is linear and the cluster pass cannot see the coupling
+    //    at all. It holds only because `cluster_solve` commits forced wires
+    //    before guessed ones, which lets the input be deduced first and the
+    //    hints fall out by propagation. Weakening that ordering resurfaces as
+    //    spurious rejections here, not as a solver error — see the
+    //    least-commitment section on `recorder::cluster_solve` and the
+    //    `regressions/fuzz_advice_patcher/` reproducers.
     let shrank = mutated.elems.len() < shadow.elems.len();
     let grew = mutated.elems.len() > shadow.elems.len();
     let bools_flipped = mutated.bools != shadow.bools;
