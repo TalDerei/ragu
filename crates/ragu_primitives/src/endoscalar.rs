@@ -172,9 +172,11 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// acceptance the challenge and its payload are returned; on an
     /// out-of-range candidate `produce` is called again with fresh randomness.
     ///
-    /// Baking the loop into the constructor makes it impossible to obtain a
-    /// challenge without having ground it into range: every native challenge
-    /// flows through this single point.
+    /// Baking the loop into the constructor means a native prover cannot
+    /// obtain a challenge from a rejected sample: [`from_element`] refuses an
+    /// out-of-range element outright, so no [`EndoscalarChallenge`] can exist
+    /// whose element is out of range, and this is the only constructor that
+    /// retries rather than fails.
     ///
     /// `produce` is required to differ between calls rather than to agree with
     /// itself: it runs during native witness generation, never on a driver
@@ -191,6 +193,8 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// An error from `produce`, or from validating an in-range candidate,
     /// propagates immediately; the loop retries only on the expected
     /// out-of-range condition and so cannot spin on a real error.
+    ///
+    /// [`from_element`]: EndoscalarChallenge::from_element
     pub fn sample<T>(
         dr: &mut NativeEmulator<F>,
         mut produce: impl FnMut(&mut NativeEmulator<F>) -> Result<(Element<'dr, NativeEmulator<F>>, T)>,
@@ -483,10 +487,10 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 ///
 /// Infallible when `value` has already passed rejection sampling
 /// ($\mathtt{value} < 2^{\mathtt{CAPACITY}}$, equivalently
-/// `endoscalar_in_range` is `true`).
-/// An out-of-range value is rejected before wireless emulation, matching the
-/// in-circuit [`EndoscalarChallenge`] construction that becomes unsatisfiable
-/// before [`Endoscalar::extract`] is reachable.
+/// `endoscalar_in_range` is `true`). An out-of-range value is rejected by the
+/// [`EndoscalarChallenge`] construction it delegates to, matching the
+/// in-circuit path that becomes unsatisfiable before [`Endoscalar::extract`]
+/// is reachable.
 ///
 /// # Field requirements
 ///
@@ -499,12 +503,6 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 /// Returns an input error if `value` is out of range
 /// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$).
 pub fn extract_endoscalar<F: PrimeField>(value: F) -> Result<u128> {
-    if !endoscalar_in_range(value) {
-        return Err(Error::InvalidWitness(
-            "endoscalar challenge must satisfy value < 2^CAPACITY".into(),
-        ));
-    }
-
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
         let challenge = EndoscalarChallenge::from_element(dr, &mut (), elem)?;

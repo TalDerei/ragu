@@ -114,8 +114,13 @@ fuzz_target!(|input: Input| {
     // Model protocol rejection sampling: a challenge outside the canonical
     // decomposition range would make the circuit validation fail, so the prover
     // must retry the sampled transcript state instead of extracting it. This is
-    // the same range predicate `EndoscalarChallenge::sample` grinds on.
+    // the same range predicate `EndoscalarChallenge::sample` grinds on. Native
+    // extraction must agree with the predicate and reject such a challenge.
     if !endoscalar_in_range(r) {
+        assert!(
+            extract_endoscalar::<Fp>(r).is_err(),
+            "out-of-range challenge must not extract"
+        );
         return;
     }
 

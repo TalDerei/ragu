@@ -334,11 +334,12 @@ pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
     allocator: &mut impl Allocator<'dr, D>,
     elem: &Element<'dr, D>,
 ) -> Result<Vec<Boolean<'dr, D>>> {
+    let repr = elem.value().map(|v| v.to_repr());
     let bits = (0..D::F::CAPACITY as usize)
         .map(|i| {
-            let bit = elem
-                .value()
-                .map(move |v| (v.to_repr().as_ref()[i / 8] >> (i % 8)) & 1 == 1);
+            let bit = repr
+                .as_ref()
+                .map(move |repr| (repr.as_ref()[i / 8] >> (i % 8)) & 1 == 1);
             Boolean::alloc(dr, allocator, bit)
         })
         .collect::<Result<Vec<_>>>()?;
