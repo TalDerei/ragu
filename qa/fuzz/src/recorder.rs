@@ -1012,15 +1012,14 @@ mod tests {
 
     /// An under-determined subsystem must still be solved: with nothing left
     /// to deduce, the guessing tier has to run and pick a witness rather than
-    /// stalling. Two wires appear only as `p + q = 3`, so neither is forced.
+    /// stalling. Two raw wires appear only as `p + q = 3`, so neither is
+    /// forced.
     #[test]
     fn under_determined_subsystem_still_solved() {
         let one = Recorder::<Fp>::ONE;
         let mut rec = Recorder::<Fp>::new();
-        let seed = rec.push_wire(Fp::from(3u64));
-        let p = rec.add(|lc| lc.add_term(&seed, Coeff::Arbitrary(Fp::from(2u64))));
-        let q = rec.add(|lc| lc.add_term(&seed, Coeff::NegativeOne));
-        // p + q − 3·seed = 0 holds honestly (6 − 3 − 3·… ), pinned via ONE.
+        let p = rec.push_wire(Fp::ONE);
+        let q = rec.push_wire(Fp::from(2u64));
         rec.enforce_zero(|lc| {
             lc.add(&p)
                 .add(&q)
@@ -1029,8 +1028,12 @@ mod tests {
         .unwrap();
         assert!(constraints_hold(&rec.events, &rec.values));
 
+        // Start both unknown wires from a non-satisfying choice. The guessing
+        // tier must retain one free direction and solve the other.
         let mut values = rec.values.clone();
-        repair(&rec.events, &mut values, &[seed]);
+        values[p] += Fp::ONE;
+        values[q] += Fp::ONE;
+        repair(&rec.events, &mut values, &[]);
         assert!(
             constraints_hold(&rec.events, &values),
             "the guessing tier must still resolve an under-determined system",

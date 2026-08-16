@@ -245,7 +245,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-fuzz-target-
 
-      - name: cargo check fuzz harness
+      - name: Test fuzz support library
+        working-directory: qa/fuzz
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
+        run: cargo test --lib
+
+      - name: Check all fuzz targets
         working-directory: qa/fuzz
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}

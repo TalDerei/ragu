@@ -116,27 +116,36 @@ fn evaluation_point(seed: u64, offset: u64) -> Fp {
 }
 
 /// Does the constraint identity accept `witness` for the registered
-/// `circuit` at two independent points? `None` if assembly/trace fails.
+/// `circuit` at two independent points? Trace, assembly, and `ky` are
+/// structural operations for this value-infallible program, so an error is a
+/// harness or pipeline bug rather than an iteration to discard.
 fn identity_accepts(
     registry: &Registry<'_, Fp, TestRank>,
     circuit: &ProgramCircuit<'_, Fp>,
     witness: [Fp; Preamble::LEN],
     input: &Input,
-) -> Option<bool> {
-    let trace = circuit.trace(witness).ok()?.into_output();
+) -> bool {
+    let trace = circuit
+        .trace(witness)
+        .expect("value-infallible ProgramCircuit trace failed")
+        .into_output();
     let r = registry
         .assemble_with_alpha(&trace, CircuitIndex::new(0), Fp::ZERO)
-        .ok()?;
+        .expect("registered ProgramCircuit trace failed to assemble");
 
     let y = evaluation_point(input.y_seed, 2);
     let z = evaluation_point(input.z_seed, 3);
     let y2 = y * Fp::MULTIPLICATIVE_GENERATOR + Fp::from(5u64);
     let z2 = z * Fp::MULTIPLICATIVE_GENERATOR + Fp::from(7u64);
 
-    Some(
-        identity_lhs(registry, &r, y, z) == circuit.ky((), y).ok()?
-            && identity_lhs(registry, &r, y2, z2) == circuit.ky((), y2).ok()?,
-    )
+    identity_lhs(registry, &r, y, z)
+        == circuit
+            .ky((), y)
+            .expect("ProgramCircuit::ky failed on a unit instance")
+        && identity_lhs(registry, &r, y2, z2)
+            == circuit
+                .ky((), y2)
+                .expect("ProgramCircuit::ky failed on a unit instance")
 }
 
 /// Whether the Simulator accepts `witness` for `program` with `anchors`.
@@ -188,10 +197,7 @@ fuzz_target!(|input: Input| {
         simulator_accepts(&program, honest_witness, &honest_anchors),
         "Simulator rejected the honest witness — completeness bug. {program:?}"
     );
-    let honest_identity = match identity_accepts(&registry, &circuit, honest_witness, &input) {
-        Some(v) => v,
-        None => return,
-    };
+    let honest_identity = identity_accepts(&registry, &circuit, honest_witness, &input);
     assert!(
         honest_identity,
         "constraint identity rejected the honest witness — completeness bug. {program:?}"
@@ -226,10 +232,7 @@ fuzz_target!(|input: Input| {
         },
     );
     let simulator = simulator_accepts(&program, mutated_witness, &honest_anchors);
-    let identity = match identity_accepts(&registry, &circuit, mutated_witness, &input) {
-        Some(v) => v,
-        None => return,
-    };
+    let identity = identity_accepts(&registry, &circuit, mutated_witness, &input);
 
     assert_eq!(
         simulator,

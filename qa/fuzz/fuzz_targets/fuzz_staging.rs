@@ -690,8 +690,9 @@ fn check_stage_slot_range(
 /// first — this mirrors production proving at
 /// `crates/ragu_pcd/src/internal/endoscalar.rs:470`.
 ///
-/// Returns `(expected_ky, actual_revdot)` so the caller's panic message
-/// can show both sides of the Invariant B check.
+/// Returns `(expected_ky, actual_revdot)` so the caller's panic message can
+/// show both sides of the Invariant B check. All circuits and registries here
+/// are fixed and valid, so trace or assembly failures are oracle failures.
 fn check_identity<C: Circuit<Fp>>(
     label: &str,
     registry: &Registry<'_, Fp, TestRank>,
@@ -699,11 +700,14 @@ fn check_identity<C: Circuit<Fp>>(
     witness: C::Witness<'_>,
     instance: C::Instance<'_>,
     stage_rx_sum: sparse::Polynomial<Fp, TestRank>,
-    final_mask_registry: Option<&Registry<'_, Fp, TestRank>>,
+    final_mask_registry: &Registry<'_, Fp, TestRank>,
     y: Fp,
     z: Fp,
-) -> Option<(Fp, Fp)> {
-    let trace = circuit.trace(witness).ok()?.into_output();
+) -> (Fp, Fp) {
+    let trace = circuit
+        .trace(witness)
+        .expect("fixed MultiStage circuit trace failed")
+        .into_output();
 
     // alpha = 0 so the algebraic identity holds without an extra revdot
     // term — same rationale as fuzz_circuit_revdot_identity. The stage rx
@@ -721,16 +725,14 @@ fn check_identity<C: Circuit<Fp>>(
     // assembled trace are zero (StageBuilder allocates them as
     // Coeff::Zero), so the SYSTEM gate and earlier gates contribute
     // nothing either.
-    if let Some(fm_reg) = final_mask_registry {
-        let fm_sy = sy_from_mask_registry(fm_reg, y);
-        let fm_actual = multistage_trace.revdot(&fm_sy);
-        assert_eq!(
-            fm_actual,
-            Fp::ZERO,
-            "final_mask check failed for {label}: \
-             assembled_multistage_trace.revdot(final_mask) = {fm_actual:?}, expected 0 at y={y:?}"
-        );
-    }
+    let fm_sy = sy_from_mask_registry(final_mask_registry, y);
+    let fm_actual = multistage_trace.revdot(&fm_sy);
+    assert_eq!(
+        fm_actual,
+        Fp::ZERO,
+        "final_mask check failed for {label}: \
+         assembled_multistage_trace.revdot(final_mask) = {fm_actual:?}, expected 0 at y={y:?}"
+    );
 
     let mut r = multistage_trace;
     r.add_assign(&stage_rx_sum);
@@ -744,7 +746,7 @@ fn check_identity<C: Circuit<Fp>>(
         .ky(instance, y)
         .expect("ky should not fail on a MultiStage Fp instance");
     let actual = r.revdot(&b);
-    Some((expected_ky, actual))
+    (expected_ky, actual)
 }
 
 fuzz_target!(|input: Input| {
@@ -762,10 +764,9 @@ fuzz_target!(|input: Input| {
             b_seed,
             use_special,
         } => {
-            let registry = match SINGLE2W_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = SINGLE2W_REGISTRY
+                .as_ref()
+                .expect("Single2W registry construction failed");
             let a = maybe_special(a_seed, use_special);
             let b = Fp::from(b_seed);
             let witness = (a, b);
@@ -776,36 +777,35 @@ fuzz_target!(|input: Input| {
             // `rx_configured` and `StageMask::new` together — invariants
             // A/B and final_mask all stay structurally satisfied under
             // such a shift, but this assertion fails immediately.
-            debug_assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
-            debug_assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
+            assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
 
-            let stage_w2_rx = match StageW2::rx(Fp::ZERO, (a, b)) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
+            let stage_w2_rx =
+                StageW2::rx(Fp::ZERO, (a, b)).expect("StageW2::rx failed on a valid witness");
             // Structural cross-mask check (robust replacement for the
             // dropped algebraic version): assert non-zero positions land
             // only in StageW2's declared range or the SYSTEM gate.
             check_stage_slot_range("Single2W/StageW2", &stage_w2_rx, 1, 1);
             // Invariant A: per-stage isolation against the stage's own mask.
-            if let Some(mask_reg) = MASK_REGISTRY_W2.as_ref() {
-                check_stage_isolation("Single2W/StageW2", &stage_w2_rx, mask_reg, y);
-            }
+            let mask_reg = MASK_REGISTRY_W2
+                .as_ref()
+                .expect("StageW2 mask registry construction failed");
+            check_stage_isolation("Single2W/StageW2", &stage_w2_rx, mask_reg, y);
             // Invariant B (with bundled final_mask check on the bare trace):
             // StageW2 is the last (and only) stage in this variant.
-            let Some((expected, actual)) = check_identity(
+            let (expected, actual) = check_identity(
                 "Single2W",
                 registry,
                 &circuit,
                 witness,
                 instance,
                 stage_w2_rx,
-                MASK_REGISTRY_W2_FINAL.as_ref(),
+                MASK_REGISTRY_W2_FINAL
+                    .as_ref()
+                    .expect("StageW2 final-mask registry construction failed"),
                 y,
                 z,
-            ) else {
-                return;
-            };
+            );
             assert_eq!(
                 expected, actual,
                 "Single2W staging identity violated: \
@@ -820,10 +820,9 @@ fuzz_target!(|input: Input| {
             d_seed,
             use_special,
         } => {
-            let registry = match SINGLE4W_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = SINGLE4W_REGISTRY
+                .as_ref()
+                .expect("Single4W registry construction failed");
             let a = maybe_special(a_seed, use_special);
             let b = Fp::from(b_seed);
             let c = Fp::from(c_seed);
@@ -832,30 +831,29 @@ fuzz_target!(|input: Input| {
             let circuit = MultiStage::<Fp, TestRank, _>::new(Single4W);
             let instance = Single4W::native_instance(witness);
             // Pin StageW4's declared offsets (same rationale as Single2W).
-            debug_assert_eq!(<StageW4 as Stage<Fp, TestRank>>::skip_gates(), 1);
-            debug_assert_eq!(<StageW4 as StageExt<Fp, TestRank>>::num_gates(), 2);
+            assert_eq!(<StageW4 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            assert_eq!(<StageW4 as StageExt<Fp, TestRank>>::num_gates(), 2);
 
-            let stage_w4_rx = match StageW4::rx(Fp::ZERO, witness) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
+            let stage_w4_rx =
+                StageW4::rx(Fp::ZERO, witness).expect("StageW4::rx failed on a valid witness");
             check_stage_slot_range("Single4W/StageW4", &stage_w4_rx, 1, 2);
-            if let Some(mask_reg) = MASK_REGISTRY_W4.as_ref() {
-                check_stage_isolation("Single4W/StageW4", &stage_w4_rx, mask_reg, y);
-            }
-            let Some((expected, actual)) = check_identity(
+            let mask_reg = MASK_REGISTRY_W4
+                .as_ref()
+                .expect("StageW4 mask registry construction failed");
+            check_stage_isolation("Single4W/StageW4", &stage_w4_rx, mask_reg, y);
+            let (expected, actual) = check_identity(
                 "Single4W",
                 registry,
                 &circuit,
                 witness,
                 instance,
                 stage_w4_rx,
-                MASK_REGISTRY_W4_FINAL.as_ref(),
+                MASK_REGISTRY_W4_FINAL
+                    .as_ref()
+                    .expect("StageW4 final-mask registry construction failed"),
                 y,
                 z,
-            ) else {
-                return;
-            };
+            );
             assert_eq!(
                 expected, actual,
                 "Single4W staging identity violated: \
@@ -872,10 +870,9 @@ fuzz_target!(|input: Input| {
             child_d_seed,
             use_special,
         } => {
-            let registry = match CHAIN_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = CHAIN_REGISTRY
+                .as_ref()
+                .expect("Chain2x4 registry construction failed");
             let parent_a = maybe_special(parent_a_seed, use_special);
             let parent_b = Fp::from(parent_b_seed);
             let child_a = Fp::from(child_a_seed);
@@ -892,34 +889,32 @@ fuzz_target!(|input: Input| {
             // Pin parent and child stage offsets. Catches symmetric
             // `skip_gates` shifts that A/B/final_mask all stay structurally
             // satisfied under.
-            debug_assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
-            debug_assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
-            debug_assert_eq!(<StageW4Child as Stage<Fp, TestRank>>::skip_gates(), 2);
-            debug_assert_eq!(<StageW4Child as StageExt<Fp, TestRank>>::num_gates(), 2);
+            assert_eq!(<StageW2 as Stage<Fp, TestRank>>::skip_gates(), 1);
+            assert_eq!(<StageW2 as StageExt<Fp, TestRank>>::num_gates(), 1);
+            assert_eq!(<StageW4Child as Stage<Fp, TestRank>>::skip_gates(), 2);
+            assert_eq!(<StageW4Child as StageExt<Fp, TestRank>>::num_gates(), 2);
 
             // Stages composed in order: StageW2 then StageW4Child. Sum both
             // rx polynomials so the combined `r(X)` is consistent with what
             // the verifier would see after committing each stage separately.
-            let parent_rx = match StageW2::rx(Fp::ZERO, (parent_a, parent_b)) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-            let child_rx = match StageW4Child::rx(Fp::ZERO, (child_a, child_b, child_c, child_d)) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
+            let parent_rx = StageW2::rx(Fp::ZERO, (parent_a, parent_b))
+                .expect("parent StageW2::rx failed on a valid witness");
+            let child_rx = StageW4Child::rx(Fp::ZERO, (child_a, child_b, child_c, child_d))
+                .expect("child StageW4Child::rx failed on a valid witness");
             // Structural cross-mask: each rx must write only into its own
             // declared range. Stronger than Invariant A; not adversarially
             // foolable via the revdot algebraic identity.
             check_stage_slot_range("Chain/parent StageW2", &parent_rx, 1, 1);
             check_stage_slot_range("Chain/child StageW4Child", &child_rx, 2, 2);
             // Invariant A: each stage checked against its own mask in isolation.
-            if let Some(mask_reg) = MASK_REGISTRY_W2.as_ref() {
-                check_stage_isolation("Chain/parent StageW2", &parent_rx, mask_reg, y);
-            }
-            if let Some(mask_reg) = MASK_REGISTRY_W4_CHILD.as_ref() {
-                check_stage_isolation("Chain/child StageW4Child", &child_rx, mask_reg, y);
-            }
+            let parent_mask = MASK_REGISTRY_W2
+                .as_ref()
+                .expect("StageW2 mask registry construction failed");
+            check_stage_isolation("Chain/parent StageW2", &parent_rx, parent_mask, y);
+            let child_mask = MASK_REGISTRY_W4_CHILD
+                .as_ref()
+                .expect("StageW4Child mask registry construction failed");
+            check_stage_isolation("Chain/child StageW4Child", &child_rx, child_mask, y);
             // Cross-mask discrimination (parent.rx vs child.mask and vice
             // versa) is intentionally NOT asserted here. The check
             // `rx.revdot(foreign_mask) != 0` is structurally fragile under
@@ -942,19 +937,19 @@ fuzz_target!(|input: Input| {
             // `[child_skip + child_num, R::n())`, the post-stage gate range.
             let mut stage_rx_sum = parent_rx;
             stage_rx_sum.add_assign(&child_rx);
-            let Some((expected, actual)) = check_identity(
+            let (expected, actual) = check_identity(
                 "Chain2x4",
                 registry,
                 &circuit,
                 witness,
                 instance,
                 stage_rx_sum,
-                MASK_REGISTRY_W4_CHILD_FINAL.as_ref(),
+                MASK_REGISTRY_W4_CHILD_FINAL
+                    .as_ref()
+                    .expect("StageW4Child final-mask registry construction failed"),
                 y,
                 z,
-            ) else {
-                return;
-            };
+            );
             assert_eq!(
                 expected, actual,
                 "Chain2x4 staging identity violated: \

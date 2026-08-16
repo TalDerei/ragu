@@ -69,7 +69,7 @@ fuzz_target!(|input: Input| {
 
     let bits_owned: Vec<bool> = input.bits.clone();
 
-    let _ = Simulator::<Fp>::simulate(bits_owned, |dr, witness| {
+    let result = Simulator::<Fp>::simulate(bits_owned, |dr, witness| {
         let allocator = &mut Standard::new();
 
         // Allocate each input bit as a Boolean.
@@ -102,4 +102,9 @@ fuzz_target!(|input: Input| {
 
         Ok(())
     });
+    assert!(
+        result.is_ok(),
+        "multipack rejected a valid boolean witness: {:?}",
+        result.err(),
+    );
 });

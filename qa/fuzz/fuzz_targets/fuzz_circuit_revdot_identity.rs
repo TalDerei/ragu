@@ -111,10 +111,10 @@ fuzz_target!(|input: Input| {
         Err(_) => return, // Rank overflow: program too large for TestRank.
     };
 
-    let trace = match circuit.trace(program.preamble.values::<Fp>()) {
-        Ok(t) => t.into_output(),
-        Err(_) => return,
-    };
+    let trace = circuit
+        .trace(program.preamble.values::<Fp>())
+        .expect("honest steered ProgramCircuit trace failed")
+        .into_output();
     let r = registry
         .assemble_with_alpha(&trace, CircuitIndex::new(0), Fp::ZERO)
         .expect("assemble_with_alpha failed on a registered, satisfying witness");

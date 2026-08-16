@@ -133,7 +133,7 @@ fuzz_target!(|input: Input| {
     let p_doubled = native_double(p);
     let p_doubled_x = *p_doubled.coordinates().unwrap().x();
 
-    let _ = Simulator::<Fp>::simulate((p, q), |dr, witness| {
+    let result = Simulator::<Fp>::simulate((p, q), |dr, witness| {
         let allocator = &mut Standard::new();
 
         let p_val = witness.as_ref().map(|w| w.0);
@@ -253,4 +253,9 @@ fuzz_target!(|input: Input| {
 
         Ok(())
     });
+    assert!(
+        result.is_ok(),
+        "point identities rejected guarded, valid inputs: {:?}",
+        result.err(),
+    );
 });

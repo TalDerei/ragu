@@ -8,6 +8,7 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
+use ff::Field;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_circuits::polynomials::ProductionRank;
@@ -57,7 +58,7 @@ enum FuzzCorruption {
     PBlind(u64),
     PEval(u64),
     AbC(u64),
-    CircuitId(u32),
+    CircuitId,
     ChallengeU(u64),
     ChallengeX(u64),
     ChallengeY(u64),
@@ -82,16 +83,31 @@ fuzz_target!(|input: Input| {
 
     let mut proof = TRIVIAL_PROOF.clone();
 
+    // The fixture has challenges equal to one, circuit id zero, and four
+    // header elements. Nudge every fuzzer choice away from those values so
+    // each variant performs a real corruption before rejection is asserted.
+    let nonzero_delta = |v: u64| {
+        let v = Fp::from(v);
+        if v == Fp::ZERO { Fp::ONE } else { v }
+    };
+    let changed_challenge = |v: u64| {
+        let v = Fp::from(v);
+        if v == Fp::ONE { Fp::from(2u64) } else { v }
+    };
+    let wrong_header_len = |v: u8| {
+        let v = v as usize;
+        if v == HEADER_SIZE { HEADER_SIZE + 1 } else { v }
+    };
     let corruption = match input.corruption {
-        FuzzCorruption::PBlind(v) => Corruption::PBlind(Fp::from(v)),
-        FuzzCorruption::PEval(v) => Corruption::PEval(Fp::from(v)),
-        FuzzCorruption::AbC(v) => Corruption::AbC(Fp::from(v)),
-        FuzzCorruption::CircuitId(v) => Corruption::CircuitId(v),
-        FuzzCorruption::ChallengeU(v) => Corruption::ChallengeU(Fp::from(v)),
-        FuzzCorruption::ChallengeX(v) => Corruption::ChallengeX(Fp::from(v)),
-        FuzzCorruption::ChallengeY(v) => Corruption::ChallengeY(Fp::from(v)),
-        FuzzCorruption::LeftHeaderLen(v) => Corruption::LeftHeaderLen(v as usize),
-        FuzzCorruption::RightHeaderLen(v) => Corruption::RightHeaderLen(v as usize),
+        FuzzCorruption::PBlind(v) => Corruption::PBlind(nonzero_delta(v)),
+        FuzzCorruption::PEval(v) => Corruption::PEval(nonzero_delta(v)),
+        FuzzCorruption::AbC(v) => Corruption::AbC(nonzero_delta(v)),
+        FuzzCorruption::CircuitId => Corruption::CircuitId(u32::MAX),
+        FuzzCorruption::ChallengeU(v) => Corruption::ChallengeU(changed_challenge(v)),
+        FuzzCorruption::ChallengeX(v) => Corruption::ChallengeX(changed_challenge(v)),
+        FuzzCorruption::ChallengeY(v) => Corruption::ChallengeY(changed_challenge(v)),
+        FuzzCorruption::LeftHeaderLen(v) => Corruption::LeftHeaderLen(wrong_header_len(v)),
+        FuzzCorruption::RightHeaderLen(v) => Corruption::RightHeaderLen(wrong_header_len(v)),
     };
 
     proof.corrupt(corruption);
@@ -99,6 +115,11 @@ fuzz_target!(|input: Input| {
     let pcd = proof.carry::<()>(());
     let rng = StdRng::seed_from_u64(input.rng_seed);
 
-    // Must never panic. Corrupted proofs should be rejected.
-    let _ = app.verify(&pcd, rng);
+    // Must never panic or accept. Internal computation errors are rejection.
+    let result = app.verify(&pcd, rng);
+    assert!(
+        !matches!(result, Ok(true)),
+        "verifier accepted a deliberately corrupted proof: {:?}",
+        input.corruption,
+    );
 });
