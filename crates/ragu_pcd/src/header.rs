@@ -114,7 +114,8 @@ pub trait Header<F: Field>: Send + Sync + Any {
 ///
 /// This is an ordinary header that happens to carry nothing. The internal
 /// bootstrap step outputs it, and application steps may consume or produce it.
-/// Its suffix does not trigger the base case; only [`Dummy`] does.
+/// Its suffix does not trigger the base case; only the private `Dummy` header
+/// does.
 impl<F: Field> Header<F> for () {
     const SUFFIX: Suffix = Suffix::internal(1);
 
