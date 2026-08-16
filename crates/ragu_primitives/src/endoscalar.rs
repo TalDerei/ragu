@@ -62,13 +62,8 @@ pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
 impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     /// Validates an in-range element as an endoscalar challenge.
     ///
-    /// The single-attempt constructor: it succeeds only when `elem` is
-    /// already in range (canonical representative below
-    /// $2^{\mathtt{CAPACITY}}$). Construction emits the binding decomposition
-    /// and additionally rejects an out-of-range witness value outright, so an
-    /// out-of-range element surfaces as [`Err`] on every witness-bearing
-    /// driver — including the emulators, which do not evaluate the emitted
-    /// constraints.
+    /// The single-attempt constructor, which emits the binding decomposition
+    /// directly.
     ///
     /// It serves the in-circuit verifier path, where an honest prover has
     /// already ground the challenge into range and it is only re-derived
@@ -76,11 +71,23 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     /// challenge must use [`sample`] instead, which owns the rejection-sampling
     /// loop and so cannot be skipped.
     ///
+    /// # Soundness
+    ///
+    /// Any satisfying assignment makes the represented element equal the
+    /// returned challenge's canonical $\mathtt{CAPACITY}$-bit decomposition,
+    /// and so places it below $2^{\mathtt{CAPACITY}}$.
+    ///
+    /// # Completeness
+    ///
+    /// Honest proving succeeds only when `elem` is in range. The witness value
+    /// is checked directly as well, so the emulators — which compute witness
+    /// data without evaluating constraints — reject an out-of-range element
+    /// rather than returning a truncated endoscalar.
+    ///
     /// # Errors
     ///
-    /// Returns an error if `elem` is out of range
-    /// ($\mathtt{elem} \geq 2^{\mathtt{CAPACITY}}$) or the driver fails to
-    /// synthesize the decomposition.
+    /// Returns a witness-generation error if `elem` is out of range
+    /// ($\mathtt{elem} \geq 2^{\mathtt{CAPACITY}}$).
     ///
     /// [`sample`]: EndoscalarChallenge::sample
     pub fn from_element<A: Allocator<'dr, D>>(
@@ -124,20 +131,16 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// Attempts to validate an element as an endoscalar challenge, reporting an
     /// out-of-range element as `Ok(None)` rather than an error.
     ///
-    /// The rejection-sampling primitive behind [`sample`]: it separates the
-    /// *expected* out-of-range outcome (`Ok(None)`, a retry signal) from a
-    /// *genuine* synthesis failure (`Err`, to propagate, not retry). The range
-    /// check is the same canonical decomposition enforced by [`from_element`].
-    ///
-    /// # Completeness
-    ///
-    /// Requires native wireless witness execution; it is the prover-side
-    /// counterpart to [`from_element`].
+    /// The rejection-sampling primitive behind [`sample`], and the prover-side
+    /// counterpart to [`from_element`]: it separates the *expected*
+    /// out-of-range outcome (`Ok(None)`, a retry signal) from a *genuine*
+    /// error (`Err`, to propagate, not retry). The range check is the same
+    /// canonical decomposition enforced by [`from_element`].
     ///
     /// # Errors
     ///
-    /// Errors only on a genuine synthesis failure while validating an in-range
-    /// element; an out-of-range element is reported as `Ok(None)`.
+    /// An out-of-range element is reported as `Ok(None)` rather than as an
+    /// error; errors arise only while validating an in-range element.
     ///
     /// [`sample`]: EndoscalarChallenge::sample
     /// [`from_element`]: EndoscalarChallenge::from_element
@@ -147,7 +150,7 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     ) -> Result<Option<Self>> {
         // Classify the candidate by value first, so an out-of-range challenge
         // never reaches the binding decomposition (which would conflate it with
-        // a genuine synthesis error). Only in-range challenges are constrained.
+        // a genuine error). Only in-range challenges are constrained.
         if !endoscalar_in_range(**elem.value().snag()) {
             return Ok(None);
         }
@@ -167,6 +170,10 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// challenge without having ground it into range: every native challenge
     /// flows through this single point.
     ///
+    /// `produce` is required to differ between calls rather than to agree with
+    /// itself: it runs during native witness generation, never on a driver
+    /// walk, so the determinism requirement on circuit code does not apply.
+    ///
     /// # Completeness
     ///
     /// With uniformly random field elements each attempt succeeds with
@@ -175,8 +182,8 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     ///
     /// # Errors
     ///
-    /// A genuine synthesis failure in `produce` or in validating an in-range
-    /// candidate propagates immediately; the loop retries only on the expected
+    /// An error from `produce`, or from validating an in-range candidate,
+    /// propagates immediately; the loop retries only on the expected
     /// out-of-range condition and so cannot spin on a real error.
     pub fn sample<T>(
         dr: &mut NativeEmulator<F>,
@@ -194,13 +201,9 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     ///
     /// Returns the low 128 bits of the challenge's canonical bit
     /// decomposition, the native, wireless counterpart to
-    /// [`Endoscalar::extract`]. Because an [`EndoscalarChallenge`] already
+    /// [`Endoscalar::extract`], intended for native provers that constructed the
+    /// challenge via [`sample`]. Because an [`EndoscalarChallenge`] already
     /// contains the constrained extraction, this operation is infallible.
-    ///
-    /// # Completeness
-    ///
-    /// Requires native wireless witness execution; intended for native provers
-    /// that constructed the challenge via [`sample`].
     ///
     /// [`sample`]: EndoscalarChallenge::sample
     pub fn extract_native(&self) -> u128 {
@@ -219,8 +222,7 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
 ///
 /// Unlike the in-circuit validation, an out-of-range value is reported as
 /// `false` rather than as an error, so callers performing rejection sampling
-/// can distinguish the expected out-of-range outcome from a genuine synthesis
-/// failure. This is the range predicate used by
+/// can distinguish the expected out-of-range outcome from a genuine error. This is the range predicate used by
 /// `EndoscalarChallenge::try_from_element`.
 pub fn endoscalar_in_range<F: PrimeField>(value: F) -> bool {
     let repr = value.to_repr();
@@ -477,7 +479,8 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 ///
 /// # Errors
 ///
-/// Returns an error if `value` has not passed endoscalar challenge validation.
+/// Returns an input error if `value` is out of range
+/// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$).
 pub fn extract_endoscalar<F: PrimeField>(value: F) -> Result<u128> {
     if !endoscalar_in_range(value) {
         return Err(Error::InvalidWitness(
@@ -682,7 +685,7 @@ mod tests {
         // Feed one out-of-range candidate followed by an in-range one. `sample`
         // must reject the first, accept the second, and thread the payload
         // through unchanged. The wireless emulator is the only driver `sample`
-        // accepts (native witness execution, `Wire = ()`).
+        // accepts (native witness generation, `Wire = ()`).
         let in_range = Fp::from(0x0123_4567_89ab_cdefu64);
 
         Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(in_range, |dr, in_range| {
@@ -712,7 +715,7 @@ mod tests {
 
     /// A genuine error from `produce` propagates immediately instead of being
     /// retried: the rejection loop retries only on the expected out-of-range
-    /// outcome, never on a real synthesis failure.
+    /// outcome, never on a real error.
     #[test]
     fn test_sample_propagates_produce_error() -> Result<()> {
         // The wireless emulator is the sole driver `sample` accepts; the

@@ -315,6 +315,12 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// is canonical by construction: every in-range element has a unique bit
 /// string and no wrapped alias is representable, requiring no range check.
 ///
+/// # Soundness
+///
+/// Any satisfying assignment makes the returned booleans the unique
+/// little-endian bit decomposition of $\mathtt{elem}$, and so places
+/// $\mathtt{elem}$ below $2^{\mathtt{CAPACITY}}$.
+///
 /// # Completeness
 ///
 /// Honest proving succeeds only when $\mathtt{elem} < 2^{\mathtt{CAPACITY}}$;
