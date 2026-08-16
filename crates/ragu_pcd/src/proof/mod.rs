@@ -598,7 +598,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         // Build dummy PointsStage inputs in `_10_p` accumulation order
         // and delegate to `compute_endoscaling` so this trivial setup
         // cannot silently drift from the real prover path.
-        let beta_endo = extract_endoscalar(C::CircuitField::ONE);
+        let beta_endo = extract_endoscalar(C::CircuitField::ONE)
+            .expect("one should satisfy the endoscalar challenge range");
         let p_commitment = {
             let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
 
