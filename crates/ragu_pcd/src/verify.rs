@@ -396,7 +396,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a valid trivial proof
+        // Create a synthesized dummy proof
         let mut proof = app.dummy_proof();
 
         // Corrupt the circuit_id to be outside the registry domain
@@ -412,7 +412,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a valid trivial proof
+        // Create a synthesized dummy proof
         let mut proof = app.dummy_proof();
 
         // Corrupt left_header to have wrong size
@@ -428,7 +428,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a valid trivial proof
+        // Create a synthesized dummy proof
         let mut proof = app.dummy_proof();
 
         // Corrupt right_header to have wrong size

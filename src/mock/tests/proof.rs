@@ -32,8 +32,8 @@ struct ValueSeedStep;
 
 impl Step for ValueSeedStep {
     type Aux<'source> = ();
-    type Output = ValueHeader;
     type Left = ();
+    type Output = ValueHeader;
     type Right = ();
     type Witness<'source> = u64;
 

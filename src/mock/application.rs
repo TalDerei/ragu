@@ -15,16 +15,10 @@ use super::{
 };
 
 /// Mocks `ragu_pcd::ApplicationBuilder`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ApplicationBuilder {
     num_application_steps: usize,
     header_map: BTreeMap<Suffix, TypeId>,
-}
-
-impl Default for ApplicationBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Mocks `ragu_pcd::Application`.
@@ -50,10 +44,6 @@ impl ApplicationBuilder {
         self.prevent_duplicate_suffix::<S::Left>()?;
         self.prevent_duplicate_suffix::<S::Right>()?;
 
-        self.bump_step_count()
-    }
-
-    fn bump_step_count(mut self) -> Result<Self> {
         self.num_application_steps = self
             .num_application_steps
             .checked_add(1)

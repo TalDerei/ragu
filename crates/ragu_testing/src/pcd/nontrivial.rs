@@ -166,9 +166,9 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = C::CircuitField;
     type Aux<'source> = ();
-    type Output = LeafNode;
     type Left = ();
     type Right = ();
+    type Output = LeafNode;
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
@@ -194,12 +194,13 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
         sponge.absorb(dr, &leaf)?;
         let leaf = sponge.squeeze(dr)?;
         let leaf_data = leaf.value().map(|v| *v);
+        let leaf_encoded = Encoded::from_gadget(leaf);
 
         Ok((
             (
                 Encoded::from_gadget(()),
                 Encoded::from_gadget(()),
-                Encoded::from_gadget(leaf),
+                leaf_encoded,
             ),
             leaf_data,
             D::unit(),

@@ -21,7 +21,7 @@
 //! When the current step declares [`Dummy`] for both of its inputs — which
 //! only the internal [`Bootstrap`] step does — the prover may witness any [$c$]
 //! value without constraint. This is what lets [`finalize`] fold two
-//! synthesized trivial proofs, which carry no meaningful revdot claim, into the
+//! synthesized dummy proofs, which carry no meaningful revdot claim, into the
 //! bootstrap proof that verifies. The constraint is enforced whenever
 //! [`is_base_case`] returns false.
 //!
@@ -29,7 +29,7 @@
 //! [`padded::for_header`] bakes into the step's application circuit, so no
 //! application step can present the [`Dummy`] suffix and every application
 //! fuse has its child claims enforced — including one whose children carry the
-//! trivial `()` header. See [`is_dummy_input`] for how that binding is
+//! unit `()` header. See [`is_dummy_input`] for how that binding is
 //! established, and for the internal [`Rerandomize`] step, whose suffix is a
 //! witness wire constrained away from `Dummy`.
 //!

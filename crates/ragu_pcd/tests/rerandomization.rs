@@ -57,15 +57,15 @@ impl Step<Pasta> for StepWithData {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = Fp;
     type Aux<'source> = ();
-    type Output = HeaderWithData;
     type Left = ();
     type Right = ();
+    type Output = HeaderWithData;
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        _left: DriverValue<D, ()>,
-        _right: DriverValue<D, ()>,
+        left: DriverValue<D, ()>,
+        right: DriverValue<D, ()>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -76,30 +76,28 @@ impl Step<Pasta> for StepWithData {
         DriverValue<D, Self::Aux<'source>>,
     )> {
         let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
         let output = Encoded::new(dr, allocator, witness.clone())?;
-        Ok((
-            (Encoded::from_gadget(()), Encoded::from_gadget(()), output),
-            witness,
-            D::unit(),
-        ))
+        Ok(((left, right, output), witness, D::unit()))
     }
 }
 
-// Step0: seed step -> HeaderA
+// Step0: () , ()  -> HeaderA
 struct Step0;
 impl<C: Cycle> Step<C> for Step0 {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = ();
     type Aux<'source> = ();
-    type Output = HeaderA;
     type Left = ();
     type Right = ();
+    type Output = HeaderA;
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
-        _: &mut D,
+        dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        _left: DriverValue<D, ()>,
-        _right: DriverValue<D, ()>,
+        left: DriverValue<D, ()>,
+        right: DriverValue<D, ()>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -109,15 +107,11 @@ impl<C: Cycle> Step<C> for Step0 {
         DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
         DriverValue<D, Self::Aux<'source>>,
     )> {
-        Ok((
-            (
-                Encoded::from_gadget(()),
-                Encoded::from_gadget(()),
-                Encoded::from_gadget(()),
-            ),
-            D::unit(),
-            D::unit(),
-        ))
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
+        let output = Encoded::from_gadget(());
+        Ok(((left, right, output), D::unit(), D::unit()))
     }
 }
 
