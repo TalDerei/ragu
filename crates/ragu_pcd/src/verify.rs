@@ -297,15 +297,15 @@ mod tests {
     }
 
     /// A seed step with no predicate that outputs `()`.
-    struct UnitLeaf;
+    struct UnitSeed;
 
-    impl Step<Pasta> for UnitLeaf {
+    impl Step<Pasta> for UnitSeed {
         const INDEX: Index = Index::new(0);
 
         type Witness<'source> = ();
         type Aux<'source> = ();
-        type Left = crate::header::Leaf;
-        type Right = crate::header::Leaf;
+        type Left = ();
+        type Right = ();
         type Output = ();
 
         fn witness<
@@ -443,7 +443,7 @@ mod tests {
     /// fusing two `Pcd<()>` children.
     fn unit_app() -> crate::Application<'static, Pasta, TestR, HEADER_SIZE> {
         ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-            .register(UnitLeaf)
+            .register(UnitSeed)
             .expect("register seed step")
             .register(UnitStep)
             .expect("register fuse step")
@@ -477,7 +477,7 @@ mod tests {
 
         // Genuine seed still works: it fuses against the bootstrap proof, so an
         // honestly produced unit proof verifies.
-        let (valid_unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
+        let (valid_unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
         assert!(
             app.verify(&valid_unit, StdRng::seed_from_u64(2))
                 .expect("valid child verify should not error"),
@@ -551,7 +551,7 @@ mod tests {
         };
 
         let mut rng = StdRng::seed_from_u64(11);
-        let (valid_unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
+        let (valid_unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
         let invalid_unit = corrupt(valid_unit.clone());
 
         for (child, child_desc) in [(valid_unit, "valid"), (invalid_unit, "corrupted")] {
@@ -582,13 +582,13 @@ mod tests {
         // must still preserve verification.
         let pasta = Pasta::baked();
         let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-            .register(UnitLeaf)
+            .register(UnitSeed)
             .expect("register seed step")
             .finalize(pasta)
             .expect("failed to create test application");
 
         let mut rng = StdRng::seed_from_u64(7);
-        let (unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
+        let (unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
         assert!(
             app.verify(&unit, StdRng::seed_from_u64(8))
                 .expect("verify should not error"),
@@ -604,89 +604,13 @@ mod tests {
     }
 
     #[test]
-    fn rerandomize_right_child_must_carry_the_same_header() {
-        // `Rerandomize<H>` declares `H` for its right input, so a right child
-        // carrying a different header — here the bootstrap proof itself, which
-        // carries `Leaf` — must be rejected even though it is a valid proof
-        // on its own. (This pins the declared-header check; the fact that the
-        // right slot shares the left slot's wires is pinned structurally by
-        // `test_rerandomize_consistency`.)
-        use crate::step::internal::rerandomize::Rerandomize;
-
-        let app = unit_app();
-        let mut rng = StdRng::seed_from_u64(31);
-        let (valid_unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
-        let (t, ()) = app.bootstrap_pcd().into_parts();
-
-        let (mixed, ()) = app
-            .fuse(
-                &mut rng,
-                Rerandomize::<()>::new(),
-                (),
-                valid_unit,
-                t.carry::<()>(()),
-            )
-            .expect("fuse assembles a proof regardless of satisfiability");
-        assert!(
-            !app.verify(&mixed, StdRng::seed_from_u64(32))
-                .expect("verify should not error"),
-            "rerandomize with a differently-headed right child must not verify"
-        );
-    }
-
-    #[test]
-    fn bootstrap_proof_verifies_only_as_leaf() {
-        // The bootstrap proof is a genuine, verifying proof — of the reserved
-        // `Leaf` header and of nothing else. Carried as `()` it must be
-        // rejected: that is what keeps a proof that attests nothing from
-        // standing in for an application header.
-        use crate::header::Leaf;
-
+    fn bootstrap_proof_verifies_as_unit() {
         let app = unit_app();
         let t = app.bootstrap_pcd();
         assert!(
             app.verify(&t, StdRng::seed_from_u64(51))
                 .expect("verify should not error"),
-            "the bootstrap proof must verify as Leaf"
-        );
-        let (proof, ()) = t.into_parts();
-        assert!(
-            !app.verify(&proof.clone().carry::<()>(()), StdRng::seed_from_u64(52))
-                .expect("verify should not error"),
-            "the bootstrap proof must not verify as ()"
-        );
-        // And an honest `()` proof must not verify as Leaf either.
-        let mut rng = StdRng::seed_from_u64(53);
-        let (unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
-        let (unit_proof, ()) = unit.into_parts();
-        assert!(
-            !app.verify(&unit_proof.carry::<Leaf>(()), StdRng::seed_from_u64(54))
-                .expect("verify should not error"),
-            "an application proof must not verify as Leaf"
-        );
-    }
-
-    #[test]
-    fn leaf_circuit_accepts_only_the_bootstrap_proof() {
-        // A seed circuit declares `Leaf` for both inputs. A valid application
-        // proof relabelled as `Leaf` must be rejected there — only proofs
-        // whose circuit really outputs `Leaf` (the bootstrap step, and a
-        // rerandomization of its output) can sit beneath a leaf.
-        use crate::header::Leaf;
-
-        let app = unit_app();
-        let mut rng = StdRng::seed_from_u64(61);
-        let (unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
-        let (unit_proof, ()) = unit.into_parts();
-        let impostor = unit_proof.carry::<Leaf>(());
-
-        let (leaf, ()) = app
-            .fuse(&mut rng, UnitLeaf, (), impostor, app.bootstrap_pcd())
-            .expect("fuse assembles a proof regardless of satisfiability");
-        assert!(
-            !app.verify(&leaf, StdRng::seed_from_u64(62))
-                .expect("verify should not error"),
-            "a leaf over a non-bootstrap child relabelled as Leaf must not verify"
+            "the bootstrap proof must verify as ()"
         );
     }
 
@@ -694,14 +618,14 @@ mod tests {
     fn bootstrap_step_ignores_its_children() {
         // The bootstrap step is the base case: it verifies nothing about its
         // children, so running it over corrupted proofs still yields a valid
-        // `Leaf` proof, indistinguishable in power from the real one — any
-        // prover can mint one. This is by design (a `Pcd<Leaf>` attests
+        // `()` proof, indistinguishable in power from the real one — any
+        // prover can mint one. This is by design (the bootstrap proof attests
         // nothing) and is documented; this test keeps that fact honest.
         use crate::{header::Dummy, step::internal::bootstrap::Bootstrap};
 
         let app = unit_app();
         let mut rng = StdRng::seed_from_u64(71);
-        let (unit, ()) = app.seed(&mut rng, UnitLeaf, ()).expect("seed");
+        let (unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
         let (bad, ()) = corrupt(unit).into_parts();
         let bad = bad.carry::<Dummy>(());
 
@@ -711,17 +635,17 @@ mod tests {
         assert!(
             app.verify(&minted, StdRng::seed_from_u64(72))
                 .expect("verify should not error"),
-            "the bootstrap step over corrupted children still yields a verifying Leaf proof"
+            "the bootstrap step over corrupted children still yields a verifying unit proof"
         );
         // …and that minted proof works exactly like the real bootstrap proof
         // beneath a seed step, attesting nothing more.
-        let (leaf, ()) = app
-            .fuse(&mut rng, UnitLeaf, (), minted.clone(), minted)
+        let (seeded, ()) = app
+            .fuse(&mut rng, UnitSeed, (), minted.clone(), minted)
             .expect("fuse");
         assert!(
-            app.verify(&leaf, StdRng::seed_from_u64(73))
+            app.verify(&seeded, StdRng::seed_from_u64(73))
                 .expect("verify should not error"),
-            "a leaf over a minted bootstrap proof verifies, like one over the real one"
+            "a seed step over a minted bootstrap proof verifies, like one over the cached one"
         );
     }
 }

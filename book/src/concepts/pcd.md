@@ -110,12 +110,11 @@ by definition. Ragu confines this base case to a single internal step, the only
 one whose two child PCD instances may be invalid; every application step has the
 claims of both children enforced.
 
-That step outputs a reserved header, `Leaf`, which no application step may
-produce. In order to lift non-trivial data into the computational graph,
-applications specify a [`Step`] declaring `Leaf` for both inputs and use a
-special [`seed`] function to transform a leaf state into valid PCD. Such steps
-are the only ones that consume the base case's output, so it sits only beneath
-the leaves of the graph.
+That internal step declares a private `Dummy` header for both inputs, and
+`Dummy` is the sentinel that selects the base case. It outputs a data-less
+`Pcd<()>`, which [`seed`] supplies as both verified children of an
+application [`Step`] with unit inputs. An ordinary unit-input step does not
+select the base case: its child claims are still enforced.
 
 ## Succinctness and Rerandomization
 

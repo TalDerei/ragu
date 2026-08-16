@@ -69,8 +69,7 @@ impl<H: Header> Clone for Pcd<H> {
 
 impl Proof {
     /// Mirrors `ragu_pcd`'s bootstrap proof: the output of the internal
-    /// bootstrap step, carrying the crate-private `Leaf` header. It is the
-    /// only proof a seed step consumes.
+    /// bootstrap step, carrying the unit header.
     ///
     /// Public so that downstream consumers integrating against the mock can
     /// still obtain a starting proof directly, as they could from the former
@@ -78,7 +77,7 @@ impl Proof {
     #[must_use]
     pub fn bootstrap() -> Self {
         Self::new(
-            <crate::header::Leaf as Header>::SUFFIX,
+            <() as Header>::SUFFIX,
             Index::internal(1),
             &(Vec::new(), Vec::new(), Vec::new(), Vec::new()),
             &[],

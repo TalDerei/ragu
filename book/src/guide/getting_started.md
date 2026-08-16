@@ -116,7 +116,6 @@ This step creates leaf proofs from raw values:
 
 ```rust
 use ragu_arithmetic::Cycle;
-use ragu_pcd::header::Leaf;
 use ragu_pcd::step::{Encoded, Index, Step};
 use ragu_primitives::poseidon::Sponge;
 
@@ -129,8 +128,8 @@ impl<'params, C: Cycle> Step<C> for CreateLeaf<'params, C> {
 
     type Witness<'source> = C::CircuitField;  // Input: field element
     type Aux<'source> = ();                   // Output: hash result
-    type Left = Leaf;                         // No left input
-    type Right = Leaf;                        // No right input
+    type Left = ();                           // Bootstrap child
+    type Right = ();                          // Bootstrap child
     type Output = LeafNode;                   // Produces LeafNode
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
@@ -293,7 +292,7 @@ let leaf1 = app.seed(
 )?;
 let leaf1 = leaf1.0.carry(leaf1.1);
 assert!(app.verify(&leaf1, &mut rng)?);
-println!("Leaf 1 verified (value: 100)");
+println!("Seed 1 verified (value: 100)");
 
 // Create second leaf
 let leaf2 = app.seed(
@@ -303,7 +302,7 @@ let leaf2 = app.seed(
 )?;
 let leaf2 = leaf2.0.carry(leaf2.1);
 assert!(app.verify(&leaf2, &mut rng)?);
-println!("Leaf 2 verified (value: 200)");
+println!("Seed 2 verified (value: 200)");
 
 // Combine leaves into internal node using fuse
 let node1 = app.fuse(

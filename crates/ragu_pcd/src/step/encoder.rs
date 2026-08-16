@@ -341,8 +341,8 @@ mod tests {
         let mut buf = vec![];
         encoded.write(dr, &mut buf).expect("write should succeed");
 
-        // Suffix is at the last position: 100 (app suffix) + 4 (internal offset) = 104
-        assert_eq!(*buf[HEADER_SIZE - 1].value().take(), Fp::from(104u64));
+        // Suffix is at the last position: 100 (app suffix) + 3 (internal offset) = 103
+        assert_eq!(*buf[HEADER_SIZE - 1].value().take(), Fp::from(103u64));
     }
 
     #[test]

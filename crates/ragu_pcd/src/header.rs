@@ -15,20 +15,16 @@ use ragu_primitives::{allocator::Allocator, io::Write};
 ///
 /// * `0` is reserved for all circuits that have a fixed ID, used internally for
 ///   recursion. This is not used by actual [`Header`] implementations.
-/// * `1` is reserved for the trivial header.
+/// * `1` is reserved for the unit header, `()`.
 /// * `2` is reserved for the [`Dummy`] header, the input type of the
 ///   internal [`Bootstrap`] step. It is the only suffix that triggers the base
 ///   case; no application [`Step`] can declare it as an input, and the one
 ///   internal circuit whose input suffix is a witness constrains it away, which
 ///   is what confines the base case to genuine bootstrapping.
-/// * `3` is reserved for the [`Leaf`] header, the output type of the
-///   internal [`Bootstrap`] step and the input type a leaf [`Step`] declares.
-///   No application [`Step`] can produce it, which is what confines the
-///   bootstrap proof to the leaves of the PCD graph.
 ///
 /// [`Bootstrap`]: crate::step::internal::bootstrap::Bootstrap
 /// [`Step`]: crate::step::Step
-const NUM_INTERNAL_SUFFIXES: u8 = 4;
+const NUM_INTERNAL_SUFFIXES: u8 = 3;
 
 /// Internal representation of a [`Suffix`] distinguishing internal vs.
 /// application suffixes.
@@ -114,12 +110,11 @@ pub trait Header<F: Field>: Send + Sync + Any {
     ) -> Result<Bound<'dr, D, Self::Output>>;
 }
 
-/// Bootstrap header that encodes no data.
+/// Header that encodes no data.
 ///
-/// This is an ordinary header that happens to carry nothing. Only application
-/// steps produce it — the bootstrap proof carries a reserved header, not `()` — so a
-/// `Pcd<()>` attests exactly what the steps that can output `()` enforce, like
-/// any other header.
+/// This is an ordinary header that happens to carry nothing. The internal
+/// bootstrap step outputs it, and application steps may consume or produce it.
+/// Its suffix does not trigger the base case; only [`Dummy`] does.
 impl<F: Field> Header<F> for () {
     const SUFFIX: Suffix = Suffix::internal(1);
 
@@ -160,40 +155,6 @@ impl<F: Field> Header<F> for Dummy {
     }
 }
 
-/// The header a [`Step`](crate::step::Step) declares for both of its inputs to
-/// mark itself a *leaf*: a step with no children, run with
-/// [`seed`](crate::Application::seed).
-///
-/// It is also the header of the bootstrap proof, which `seed` supplies as both
-/// children — the only proof that carries it. A proof carrying `Leaf` attests
-/// nothing: the internal step producing it ignores its children, so any prover
-/// can mint one. That is why no other step may produce it, and why declaring
-/// it for one input only is rejected; both are compile-time errors in
-/// [`register`](crate::ApplicationBuilder::register). You can name this type,
-/// but only Ragu can produce a `Pcd<Leaf>`.
-pub struct Leaf;
-
-impl Leaf {
-    /// The encoded value of [`Leaf`]'s suffix, for `const` comparison in
-    /// [`register`](crate::ApplicationBuilder::register)'s placement guards.
-    pub(crate) const SUFFIX_VALUE: u64 = Suffix::internal(3).get();
-}
-
-impl<F: Field> Header<F> for Leaf {
-    const SUFFIX: Suffix = Suffix::internal(3);
-
-    type Data = ();
-    type Output = ();
-
-    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
-        _: &mut D,
-        _: &mut A,
-        _: DriverValue<D, Self::Data>,
-    ) -> Result<Bound<'dr, D, Self::Output>> {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,8 +164,7 @@ mod tests {
         assert_eq!(Suffix::internal(0).get(), 0);
         assert_eq!(Suffix::internal(1).get(), 1);
         assert_eq!(Suffix::internal(2).get(), 2);
-        assert_eq!(Suffix::internal(3).get(), 3);
-        assert_eq!(Suffix::new(0).get(), 4);
-        assert_eq!(Suffix::new(1).get(), 5);
+        assert_eq!(Suffix::new(0).get(), 3);
+        assert_eq!(Suffix::new(1).get(), 4);
     }
 }

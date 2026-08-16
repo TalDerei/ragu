@@ -122,13 +122,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// provided [`Step`]'s [`INDEX`](Step::INDEX) must be the next sequential
     /// index that has not been inserted yet.
     ///
-    /// A step declaring [`Leaf`](header::Leaf) for **both** of its inputs is a
-    /// *leaf step*: it has no children and is run with
-    /// [`seed`](Application::seed) rather than [`fuse`](Application::fuse).
-    /// Declaring `Leaf` for only one input, or producing it, is a compile-time
-    /// error — the bootstrap proof is the only proof carrying that header, and
-    /// it belongs only beneath a leaf.
-    ///
     /// # Errors
     ///
     /// Returns an error if the step's index is not the next sequential index,
@@ -143,16 +136,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                         != <header::Dummy as Header<C::CircuitField>>::SUFFIX.get(),
                 "a Step cannot declare the Dummy header: only the internal Bootstrap step may, \
                  and its fuse is the base case"
-            );
-            assert!(
-                <S::Output as Header<C::CircuitField>>::SUFFIX.get() != header::Leaf::SUFFIX_VALUE,
-                "a Step cannot produce the Leaf header"
-            );
-            assert!(
-                (<S::Left as Header<C::CircuitField>>::SUFFIX.get() == header::Leaf::SUFFIX_VALUE)
-                    == (<S::Right as Header<C::CircuitField>>::SUFFIX.get()
-                        == header::Leaf::SUFFIX_VALUE),
-                "a Step must declare the Leaf header for both inputs or neither"
             );
         }
 
@@ -332,7 +315,7 @@ pub struct Application<
     params: &'params C::Params,
     num_application_steps: usize,
     /// The proof that bootstraps the recursion: a genuine, verifying
-    /// `Pcd<Leaf>` consumed as a child by every [`seed`](Self::seed).
+    /// `Pcd<()>` consumed as a child by every [`seed`](Self::seed).
     ///
     /// Always `Some` once [`ApplicationBuilder::finalize`] returns. It is `None`
     /// only while `finalize` is building it, since doing so runs
@@ -344,19 +327,14 @@ pub struct Application<
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
-    /// Seed a new computation by running a *leaf step*: a [`Step`] declaring
-    /// [`Leaf`](header::Leaf) for both of its inputs.
+    /// Seed a new computation by running a [`Step`] declaring `()` for both of
+    /// its inputs.
     ///
     /// This is the entry point for creating leaf nodes in a PCD tree. The step
     /// is fused against the bootstrap proof built by
-    /// [`ApplicationBuilder::finalize`] — the only proof carrying the `Leaf`
-    /// header — as both children, so this is an ordinary fuse whose child
-    /// claims are enforced, not a base case.
-    pub fn seed<
-        'source,
-        RNG: CryptoRng,
-        S: Step<C, Left = header::Leaf, Right = header::Leaf>,
-    >(
+    /// [`ApplicationBuilder::finalize`] as both children, so this is an
+    /// ordinary fuse whose child claims are enforced, not a base case.
+    pub fn seed<'source, RNG: CryptoRng, S: Step<C, Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
@@ -371,7 +349,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         )
     }
 
-    /// Returns the `Pcd<Leaf>` that bootstraps the recursion.
+    /// Returns the `Pcd<()>` that bootstraps the recursion.
     ///
     /// [`ApplicationBuilder::finalize`] builds it once: two synthesized
     /// [`dummy_pcd`](Self::dummy_pcd) dummies — which cannot verify on
@@ -382,10 +360,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// [`seed`](Self::seed) consumes it as an ordinary child.
     ///
     /// The proof attests nothing: `Bootstrap` ignores its children entirely and
-    /// outputs the data-less [`Leaf`](header::Leaf) header. It is a
-    /// public constant of the application, and every call returns a clone of
-    /// the same proof.
-    fn bootstrap_pcd(&self) -> Pcd<C, R, header::Leaf> {
+    /// outputs the data-less unit header. It is a public constant of the
+    /// application, and every call returns a clone of the same proof.
+    fn bootstrap_pcd(&self) -> Pcd<C, R, ()> {
         self.bootstrap
             .as_ref()
             .expect("finalize always sets the bootstrap proof")

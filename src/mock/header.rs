@@ -10,13 +10,11 @@ use ragu_pasta::{Ep, Eq, Fp, Fq};
 /// - Slot 0: fixed-ID circuits used internally for recursion (reserved; mock
 ///   rerandomize is a transformation, not a Step, but the slot stays reserved
 ///   for migration parity).
-/// - Slot 1: trivial header `()`.
+/// - Slot 1: unit header `()`.
 /// - Slot 2: dummy header, carried by the proofs the bootstrap step consumes
 ///   (reserved; the mock does not model recursion bootstrapping, but the slot
 ///   stays reserved for encoding parity).
-/// - Slot 3: [`Leaf`] header, the bootstrap proof's output and the input a
-///   leaf step declares.
-pub(crate) const NUM_INTERNAL_SUFFIXES: usize = 4;
+pub(crate) const NUM_INTERNAL_SUFFIXES: usize = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 enum HeaderSuffix {
@@ -78,9 +76,8 @@ fn application_suffix_namespace_matches_ragu_pcd() {
     assert_eq!(Suffix::internal(0).get(), 0);
     assert_eq!(Suffix::internal(1).get(), 1);
     assert_eq!(Suffix::internal(2).get(), 2);
-    assert_eq!(Suffix::internal(3).get(), 3);
-    assert_eq!(Suffix::new(0).get(), 4);
-    assert_eq!(Suffix::new(1).get(), 5);
+    assert_eq!(Suffix::new(0).get(), 3);
+    assert_eq!(Suffix::new(1).get(), 4);
     assert_eq!(
         Suffix::new(usize::MAX - NUM_INTERNAL_SUFFIXES).get(),
         usize::MAX as u64
@@ -105,29 +102,15 @@ pub trait Header: Send + Sync + 'static {
     fn encode(data: &Self::Data) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>);
 }
 
-/// Bootstrap header that encodes no data.
+/// Header that encodes no data.
 ///
-/// Mirrors `ragu_pcd`: an ordinary header that happens to carry nothing. The
-/// bootstrap proof carries [`Leaf`], not `()`.
+/// Mirrors `ragu_pcd`: the bootstrap proof and application steps may carry
+/// this ordinary header, while the private dummy suffix alone marks the base
+/// case.
 impl Header for () {
     type Data = ();
 
     const SUFFIX: Suffix = Suffix::internal(1);
-
-    fn encode(_data: &()) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>) {
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-    }
-}
-
-/// Mirrors `ragu_pcd::header::Leaf`: the header of the bootstrap proof and
-/// the input header of every seed step's circuit. Crate-private, so no
-/// application step can output or declare it.
-pub struct Leaf;
-
-impl Header for Leaf {
-    type Data = ();
-
-    const SUFFIX: Suffix = Suffix::internal(3);
 
     fn encode(_data: &()) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>) {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())

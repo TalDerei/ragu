@@ -6,16 +6,14 @@
 //! [`dummy_pcd`] proofs to produce the bootstrap proof, which [`seed`] then
 //! consumes as an ordinary, fully verified child of every seed step.
 //!
-//! Because this step ignores its children and outputs the data-less
-//! [`Leaf`] header, its proof attests nothing and any prover can mint one.
-//! That is harmless: only seed circuits declare `Leaf`, so such proofs hang
-//! only beneath the leaves of the graph. Confining the base case here rests on
-//! every other circuit's declared input suffixes being unable to equal
-//! `Dummy` — constants for application and seed steps, and a wire
-//! constrained away from it for rerandomization.
+//! Because this step ignores its children and outputs the data-less unit
+//! header, its proof attests nothing and any prover can mint one. Confining the
+//! base case here rests on every other circuit's declared input suffixes being
+//! unable to equal `Dummy` — constants for application steps, and a wire
+//! constrained away from it for rerandomization. An ordinary step consuming
+//! the resulting `Pcd<()>` still verifies its child claim.
 //!
 //! [`dummy_pcd`]: crate::Application::dummy_pcd
-//! [`Leaf`]: crate::header::Leaf
 //! [`finalize`]: crate::ApplicationBuilder::finalize
 //! [`seed`]: crate::Application::seed
 //! [`outer_collapse`]: crate::internal::native::circuits::outer_collapse
@@ -29,10 +27,7 @@ use ragu_primitives::allocator::Standard;
 
 use super::super::{Encoded, Index, Step};
 pub(crate) use crate::step::InternalStepIndex::Bootstrap as INTERNAL_ID;
-use crate::{
-    Header,
-    header::{Dummy, Leaf},
-};
+use crate::{Header, header::Dummy};
 
 pub(crate) struct Bootstrap;
 
@@ -50,7 +45,7 @@ impl<C: Cycle> Step<C> for Bootstrap {
 
     type Left = Dummy;
     type Right = Dummy;
-    type Output = Leaf;
+    type Output = ();
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,

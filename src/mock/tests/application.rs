@@ -8,7 +8,7 @@ use ragu_core::{Error, Result};
 use ragu_pasta::{Ep, Eq, Fp, Fq};
 
 use crate::{
-    Application, ApplicationBuilder, Header, Index, Leaf, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
+    Application, ApplicationBuilder, Header, Index, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,
     StepCtx, Suffix,
 };
 
@@ -39,8 +39,8 @@ struct ValueSeed;
 impl Step for ValueSeed {
     type Aux<'source> = ();
     type Output = TestHeader;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
@@ -260,8 +260,8 @@ struct AuxSeedStep;
 impl Step for AuxSeedStep {
     type Aux<'source> = Vec<u64>;
     type Output = TestHeader;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
@@ -453,49 +453,14 @@ impl Header for ConflictingHeader {
     }
 }
 
-/// Distinct Header type that copies the reserved suffix belonging to `()`.
-struct ReservedUnitSuffixHeader;
-
-impl Header for ReservedUnitSuffixHeader {
-    type Data = ();
-
-    const SUFFIX: Suffix = <() as Header>::SUFFIX;
-
-    fn encode(_data: &Self::Data) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>) {
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-    }
-}
-
-struct ReservedUnitSuffixStep;
-
-impl Step for ReservedUnitSuffixStep {
-    type Aux<'source> = ();
-    type Output = ReservedUnitSuffixHeader;
-    type Left = Leaf;
-    type Right = Leaf;
-    type Witness<'source> = ();
-
-    const INDEX: Index = Index::new(0);
-
-    fn witness<'source>(
-        &self,
-        _ctx: &mut StepCtx<'_>,
-        _witness: Self::Witness<'source>,
-        _left: <Self::Left as Header>::Data,
-        _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
-        Ok(((), ()))
-    }
-}
-
 /// Second seed step claiming `Index::new(0)` for the duplicate-index test.
 struct DuplicateIndexStep;
 
 impl Step for DuplicateIndexStep {
     type Aux<'source> = ();
     type Output = TestHeader;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Witness<'source> = ();
 
     const INDEX: Index = Index::new(0);
@@ -518,8 +483,8 @@ struct SuffixCollisionStep;
 impl Step for SuffixCollisionStep {
     type Aux<'source> = ();
     type Output = ConflictingHeader;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Witness<'source> = ();
 
     const INDEX: Index = Index::new(1);
@@ -566,17 +531,6 @@ fn duplicate_suffix_distinct_types_rejects_registration() {
 }
 
 #[test]
-fn reserved_suffixes_are_preclaimed_by_all_constructors() {
-    for builder in [ApplicationBuilder::new(), ApplicationBuilder::default()] {
-        let result = builder.register(ReservedUnitSuffixStep);
-        assert!(
-            result.is_err(),
-            "a distinct Header copying the reserved unit suffix must be rejected"
-        );
-    }
-}
-
-#[test]
 fn same_suffix_same_type_succeeds_registration() {
     let result = ApplicationBuilder::new()
         .register(ValueSeed)
@@ -594,8 +548,8 @@ fn internal_step_index_rejects_registration() {
     impl Step for InternalIndexStep {
         type Aux<'source> = ();
         type Output = TestHeader;
-        type Left = Leaf;
-        type Right = Leaf;
+        type Left = ();
+        type Right = ();
         type Witness<'source> = ();
 
         const INDEX: Index = Index::internal(0);
@@ -718,8 +672,8 @@ struct PointSeedStep;
 impl Step for PointSeedStep {
     type Aux<'source> = ();
     type Output = PointHeader;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Witness<'source> = Eq;
 
     const INDEX: Index = Index::new(0);

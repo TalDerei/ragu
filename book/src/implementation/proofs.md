@@ -79,11 +79,11 @@ The associated types define the step's interface:
 Consider a simple application that aggregates values:
 
 ```rust
-// Step 1: Leaf step - introduces a single value
+// Step 1: Seed step - introduces a single value
 struct LeafStep { value: u64 }
 impl Step<C> for LeafStep {
-    type Left = Leaf;         // No left child
-    type Right = Leaf;        // No right child
+    type Left = ();            // Bootstrap child
+    type Right = ();           // Bootstrap child
     type Output = ValueHeader; // Outputs a value commitment
 }
 
@@ -96,7 +96,7 @@ impl Step<C> for DoubleAndAddStep {
 }
 ```
 
-Leaf steps are used with `seed()` to create base proofs. Combine
+Seed steps are used with `seed()` to create initial application proofs. Combine
 steps are used with `fuse()` to merge child proofs, building up the
 PCD tree from leaves to root.
 
@@ -115,20 +115,21 @@ let pcd = proof.carry(aux);
 ```
 
 Internally, `seed` fuses the step with the application's _bootstrap proof_ as
-both children. Steps used with `seed` must have `Left = Leaf` and
-`Right = Leaf`.
+both children. Steps used with `seed` must have `Left = ()` and
+`Right = ()`.
 
 #### The Bootstrap Proof
 
 The base case of the recursion lives in a single internal step, the only one
 whose fuse does not verify its children. `ApplicationBuilder::finalize` runs it
-once over two synthesized _trivial proofs_ — which do not verify on their own —
-to produce the bootstrap proof, which carries the reserved `Leaf` header.
+once over two synthesized _dummy proofs_ — which do not verify on their own —
+to produce the bootstrap proof, which carries the unit header.
 
 The bootstrap proof attests nothing, and any prover can produce one; it exists
-only so that the recursion has a valid leaf to start from. No other step may
-produce `Leaf`, and a step may declare it for both inputs or neither, so the
-base case sits only beneath the leaves of the graph.
+only so that the recursion has a valid proof to start from. The internal step's
+private `Dummy` input header is the base-case sentinel. Ordinary steps,
+including those with unit inputs, cannot declare `Dummy` and therefore always
+enforce their child claims.
 
 ### `fuse`
 

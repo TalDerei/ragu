@@ -8,7 +8,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_pcd::{
-    header::{Header, Leaf, Suffix},
+    header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::{
@@ -167,8 +167,8 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
     type Witness<'source> = C::CircuitField;
     type Aux<'source> = ();
     type Output = LeafNode;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,

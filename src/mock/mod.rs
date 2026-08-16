@@ -6,7 +6,7 @@
 
 pub use application::{Application, ApplicationBuilder};
 pub use ctx::StepCtx;
-pub use header::{Header, Leaf, Suffix};
+pub use header::{Header, Suffix};
 pub use proof::{PROOF_SIZE_COMPRESSED, Pcd, Proof};
 pub use step::{Index, Step};
 

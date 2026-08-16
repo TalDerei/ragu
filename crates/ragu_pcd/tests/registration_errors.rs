@@ -8,7 +8,7 @@ use ragu_core::{
 use ragu_pasta::Pasta;
 use ragu_pcd::{
     ApplicationBuilder,
-    header::{Header, Leaf, Suffix},
+    header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::allocator::{Allocator, Standard};
@@ -188,9 +188,9 @@ fn register_steps_duplicate_suffix_should_fail() {
 }
 
 /// A seed step with no predicate producing `O` at index `I`.
-struct LeafShape<O, const I: usize>(core::marker::PhantomData<O>);
+struct SeedShape<O, const I: usize>(core::marker::PhantomData<O>);
 
-impl<C, O, const I: usize> Step<C> for LeafShape<O, I>
+impl<C, O, const I: usize> Step<C> for SeedShape<O, I>
 where
     C: ragu_arithmetic::Cycle,
     O: Header<C::CircuitField, Data = (), Output = ()>,
@@ -198,8 +198,8 @@ where
     const INDEX: Index = Index::new(I);
     type Witness<'source> = ();
     type Aux<'source> = ();
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     type Output = O;
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
@@ -229,39 +229,39 @@ where
 }
 
 #[test]
-fn register_leaf_then_step_shares_index_space() {
+fn register_seed_then_step_shares_index_space() {
     // Seed steps and steps share one sequential index space, and one
     // `register` method accepts both.
     ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
-        .register(LeafShape::<HSuffixA, 0>(core::marker::PhantomData))
+        .register(SeedShape::<HSuffixA, 0>(core::marker::PhantomData))
         .expect("seed step at index 0")
         .register(Step1)
-        .expect("step at index 1 consuming the leaf's header")
+        .expect("step at index 1 consuming the seed output's header")
         .finalize(Pasta::baked())
         .expect("finalize");
 }
 
 #[test]
-fn register_leaf_out_of_order_should_fail() {
+fn register_seed_out_of_order_should_fail() {
     assert!(
         ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
             .register(Step0)
             .unwrap()
-            .register(LeafShape::<HSuffixB, 0>(core::marker::PhantomData))
+            .register(SeedShape::<HSuffixB, 0>(core::marker::PhantomData))
             .is_err(),
         "a seed step must use the next sequential index"
     );
 }
 
 #[test]
-fn register_leaf_duplicate_suffix_should_fail() {
+fn register_seed_duplicate_suffix_should_fail() {
     // Index 1 is correct here, so the failure is the suffix collision with
     // `HSuffixA`, not the index check.
     assert!(
         ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
             .register(Step0)
             .unwrap()
-            .register(LeafShape::<HSuffixAOther, 1>(core::marker::PhantomData))
+            .register(SeedShape::<HSuffixAOther, 1>(core::marker::PhantomData))
             .is_err(),
         "a seed step's output header must not collide with a registered one"
     );
@@ -269,6 +269,6 @@ fn register_leaf_duplicate_suffix_should_fail() {
     ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()
-        .register(LeafShape::<HSuffixB, 1>(core::marker::PhantomData))
+        .register(SeedShape::<HSuffixB, 1>(core::marker::PhantomData))
         .expect("seed step with a fresh suffix at the next index registers");
 }

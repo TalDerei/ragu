@@ -8,7 +8,7 @@ use ragu_core::{Error, Result};
 
 use super::{
     ctx::StepCtx,
-    header::{Header, Leaf, Suffix},
+    header::{Header, Suffix},
     hooks::FrameworkHooks,
     proof::{self, PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::Step,
@@ -36,23 +36,13 @@ pub struct Application {
 impl ApplicationBuilder {
     #[must_use]
     pub fn new() -> Self {
-        // Match the real builder by claiming every reserved header modeled by
-        // the mock before application registration begins. In particular, a
-        // distinct Header can copy `()::SUFFIX`, so leaving this map empty would
-        // accept an application that the real builder rejects.
-        let mut header_map = BTreeMap::new();
-        header_map.insert(<() as Header>::SUFFIX, TypeId::of::<()>());
-        header_map.insert(Leaf::SUFFIX, TypeId::of::<Leaf>());
-
         Self {
             num_application_steps: 0,
-            header_map,
+            header_map: BTreeMap::new(),
         }
     }
 
-    /// Mirrors `ragu_pcd::ApplicationBuilder::register`. A step declaring
-    /// [`Leaf`] for both inputs is a leaf step, run with
-    /// [`Application::seed`].
+    /// Mirrors `ragu_pcd::ApplicationBuilder::register`.
     pub fn register<S: Step>(mut self, _step: S) -> Result<Self> {
         S::INDEX.assert_sequential(self.num_application_steps)?;
 
@@ -94,17 +84,16 @@ impl ApplicationBuilder {
 }
 
 impl Application {
-    /// Mirrors `ragu_pcd::Application::seed`: runs a leaf step over the
-    /// bootstrap proof (header [`Leaf`]) as both children, via
-    /// [`fuse`](Self::fuse).
-    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = Leaf, Right = Leaf>>(
+    /// Mirrors `ragu_pcd::Application::seed`: runs a unit-input step over the
+    /// bootstrap proof as both children, via [`fuse`](Self::fuse).
+    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
     ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
-        let left = Proof::bootstrap().carry::<Leaf>(());
-        let right = Proof::bootstrap().carry::<Leaf>(());
+        let left = Proof::bootstrap().carry::<()>(());
+        let right = Proof::bootstrap().carry::<()>(());
         self.fuse(rng, step, witness, left, right)
     }
 

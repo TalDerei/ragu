@@ -10,7 +10,7 @@ use ragu_core::{
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
-    header::{Header, Leaf, Suffix},
+    header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::{
@@ -58,8 +58,8 @@ impl Step<Pasta> for StepWithData {
     type Witness<'source> = Fp;
     type Aux<'source> = ();
     type Output = HeaderWithData;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>, const HEADER_SIZE: usize>(
         &self,
         dr: &mut D,
@@ -92,8 +92,8 @@ impl<C: Cycle> Step<C> for Step0 {
     type Witness<'source> = ();
     type Aux<'source> = ();
     type Output = HeaderA;
-    type Left = Leaf;
-    type Right = Leaf;
+    type Left = ();
+    type Right = ();
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
         &self,
         _: &mut D,
