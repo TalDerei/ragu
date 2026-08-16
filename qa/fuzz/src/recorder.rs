@@ -543,9 +543,10 @@ const CLUSTER_SOLVE_CAP: usize = 96;
 ///    every constraint that is linear in the current unknowns — `Lin`,
 ///    `Enforce`, and any `Gate` with at least one *known* operand (a known
 ///    operand makes `a·b = c` linear) — and solve that system by Gauss–
-///    Jordan elimination, holding under-determined unknowns at their honest
-///    values. Newly solved wires can unlock more propagation, so the two
-///    passes alternate.
+///    Jordan elimination, committing the wires the system *forces* before
+///    resorting to holding under-determined unknowns at their honest values.
+///    Newly solved wires can unlock more propagation, so the two passes
+///    alternate.
 ///
 /// # Why no false positives
 ///
@@ -564,13 +565,17 @@ const CLUSTER_SOLVE_CAP: usize = 96;
 ///   include are re-checked by `constraints_hold`. An inconsistent subsystem
 ///   (no extension of the current knowns exists) is left unsolved, so the
 ///   residual violation surfaces rather than being papered over.
-/// * **Under-determination is benign.** A genuinely free derived direction
-///   (an under-constraint) leaves the linear system rank-deficient; repair
-///   pins the free parameters to honest values and solves the rest. Picking
-///   one satisfying witness is correct — a malicious prover could submit it
-///   — and the differential's verdict comes from comparing that witness's
-///   *observable* anchors against the native oracle, not from how repair
-///   resolved the slack.
+/// * **Under-determination is benign, but only once.** A genuinely free
+///   derived direction (an under-constraint) leaves the linear system
+///   rank-deficient; repair pins the free parameters to honest values and
+///   solves the rest. Picking one satisfying witness is correct — a malicious
+///   prover could submit it — and the differential's verdict comes from
+///   comparing that witness's *observable* anchors against the native oracle,
+///   not from how repair resolved the slack. What is *not* benign is picking
+///   early: an assigned wire is never revisited, so a choice made before the
+///   available deductions are exhausted can be contradicted later with no way
+///   back. Hence the two-tier commitment in `cluster_solve` — deduce first,
+///   choose only when nothing is left to deduce.
 pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
     let mut known = vec![false; values.len()];
     known[Recorder::<F>::ONE] = true;
@@ -654,8 +659,36 @@ fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]
 /// is linear); a gate with both operands unknown is genuinely nonlinear and
 /// is left for [`constraints_hold`] to check. The augmented matrix is
 /// reduced to row echelon form; an inconsistent row (`0 = nonzero`, no
-/// solution) abandons the solve, and each pivot wire is assigned from its
-/// row with the non-pivot unknowns held at their honest values.
+/// solution) abandons the solve.
+///
+/// # Least commitment
+///
+/// Pivot wires are then assigned in two tiers, and the distinction is load
+/// bearing. In reduced row echelon form a pivot row is zero in every *other*
+/// pivot column, so its remaining nonzero coefficients all sit in non-pivot
+/// (free) columns:
+///
+/// * **Forced** — the row reads no free column, so the system determines the
+///   pivot outright (`x_pc = rhs`). Committing it is a deduction.
+/// * **Guessed** — the row still reads a free column, so the pivot's value
+///   depends on a choice not yet made. Holding those free columns at their
+///   honest values and committing is a *guess*.
+///
+/// A guess taken too early is unrecoverable: neither pass revisits an
+/// assigned wire, so a later constraint that contradicts it can only surface
+/// as a spurious rejection. The concrete failure is an `is_zero` whose input
+/// is an accomplice advice wire — both operands of its hint gates are
+/// unknown on the first pass, so those gates contribute no row at all and the
+/// booleanity enforce alone pivots the result bit against the honest branch;
+/// once the anchors later move the input across zero, the frozen bit
+/// contradicts the gate and the witness is rejected even though a satisfying
+/// assignment exists.
+///
+/// So forced pivots are committed first and alone; a pass that forces
+/// anything returns immediately, letting [`propagate`] and a fresh pass run
+/// against the larger known set. Only when nothing at all is forced does the
+/// guessing tier run, which is the documented benign under-determination —
+/// by then every deduction available has already been made.
 fn cluster_solve<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) -> bool {
     // Columns: the still-unknown wires.
     let mut col_of = vec![usize::MAX; values.len()];
@@ -749,7 +782,32 @@ fn cluster_solve<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [b
         return false;
     }
 
-    // Assign each pivot wire, holding non-pivot unknowns at honest values.
+    // Tier 1: commit the pivots the system forces. An RREF pivot row reads no
+    // other pivot column, so a row whose only nonzero coefficient is the pivot
+    // itself determines that wire outright — no free column, no choice.
+    let mut forced = false;
+    for (row_idx, &pc) in pivot_col_of_row.iter().enumerate() {
+        let reads_free = rows[row_idx][..m]
+            .iter()
+            .enumerate()
+            .any(|(j, &coeff)| j != pc && coeff != F::ZERO);
+        if !reads_free {
+            let wire = wire_of[pc];
+            values[wire] = rows[row_idx][m];
+            known[wire] = true;
+            forced = true;
+        }
+    }
+    // Deductions can unlock propagation (and relinearize gates whose operand
+    // just became known), so hand control back rather than guessing on top of
+    // a half-solved system.
+    if forced {
+        return true;
+    }
+
+    // Tier 2: nothing is forced, so every remaining pivot depends on a free
+    // column. Pin those at their honest values and take the resulting
+    // solution — a satisfying witness for an under-determined subsystem.
     let mut changed = false;
     for (row_idx, &pc) in pivot_col_of_row.iter().enumerate() {
         // RREF row: x_pc + Σ_{nonpivot j} row[j]·x_j = row[m].
@@ -788,8 +846,9 @@ pub fn constraints_hold<F: Field>(events: &[Event<F>], values: &[F]) -> bool {
 /// change), so ragu accepts — while the true semantics say `square` must
 /// move, violating the anchor. The mismatch is the signal.
 ///
-/// This runs in CI as a unit test and on demand in the fuzz target
-/// (`PATCHER_SELFTEST=1`): proof the soundness direction is not vacuous.
+/// This runs as a unit test (`tests::selftest_fires`) and on demand in the
+/// fuzz target (`PATCHER_SELFTEST=1`): proof the soundness direction is not
+/// vacuous.
 pub fn selftest<F: PrimeField>() {
     let root_honest = F::from(7u64);
 
@@ -827,4 +886,154 @@ pub fn selftest<F: PrimeField>() {
          native_ok={native_ok}). The soundness direction is vacuous — the \
          engine would miss real bugs.",
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pasta_curves::{Fp, Fq};
+
+    /// Builds the circuit that the continuous-fuzzing crashes minimised down
+    /// to, and returns whether [`repair`] finds the satisfying witness.
+    ///
+    /// Two advice wires `a` and `x`, an anchor pinning their difference, and
+    /// `is_zero(x)` — the gadget's two hint gates (`x·b = 0`, `x·inv = 1 − b`)
+    /// captured exactly as `ragu_primitives::boolean::is_zero` emits them.
+    /// Only `a` is free: `x` is an *accomplice* the solver must derive from
+    /// the anchor, which is what makes the hint gates nonlinear on the first
+    /// cluster pass.
+    ///
+    /// Cheating `a` drags `x` along by the same delta to hold the anchor, so
+    /// `x_target` is what the accomplice is forced to become. When `x_honest`
+    /// and `x_target` sit on opposite sides of zero the honest `is_zero`
+    /// branch and the repaired one disagree. A satisfying witness always
+    /// exists (`b`, `inv` and `nb` are fully determined once `x` is), so this
+    /// must return `true`; returning `false` is the frozen-guess bug.
+    fn accomplice_crosses_zero<F: PrimeField>(x_honest: u64, x_target: u64) -> bool {
+        let one = Recorder::<F>::ONE;
+        let delta = F::from(x_target) - F::from(x_honest);
+        let x_honest = F::from(x_honest);
+        let a_honest = F::from(100u64);
+        let anchor = a_honest - x_honest;
+
+        let mut rec = Recorder::<F>::new();
+        let a = rec.push_wire(a_honest);
+        let x = rec.push_wire(x_honest);
+
+        // Anchor: enforce (a − x) − anchor = 0, pinning the difference so a
+        // cheat on `a` propagates into the accomplice `x`.
+        let diff = rec.add(|lc| lc.add(&a).add_term(&x, Coeff::NegativeOne));
+        rec.enforce_zero(|lc| lc.add(&diff).add_term(&one, Coeff::Arbitrary(-anchor)))
+            .unwrap();
+
+        // is_zero(x), constraint 1: x · b = 0.
+        let is_zero_honest = if x_honest == F::ZERO { F::ONE } else { F::ZERO };
+        let (xc1, b, zp) = rec
+            .mul(|| {
+                Ok((
+                    Coeff::Arbitrary(x_honest),
+                    Coeff::Arbitrary(is_zero_honest),
+                    Coeff::Zero,
+                ))
+            })
+            .unwrap();
+        rec.enforce_equal(&xc1, &x).unwrap();
+        rec.enforce_zero(|lc| lc.add(&zp)).unwrap();
+
+        // is_zero(x), constraint 2: x · inv = 1 − b.
+        let inv_honest = x_honest.invert().unwrap_or(F::ZERO);
+        let (xc2, _inv, nb) = rec
+            .mul(|| {
+                Ok((
+                    Coeff::Arbitrary(x_honest),
+                    Coeff::Arbitrary(inv_honest),
+                    Coeff::Arbitrary(F::ONE - is_zero_honest),
+                ))
+            })
+            .unwrap();
+        rec.enforce_equal(&xc2, &x).unwrap();
+        rec.enforce_zero(|lc| lc.add(&nb).sub(&one).add(&b))
+            .unwrap();
+
+        assert!(
+            constraints_hold(&rec.events, &rec.values),
+            "planted circuit must satisfy its own constraints honestly",
+        );
+
+        // Cheat `a`; only `a` is committed, so `x` is solvable.
+        let mut values = rec.values.clone();
+        values[a] = a_honest + delta;
+        repair(&rec.events, &mut values, &[a]);
+        constraints_hold(&rec.events, &values)
+    }
+
+    /// The accomplice moves an honestly-*zero* `is_zero` input off zero, so
+    /// the result bit must fall from 1 to 0. This is the Aug 16 reproducer.
+    #[test]
+    fn accomplice_moves_is_zero_input_off_zero() {
+        assert!(
+            accomplice_crosses_zero::<Fp>(0, 1),
+            "repair failed to re-solve the is_zero hint after the accomplice \
+             left zero, rejecting a satisfiable witness",
+        );
+        assert!(accomplice_crosses_zero::<Fq>(0, 1));
+    }
+
+    /// The mirror: the accomplice drives an honestly-*nonzero* `is_zero` input
+    /// to zero, so the result bit must rise from 0 to 1. This is the Aug 12
+    /// and Aug 14 reproducers.
+    #[test]
+    fn accomplice_moves_is_zero_input_onto_zero() {
+        assert!(
+            accomplice_crosses_zero::<Fp>(7, 0),
+            "repair failed to re-solve the is_zero hint after the accomplice \
+             reached zero, rejecting a satisfiable witness",
+        );
+        assert!(accomplice_crosses_zero::<Fq>(7, 0));
+    }
+
+    /// A cheat that leaves the `is_zero` input on the same side of zero is the
+    /// easy case, and must keep working.
+    #[test]
+    fn accomplice_stays_off_zero() {
+        assert!(accomplice_crosses_zero::<Fp>(7, 9));
+        assert!(accomplice_crosses_zero::<Fq>(7, 9));
+    }
+
+    /// The planted under-constrained circuit must still produce the soundness
+    /// disagreement — the guard that the two-tier commitment in
+    /// [`cluster_solve`] made repair *more* complete without making it
+    /// permissive enough to mask a genuinely missing constraint.
+    #[test]
+    fn selftest_fires() {
+        selftest::<Fp>();
+        selftest::<Fq>();
+    }
+
+    /// An under-determined subsystem must still be solved: with nothing left
+    /// to deduce, the guessing tier has to run and pick a witness rather than
+    /// stalling. Two wires appear only as `p + q = 3`, so neither is forced.
+    #[test]
+    fn under_determined_subsystem_still_solved() {
+        let one = Recorder::<Fp>::ONE;
+        let mut rec = Recorder::<Fp>::new();
+        let seed = rec.push_wire(Fp::from(3u64));
+        let p = rec.add(|lc| lc.add_term(&seed, Coeff::Arbitrary(Fp::from(2u64))));
+        let q = rec.add(|lc| lc.add_term(&seed, Coeff::NegativeOne));
+        // p + q − 3·seed = 0 holds honestly (6 − 3 − 3·… ), pinned via ONE.
+        rec.enforce_zero(|lc| {
+            lc.add(&p)
+                .add(&q)
+                .add_term(&one, Coeff::Arbitrary(-Fp::from(3u64)))
+        })
+        .unwrap();
+        assert!(constraints_hold(&rec.events, &rec.values));
+
+        let mut values = rec.values.clone();
+        repair(&rec.events, &mut values, &[seed]);
+        assert!(
+            constraints_hold(&rec.events, &values),
+            "the guessing tier must still resolve an under-determined system",
+        );
+    }
 }
