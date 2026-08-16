@@ -52,6 +52,12 @@ use crate::{
 /// decomposition wires constraining it, so it cannot be remapped into another
 /// circuit without re-emitting those constraints through [`from_element`].
 ///
+/// # Field requirements
+///
+/// The field must have at least 128 bits of capacity, and
+/// [`PrimeField::to_repr`] must encode field elements in little-endian order.
+/// Ragu's supported Pasta fields satisfy both requirements.
+///
 /// [`from_element`]: EndoscalarChallenge::from_element
 pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
     elem: Element<'dr, D>,
@@ -222,8 +228,13 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
 ///
 /// Unlike the in-circuit validation, an out-of-range value is reported as
 /// `false` rather than as an error, so callers performing rejection sampling
-/// can distinguish the expected out-of-range outcome from a genuine error. This is the range predicate used by
-/// `EndoscalarChallenge::try_from_element`.
+/// can distinguish the expected out-of-range outcome from a genuine error.
+/// This is the range predicate used by `EndoscalarChallenge::try_from_element`.
+///
+/// # Field requirements
+///
+/// [`PrimeField::to_repr`] must encode field elements in little-endian order,
+/// as it does for Ragu's supported Pasta fields.
 pub fn endoscalar_in_range<F: PrimeField>(value: F) -> bool {
     let repr = value.to_repr();
 
@@ -476,6 +487,12 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 /// An out-of-range value is rejected before wireless emulation, matching the
 /// in-circuit [`EndoscalarChallenge`] construction that becomes unsatisfiable
 /// before [`Endoscalar::extract`] is reachable.
+///
+/// # Field requirements
+///
+/// The field must have at least 128 bits of capacity, and
+/// [`PrimeField::to_repr`] must encode field elements in little-endian order.
+/// Ragu's supported Pasta fields satisfy both requirements.
 ///
 /// # Errors
 ///

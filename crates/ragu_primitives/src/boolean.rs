@@ -327,7 +327,8 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// a larger element has no $\mathtt{CAPACITY}$-bit decomposition, so the
 /// constraints are unsatisfiable. Over the Pasta fields a uniformly random
 /// element falls outside this range with negligible probability (about
-/// $2^{-129}$).
+/// $2^{-129}$). Witness generation interprets [`PrimeField::to_repr`] as
+/// little-endian, as provided by Ragu's supported Pasta fields.
 pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,
