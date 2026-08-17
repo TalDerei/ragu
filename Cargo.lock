@@ -864,6 +864,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ragu_acceleration"
+version = "0.0.0"
+
+[[package]]
 name = "ragu_arithmetic"
 version = "0.0.0"
 dependencies = [
@@ -882,6 +886,10 @@ dependencies = [
  "rand 0.10.1",
  "rand 0.8.6",
 ]
+
+[[package]]
+name = "ragu_backend"
+version = "0.0.0"
 
 [[package]]
 name = "ragu_circuits"

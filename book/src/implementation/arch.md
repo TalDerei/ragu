@@ -31,7 +31,8 @@ flowchart TB
 
 The following diagram is a high-level dependency sketch for the main library
 crates in the Ragu workspace. It omits placeholder and testing crates
-(`ragu_gadgets`, `ragu_testing`) as well as dev-dependencies. Arrows point
+(`ragu_acceleration`, `ragu_backend`, `ragu_gadgets`, `ragu_testing`) as
+well as dev-dependencies. Arrows point
 from a crate to the crates it depends on. `ragu_arithmetic` sits at the
 foundation; `ragu_core` builds the `Driver` abstraction on top of it;
 `ragu_primitives` and `ragu_circuits` extend that layer with gadgets and
@@ -100,8 +101,8 @@ Ragu is developed as a Cargo workspace.
       that most circuit code depends on.
     * **`ragu_circuits`**: This crate provides the implementation of the
       Ragu protocol and utilities for building arithmetic circuits in Ragu.
-    * **`ragu_gadgets`**: This is just a placeholder, and may be removed in
-      the future.
+    * **`ragu_acceleration`**, **`ragu_backend`**, **`ragu_gadgets`**:
+      These are just placeholders, and may be removed in the future.
     * **`ragu_pcd`**: Top-level API for proof-carrying data applications,
       providing `ApplicationBuilder`, `Application`, `Step`, `Header`,
       `Proof`, and `Pcd`.
