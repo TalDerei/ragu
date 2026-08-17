@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use ragu_arithmetic::{
     Coeff,
-    ff::{Field, PrimeField},
+    ff::{Field, PrimeField, PrimeFieldBits},
 };
 use ragu_core::{
     Result,
@@ -327,19 +327,16 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// a larger element has no $\mathtt{CAPACITY}$-bit decomposition, so the
 /// constraints are unsatisfiable. Over the Pasta fields a uniformly random
 /// element falls outside this range with negligible probability (about
-/// $2^{-129}$). Witness generation interprets [`PrimeField::to_repr`] as
-/// little-endian, as provided by Ragu's supported Pasta fields.
-pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeField>>(
+/// $2^{-129}$).
+pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeFieldBits>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,
     elem: &Element<'dr, D>,
 ) -> Result<Vec<Boolean<'dr, D>>> {
-    let repr = elem.value().map(|v| v.to_repr());
+    let le_bits = elem.value().map(|v| v.to_le_bits());
     let bits = (0..D::F::CAPACITY as usize)
         .map(|i| {
-            let bit = repr
-                .as_ref()
-                .map(move |repr| (repr.as_ref()[i / 8] >> (i % 8)) & 1 == 1);
+            let bit = le_bits.as_ref().map(move |le_bits| le_bits[i]);
             Boolean::alloc(dr, allocator, bit)
         })
         .collect::<Result<Vec<_>>>()?;

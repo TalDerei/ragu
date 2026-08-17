@@ -15,7 +15,7 @@
 
 use ragu_arithmetic::{
     Coeff, CurveAffine,
-    ff::{Field, PrimeField, WithSmallOrderMulGroup},
+    ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup},
 };
 use ragu_core::{
     Error, Result,
@@ -54,9 +54,8 @@ use crate::{
 ///
 /// # Field requirements
 ///
-/// The field must have at least 128 bits of capacity, and
-/// [`PrimeField::to_repr`] must encode field elements in little-endian order.
-/// Ragu's supported Pasta fields satisfy both requirements.
+/// The field must have at least 128 bits of capacity; Ragu's supported Pasta
+/// fields satisfy this.
 ///
 /// [`from_element`]: EndoscalarChallenge::from_element
 pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
@@ -102,7 +101,7 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
         elem: Element<'dr, D>,
     ) -> Result<Self>
     where
-        D::F: PrimeField,
+        D::F: PrimeFieldBits,
     {
         // Emulator drivers never evaluate the decomposition constraints, so
         // also reject an out-of-range witness value directly; `try_just` runs
@@ -133,7 +132,7 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
 
 type NativeEmulator<F> = Emulator<Wireless<Always<()>, F>>;
 
-impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
+impl<'dr, F: PrimeFieldBits> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// Attempts to validate an element as an endoscalar challenge, reporting an
     /// out-of-range element as `Ok(None)` rather than an error.
     ///
@@ -225,36 +224,17 @@ impl<'dr, F: PrimeField> EndoscalarChallenge<'dr, NativeEmulator<F>> {
 /// challenge (canonical representative below $2^{\mathtt{CAPACITY}}$).
 ///
 /// A pure, wireless mirror of the canonical bit decomposition enforced in
-/// circuit by [`EndoscalarChallenge::from_element`]: it recomposes the low
-/// $\mathtt{CAPACITY}$ bits of the canonical representative and checks whether
-/// they reproduce `value`, so it is `true` exactly when that in-circuit
+/// circuit by [`EndoscalarChallenge::from_element`]: it checks that no bit at
+/// index $\geq \mathtt{CAPACITY}$ of the canonical little-endian bit
+/// decomposition is set, so it is `true` exactly when that in-circuit
 /// decomposition is satisfiable.
 ///
 /// Unlike the in-circuit validation, an out-of-range value is reported as
 /// `false` rather than as an error, so callers performing rejection sampling
 /// can distinguish the expected out-of-range outcome from a genuine error.
 /// This is the range predicate used by `EndoscalarChallenge::try_from_element`.
-///
-/// # Field requirements
-///
-/// [`PrimeField::to_repr`] must encode field elements in little-endian order,
-/// as it does for Ragu's supported Pasta fields.
-pub fn endoscalar_in_range<F: PrimeField>(value: F) -> bool {
-    let repr = value.to_repr();
-
-    // Recompose the low CAPACITY bits exactly as `decompose` does, then compare
-    // against the original value. The two agree iff no bit at index >= CAPACITY
-    // is set, i.e. iff `value < 2^CAPACITY`.
-    let mut acc = F::ZERO;
-    let mut gain = F::ONE;
-    for i in 0..(F::CAPACITY as usize) {
-        if (repr.as_ref()[i / 8] >> (i % 8)) & 1 == 1 {
-            acc += gain;
-        }
-        gain = gain.double();
-    }
-
-    acc == value
+pub fn endoscalar_in_range<F: PrimeFieldBits>(value: F) -> bool {
+    value.to_le_bits()[F::CAPACITY as usize..].not_any()
 }
 
 /// Represents a challenge used to scale elliptic curve points.
@@ -324,15 +304,15 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         elem: &Element<'dr, D>,
     ) -> Result<Self>
     where
-        D::F: PrimeField,
+        D::F: PrimeFieldBits,
     {
         let bits = decompose(dr, allocator, elem)?;
 
         let value = elem.value().map(|v| {
-            let repr = v.to_repr();
+            let le_bits = v.to_le_bits();
             let mut acc = 0u128;
             for i in 0..(u128::BITS as usize) {
-                if (repr.as_ref()[i / 8] >> (i % 8)) & 1 == 1 {
+                if le_bits[i] {
                     acc |= 1u128 << i;
                 }
             }
@@ -494,15 +474,14 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 ///
 /// # Field requirements
 ///
-/// The field must have at least 128 bits of capacity, and
-/// [`PrimeField::to_repr`] must encode field elements in little-endian order.
-/// Ragu's supported Pasta fields satisfy both requirements.
+/// The field must have at least 128 bits of capacity; Ragu's supported Pasta
+/// fields satisfy this.
 ///
 /// # Errors
 ///
 /// Returns an input error if `value` is out of range
 /// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$).
-pub fn extract_endoscalar<F: PrimeField>(value: F) -> Result<u128> {
+pub fn extract_endoscalar<F: PrimeFieldBits>(value: F) -> Result<u128> {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
         let challenge = EndoscalarChallenge::from_element(dr, &mut (), elem)?;
@@ -515,7 +494,7 @@ pub fn extract_endoscalar<F: PrimeField>(value: F) -> Result<u128> {
 mod tests {
     use ragu_arithmetic::{
         CurveAffine, CurveExt,
-        ff::{Field, PrimeField, WithSmallOrderMulGroup},
+        ff::{Field, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup},
         group::{CurveAffine as _, Group},
         rand::RngExt,
     };
@@ -554,7 +533,7 @@ mod tests {
         }
     }
 
-    pub fn extract<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> EndoscalarTest {
+    pub fn extract<F: PrimeFieldBits + WithSmallOrderMulGroup<3>>(value: F) -> EndoscalarTest {
         EndoscalarTest {
             value: super::extract_endoscalar(value)
                 .expect("test challenge should satisfy value < 2^CAPACITY"),

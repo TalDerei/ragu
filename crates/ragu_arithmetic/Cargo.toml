@@ -28,7 +28,7 @@ std = []
 bench = false
 
 [dependencies]
-ff = { workspace = true }
+ff = { workspace = true, features = ["bits"] }
 group = { workspace = true }
 pasta_curves = { workspace = true }
 rand = { workspace = true }
