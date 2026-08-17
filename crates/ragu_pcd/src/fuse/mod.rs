@@ -52,7 +52,9 @@ struct NativeSPrime<C: Cycle, R: Rank> {
 
 type NativeFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::CircuitField>>;
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: ragu_backend::Backend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
     ///
     /// The provided `step` must have been previously registered with this
