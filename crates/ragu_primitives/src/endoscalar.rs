@@ -13,6 +13,8 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
+use alloc::boxed::Box;
+
 use ragu_arithmetic::{
     Coeff, CurveAffine,
     ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup},
@@ -34,6 +36,28 @@ use crate::{
     promotion::Demoted,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
+
+/// An error indicating that an element is out of range for an endoscalar
+/// challenge.
+///
+/// [`EndoscalarChallenge::from_element`] boxes this type as the source of
+/// [`Error::InvalidWitness`] when the element's canonical representative is
+/// not below $2^{\mathtt{CAPACITY}}$. A caller that grinds candidate
+/// challenges detects this condition with [`Error::invalid_witness_source`],
+/// resamples, and retries; every other error reports a distinct failure.
+///
+/// # Examples
+///
+/// ```
+/// use ragu_core::Error;
+/// use ragu_primitives::EndoscalarRangeError;
+///
+/// let err = Error::InvalidWitness(Box::new(EndoscalarRangeError));
+/// assert!(err.invalid_witness_source::<EndoscalarRangeError>().is_some());
+/// ```
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[error("endoscalar challenge must satisfy value < 2^CAPACITY")]
+pub struct EndoscalarRangeError;
 
 /// A transcript challenge constrained for endoscalar extraction.
 ///
@@ -91,8 +115,12 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
     ///
     /// # Errors
     ///
-    /// Returns a witness-generation error if `elem` is out of range
-    /// ($\mathtt{elem} \geq 2^{\mathtt{CAPACITY}}$).
+    /// Witness generation fails with [`Error::InvalidWitness`] when `elem` is
+    /// out of range ($\mathtt{elem} \geq 2^{\mathtt{CAPACITY}}$). The boxed
+    /// source is an [`EndoscalarRangeError`] value, which callers that grind
+    /// candidate challenges can detect with
+    /// [`Error::invalid_witness_source`]. Any other error propagates
+    /// unchanged.
     ///
     /// [`sample`]: EndoscalarChallenge::sample
     pub fn from_element<A: Allocator<'dr, D>>(
@@ -109,9 +137,7 @@ impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
         // structure untouched.
         D::try_just(|| {
             if !endoscalar_in_range(*elem.value().take()) {
-                return Err(Error::InvalidWitness(
-                    "endoscalar challenge must satisfy value < 2^CAPACITY".into(),
-                ));
+                return Err(Error::InvalidWitness(Box::new(EndoscalarRangeError)));
             }
 
             Ok(())
@@ -137,10 +163,11 @@ impl<'dr, F: PrimeFieldBits> EndoscalarChallenge<'dr, NativeEmulator<F>> {
     /// out-of-range element as `Ok(None)` rather than an error.
     ///
     /// The rejection-sampling primitive behind [`sample`], and the prover-side
-    /// counterpart to [`from_element`]: it separates the *expected*
-    /// out-of-range outcome (`Ok(None)`, a retry signal) from a *genuine*
-    /// error (`Err`, to propagate, not retry). The range check is the same
-    /// canonical decomposition enforced by [`from_element`].
+    /// counterpart to [`from_element`]: it delegates validation to
+    /// [`from_element`] — the single place the range rule is checked — and
+    /// translates its typed range failure ([`EndoscalarRangeError`]) into the
+    /// *expected* out-of-range outcome (`Ok(None)`, a retry signal). Every
+    /// other failure is a *genuine* error, to propagate, not retry.
     ///
     /// # Errors
     ///
@@ -153,14 +180,17 @@ impl<'dr, F: PrimeFieldBits> EndoscalarChallenge<'dr, NativeEmulator<F>> {
         dr: &mut NativeEmulator<F>,
         elem: Element<'dr, NativeEmulator<F>>,
     ) -> Result<Option<Self>> {
-        // Classify the candidate by value first, so an out-of-range challenge
-        // never reaches the binding decomposition (which would conflate it with
-        // a genuine error). Only in-range challenges are constrained.
-        if !endoscalar_in_range(**elem.value().snag()) {
-            return Ok(None);
+        match Self::from_element(dr, &mut (), elem) {
+            Ok(challenge) => Ok(Some(challenge)),
+            Err(err)
+                if err
+                    .invalid_witness_source::<EndoscalarRangeError>()
+                    .is_some() =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err),
         }
-
-        Self::from_element(dr, &mut (), elem).map(Some)
     }
 
     /// Produces a validated endoscalar challenge by rejection sampling.
@@ -229,11 +259,10 @@ impl<'dr, F: PrimeFieldBits> EndoscalarChallenge<'dr, NativeEmulator<F>> {
 /// decomposition is set, so it is `true` exactly when that in-circuit
 /// decomposition is satisfiable.
 ///
-/// Unlike the in-circuit validation, an out-of-range value is reported as
-/// `false` rather than as an error, so callers performing rejection sampling
-/// can distinguish the expected out-of-range outcome from a genuine error.
-/// This is the range predicate used by `EndoscalarChallenge::try_from_element`.
-pub fn endoscalar_in_range<F: PrimeFieldBits>(value: F) -> bool {
+/// An implementation detail of `from_element`, which reports an out-of-range
+/// value as a typed [`EndoscalarRangeError`] failure that rejection-sampling
+/// callers detect with [`Error::invalid_witness_source`].
+fn endoscalar_in_range<F: PrimeFieldBits>(value: F) -> bool {
     value.to_le_bits()[F::CAPACITY as usize..].not_any()
 }
 
@@ -466,11 +495,10 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 /// # Completeness
 ///
 /// Infallible when `value` has already passed rejection sampling
-/// ($\mathtt{value} < 2^{\mathtt{CAPACITY}}$, equivalently
-/// `endoscalar_in_range` is `true`). An out-of-range value is rejected by the
-/// [`EndoscalarChallenge`] construction it delegates to, matching the
-/// in-circuit path that becomes unsatisfiable before [`Endoscalar::extract`]
-/// is reachable.
+/// ($\mathtt{value} < 2^{\mathtt{CAPACITY}}$). An out-of-range value is
+/// rejected by the [`EndoscalarChallenge`] construction it delegates to,
+/// matching the in-circuit path that becomes unsatisfiable before
+/// [`Endoscalar::extract`] is reachable.
 ///
 /// # Field requirements
 ///
@@ -479,8 +507,10 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
 ///
 /// # Errors
 ///
-/// Returns an input error if `value` is out of range
-/// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$).
+/// Fails with [`Error::InvalidWitness`] when `value` is out of range
+/// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$); the boxed source is an
+/// [`EndoscalarRangeError`], so callers modeling transcript rejection can
+/// detect the condition with [`Error::invalid_witness_source`].
 pub fn extract_endoscalar<F: PrimeFieldBits>(value: F) -> Result<u128> {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
@@ -501,7 +531,10 @@ mod tests {
     use ragu_core::{Result, drivers::emulator::Wireless};
     use ragu_pasta::{EpAffine, Fp};
 
-    use super::{Always, Element, Emulator, Endoscalar, EndoscalarChallenge, Maybe, Point};
+    use super::{
+        Always, Element, Emulator, Endoscalar, EndoscalarChallenge, EndoscalarRangeError, Maybe,
+        Point,
+    };
     use crate::{Simulator, allocator::Standard};
 
     pub struct EndoscalarTest {
@@ -592,9 +625,16 @@ mod tests {
         Ok(())
     }
 
+    /// Out-of-range rejection fails with the typed [`EndoscalarRangeError`]
+    /// source, so grinding callers can detect the condition programmatically.
     #[test]
     fn test_endoscalar_challenge_rejects_out_of_range() {
-        assert!(super::extract_endoscalar(-Fp::ONE).is_err());
+        let err = super::extract_endoscalar(-Fp::ONE)
+            .expect_err("out-of-range challenge must not extract");
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
 
         let result = Simulator::<Fp>::simulate(-Fp::ONE, |dr, witness| {
             let elem = Element::alloc(dr, &mut (), witness)?;
@@ -602,7 +642,13 @@ mod tests {
             Ok(())
         });
 
-        assert!(result.is_err());
+        let Err(err) = result else {
+            panic!("out-of-range challenge must be rejected");
+        };
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
     }
 
     /// `from_element` rejects an out-of-range witness value even on drivers
@@ -617,7 +663,11 @@ mod tests {
                 Ok(())
             });
 
-        assert!(result.is_err());
+        let err = result.expect_err("out-of-range challenge must be rejected");
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
     }
 
     /// The pure-value range predicate must agree with the simulator-based

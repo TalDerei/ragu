@@ -1,8 +1,8 @@
 //! Fuzz endoscalar extract, lift, group_scale, and point operations.
 //!
 //! Invariants:
-//! - `extract_endoscalar` is only called after endoscalar challenge validation.
-//! - Out-of-range field elements model transcript rejection and are discarded.
+//! - `extract_endoscalar` fails only with the typed `EndoscalarRangeError`
+//!   source; such inputs model transcript rejection and are discarded.
 //! - `lift_endoscalar(extract_endoscalar(r))` is deterministic.
 //! - In-circuit lift agrees with native `lift_endoscalar`.
 //! - `group_scale(p)` agrees with `p * lift_endoscalar::<Fq>(endo)`.
@@ -23,8 +23,8 @@ use pasta_curves::arithmetic::CurveAffine;
 use ragu_core::maybe::Maybe;
 use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, Simulator,
-    allocator::Standard, endoscalar_in_range, extract_endoscalar, lift_endoscalar,
+    Boolean, Element, Endoscalar, EndoscalarChallenge, EndoscalarRangeError, NonzeroBank, Point,
+    Simulator, allocator::Standard, extract_endoscalar, lift_endoscalar,
 };
 
 use std::sync::LazyLock;
@@ -112,21 +112,20 @@ fuzz_target!(|input: Input| {
     };
 
     // Model protocol rejection sampling: a challenge outside the canonical
-    // decomposition range would make the circuit validation fail, so the prover
-    // must retry the sampled transcript state instead of extracting it. This is
-    // the same range predicate `EndoscalarChallenge::sample` grinds on. Native
-    // extraction must agree with the predicate and reject such a challenge.
-    if !endoscalar_in_range(r) {
-        assert!(
-            extract_endoscalar::<Fp>(r).is_err(),
-            "out-of-range challenge must not extract"
-        );
-        return;
-    }
-
-    // Native extract/lift
-    let extracted = extract_endoscalar::<Fp>(r)
-        .expect("range-checked endoscalar challenge should extract");
+    // decomposition range fails extraction with a typed `EndoscalarRangeError`
+    // source, so the prover must retry the sampled transcript state instead of
+    // extracting it. Classifying on that error exercises the same path
+    // `EndoscalarChallenge::sample` grinds on; any other failure is a bug.
+    let extracted = match extract_endoscalar::<Fp>(r) {
+        Ok(extracted) => extracted,
+        Err(err) => {
+            assert!(
+                err.invalid_witness_source::<EndoscalarRangeError>().is_some(),
+                "extraction must fail only with the typed range rejection: {err:?}"
+            );
+            return;
+        }
+    };
     let lifted_native: Fp = lift_endoscalar(extracted);
 
     // Determinism

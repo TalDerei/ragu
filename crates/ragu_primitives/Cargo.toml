@@ -28,7 +28,6 @@ all-features = true
 alloc = []
 default = ["alloc"]
 std = []
-unstable-fuzzing = []
 
 [lib]
 bench = false
