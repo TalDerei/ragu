@@ -182,42 +182,25 @@ fuzz_target!(|input: Input| {
                     current_native = (-current_native.to_curve()).to_affine();
                 }
                 PointOp::Double => {
-                    match current.double(dr) {
-                        Ok(doubled) => {
-                            current = doubled;
-                            current_native = current_native.to_curve().double().to_affine();
-                        }
-                        Err(_) => break,
-                    }
+                    current = current.double(dr)?;
+                    current_native = current_native.to_curve().double().to_affine();
                 }
                 PointOp::ConditionalEndo(cond) => {
                     let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
                     bool_idx += 1;
-                    match current.conditional_endo(dr, &b) {
-                        Ok(result) => {
-                            current = result;
-                            if *cond {
-                                let coords = current_native.coordinates().unwrap();
-                                let new_x = *coords.x() * Fp::ZETA;
-                                current_native =
-                                    EpAffine::from_xy(new_x, *coords.y()).unwrap();
-                            }
-                        }
-                        Err(_) => break,
+                    current = current.conditional_endo(dr, &b)?;
+                    if *cond {
+                        let coords = current_native.coordinates().unwrap();
+                        let new_x = *coords.x() * Fp::ZETA;
+                        current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
                     }
                 }
                 PointOp::ConditionalNegate(cond) => {
                     let b = Boolean::alloc(dr, allocator, bool_vals.as_ref().map(|v| v[bool_idx]))?;
                     bool_idx += 1;
-                    match current.conditional_negate(dr, &b) {
-                        Ok(result) => {
-                            current = result;
-                            if *cond {
-                                current_native =
-                                    (-current_native.to_curve()).to_affine();
-                            }
-                        }
-                        Err(_) => break,
+                    current = current.conditional_negate(dr, &b)?;
+                    if *cond {
+                        current_native = (-current_native.to_curve()).to_affine();
                     }
                 }
             }

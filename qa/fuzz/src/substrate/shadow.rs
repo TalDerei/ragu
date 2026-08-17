@@ -105,6 +105,12 @@ pub struct ShadowStacks<F> {
     /// Distinct from "some boolean is true": a `BoolAlloc(true)` or a
     /// `BoolNot` produces a true boolean with no free hint.
     pub is_zero_degenerate: bool,
+    /// Whether each value-fallible op (`Invert`, `Divide`, `AllocRaw`) pushed
+    /// its element, in encounter order. Differential consumers compare this
+    /// trace rather than only the final stack length: one newly-executed op
+    /// and one newly-skipped op can cancel in length while still changing the
+    /// circuit shape between them.
+    pub value_fallible_pushes: Vec<bool>,
 }
 
 /// Evaluates `program` natively with the given advice overrides.
@@ -144,6 +150,7 @@ where
     let mut bools: Vec<bool> = Vec::new();
     let mut anchors = Vec::new();
     let mut is_zero_degenerate = false;
+    let mut value_fallible_pushes = Vec::new();
 
     for (idx, op) in program.ops.iter().enumerate() {
         let elen = elems.len();
@@ -181,6 +188,7 @@ where
                 let a = a as usize % elen;
                 // Mirrors the gadget: inverting zero fails, skipping the push.
                 let inv: Option<F> = elems[a].invert().into();
+                value_fallible_pushes.push(inv.is_some());
                 if let Some(inv) = inv {
                     elems.push(inv);
                 }
@@ -197,6 +205,7 @@ where
                 // Mirrors the gadget: a zero divisor fails enforce_nonzero,
                 // skipping the push.
                 let inv: Option<F> = elems[b].invert().into();
+                value_fallible_pushes.push(inv.is_some());
                 if let Some(inv) = inv {
                     elems.push(elems[a] * inv);
                 }
@@ -222,6 +231,7 @@ where
             Op::AllocRaw(bytes) => {
                 // Mirrors the gadget: non-canonical bytes skip the push.
                 let v: Option<F> = F::from_repr(bytes).into();
+                value_fallible_pushes.push(v.is_some());
                 if let Some(honest) = v {
                     let slot = elems.len();
                     advice.push(AdviceSlot::Elem(slot));
@@ -285,6 +295,7 @@ where
         anchors,
         advice,
         is_zero_degenerate,
+        value_fallible_pushes,
     }
 }
 
@@ -299,6 +310,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ff::Field;
     use proptest::prelude::*;
     use ragu_core::maybe::Maybe;
     use ragu_pasta::Fp;
@@ -417,5 +429,32 @@ mod tests {
         assert_eq!(s.elems[1], Fp::from(456), "witness slot must move");
         assert!(!s.advice.contains(&AdviceSlot::Elem(0)));
         assert!(s.advice.contains(&AdviceSlot::Elem(1)));
+    }
+
+    /// Opposite skip changes can leave the final stack length unchanged. The
+    /// per-op trace must retain both changes so graph-based consumers bail.
+    #[test]
+    fn value_fallible_trace_detects_net_zero_control_flow_change() {
+        let program = Program {
+            preamble: Preamble {
+                seeds: [0, 1, 7, 11],
+                large_seeds: [[1, 2, 3, 4], [5, 6, 7, 8]],
+                special_seeds: [1, 11],
+                constant_mask: 0,
+            },
+            ops: vec![Op::Invert(0), Op::Invert(1)],
+        };
+        let honest = shadow_eval::<Fp>(&program, Overrides::none());
+        let mutated = shadow_eval::<Fp>(
+            &program,
+            Overrides {
+                elems: &[(0, Fp::ONE), (1, Fp::ZERO)],
+                ..Overrides::none()
+            },
+        );
+
+        assert_eq!(honest.elems.len(), mutated.elems.len());
+        assert_eq!(honest.value_fallible_pushes, [false, true]);
+        assert_eq!(mutated.value_fallible_pushes, [true, false]);
     }
 }

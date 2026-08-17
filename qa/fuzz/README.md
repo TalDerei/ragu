@@ -1,6 +1,6 @@
 # `ragu_testing-fuzz`
 
-cargo-fuzz harness for the Ragu project. 20 fuzz targets + 1 auxiliary
+cargo-fuzz harness for the Ragu project. 24 fuzz targets + 1 auxiliary
 dictionary-extractor tool. Standalone workspace (the `[workspace]` table in
 `Cargo.toml` makes this crate its own root) so nightly + libfuzzer flags
 don't leak into the rest of the repo.
@@ -44,11 +44,11 @@ cargo +nightly fuzz run fuzz_element_ops -- -max_total_time=60
 
 Decode the fuzzer's raw bytes into a program over a stack of
 `Element`/`Boolean` gadget calls, via the shared
-[`ragu_testing::substrate`] op grammar. All consume the same decoder,
+[`ragu_testing_fuzz::substrate`] op grammar. All consume the same decoder,
 driver-generic synthesis dispatch, and (where applicable) native shadow —
 see the "Shared substrate" note at the bottom.
 
-[`ragu_testing::substrate`]: ../../crates/ragu_testing/src/substrate.rs
+[`ragu_testing_fuzz::substrate`]: src/substrate.rs
 
 | Target | What it catches |
 |---|---|
@@ -60,7 +60,7 @@ see the "Shared substrate" note at the bottom.
 ### Soundness / patcher targets
 
 Constraint-side under-constraint oracles over generated
-[`ragu_testing::substrate`] circuits (issues #728, #793, #796). Each starts
+[`ragu_testing_fuzz::substrate`] circuits (issues #728, #793, #796). Each starts
 from a satisfying witness, introduces a prover-style cheat, and demands the
 constraint system reject it.
 
@@ -69,6 +69,7 @@ constraint system reject it.
 | `fuzz_witness_pinning` | Mutates one occupied coefficient of the assembled trace polynomial and demands the revdot identity reject it. The generated circuit is made fully-pinned (an `Anchor` per element) so every live coefficient is constrained — a survivor means the constraint system fails to pin that wire. |
 | `fuzz_circuit_cheat` | Mutates one witness input, re-traces, and asserts the assembled constraint-identity verdict matches an independent native oracle (with a Simulator cross-check). The operational patcher whose "repair" is re-tracing. |
 | `fuzz_advice_patcher` | Captures the emitted constraint graph through a recording driver, mutates free advice wires, and **repairs through the captured constraints** (not gadget logic) before comparing to the native shadow — catches under-constrained *advice* that re-trace-based repair masks. `PATCHER_SELFTEST=1` proves the oracle fires on a planted bug. |
+| `fuzz_completeness` | Runs arbitrary witnesses through anchorless, value-infallible generated circuits; every such witness must be accepted, so rejection is an over-constraint signal independent of the patcher's bounded repair search. |
 
 ### Gadget-API property and identity targets
 
@@ -167,10 +168,10 @@ were insensitive to it — that's the real bug class.
 
 Three workflows in `.github/workflows/`:
 
-- **`rust.yml`** runs `cargo +nightly check --bins` from this directory
-  on every PR. Catches bitrot in the fuzz crate without actually running
-  libFuzzer. Cache key includes `Cargo.toml`, `fuzz_targets/**/*.rs`,
-  and `bin/**/*.rs`.
+- **`rust.yml`** runs `cargo test --lib` and `cargo check --bins` from this
+  directory on every PR. This executes the substrate, recorder, and planted-bug
+  self-tests, then catches bitrot in every target without running libFuzzer.
+  Cache keys include `Cargo.toml`, `fuzz_targets/**/*.rs`, and `bin/**/*.rs`.
 
 - **`fuzz-cron.yml`** runs every target via matrix-parallel for 5 hours
   each on Sundays, Wednesdays, and Fridays at 00:00 UTC. Each target
@@ -187,7 +188,7 @@ Three workflows in `.github/workflows/`:
 ## Shared substrate
 
 The op-stream, soundness/patcher, and generated-circuit targets all build
-on one shared module, [`ragu_testing::substrate`], rather than the
+on one shared module, [`ragu_testing_fuzz::substrate`], rather than the
 per-target `Op` enum each used to copy. The substrate is layered so each
 target consumes only what it needs:
 
@@ -205,9 +206,8 @@ target consumes only what it needs:
    (`ProgramCircuit`), with satisfying-witness `steer`ing, for the
    constraint-level oracles.
 
-Living in `ragu_testing` (a dev-dependency both the fuzz workspace and the
-root workspace can reach) is what lets the same grammar feed both libFuzzer
-targets and deterministic in-tree proptests.
+Living in this standalone fuzz crate's library lets the same grammar feed
+both its libFuzzer binaries and deterministic `cargo test --lib` proptests.
 
 ## Patch table
 
@@ -227,7 +227,7 @@ mismatches at link time.
   `special_value`, `-max_len`, weekly cron).
 - **PR #794** (issues #728/#793/#796) — the patcher technique
   (`fuzz_witness_pinning`, `fuzz_circuit_cheat`, `fuzz_advice_patcher`)
-  and the shared `ragu_testing::substrate`: all op-stream targets migrated
+  and the shared `ragu_testing_fuzz::substrate`: all op-stream targets migrated
   onto it, and the constraint-level targets generalized from the two fixed
   dummy circuits to arbitrary generated ones.
 - Talks/papers referenced in the PR descriptions for technique

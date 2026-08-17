@@ -21,9 +21,9 @@
 //!   to equal the earlier one,
 //! * every other `enforce_zero` is a *check*, not a repair rule.
 //!
-//! A fixpoint pass applies those rules until the values stabilise. The
-//! result is the witness a malicious prover could submit: it satisfies
-//! exactly the constraints ragu emitted, and *only* those.
+//! A fixpoint pass searches for a witness a malicious prover could submit.
+//! Acceptance is checked against every captured constraint afterwards; a
+//! failed repair is inconclusive because the solver is deliberately bounded.
 //!
 //! # Vocabulary
 //!
@@ -70,9 +70,10 @@
 //! * `native_satisfied` — does the native shadow, recomputing the full
 //!   dependency chain, still satisfy every anchor?
 //!
-//! The assertion is `ragu_accepts == native_satisfied`. For a correctly
-//! constrained circuit the captured-constraint repair and the native
-//! recompute agree. **If a gadget omits a constraint, repair fails to
+//! The load-bearing assertion is `!(ragu_accepts && !native_satisfied)`.
+//! A rejected repaired witness is inconclusive—the bounded solver may simply
+//! have missed a satisfying extension—and completeness has its own exact
+//! target. **If a gadget omits a constraint, repair fails to
 //! propagate the cheat** (there is no captured rule to carry it), so the
 //! anchored wire keeps its honest value and ragu accepts, while the native
 //! shadow — which knows the true relation — reports the anchor violated.
@@ -125,9 +126,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static RUNS: AtomicU64 = AtomicU64::new(0);
 /// See [`RUNS`].
 static VACUOUS: AtomicU64 = AtomicU64::new(0);
-/// Runs bailed because a cheat un-skipped an `invert`/`divide` (stack grew).
+/// Runs bailed because a cheat un-skipped an `invert`/`divide`.
 static GREW: AtomicU64 = AtomicU64::new(0);
-/// Runs where a cheat zeroed an `invert`/`divide` input (stack shrank) and
+/// Runs where a cheat zeroed an `invert`/`divide` input and
 /// the zero-divisor rejection check ran instead of bailing.
 static SHRANK: AtomicU64 = AtomicU64::new(0);
 /// Runs where only an `is_zero` result flipped, now compared instead of
@@ -349,10 +350,8 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     // Capture the honest constraint graph and per-slot wire ids.
     let mut rec = Recorder::<F>::new();
     let mut alloc = TrackingAllocator::default();
-    let stacks = match synthesize(&mut rec, &mut alloc, &program, &honest_anchors) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
+    let stacks = synthesize(&mut rec, &mut alloc, &program, &honest_anchors)
+        .unwrap_or_else(|err| panic!("recorder rejected an honest generated program: {err:?}"));
     let slot_wires: Vec<usize> = stacks.elems.iter().map(|e| *e.wire()).collect();
 
     // The prover controls three kinds of advice: element-stack witnesses
@@ -497,16 +496,16 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     // and this live re-execution disagree, the recorder mis-captured the
     // circuit and every signal above is suspect.
     let mut playback = Playback::new(ragu_values.clone());
-    if synthesize(&mut playback, &mut (), &program, &honest_anchors).is_ok() {
-        assert_eq!(
-            playback.accepts(),
-            ragu_accepts,
-            "RECORDER CAPTURE BUG: the stored constraint graph accepts={ragu_accepts} but a \
-             fresh playback of the real gadget synthesis says accepts={}. The recorder \
-             mis-captured the circuit. Program: {program:?}",
-            playback.accepts(),
-        );
-    }
+    synthesize(&mut playback, &mut (), &program, &honest_anchors)
+        .unwrap_or_else(|err| panic!("playback diverged from honest circuit shape: {err:?}"));
+    assert_eq!(
+        playback.accepts(),
+        ragu_accepts,
+        "RECORDER CAPTURE BUG: the stored constraint graph accepts={ragu_accepts} but a \
+         fresh playback of the real gadget synthesis says accepts={}. The recorder \
+         mis-captured the circuit. Program: {program:?}",
+        playback.accepts(),
+    );
 
     if bool_cheated {
         assert!(
@@ -543,16 +542,17 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
         },
     );
 
-    // Zero-crossing classification. A cheat can move a gadget input across
-    // zero, changing which ops the native re-evaluation executes:
+    // Zero-crossing classification. Compare the per-op execution trace, not
+    // only final stack lengths: one newly-executed op and one newly-skipped
+    // op can cancel in length while the captured circuit shapes still differ.
     //
-    //  * element stack *shrank* — an `invert`/`divide` whose input the cheat
+    //  * an op was newly skipped — an `invert`/`divide` whose input the cheat
     //    zeroed now skips natively. The honest captured graph still contains
     //    that gadget's nonzero enforcement (`x · x⁻¹ = 1`), which is
     //    unsatisfiable at `x = 0`, so ragu *must* reject. Accepting it means
     //    the nonzero check is under-constrained — a soundness bug. This is
     //    the formerly-bailed case turned into a real oracle.
-    //  * element stack *grew* — an `invert`/`divide` the honest run skipped
+    //  * an op was newly executed — an `invert`/`divide` the honest run skipped
     //    (input honestly zero) now executes. The honest graph never captured
     //    that gadget, so there is nothing to compare against; still out of
     //    model, so bail.
@@ -572,8 +572,20 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     //    spurious rejections here, not as a solver error — see the
     //    least-commitment section on `recorder::cluster_solve` and the
     //    `regressions/fuzz_advice_patcher/` reproducers.
-    let shrank = mutated.elems.len() < shadow.elems.len();
-    let grew = mutated.elems.len() > shadow.elems.len();
+    assert_eq!(
+        shadow.value_fallible_pushes.len(),
+        mutated.value_fallible_pushes.len(),
+    );
+    let grew = shadow
+        .value_fallible_pushes
+        .iter()
+        .zip(&mutated.value_fallible_pushes)
+        .any(|(&honest, &changed)| !honest && changed);
+    let shrank = shadow
+        .value_fallible_pushes
+        .iter()
+        .zip(&mutated.value_fallible_pushes)
+        .any(|(&honest, &changed)| honest && !changed);
     let bools_flipped = mutated.bools != shadow.bools;
     let native_ok = mutated.anchors == honest_anchors;
 
@@ -617,19 +629,10 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
         return;
     }
 
-    assert_eq!(
-        ragu_accepts,
-        native_ok,
+    assert!(
+        !(ragu_accepts && !native_ok),
         "PATCHER SOUNDNESS SIGNAL: cheating advice (elem {elem_value:?}, fold \
-         {fold_value:?}) and repairing through the captured constraints, ragu {} \
-         the witness but the native oracle says it is {}. {}. Program: {program:?}",
-        if ragu_accepts { "ACCEPTED" } else { "REJECTED" },
-        if native_ok { "satisfied" } else { "VIOLATED" },
-        if ragu_accepts && !native_ok {
-            "ragu accepted a witness the oracle rejects — an under-constrained advice wire \
-             (the soundness direction)"
-        } else {
-            "ragu rejected a witness the oracle accepts — a completeness gap"
-        },
+         {fold_value:?}) and repairing through the captured constraints, ragu ACCEPTED \
+         the witness but the native oracle says it is VIOLATED. Program: {program:?}",
     );
 }

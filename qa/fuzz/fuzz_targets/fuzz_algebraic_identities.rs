@@ -136,7 +136,7 @@ fuzz_target!(|input: Input| {
 
     let witness_data = (a_val, b_val, bv_val, bv2_val);
 
-    let _ = Simulator::<Fp>::simulate(witness_data, |dr, witness| {
+    let result = Simulator::<Fp>::simulate(witness_data, |dr, witness| {
         let allocator = &mut Standard::new();
 
         let a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
@@ -306,18 +306,17 @@ fuzz_target!(|input: Input| {
         // alloc_square: pre-square a so we know a*a is a QR; the gadget
         // should return (root, sq) with root*root == sq.
         let a_squared_val = a_val.square();
-        if let Ok((root, sq)) = Element::alloc_square(
+        let (root, sq) = Element::alloc_square(
             dr,
             witness.as_ref().map(|_| a_squared_val),
-        ) {
-            let root_squared = root.mul(dr, &root)?;
-            assert_eq!(
-                *root_squared.value().take(),
-                *sq.value().take(),
-                "alloc_square: root^2 != sq, a={:?}",
-                a_val,
-            );
-        }
+        )?;
+        let root_squared = root.mul(dr, &root)?;
+        assert_eq!(
+            *root_squared.value().take(),
+            *sq.value().take(),
+            "alloc_square: root^2 != sq, a={:?}",
+            a_val,
+        );
 
         // add_coeff(b, 1) == add(b)
         let ac_one = a.add_coeff(dr, &b, Coeff::Arbitrary(Fp::ONE));
@@ -599,4 +598,9 @@ fuzz_target!(|input: Input| {
 
         Ok(())
     });
+    assert!(
+        result.is_ok(),
+        "valid algebraic-identity witness was rejected: {:?}",
+        result.err(),
+    );
 });

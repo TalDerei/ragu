@@ -475,17 +475,22 @@ fn known_routine_native(witness: Fp) -> Fp {
 /// Run the differential alpha-injection check on an assembled trace.
 /// Asserts that two assemblies with distinct `alpha`s differ in exactly
 /// one coefficient position, by exactly the alpha delta. Returns `()` on
-/// success, `None` if either assembly errored (skip the iteration), and
-/// panics on a violated invariant.
+/// success and panics if assembly fails or the invariant is violated. The
+/// trace came from the same registered circuit, so assembly failure is itself
+/// a pipeline bug, not an iteration to discard.
 fn check_alpha_injection(
     registry: &Registry<'_, Fp, TestRank>,
     trace: &ragu_circuits::Trace<Fp>,
     alpha_a: Fp,
     alpha_b: Fp,
-) -> Option<()> {
+) {
     let idx = CircuitIndex::new(0);
-    let poly_a = registry.assemble_with_alpha(trace, idx, alpha_a).ok()?;
-    let poly_b = registry.assemble_with_alpha(trace, idx, alpha_b).ok()?;
+    let poly_a = registry
+        .assemble_with_alpha(trace, idx, alpha_a)
+        .expect("first alpha assembly failed for a registered trace");
+    let poly_b = registry
+        .assemble_with_alpha(trace, idx, alpha_b)
+        .expect("second alpha assembly failed for a registered trace");
 
     let coeffs_a: Vec<Fp> = poly_a.iter_coeffs().collect();
     let coeffs_b: Vec<Fp> = poly_b.iter_coeffs().collect();
@@ -512,7 +517,6 @@ fn check_alpha_injection(
         alpha_a - alpha_b,
         "alpha delta mismatch at coefficient position {diff_idx}"
     );
-    Some(())
 }
 
 fuzz_target!(|input: Input| {
@@ -597,10 +601,9 @@ fuzz_target!(|input: Input| {
             y_seed,
             use_special_x,
         } => {
-            let registry = match BOOL_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = BOOL_REGISTRY
+                .as_ref()
+                .expect("BoolCircuit registry construction failed");
             let x: Fp = match use_special_x {
                 Some(idx) => special_value(idx),
                 None => Fp::from(x_seed),
@@ -651,10 +654,9 @@ fuzz_target!(|input: Input| {
                 return;
             }
             let base = (EpAffine::generator() * Fq::from(scalar_seed)).to_affine();
-            let registry = match POINT_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = POINT_REGISTRY
+                .as_ref()
+                .expect("PointCircuit registry construction failed");
             let circuit = PointCircuit;
             let expected: EpAffine = match point_native(base) {
                 Some(p) => p,
@@ -704,10 +706,9 @@ fuzz_target!(|input: Input| {
             witness_seed,
             use_special,
         } => {
-            let registry = match ROUTINE_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = ROUTINE_REGISTRY
+                .as_ref()
+                .expect("RoutineCircuit registry construction failed");
             let witness: Fp = match use_special {
                 Some(idx) => special_value(idx),
                 None => Fp::from(witness_seed),
@@ -754,10 +755,9 @@ fuzz_target!(|input: Input| {
             witness_seed,
             use_special,
         } => {
-            let registry = match KNOWN_ROUTINE_REGISTRY.as_ref() {
-                Some(r) => r,
-                None => return,
-            };
+            let registry = KNOWN_ROUTINE_REGISTRY
+                .as_ref()
+                .expect("KnownRoutineCircuit registry construction failed");
             let witness: Fp = match use_special {
                 Some(idx) => special_value(idx),
                 None => Fp::from(witness_seed),

@@ -211,10 +211,10 @@ fuzz_target!(|input: Input| {
         Err(_) => return, // Rank overflow: program too large for TestRank.
     };
 
-    let trace: Trace<Fp> = match circuit.trace(honest_witness) {
-        Ok(t) => t.into_output(),
-        Err(_) => return,
-    };
+    let trace: Trace<Fp> = circuit
+        .trace(honest_witness)
+        .expect("fully-pinned honest ProgramCircuit trace failed")
+        .into_output();
 
     let y = Fp::from(input.y_seed);
     let z = Fp::from(input.z_seed);
