@@ -25,7 +25,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: ragu_backend::Backend>
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
-        builder: &ProofBuilder<'_, C, R>,
+        builder: &ProofBuilder<'_, C, R, B>,
     ) -> native::stages::eval::Witness<C::CircuitField>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -62,13 +62,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: ragu_backend::Backend>
         &self,
         rng: &mut RNG,
         eval_witness: &native::stages::eval::Witness<C::CircuitField>,
-        builder: &ProofBuilder<'_, C, R>,
+        builder: &ProofBuilder<'_, C, R, B>,
     ) -> Result<(sparse::Polynomial<C::CircuitField, R>, C::NestedCurve)> {
         let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
             C::CircuitField::random(&mut *rng),
             eval_witness,
         )?;
-        let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
+        let native_eval_commitment =
+            B::sparse_commit_to_affine(&eval_rx, C::host_generators(self.params));
         let bridge_eval_commitment =
             builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
 
