@@ -26,10 +26,6 @@ mod sealed {
         type Verifier = ReferenceBackend;
     }
 
-    #[cfg(test)]
-    impl Sealed for crate::backend_tests::CanonicalBackend {
-        type Verifier = Self;
-    }
 }
 
 /// A Ragu-owned computational backend.
