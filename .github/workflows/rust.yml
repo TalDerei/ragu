@@ -144,7 +144,10 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           cache-suffix: release
-      - name: Run tests
+      - name: Run tests (default features)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test --release --all --locked
+      - name: Run tests (all features)
         run: cargo test --release --all --locked --all-features
 
   test-32-bit:
