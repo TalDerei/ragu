@@ -2,7 +2,7 @@
 
 use core::iter::once;
 
-use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
+use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
@@ -27,7 +27,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     /// any check fails (e.g., invalid circuit ID, header size mismatch,
     /// corrupted commitments or evaluations), or `Err` if an internal
     /// computation error occurs.
-    pub fn verify<RNG: CryptoRngCore, H: Header<C::CircuitField>>(
+    pub fn verify<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,

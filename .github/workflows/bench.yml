@@ -62,7 +62,7 @@ jobs:
           cache-suffix: bench
 
       - name: Build benchmarks
-        run: cargo bench --workspace --locked --bench gungraun --no-run
+        run: cargo bench --workspace --all-features --locked --bench gungraun --no-run
 
   # Push-to-main: full run + save baseline for future comparisons
   # Manual dispatch: full run + regression summary against a chosen baseline
@@ -109,7 +109,7 @@ jobs:
           find target/gungraun -name 'summary.json' -delete
 
       - name: Run benchmarks
-        run: cargo bench --workspace --locked --bench gungraun -- --save-summary=json
+        run: cargo bench --workspace --all-features --locked --bench gungraun -- --save-summary=json
 
       - name: Summarize benchmark regressions
         if: github.event_name == 'workflow_dispatch'

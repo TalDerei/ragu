@@ -2,8 +2,7 @@
 //!
 //! Specialized to the mock's field `Fp`. Formerly a self-contained
 //! reimplementation; the mock now reuses the real domain directly (identical
-//! public API, over whichever `pasta_curves::Fp` the active crypto stack
-//! selects).
+//! public API over `pasta_curves::Fp`).
 
 use ragu_pasta::Fp;
 

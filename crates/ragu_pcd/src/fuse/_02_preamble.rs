@@ -3,7 +3,7 @@
 //! This sets the preamble fields on the [`ProofBuilder`], which commits to the
 //! instance and trace polynomials used in the fuse step.
 
-use ragu_arithmetic::{CryptoRngCore, Cycle, ff::Field};
+use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
 use ragu_core::Result;
 
@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_preamble<'a, RNG: CryptoRngCore>(
+    pub(super) fn compute_preamble<'a, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         left: &'a Proof<C, R>,
@@ -26,7 +26,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         Ok(preamble_witness)
     }
 
-    fn compute_native_preamble<'a, RNG: CryptoRngCore>(
+    fn compute_native_preamble<'a, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         left: &'a Proof<C, R>,
@@ -50,7 +50,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         Ok(preamble_witness)
     }
 
-    fn compute_bridge_preamble<RNG: CryptoRngCore>(
+    fn compute_bridge_preamble<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         left: &Proof<C, R>,

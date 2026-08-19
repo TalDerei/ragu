@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 
 pub use ragu_arithmetic::poly_with_roots;
-use ragu_arithmetic::{CryptoRngCore, Cycle};
+use ragu_arithmetic::{Cycle, rand::CryptoRng};
 use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
 use ragu_pasta::{Eq, EqAffine, Fp, Pasta};
 
@@ -31,7 +31,7 @@ impl Polynomial {
 
     /// Creates a polynomial with random coefficients filling all slots.
     #[must_use]
-    pub fn random<RNG: CryptoRngCore>(rng: &mut RNG) -> Self {
+    pub fn random<RNG: CryptoRng>(rng: &mut RNG) -> Self {
         Self(sparse::Polynomial::random(rng))
     }
 

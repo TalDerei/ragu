@@ -3,9 +3,6 @@
 //! Enabled by the `mock` feature. Mirrors the shape of the real `ragu_pcd` API
 //! so downstream consumers (e.g. Zebra) can integrate against it ahead of the
 //! real implementation. The contents are re-exported at the crate root.
-//!
-//! The mock builds against whichever crypto stack the `modern-deps` (default)
-//! or `legacy-deps` feature selects.
 
 pub use application::{Application, ApplicationBuilder};
 pub use ctx::StepCtx;

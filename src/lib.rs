@@ -6,9 +6,8 @@
 //! the `mock` feature to instead expose an API-level mock of `ragu_pcd`
 //! (re-exported at the crate root), used to integrate downstream consumers
 //! (e.g. Zebra) against the eventual interface ahead of the real
-//! implementation. The mock builds against whichever crypto stack the
-//! `modern-deps` (default) or `legacy-deps` feature selects. See the
-//! [Ragu Book](https://tachyon.z.cash/ragu/) for more information.
+//! implementation. See the [Ragu Book](https://tachyon.z.cash/ragu/) for more
+//! information.
 // The lints below apply to the `mock` surface, which mirrors an external API.
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]

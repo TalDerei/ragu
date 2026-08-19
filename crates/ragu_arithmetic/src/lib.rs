@@ -70,46 +70,24 @@
 
 #[cfg(not(feature = "alloc"))]
 compile_error!("`ragu_arithmetic` requires the `alloc` feature to be enabled.");
-#[cfg(all(feature = "modern-deps", feature = "legacy-deps"))]
-compile_error!("`modern-deps` and `legacy-deps` are mutually exclusive.");
-#[cfg(not(any(feature = "modern-deps", feature = "legacy-deps")))]
-compile_error!("`ragu_arithmetic` requires either `modern-deps` or `legacy-deps`.");
 extern crate alloc;
 
 mod coeff;
-mod deferred;
 mod domain;
 mod fft;
 mod multicore;
 mod util;
 
-/// The selected `ff` crate.
-#[cfg(feature = "legacy-deps")]
-pub extern crate ff_legacy as ff;
-/// The selected `ff` crate.
-#[cfg(feature = "modern-deps")]
-pub extern crate ff_modern as ff;
-/// The selected `group` crate.
-#[cfg(feature = "legacy-deps")]
-pub extern crate group_legacy as group;
-/// The selected `group` crate.
-#[cfg(feature = "modern-deps")]
-pub extern crate group_modern as group;
-/// The selected `pasta_curves` crate.
-#[cfg(feature = "legacy-deps")]
-pub extern crate pasta_curves_legacy as pasta_curves;
-/// The selected `pasta_curves` crate.
-#[cfg(feature = "modern-deps")]
-pub extern crate pasta_curves_modern as pasta_curves;
-/// The selected `rand` crate.
-#[cfg(feature = "legacy-deps")]
-pub extern crate rand_legacy as rand;
-/// The selected `rand` crate.
-#[cfg(feature = "modern-deps")]
-pub extern crate rand_modern as rand;
+/// The `ff` crate used by Ragu.
+pub extern crate ff;
+/// The `group` crate used by Ragu.
+pub extern crate group;
+/// The `pasta_curves` crate used by Ragu.
+pub extern crate pasta_curves;
+/// The `rand` crate used by Ragu.
+pub extern crate rand;
 
 pub use coeff::Coeff;
-pub use deferred::DeferredField;
 pub use domain::Domain;
 pub use fft::{Ring, bitreverse};
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`
@@ -123,25 +101,10 @@ pub use util::{
 };
 
 use crate::ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
-pub use crate::pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
-
-/// A random number generator suitable for cryptographic field sampling,
-/// blanket-implemented for any [`CryptoRng`](crate::rand::CryptoRng) that is also
-/// an [`Rng`](crate::rand::Rng).
-#[cfg(feature = "modern-deps")]
-pub trait CryptoRngCore: crate::rand::CryptoRng + crate::rand::Rng {}
-
-#[cfg(feature = "modern-deps")]
-impl<RNG: crate::rand::CryptoRng + crate::rand::Rng + ?Sized> CryptoRngCore for RNG {}
-
-/// A random number generator suitable for cryptographic field sampling,
-/// blanket-implemented for any [`CryptoRng`](crate::rand::CryptoRng) that is also
-/// an [`RngCore`](crate::rand::RngCore).
-#[cfg(feature = "legacy-deps")]
-pub trait CryptoRngCore: crate::rand::CryptoRng + crate::rand::RngCore {}
-
-#[cfg(feature = "legacy-deps")]
-impl<RNG: crate::rand::CryptoRng + crate::rand::RngCore + ?Sized> CryptoRngCore for RNG {}
+pub use crate::pasta_curves::{
+    arithmetic::{Coordinates, CurveAffine, CurveExt},
+    deferred::DeferredField,
+};
 
 /// Represents a "cycle" of elliptic curves where the scalar field of one curve
 /// is the base field of the other, and vice-versa.

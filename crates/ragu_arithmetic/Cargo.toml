@@ -16,24 +16,11 @@ keywords = ["cryptography", "elliptic-curves", "finite-fields", "fft", "msm"]
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-no-default-features = true
-features = ["alloc", "modern-deps"]
+all-features = true
 
 [features]
 alloc = []
-default = ["alloc", "modern-deps"]
-legacy-deps = [
-  "dep:ff_legacy",
-  "dep:group_legacy",
-  "dep:pasta_curves_legacy",
-  "dep:rand_legacy",
-]
-modern-deps = [
-  "dep:ff_modern",
-  "dep:group_modern",
-  "dep:pasta_curves_modern",
-  "dep:rand_modern",
-]
+default = ["alloc"]
 multicore = ["maybe-rayon/threads", "std"]
 std = []
 
@@ -41,14 +28,10 @@ std = []
 bench = false
 
 [dependencies]
-ff_modern = { workspace = true, optional = true }
-group_modern = { workspace = true, optional = true }
-pasta_curves_modern = { workspace = true, optional = true }
-rand_modern = { workspace = true, optional = true }
-ff_legacy = { workspace = true, optional = true }
-group_legacy = { workspace = true, optional = true }
-pasta_curves_legacy = { workspace = true, optional = true }
-rand_legacy = { workspace = true, optional = true }
+ff = { workspace = true }
+group = { workspace = true }
+pasta_curves = { workspace = true }
+rand = { workspace = true }
 ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
 maybe-rayon = { workspace = true }
 
