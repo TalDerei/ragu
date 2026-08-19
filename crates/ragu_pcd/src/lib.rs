@@ -25,8 +25,10 @@ extern crate alloc;
 extern crate std;
 
 mod backend;
+#[cfg(test)]
+mod backend_tests;
 mod fuse;
-#[cfg(feature = "unstable-fuzzing")]
+#[cfg(any(feature = "unstable-fuzzing", test))]
 pub mod fuzz_utils;
 pub mod header;
 mod internal;

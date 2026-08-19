@@ -25,6 +25,11 @@ mod sealed {
     impl Sealed for AcceleratedProver {
         type Verifier = ReferenceBackend;
     }
+
+    #[cfg(test)]
+    impl Sealed for crate::backend_tests::CanonicalBackend {
+        type Verifier = Self;
+    }
 }
 
 /// A Ragu-owned computational backend.
