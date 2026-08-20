@@ -61,6 +61,7 @@ TARGETS=(
   fuzz_witness_pinning
   fuzz_circuit_cheat
   fuzz_advice_patcher
+  fuzz_internal_circuits
   fuzz_completeness
   fuzz_staging
   fuzz_revdot

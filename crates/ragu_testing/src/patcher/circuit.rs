@@ -34,7 +34,7 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, GadgetExt};
 
-use super::{Playback, Recorder, discover::discover_free_advice, recorder::deduce};
+use super::{Playback, Recorder, recorder::deduce};
 
 /// A circuit synthesized through the [`Recorder`].
 pub struct Capture<F> {
@@ -94,29 +94,38 @@ pub fn capture<'witness, F: Field, C: Circuit<F>>(
 /// Repairs the stage wires of a raw capture in place, returning the wires it
 /// overlaid.
 ///
-/// `configure_stage` reserves each stage wire holding zero, but a post-stage
-/// gadget builds its constraints from the stage output's *honest* value —
-/// so a raw staged capture holds honest values on every determined wire
-/// while its stage wires read zero, contradicting the copy-constraints that
-/// pin them. This recovers the honest stage values without any knowledge of
-/// the staging internals:
+/// `configure_stage` reserves each stage wire holding **zero**, while the
+/// gadget bound to it keeps the stage output's *honest* value — so a raw
+/// staged capture is inconsistent in two related ways:
 ///
-/// * The **determined** wires — everything [`discover_free_advice`] does not
-///   report free — still hold the honest values the gadgets computed, so
-///   they seed the known set.
+/// * a gate input copy-constrained to a reserved stage wire holds the honest
+///   value while the stage wire reads zero; and
+/// * every virtual [`Lin`](super::Event::Lin) wire the recorder computed
+///   *from* a reserved wire is stale, because it summed zeros.
+///
+/// Both are repaired without any knowledge of the staging internals, by
+/// separating the wires that can be trusted from those that cannot:
+///
+/// * A wire is **stale** if it reads zero and is not a virtual wire (every
+///   reserved wire is such a wire; a legitimately-zero wire is stale too,
+///   harmlessly, since re-deriving it yields zero again), or if it is a
+///   virtual wire computed from a stale one — taint that propagates forward
+///   in emission order, since a virtual wire only reads earlier wires.
+/// * Everything else still holds the honest value the gadgets computed, so
+///   it seeds the known set.
 /// * The engine's deduction pass then forces every wire the honest knowns
-///   pin, which back-solves each *used* stage wire from the copy-constraint
-///   tying it to a downstream wire (`stage := gate_input`). Deduction only —
-///   never the repair solver's guessing tier — so nothing is invented.
-/// * Free wires left unforced (genuine advice, allocator waste, and stage
-///   wires no output depends on) keep their raw values, which for a stage
-///   wire is the honest zero the reservation gave it.
+///   pin: a stage wire directly from the copy-constraint tying it to a gate
+///   input (`stage := input`), or indirectly by first recovering the stale
+///   virtual wire from its copy-constraint and then back-solving the stage
+///   wire from the virtual wire's own definition. Deduction only — never the
+///   repair solver's guessing tier — so nothing is invented, and a wire left
+///   unforced simply keeps its raw value.
 ///
-/// The overlaid wires are exactly the stage wires some output depends on —
-/// the ones a soundness oracle must pin as inputs (see
-/// [`Capture::stage_wires`]). For a plain circuit no wire is forced from the
-/// knowns beyond what already holds, so the result is empty and `values` is
-/// unchanged.
+/// The overlaid wires are the reserved wires some output depends on — the
+/// ones a soundness oracle must pin as inputs (see [`Capture::stage_wires`]);
+/// recomputed virtual wires are excluded, being derived rather than free. For
+/// a plain circuit nothing is stale that re-derivation changes, so the result
+/// is empty and `values` is unchanged.
 ///
 /// # Errors
 ///
@@ -127,27 +136,43 @@ pub fn overlay_stages<F: Field>(
     events: &[super::Event<F>],
     values: &mut [F],
 ) -> Result<Vec<usize>> {
-    let free = discover_free_advice(events, values);
-    let mut known = vec![true; values.len()];
-    for &w in &free {
-        known[w] = false;
+    let n = values.len();
+    let before = values.to_vec();
+
+    // A virtual wire is defined by its terms, so it is never itself reserved —
+    // but it goes stale when what it reads does.
+    let mut is_virtual = vec![false; n];
+    for ev in events {
+        if let super::Event::Lin { out, .. } = ev {
+            is_virtual[*out] = true;
+        }
     }
 
-    let before = values.to_vec();
-    deduce(events, values, &mut known);
-
-    let overlaid: Vec<usize> = free
-        .iter()
-        .copied()
-        .filter(|&w| values[w] != before[w])
+    // Taint the reserved (zero, non-virtual) wires, then carry the taint
+    // forward through the virtual wires that read them.
+    let mut stale: Vec<bool> = (0..n)
+        .map(|w| values[w] == F::ZERO && !is_virtual[w])
         .collect();
+    for ev in events {
+        if let super::Event::Lin { out, terms } = ev
+            && terms.iter().any(|(w, _)| stale[*w])
+        {
+            stale[*out] = true;
+        }
+    }
+
+    let mut known: Vec<bool> = stale.iter().map(|s| !s).collect();
+    deduce(events, values, &mut known);
 
     if !super::constraints_hold(events, values) {
         return Err(ragu_core::Error::InvalidWitness(
             "stage overlay could not make the capture consistent".into(),
         ));
     }
-    Ok(overlaid)
+
+    Ok((0..n)
+        .filter(|&w| !is_virtual[w] && values[w] != before[w])
+        .collect())
 }
 
 /// Re-runs `circuit` on `witness` through [`Playback`] over the injected

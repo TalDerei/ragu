@@ -289,3 +289,12 @@ path = "fuzz_targets/fuzz_io_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+# Internal recursion circuits: capture them from a real fuse, then pin the
+# received instance + stage wires and demand no computed instance wire moves.
+[[bin]]
+name = "fuzz_internal_circuits"
+path = "fuzz_targets/fuzz_internal_circuits.rs"
+test = false
+doc = false
+bench = false
