@@ -4,9 +4,15 @@ name: Fuzz coverage
 # Replays each target's cached corpus and committed seeds under a
 # coverage-instrumented build and uploads an llvm-cov per-file report,
 # so coverage drift is visible over time without running anything
-# locally. The union ("which code does fuzzing reach at all") view is
-# generated locally via `./fuzz.sh coverage`; this workflow tracks the
-# per-target trend.
+# locally. A final job merges the per-target summaries into a union view
+# ("which code does fuzzing reach at all") and fails when a target's line
+# coverage falls below its committed baseline.
+#
+# Inputs come from three places, in order: the corpus cache the fuzz cron
+# writes, the corpus *artifact* the same cron uploads (which cache eviction
+# cannot take away), and the committed seeds. A target with none of the three
+# fails — it used to exit successfully with a one-line report saying it had
+# skipped, which is indistinguishable in the Actions UI from a target that ran.
 
 on:
   # Mondays 06:00 UTC, after the Sunday 00:00 UTC fuzz run has extended
@@ -21,6 +27,10 @@ permissions:
 jobs:
   coverage:
     name: coverage ${{ matrix.target }}
+    permissions:
+      contents: read
+      # Reading the fuzz cron's corpus artifacts from another workflow run.
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -47,11 +57,14 @@ jobs:
           - fuzz_circuit_revdot_identity
           - fuzz_staging
           - fuzz_verify_reject
+          - fuzz_verify_reject_full
+          - fuzz_pcd_lifecycle
           - fuzz_witness_pinning
           - fuzz_circuit_cheat
           - fuzz_advice_patcher
           - fuzz_internal_circuits
           - fuzz_completeness
+          - fuzz_registry
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -85,6 +98,45 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-
 
+      # The cache above is best-effort: GitHub evicts entries
+      # least-recently-used at the storage limit, and the fuzz cron writes a
+      # fresh run-scoped entry per target per campaign, so a corpus is often
+      # simply gone by Monday. The cron also uploads its minimized corpus as
+      # an artifact, which eviction cannot touch; pull that in when the cache
+      # came back empty.
+      - name: Find the last successful fuzz campaign
+        id: campaign
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(find "qa/fuzz/corpus/${TARGET}" -type f -print -quit 2>/dev/null)" ]; then
+            echo "Corpus cache hit for ${TARGET}; not reaching for an artifact."
+            echo "run-id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RUN_ID=$(gh api \
+            "repos/${REPO}/actions/workflows/fuzz-cron.yml/runs?status=completed&per_page=20" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure")][0].id // empty')
+          if [ -z "$RUN_ID" ]; then
+            echo "No completed fuzz-cron run to take a corpus from."
+          else
+            echo "Falling back to the corpus artifact from fuzz-cron run ${RUN_ID}."
+          fi
+          echo "run-id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore corpus from the campaign artifact
+        if: steps.campaign.outputs.run-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: corpus-${{ matrix.target }}
+          path: qa/fuzz/corpus/${{ matrix.target }}
+          run-id: ${{ steps.campaign.outputs.run-id }}
+          github-token: ${{ github.token }}
+
       - name: Install cargo-fuzz
         # Keep this pin in sync with fuzz-cron.yml. `--locked` keeps the
         # resolved dependency set reproducible across runs rather than
@@ -111,22 +163,38 @@ jobs:
             INPUT_DIRS+=("seeds/${FUZZ_TARGET}")
           fi
           if [ "${#INPUT_DIRS[@]}" -eq 0 ]; then
-            # A target can predate both a cron corpus and committed seeds;
-            # surface that in the artifact rather than failing the matrix.
-            echo "No corpus or seed inputs found for ${FUZZ_TARGET}; skipping coverage." \
-              | tee "$REPORT"
-            exit 0
+            # Every target has committed seeds — `qa/fuzz/check_targets.sh`
+            # fails a pull request that adds one without them — so reaching
+            # here means the checkout, the cache and the campaign artifact all
+            # produced nothing. That is a broken run, not an empty one, and it
+            # used to exit green with a one-line report that read exactly like
+            # a target which had been measured.
+            echo "No corpus or seed inputs found for ${FUZZ_TARGET}." | tee "$REPORT"
+            echo "::error::${FUZZ_TARGET} has no inputs: seeds/${FUZZ_TARGET} is missing from the checkout and no corpus was restored."
+            exit 1
           fi
+          echo "Replaying ${FUZZ_TARGET} over: ${INPUT_DIRS[*]}"
           HOST=$(rustc -vV | sed -n 's/^host: //p')
           TOOLS="$(rustc --print sysroot)/lib/rustlib/${HOST}/bin"
           cargo fuzz coverage --fuzz-dir . -s none "$FUZZ_TARGET" "${INPUT_DIRS[@]}"
           # Keep the report focused on workspace code: drop registry
           # deps, the rust std sources, and the fuzz harness itself.
+          IGNORE='(/\.cargo/|/rustc/|/\.rustup/|qa/fuzz/)'
+          BIN="target/${HOST}/coverage/${HOST}/release/${FUZZ_TARGET}"
+          PROF="coverage/${FUZZ_TARGET}/coverage.profdata"
           "$TOOLS/llvm-cov" report \
-            --instr-profile="coverage/${FUZZ_TARGET}/coverage.profdata" \
-            "target/${HOST}/coverage/${HOST}/release/${FUZZ_TARGET}" \
-            --ignore-filename-regex='(/\.cargo/|/rustc/|/\.rustup/|qa/fuzz/)' \
+            --instr-profile="$PROF" "$BIN" \
+            --ignore-filename-regex="$IGNORE" \
             > "$REPORT"
+          # The machine-readable twin of the report. Per-file line counts are
+          # what the union job merges and what the baseline gate compares;
+          # they are a few kilobytes, where shipping the profdata and the
+          # instrumented binary a true union merge would need is hundreds of
+          # megabytes per target.
+          "$TOOLS/llvm-cov" export --summary-only \
+            --instr-profile="$PROF" "$BIN" \
+            --ignore-filename-regex="$IGNORE" \
+            > "coverage-summary-${FUZZ_TARGET}.json"
           {
             echo "## coverage ${FUZZ_TARGET}"
             echo '```'
@@ -140,6 +208,52 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-${{ matrix.target }}
-          path: qa/fuzz/coverage-report-${{ matrix.target }}.txt
+          path: |
+            qa/fuzz/coverage-report-${{ matrix.target }}.txt
+            qa/fuzz/coverage-summary-${{ matrix.target }}.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # The per-target jobs answer "what does this one target reach". This one
+  # answers the two questions a reader actually has: what does fuzzing reach
+  # *at all*, and is that getting worse.
+  union:
+    name: union report and regression gate
+    needs: coverage
+    # always(), so a matrix job that failed for its own reason still gets its
+    # siblings merged and compared — a partial union is more useful than none,
+    # and `coverage_union.py` says which targets are missing.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Download every target's summary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: coverage-*
+          path: summaries
+          merge-multiple: true
+
+      - name: Union report and baseline comparison
+        run: |
+          set -euo pipefail
+          python3 qa/fuzz/coverage_union.py \
+            --summaries summaries \
+            --baseline qa/fuzz/coverage-baseline.json \
+            --out union-report.txt \
+            --out-json union-summary.json
+          cat union-report.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload union report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-union
+          path: |
+            union-report.txt
+            union-summary.json
           retention-days: 90
           if-no-files-found: warn
