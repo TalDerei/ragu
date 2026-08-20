@@ -237,8 +237,12 @@ mod tests {
     ///   engine records the pooled allocator's auxiliary constraint.
     ///
     /// The healthy `MySimpleCircuit`, with its two private witnesses
-    /// declared, sweeps clean — there the same waste-`b` cheat is rejected,
-    /// because `C · D = 0` collides with the pinned witness on the D wire.
+    /// declared, reports no violation — but *vacuously*, by the rule
+    /// `SweepReport` states for itself: its one cheatable wire, the waste
+    /// `b`, is **rejected** rather than neutralized, because `C · D = 0`
+    /// collides with the pinned witness on the D wire. Rejection is
+    /// inconclusive, so this half pins down the counters, not a determinism
+    /// guarantee for `MySimpleCircuit`.
     #[test]
     fn determinism_sweep_over_captures() -> Result<()> {
         let root = Fp::from(7u64);
@@ -270,13 +274,16 @@ mod tests {
         );
         assert!(
             report.violations.is_empty(),
-            "outputs are functions of the declared witnesses; waste moves nothing",
+            "no lever on the output was found: {:?}",
+            report.violations,
         );
         assert_eq!(
             (report.pinned, report.rejected),
             (0, 1),
-            "the waste-`b` cheat is rejected outright here: `C · D = 0` \
-             collides with the pinned witness on the co-allocated `d` wire",
+            "vacuous, not clean: the one cheatable wire (the waste `b`) is \
+             rejected outright — `C · D = 0` collides with the pinned witness \
+             on the co-allocated `d` wire — so the sweep demonstrated nothing \
+             about determinism here",
         );
 
         Ok(())

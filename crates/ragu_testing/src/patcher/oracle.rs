@@ -48,7 +48,7 @@ use super::{
 };
 
 /// The outcome of one [`determinism_probe`].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ProbeOutcome<F> {
     /// The repaired witness violates a captured constraint. Inconclusive:
     /// the bounded solver may have missed a satisfying repair, so this is
@@ -70,7 +70,7 @@ pub enum ProbeOutcome<F> {
 }
 
 /// A determinism violation found by [`determinism_sweep`].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Violation<F> {
     /// The cheated free-advice wire.
     pub advice: usize,
@@ -89,7 +89,7 @@ pub struct Violation<F> {
 /// every probe was rejected by the bounded solver and so tested nothing.
 /// A report with `violations` empty and `pinned == 0` while `rejected > 0`
 /// is **vacuous**, not clean.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SweepReport<F> {
     /// The determinism violations, one per violating wire.
     pub violations: Vec<Violation<F>>,
@@ -118,11 +118,6 @@ pub fn determinism_probe<F: Field>(
     outputs: &[usize],
     cheats: &[(usize, F)],
 ) -> ProbeOutcome<F> {
-    debug_assert!(
-        constraints_hold(events, honest),
-        "the pinned-input oracle needs an honest, satisfying capture",
-    );
-
     let mut values = honest.to_vec();
     let mut fixed = inputs.to_vec();
     for &(wire, value) in cheats {
@@ -169,6 +164,13 @@ pub fn determinism_sweep<F: Field>(
     inputs: &[usize],
     outputs: &[usize],
 ) -> SweepReport<F> {
+    // Checked once here rather than per probe: `honest` is the same witness
+    // throughout the sweep, and `constraints_hold` is O(wires × events).
+    debug_assert!(
+        constraints_hold(events, honest),
+        "the pinned-input oracle needs an honest, satisfying capture",
+    );
+
     let mut report = SweepReport {
         violations: Vec::new(),
         pinned: 0,
