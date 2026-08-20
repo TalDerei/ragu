@@ -29,11 +29,11 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 # This workspace cannot inherit repo-root [workspace.dependencies], so keep
-# these direct ff/group/pasta_curves/rand versions and source pins in sync with
-# the repo-root dependency set.
+# these direct ff/group/pasta_curves/rand versions in sync with the repo-root
+# dependency set.
 ff = { version = "0.14", default-features = false }
 group = { version = "0.14", default-features = false }
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
+pasta_curves = { package = "zakura-pasta-curves", version = "1.0.0-rc.2", features = ["deferred"] }
 ragu_arithmetic = { path = "../../crates/ragu_arithmetic" }
 ragu_primitives = { path = "../../crates/ragu_primitives" }
 ragu_pasta = { path = "../../crates/ragu_pasta", features = ["baked"] }

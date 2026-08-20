@@ -695,20 +695,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
-name = "pasta_curves"
-version = "0.5.1"
-source = "git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5#5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5"
-dependencies = [
- "blake2b_simd",
- "ff",
- "group",
- "lazy_static",
- "rand 0.10.1",
- "static_assertions",
- "subtle",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -839,11 +825,11 @@ dependencies = [
  "group",
  "gungraun",
  "maybe-rayon",
- "pasta_curves",
  "proptest",
  "ragu_macros",
  "ragu_testing",
  "rand 0.10.1",
+ "zakura-pasta-curves",
 ]
 
 [[package]]
@@ -860,7 +846,6 @@ dependencies = [
  "group",
  "gungraun",
  "maybe-rayon",
- "pasta_curves",
  "proptest",
  "ragu_arithmetic",
  "ragu_core",
@@ -868,6 +853,7 @@ dependencies = [
  "ragu_primitives",
  "ragu_testing",
  "rand 0.10.1",
+ "zakura-pasta-curves",
 ]
 
 [[package]]
@@ -920,7 +906,6 @@ dependencies = [
  "ff",
  "gungraun",
  "maybe-rayon",
- "pasta_curves",
  "proptest",
  "ragu_arithmetic",
  "ragu_circuits",
@@ -929,6 +914,7 @@ dependencies = [
  "ragu_primitives",
  "ragu_testing",
  "rand 0.10.1",
+ "zakura-pasta-curves",
 ]
 
 [[package]]
@@ -1496,6 +1482,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
 dependencies = [
  "tap",
+]
+
+[[package]]
+name = "zakura-pasta-curves"
+version = "1.0.0-rc.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e778e0af70387b9f1e988d9a280f936350340c509e5dc26ed32a962c4a708c42"
+dependencies = [
+ "blake2b_simd",
+ "ff",
+ "group",
+ "lazy_static",
+ "rand 0.10.1",
+ "static_assertions",
+ "subtle",
 ]
 
 [[package]]
