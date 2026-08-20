@@ -536,13 +536,16 @@ impl<F: Field> Rref<F> {
                 continue;
             };
             rows.swap(r, pr);
-            let inv = rows[r][c].invert().unwrap();
-            for v in &mut rows[r][c..] {
+            // Split the pivot row out so the rows above and below it can be
+            // reduced in place against it, without copying it out first.
+            let (above, rest) = rows.split_at_mut(r);
+            let (pivot_row, below) = rest.split_first_mut().expect("r < rows.len()");
+            let inv = pivot_row[c].invert().unwrap();
+            for v in &mut pivot_row[c..] {
                 *v *= inv;
             }
-            let pivot_row = rows[r].clone();
-            for (i, row) in rows.iter_mut().enumerate() {
-                if i != r && row[c] != F::ZERO {
+            for row in above.iter_mut().chain(below) {
+                if row[c] != F::ZERO {
                     let f = row[c];
                     for (v, p) in row[c..].iter_mut().zip(&pivot_row[c..]) {
                         *v -= *p * f;
@@ -890,13 +893,16 @@ fn cluster_solve<F: Field>(
             continue;
         };
         rows.swap(r, pr);
-        let inv = rows[r][c].invert().unwrap();
-        for v in &mut rows[r][c..] {
+        // Split the pivot row out so the rows above and below it can be
+        // reduced in place against it, without copying it out first.
+        let (above, rest) = rows.split_at_mut(r);
+        let (pivot_row, below) = rest.split_first_mut().expect("r < rows.len()");
+        let inv = pivot_row[c].invert().unwrap();
+        for v in &mut pivot_row[c..] {
             *v *= inv;
         }
-        let pivot_row = rows[r].clone();
-        for (i, row) in rows.iter_mut().enumerate() {
-            if i != r && row[c] != F::ZERO {
+        for row in above.iter_mut().chain(below) {
+            if row[c] != F::ZERO {
                 let f = row[c];
                 for (v, p) in row[c..].iter_mut().zip(&pivot_row[c..]) {
                     *v -= *p * f;
