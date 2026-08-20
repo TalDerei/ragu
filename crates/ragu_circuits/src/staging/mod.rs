@@ -332,18 +332,6 @@ impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> MultiStage<F, R, S> {
     pub fn final_mask<'a>(&self) -> Result<BondingObject<'a, F, R>> {
         S::Last::final_mask()
     }
-
-    /// The number of allocation gates the stage chain reserves ahead of the
-    /// final stage $r'(X)$, excluding the SYSTEM gate.
-    ///
-    /// The final stage's first gate is the one
-    /// [`final_mask`](Self::final_mask) starts at,
-    /// `S::Last::skip_gates() + S::Last::num_gates()`; every gate before it
-    /// other than gate 0 was allocated by `configure_stage`, two stage wires
-    /// per gate, before the circuit body could touch the driver.
-    pub fn reserved_gates() -> usize {
-        S::Last::skip_gates() + S::Last::num_gates() - 1
-    }
 }
 
 impl<F: Field, R: Rank, S: MultiStageCircuit<F, R>> Circuit<F> for MultiStage<F, R, S> {

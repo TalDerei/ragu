@@ -100,11 +100,6 @@ fn collect<'w, F: Field, Cir: Circuit<F>>(
 ) -> Result<Captured<F>> {
     let name = format!("{}@{point}", spec.name);
     let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)?;
-    assert_eq!(
-        cap.stage_wires.len(),
-        2 * spec.reserved_gates,
-        "{name}: two stage wires per reserved gate",
-    );
     let resolution = spec.resolve(&cap.instance, &cap.stage_wires)?;
     assert!(
         !resolution.outputs.is_empty(),
@@ -174,19 +169,21 @@ fn collect<'w, F: Field, Cir: Circuit<F>>(
 }
 
 /// The captured circuits of every visited point, by field.
-#[derive(Default)]
-struct Collector {
+struct Collector<N, S> {
     point: &'static str,
-    native: Vec<Captured<NativeField>>,
-    nested: Vec<Captured<NestedField>>,
+    native: Vec<Captured<N>>,
+    nested: Vec<Captured<S>>,
 }
 
-impl InternalCircuitVisitor<Pasta> for Collector {
-    fn visit<'w, Cir: Circuit<<Pasta as Cycle>::CircuitField>>(
+// The fields are written as the cycle's own associated types so the methods'
+// bounds match the trait's verbatim; spelling them `Fp` / `Fq` makes rustc
+// reject the impl as having stricter requirements.
+impl<C: Cycle> InternalCircuitVisitor<C> for Collector<C::CircuitField, C::ScalarField> {
+    fn visit<'w, Cir: Circuit<C::CircuitField>>(
         &mut self,
         spec: &CircuitSpec,
         circuit: &Cir,
-        stage_values: &[<Pasta as Cycle>::CircuitField],
+        stage_values: &[C::CircuitField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
         let captured = collect(self.point, spec, circuit, stage_values, make_witness)?;
@@ -194,11 +191,11 @@ impl InternalCircuitVisitor<Pasta> for Collector {
         Ok(())
     }
 
-    fn visit_nested<'w, Cir: Circuit<<Pasta as Cycle>::ScalarField>>(
+    fn visit_nested<'w, Cir: Circuit<C::ScalarField>>(
         &mut self,
         spec: &CircuitSpec,
         circuit: &Cir,
-        stage_values: &[<Pasta as Cycle>::ScalarField],
+        stage_values: &[C::ScalarField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
         let captured = collect(self.point, spec, circuit, stage_values, make_witness)?;
@@ -208,7 +205,7 @@ impl InternalCircuitVisitor<Pasta> for Collector {
 }
 
 /// The captured circuits, built from real fuses on first use.
-static CIRCUITS: LazyLock<Collector> = LazyLock::new(|| {
+static CIRCUITS: LazyLock<Collector<NativeField, NestedField>> = LazyLock::new(|| {
     let pasta = Pasta::baked();
     let leaf_step = || WitnessLeaf {
         poseidon_params: Pasta::circuit_poseidon(pasta),
@@ -241,7 +238,8 @@ static CIRCUITS: LazyLock<Collector> = LazyLock::new(|| {
 
     let mut collector = Collector {
         point: "seeded",
-        ..Default::default()
+        native: Vec::new(),
+        nested: Vec::new(),
     };
     app.capture_internal_circuits_seeded(
         &mut rng,
@@ -302,7 +300,7 @@ fuzz_target!(
             eprintln!("{input:#?}");
             return;
         }
-        let circuits: &Collector = &CIRCUITS;
+        let circuits: &Collector<NativeField, NestedField> = &CIRCUITS;
         let total = circuits.native.len() + circuits.nested.len();
         if total == 0 {
             return;

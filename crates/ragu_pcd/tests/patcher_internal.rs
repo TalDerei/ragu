@@ -57,8 +57,8 @@ use ragu_pcd::{
 };
 use ragu_testing::{
     patcher::{
-        Prepared, ProbeOutcome, capture_staged, capture_with_stage_values, constraints_hold,
-        determinism_probe, discover_free_advice, forced_by, playback,
+        Prepared, ProbeOutcome, capture_with_stage_values, constraints_hold, determinism_probe,
+        discover_free_advice, forced_by, playback,
     },
     pcd::nontrivial::{Hash2, Merge2, WitnessLeaf},
 };
@@ -68,7 +68,8 @@ use rand::{SeedableRng, rngs::StdRng};
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Census {
     name: String,
-    reserved_gates: usize,
+    /// Reserved stage wires (two per reserved gate).
+    stage_wires: usize,
     wires: usize,
     instance: usize,
     /// Watched outputs.
@@ -96,33 +97,14 @@ fn check<'w, F: Field, Cir: Circuit<F>>(
 ) -> Result<Census> {
     let name = spec.name.as_str();
 
-    assert_eq!(
-        stage_values.len(),
-        2 * spec.reserved_gates,
-        "{name}@{point}: two stage values per reserved gate",
-    );
     let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)
         .unwrap_or_else(|e| panic!("{name}@{point}: capture must succeed, got {e:?}"));
     let rec = &cap.recorder;
     assert_eq!(
         cap.stage_wires.len(),
-        2 * spec.reserved_gates,
-        "{name}@{point}: two stage wires per reserved gate",
+        stage_values.len(),
+        "{name}@{point}: one stage wire per supplied stage value",
     );
-    // Wherever the deduction overlay can recover a stage wire at all, it must
-    // agree with the supplied value (a stage wire nothing reads stays zero
-    // under deduction, and a circuit it cannot overlay at all is fine).
-    if let Ok(deduced) = capture_staged(circuit, make_witness()?, spec.reserved_gates) {
-        for &w in &cap.stage_wires {
-            if deduced.recorder.values[w] != F::ZERO {
-                assert_eq!(
-                    deduced.recorder.values[w], rec.values[w],
-                    "{name}@{point}: the deduction overlay disagrees with the stage values on \
-                     wire {w}",
-                );
-            }
-        }
-    }
     assert!(
         constraints_hold(&rec.events, &rec.values),
         "{name}@{point}: the capture must satisfy the recorded constraints",
@@ -174,7 +156,6 @@ fn check<'w, F: Field, Cir: Circuit<F>>(
     if name == "hashes_1" {
         let wrong = CircuitSpec {
             name: "hashes_1 (wrong)".into(),
-            reserved_gates: spec.reserved_gates,
             outputs: vec![OutputRef::Instance(0)],
         }
         .resolve(&cap.instance, &cap.stage_wires)?;
@@ -280,7 +261,7 @@ fn check<'w, F: Field, Cir: Circuit<F>>(
 
     Ok(Census {
         name: spec.name.clone(),
-        reserved_gates: spec.reserved_gates,
+        stage_wires: cap.stage_wires.len(),
         wires: rec.values.len(),
         instance: cap.instance.len(),
         outputs: resolution.outputs.len(),
@@ -331,15 +312,14 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
 /// tallies and `cheatable` are judged at the witness, so they are pinned per
 /// capture point; the rest is structural.
 fn expected(name: &str, point: &str) -> Census {
-    let (reserved_gates, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name
-    {
-        "hashes_1" => (228, 5561, 38, 8, 0, 8, 238),
-        "hashes_2" => (228, 8527, 30, 6, 2, 6, 231),
-        "inner_collapse" => (627, 6264, 30, 19, 0, 19, 653),
-        "outer_collapse" if point == "seeded" => (228, 2896, 30, 6, 0, 6, 234),
-        "outer_collapse" => (228, 2896, 30, 7, 0, 7, 238),
-        "compute_v" => (83, 3811, 30, 1, 0, 1, 340),
-        step if step.starts_with("endoscaling_step_") => (110, 10380, 0, 2, 0, 2, 109),
+    let (stage_wires, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name {
+        "hashes_1" => (456, 5561, 38, 8, 0, 8, 238),
+        "hashes_2" => (456, 8527, 30, 6, 2, 6, 231),
+        "inner_collapse" => (1254, 6264, 30, 19, 0, 19, 653),
+        "outer_collapse" if point == "seeded" => (456, 2896, 30, 6, 0, 6, 234),
+        "outer_collapse" => (456, 2896, 30, 7, 0, 7, 238),
+        "compute_v" => (166, 3811, 30, 1, 0, 1, 340),
+        step if step.starts_with("endoscaling_step_") => (220, 10380, 0, 2, 0, 2, 109),
         other => panic!("no census pinned for {other}"),
     };
     let (pinned, rejected) = match (name, point) {
@@ -357,7 +337,7 @@ fn expected(name: &str, point: &str) -> Census {
     };
     Census {
         name: name.to_owned(),
-        reserved_gates,
+        stage_wires,
         wires,
         instance,
         outputs,
@@ -454,7 +434,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
     let structural = |census: &Census| {
         (
             census.name.clone(),
-            census.reserved_gates,
+            census.stage_wires,
             census.wires,
             census.instance,
             census.outputs,

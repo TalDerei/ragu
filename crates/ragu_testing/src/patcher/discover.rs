@@ -127,7 +127,7 @@ pub fn allocation_waste<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<(usi
 /// oracle.
 ///
 /// Seeds the known set with `inputs` and the fixed ONE wire, runs the
-/// solver — [`deduce`] plus case analysis on booleans, which is what decides
+/// solver — `deduce` plus case analysis on booleans, which is what decides
 /// an endoscalar's bits from the value they decompose — to a fixpoint, and
 /// returns every other wire it marked known, ascending. A declared *output*
 /// that is missing from the result is not a function of the declared inputs

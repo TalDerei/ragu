@@ -68,7 +68,7 @@ use ragu_arithmetic::{Coeff, CryptoRngCore, Cycle, ff::Field};
 use ragu_circuits::{
     Circuit,
     polynomials::Rank,
-    staging::{MultiStage, MultiStageCircuit, Stage, StageExt},
+    staging::{MultiStage, Stage, StageExt},
 };
 use ragu_core::{
     Result,
@@ -113,16 +113,13 @@ pub enum OutputRef {
 }
 
 /// What a patcher harness must know about an internal circuit beyond its
-/// [`Circuit`] impl: where its stage reservation ends, and which wires its
-/// constraints are responsible for determining.
+/// [`Circuit`] impl: which wires its constraints are responsible for
+/// determining.
 #[derive(Clone, Debug)]
 pub struct CircuitSpec {
     /// The circuit's name, for diagnostics (the endoscaling steps are
     /// numbered).
     pub name: String,
-    /// The number of gates its stage chain reserves — a contiguous prefix of
-    /// any recording of it; see [`MultiStage::reserved_gates`].
-    pub reserved_gates: usize,
     /// The wires it is responsible for: its outputs under the pinned-input
     /// oracle (see the [module docs](self)).
     pub outputs: Vec<OutputRef>,
@@ -274,14 +271,6 @@ fn stage_values<'source, F: Field, R: Rank, S: Stage<F, R> + Default>(
     let mut values = dr.wires(&output)?;
     values.resize(2 * <S as StageExt<F, R>>::num_gates(), F::ZERO);
     Ok(values)
-}
-
-/// [`MultiStage::reserved_gates`] with the circuit type inferred from a
-/// value.
-fn reserved_gates<F: Field, R: Rank, S: MultiStageCircuit<F, R>>(
-    _circuit: &MultiStage<F, R, S>,
-) -> usize {
-    MultiStage::<F, R, S>::reserved_gates()
 }
 
 /// The unified element slots a circuit covers, as instance positions, read
@@ -708,7 +697,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
         let hashes_1_spec = CircuitSpec {
             name: "hashes_1".into(),
-            reserved_gates: reserved_gates(&hashes_1),
             outputs: covered_elements(&hashes_1, hashes_1_witness()?, coverage)?
                 .into_iter()
                 .map(OutputRef::Instance)
@@ -750,7 +738,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
         let hashes_2_spec = CircuitSpec {
             name: "hashes_2".into(),
-            reserved_gates: reserved_gates(&hashes_2),
             outputs: covered_elements(&hashes_2, hashes_2_witness()?, coverage)?
                 .into_iter()
                 .map(OutputRef::Instance)
@@ -782,7 +769,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
         let inner_collapse_spec = CircuitSpec {
             name: "inner_collapse".into(),
-            reserved_gates: reserved_gates(&inner_collapse),
             outputs: stage_wire_indices::<_, R, OuterError<C, R, HEADER_SIZE>>(|stage| {
                 Ok(stage.collapsed.iter().map(|e| *e.wire()).collect())
             })?
@@ -823,7 +809,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
         let outer_collapse_spec = CircuitSpec {
             name: "outer_collapse".into(),
-            reserved_gates: reserved_gates(&outer_collapse),
             outputs: outer_collapse_covered
                 .into_iter()
                 .map(OutputRef::Instance)
@@ -861,7 +846,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
         let compute_v_spec = CircuitSpec {
             name: "compute_v".into(),
-            reserved_gates: reserved_gates(&compute_v),
             outputs: covered_elements(&compute_v, compute_v_witness()?, coverage)?
                 .into_iter()
                 .map(OutputRef::Instance)
@@ -918,7 +902,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             );
             let spec = CircuitSpec {
                 name: format!("endoscaling_step_{step}"),
-                reserved_gates: reserved_gates(&circuit),
                 outputs: stage_wire_indices::<
                     C::ScalarField,
                     R,
