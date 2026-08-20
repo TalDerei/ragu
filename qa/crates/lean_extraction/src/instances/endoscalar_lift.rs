@@ -20,9 +20,21 @@ impl CircuitInstance for EndoscalarLiftInstance {
     /// `(n, e)` the `Boolean::and(n, e)` body is inlined — one `mul` gate plus
     /// two `enforce_equal`s, the same pattern as `boolean_and.rs`, because
     /// `Boolean` has no constructor from a bare wire. Everything else is the
-    /// deployed gadget's own `Element` calls (`zero`, `double`, `scale`, `add`,
-    /// `constant`), so the recorded output tree is exactly the one
-    /// `Endoscalar::lift` emits.
+    /// deployed gadget's own `Element` calls (`zero`, `scale`, `add`,
+    /// `constant`), in the deployed order.
+    ///
+    /// **One deliberate divergence**: the deployed `acc.double()` is
+    /// `acc.add(acc)`, which the extraction driver records as `Add(acc, acc)`
+    /// with *two copies* of the accumulator tree — the tree doubles every
+    /// iteration and the output would have `2^64` nodes, which neither the
+    /// encoder nor the Lean fingerprint traversal can materialize (production
+    /// wires are indices, so the shipped circuit never pays this). The instance
+    /// uses `acc.scale(Coeff::Two)` instead, recorded as `Mul(Const 2, acc)`:
+    /// equal in value, one reference, linear in size. The Lean reimpl
+    /// (`Lift.stepCircuit`) mirrors this same shape, so the digest certifies the
+    /// shipped output up to that one value-preserving rewrite — the same class
+    /// of tree-encoding workaround as `group_scale`'s freshening, verified by
+    /// inspection rather than by the fingerprint.
     ///
     /// Input wires: `bits[0..128]` (128 wires). Output: the lifted element.
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
@@ -55,7 +67,8 @@ impl CircuitInstance for EndoscalarLiftInstance {
             let e = Element::promote(e_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
             let ne = Element::promote(mul_c, ExtractionDriver::<Fp>::just(|| Fp::ZERO));
 
-            acc = acc.double(dr);
+            // Deployed: `acc.double()` — see the divergence note above.
+            acc = acc.scale(dr, Coeff::Two);
             constant_term = constant_term.double();
             constant_term += Fp::ONE;
 

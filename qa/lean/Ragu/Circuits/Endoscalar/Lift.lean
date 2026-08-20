@@ -32,8 +32,9 @@ tied to this reimpl by the fingerprint equivalence check via the formal instance
 in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance inlines
 `Boolean::and` (gate + 2 `enforce_equal`s, the same pattern as `boolean_and.rs`,
 because `Boolean` has no constructor from a bare wire) and otherwise drives the
-deployed `Element::{zero, double, scale, add, constant}` calls of
-`Endoscalar::lift`, so the output tree it records is the shipped gadget's. -/
+deployed `Element::{zero, scale, add, constant}` calls of `Endoscalar::lift`,
+with `double` replaced by `scale(2)` for the tree-size reason documented on
+`stepCircuit` — the one value-preserving divergence from the shipped output. -/
 structure Input (F : Type) where
   bits : Vector F 128
 deriving ProvableStruct
@@ -54,14 +55,18 @@ def liftNative (ζ : F p) (bits : Vector (F p) 128) : F p :=
     (2 * (ζ + 1))
 
 /-- Per-iteration symbolic accumulator update (pure expression, no constraints),
-shaped exactly as the deployed `Endoscalar::lift` builds it from `Element`
-operations: `acc.double()` is `acc + acc`, then the three `scale`d terms are
-`add`ed one at a time, so the tree is left-nested with constants on the left.
+shaped as the deployed `Endoscalar::lift` builds it from `Element` operations —
+the three `scale`d terms are `add`ed one at a time, so the tree is left-nested
+with constants on the left — with one deliberate divergence: the deployed
+`acc.double()` is `acc + acc`, which as a *tree* duplicates the accumulator
+every iteration (`2⁶⁴` nodes at the output, unrepresentable by the tree-shaped
+trace encoding that the fingerprint hashes), so both this reimpl and the
+extraction instance use `2 · acc` instead — equal in value, one reference.
 Encodes the native step `2·acc + (n?-1:1)·(e?ζ:1)` as an affine expression in
 `n`, `e`, and `ne = n·e`. The constant `1` from the algebraic identity is *not*
 included here — it's accumulated separately via the closed-form `ctFinal`. -/
 def stepCircuit (ζ : F p) (n e ne acc : Expression (F p)) : Expression (F p) :=
-  acc + acc +
+  Expression.const 2 * acc +
     Expression.const (-2) * n +
     Expression.const (ζ - 1) * e +
     Expression.const (2 * (1 - ζ)) * ne
