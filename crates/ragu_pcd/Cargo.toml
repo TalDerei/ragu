@@ -74,3 +74,7 @@ harness = false
 [[test]]
 name = "patcher_internal"
 required-features = ["unstable-fuzzing"]
+
+[[test]]
+name = "corruption"
+required-features = ["unstable-fuzzing"]
