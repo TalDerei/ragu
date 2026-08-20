@@ -49,7 +49,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 
-use ragu_arithmetic::{CryptoRngCore, CurveAffine, DeferredField, ff::Field};
+use ragu_arithmetic::{CurveAffine, DeferredField, ff::Field, rand::CryptoRng};
 
 use super::Rank;
 
@@ -181,7 +181,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     }
 
     /// Creates a polynomial with random coefficients filling all `4n` slots.
-    pub fn random<RNG: CryptoRngCore>(rng: &mut RNG) -> Self {
+    pub fn random<RNG: CryptoRng>(rng: &mut RNG) -> Self {
         assert!(R::num_coeffs() > 0, "num_coeffs must be positive");
         let coeffs: Vec<F> = (0..R::num_coeffs()).map(|_| F::random(&mut *rng)).collect();
         Self::from_blocks(alloc::vec![(0, coeffs)])

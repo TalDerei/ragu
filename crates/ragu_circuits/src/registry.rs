@@ -395,7 +395,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         &self,
         trace: &crate::trace::Trace<F>,
         circuit: CircuitIndex,
-        rng: &mut impl ragu_arithmetic::CryptoRngCore,
+        rng: &mut impl ragu_arithmetic::rand::CryptoRng,
     ) -> Result<sparse::Polynomial<F, R>> {
         self.assemble_with_alpha(trace, circuit, F::random(rng))
     }

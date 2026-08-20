@@ -455,7 +455,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
     /// Shared by `compute_p` (in `fuse/_10_p.rs`) and by
     /// [`trivial_proof`](Self::trivial_proof), so the nested
     /// endoscaling setup lives in one place.
-    pub(crate) fn compute_endoscaling<RNG: ragu_arithmetic::CryptoRngCore>(
+    pub(crate) fn compute_endoscaling<RNG: ragu_arithmetic::rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         beta_endo: u128,

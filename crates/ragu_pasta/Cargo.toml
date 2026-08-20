@@ -16,14 +16,11 @@ keywords = ["cryptography", "elliptic-curves", "pallas", "vesta", "pasta"]
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-no-default-features = true
-features = ["alloc", "baked", "modern-deps"]
+all-features = true
 
 [features]
 alloc = []
-default = ["alloc", "modern-deps"]
-legacy-deps = ["ragu_arithmetic/legacy-deps"]
-modern-deps = ["ragu_arithmetic/modern-deps"]
+default = ["alloc"]
 baked = ["lazy_static"]
 std = []
 

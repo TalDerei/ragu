@@ -22,24 +22,11 @@ keywords = ["cryptography", "zero-knowledge", "proof-carrying-data", "pcd", "rec
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-no-default-features = true
-features = ["alloc", "modern-deps"]
+all-features = true
 
 [features]
 alloc = []
-default = ["alloc", "modern-deps"]
-legacy-deps = [
-  "ragu_arithmetic/legacy-deps",
-  "ragu_circuits/legacy-deps",
-  "ragu_core/legacy-deps",
-  "ragu_primitives/legacy-deps",
-]
-modern-deps = [
-  "ragu_arithmetic/modern-deps",
-  "ragu_circuits/modern-deps",
-  "ragu_core/modern-deps",
-  "ragu_primitives/modern-deps",
-]
+default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_arithmetic/multicore", "ragu_circuits/multicore", "std"]
 std = []
 # Exposes the `fuzz_utils` module, which provides proof-corruption helpers
@@ -59,7 +46,7 @@ ragu_primitives = { path = "../ragu_primitives", version = "0.0.0", default-feat
 [dev-dependencies]
 ff = { workspace = true }
 pasta_curves = { workspace = true }
-rand = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
 criterion = { workspace = true }
 ragu_circuits = { path = "../ragu_circuits", version = "0.0.0", default-features = false, features = ["alloc", "test-utils"] }
 ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }

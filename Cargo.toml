@@ -16,11 +16,10 @@ keywords = ["cryptography", "zero-knowledge", "proof-carrying-data", "pcd", "rec
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-no-default-features = true
-features = ["legacy-deps", "multicore", "mock"]
+all-features = true
 
 [features]
-default = ["modern-deps", "multicore"]
+default = ["multicore"]
 # Opt-in API-level mock of `ragu_pcd` (see the crate docs). Off by default.
 mock = [
   "dep:blake2b_simd",
@@ -30,22 +29,6 @@ mock = [
   "dep:ragu_pasta",
   "dep:ragu_pcd",
   "dep:ragu_primitives",
-]
-modern-deps = [
-  "ragu_arithmetic?/modern-deps",
-  "ragu_circuits?/modern-deps",
-  "ragu_core?/modern-deps",
-  "ragu_pasta?/modern-deps",
-  "ragu_pcd?/modern-deps",
-  "ragu_primitives?/modern-deps",
-]
-legacy-deps = [
-  "ragu_arithmetic?/legacy-deps",
-  "ragu_circuits?/legacy-deps",
-  "ragu_core?/legacy-deps",
-  "ragu_pasta?/legacy-deps",
-  "ragu_pcd?/legacy-deps",
-  "ragu_primitives?/legacy-deps",
 ]
 multicore = [
   "ragu_arithmetic?/multicore",
@@ -99,22 +82,14 @@ homepage = "https://github.com/tachyon-zcash/ragu"
 repository = "https://github.com/tachyon-zcash/ragu"
 
 [workspace.dependencies]
-# Keep the unaliased modern ff/group/pasta_curves/rand entries in sync with
-# qa/fuzz/Cargo.toml. The cargo-fuzz workspace is intentionally isolated and
-# cannot inherit these workspace dependencies.
+# Keep ff/group/pasta_curves/rand in sync with qa/fuzz/Cargo.toml. The
+# cargo-fuzz workspace is intentionally isolated and cannot inherit these
+# workspace dependencies.
 ff = { version = "0.14", default-features = false }
 group = { version = "0.14", default-features = false }
 pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
-rand = "0.10"
+rand = { version = "0.10", default-features = false, features = ["std_rng"] }
 rand_core = { version = "0.10", default-features = false }
-ff_modern = { package = "ff", version = "0.14", default-features = false }
-group_modern = { package = "group", version = "0.14", default-features = false }
-pasta_curves_modern = { package = "pasta_curves", git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
-rand_modern = { package = "rand", version = "0.10", default-features = false, features = ["std_rng"] }
-ff_legacy = { package = "ff", version = "0.13", default-features = false }
-group_legacy = { package = "group", version = "0.13", default-features = false }
-pasta_curves_legacy = { package = "pasta_curves", version = "0.5.1" }
-rand_legacy = { package = "rand", version = "0.8", default-features = false, features = ["std_rng"] }
 lazy_static = "1.5.0"
 proptest = "1.11.0"
 gungraun = "0.17.0"

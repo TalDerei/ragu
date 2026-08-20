@@ -26,8 +26,8 @@ ragu_pasta = { version = "0.1", features = ["baked"] }
 ragu_pcd = "0.1"
 ragu_primitives = "0.1"
 ragu_arithmetic = "0.1"
-ff = "0.13"
-rand = "0.8"
+ff = "0.14"
+rand = "0.10"
 ```
 
 ## Overview: Building a Merkle Tree with Proofs

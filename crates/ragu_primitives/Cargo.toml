@@ -22,14 +22,11 @@ keywords = ["cryptography", "zero-knowledge", "gadgets", "poseidon", "circuits"]
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-no-default-features = true
-features = ["alloc", "modern-deps"]
+all-features = true
 
 [features]
 alloc = []
-default = ["alloc", "modern-deps"]
-legacy-deps = ["ragu_arithmetic/legacy-deps", "ragu_core/legacy-deps"]
-modern-deps = ["ragu_arithmetic/modern-deps", "ragu_core/modern-deps"]
+default = ["alloc"]
 std = []
 
 [lib]
@@ -45,7 +42,7 @@ ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
 
 [dev-dependencies]
 ff = { workspace = true }
-rand = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
 group = { workspace = true }
 ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
 gungraun = { workspace = true }
