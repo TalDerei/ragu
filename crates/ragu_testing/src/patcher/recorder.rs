@@ -631,12 +631,23 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
     for &w in free {
         known[w] = true;
     }
+    repair_over(events.iter(), values, &mut known);
+}
 
+/// [`repair`] over any view of the events, from a caller-seeded known set:
+/// the wires flagged in `known` hold (they are never assigned), and
+/// everything else is solved from the events the view yields. This is what
+/// lets a prepared probe solve only the events that can still change.
+pub(super) fn repair_over<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>> + Clone,
+    values: &mut [F],
+    known: &mut [bool],
+) {
     loop {
-        propagate(events, values, &mut known);
+        propagate(events.clone(), values, known);
         // Propagation has stalled; try to crack a coupled linear cluster.
         // If that solves nothing new, the fixpoint is reached.
-        if !cluster_solve(events, values, &mut known, true) {
+        if !cluster_solve(events.clone(), values, known, true) {
             break;
         }
     }
@@ -661,18 +672,171 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
 /// there, and says so.
 pub(super) fn deduce<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
     loop {
-        propagate(events, values, known);
-        if !cluster_solve(events, values, known, false) {
+        propagate(events.iter(), values, known);
+        if !cluster_solve(events.iter(), values, known, false) {
             break;
         }
     }
 }
 
-/// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]).
-fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
+/// [`deduce`] extended with case analysis on booleans, for the static
+/// checks.
+///
+/// A [`Boolean::alloc`](ragu_primitives::Boolean::alloc) wire is pinned to
+/// `{0, 1}` by `a·b = 0` and `a + b = 1`, which no single-unknown rule can
+/// split — yet one of its two values may be impossible given what else is
+/// known. So when deduction stalls, each unknown boolean is tried both ways,
+/// each branch is deduced to its own fixpoint, and the value is committed
+/// when exactly one branch survives. A branch dies on a fully-known
+/// constraint it violates, or on a square it cannot take: an `alloc_square`
+/// gate `r·r = s` (its operands tied by a copy constraint) whose `s` is known
+/// and is not a square. That root test is the one place the solver needs
+/// field arithmetic beyond linear algebra, and it is exactly how
+/// `Endoscalar::extract` binds each bit to whether `value + i` is a quadratic
+/// residue. The root itself is never assigned: its sign is genuine freedom.
+///
+/// Everything committed is still a unique consequence of the known set
+/// (the other branch is unsatisfiable), so this is sound for
+/// [`forced_by`](super::forced_by) and for seeding a prepared probe. It is
+/// not run inside `repair`, where the cost per probe would matter and the
+/// guessing tier already picks a branch, nor inside discovery, which calls
+/// the solver once per free wire.
+pub(super) fn deduce_by_cases<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
+    let booleans = boolean_wires(events);
+    let squares = square_gates(events);
+    loop {
+        deduce(events, values, known);
+        let mut committed = false;
+        for &bit in &booleans {
+            if known[bit] {
+                continue;
+            }
+            let mut survivors = Vec::with_capacity(2);
+            for value in [F::ZERO, F::ONE] {
+                let mut branch_values = values.to_vec();
+                let mut branch_known = known.to_vec();
+                branch_values[bit] = value;
+                branch_known[bit] = true;
+                deduce(events, &mut branch_values, &mut branch_known);
+                if branch_consistent(events, &branch_values, &branch_known, &squares) {
+                    survivors.push((branch_values, branch_known));
+                }
+            }
+            if survivors.len() == 1 {
+                let (branch_values, branch_known) = survivors.pop().unwrap();
+                values.copy_from_slice(&branch_values);
+                known.copy_from_slice(&branch_known);
+                committed = true;
+            }
+        }
+        if !committed {
+            break;
+        }
+    }
+}
+
+/// The wires `Boolean::alloc` pins to `{0, 1}`: the `a` operand of a gate
+/// `a·b = c` whose `c` is enforced to zero and whose operands are enforced
+/// to sum to one.
+fn boolean_wires<F: Field>(events: &[Event<F>]) -> Vec<usize> {
+    let mut zeroed = std::collections::HashSet::new();
+    let mut sum_to_one = std::collections::HashSet::new();
+    for ev in events {
+        if let Event::Enforce { terms } = ev {
+            match terms.as_slice() {
+                [(w, _)] => {
+                    zeroed.insert(*w);
+                }
+                [_, _, _] => {
+                    if let Some(&(_, k)) = terms.iter().find(|(w, _)| *w == Recorder::<F>::ONE) {
+                        let others: Vec<usize> = terms
+                            .iter()
+                            .filter(|(w, c)| *w != Recorder::<F>::ONE && *c == -k)
+                            .map(|(w, _)| *w)
+                            .collect();
+                        if let [x, y] = others[..] {
+                            sum_to_one.insert((x.min(y), x.max(y)));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Gate { a, b, c }
+                if zeroed.contains(c) && sum_to_one.contains(&(*a.min(b), *a.max(b))) =>
+            {
+                Some(*a)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `alloc_square` gates `r·r = s` — a gate whose operands are tied by a
+/// copy constraint — as `(root, square)`.
+fn square_gates<F: Field>(events: &[Event<F>]) -> Vec<(usize, usize)> {
+    let tied: std::collections::HashSet<(usize, usize)> = events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Enforce { terms } => match terms.as_slice() {
+                [(x, cx), (y, cy)] if *cx == -*cy => Some((*x.min(y), *x.max(y))),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Gate { a, b, c } if tied.contains(&(*a.min(b), *a.max(b))) => Some((*a, *c)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a branch of the case analysis can still be satisfied: no
+/// fully-known constraint is violated, and every square gate whose square
+/// is known but whose root is not has a root to take.
+fn branch_consistent<F: Field>(
+    events: &[Event<F>],
+    values: &[F],
+    known: &[bool],
+    squares: &[(usize, usize)],
+) -> bool {
+    let holds = events.iter().all(|ev| match ev {
+        Event::Lin { out, terms } => {
+            !(known[*out] && terms.iter().all(|(w, _)| known[*w]))
+                || values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum()
+        }
+        Event::Gate { a, b, c } => {
+            !(known[*a] && known[*b] && known[*c]) || values[*a] * values[*b] == values[*c]
+        }
+        Event::Enforce { terms } => {
+            !terms.iter().all(|(w, _)| known[*w])
+                || terms.iter().map(|(w, c)| values[*w] * c).sum::<F>() == F::ZERO
+        }
+        Event::Extra { c, d } => !(known[*c] && known[*d]) || values[*c] * values[*d] == F::ZERO,
+    });
+    holds
+        && squares.iter().all(|&(root, square)| {
+            known[root] || !known[square] || bool::from(values[square].sqrt().is_some())
+        })
+}
+
+/// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]), over any
+/// view of the events.
+fn propagate<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>> + Clone,
+    values: &mut [F],
+    known: &mut [bool],
+) {
     loop {
         let mut changed = false;
-        for ev in events {
+        for ev in events.clone() {
             match ev {
                 Event::Lin { out, terms } => {
                     if !known[*out] {
@@ -815,8 +979,8 @@ fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]
 /// by then every deduction available has already been made. With `guess`
 /// false the guessing tier is skipped altogether, which is what [`deduce`]
 /// needs: a wire left unknown is then genuinely undetermined.
-fn cluster_solve<F: Field>(
-    events: &[Event<F>],
+fn cluster_solve<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>>,
     values: &mut [F],
     known: &mut [bool],
     guess: bool,
@@ -973,7 +1137,15 @@ fn cluster_solve<F: Field>(
 
 /// After repair, do all captured constraints hold?
 pub fn constraints_hold<F: Field>(events: &[Event<F>], values: &[F]) -> bool {
-    events.iter().all(|ev| match ev {
+    constraints_hold_over(events.iter(), values)
+}
+
+/// [`constraints_hold`] over any view of the events.
+pub(super) fn constraints_hold_over<'a, F: Field + 'a>(
+    mut events: impl Iterator<Item = &'a Event<F>>,
+    values: &[F],
+) -> bool {
+    events.all(|ev| match ev {
         Event::Lin { out, terms } => {
             values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum()
         }

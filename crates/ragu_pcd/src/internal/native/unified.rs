@@ -63,6 +63,28 @@ macro_rules! unified_instance_type {
     };
 }
 
+/// Maps a field type to the number of $k(Y)$ wires it writes.
+#[cfg(feature = "unstable-fuzzing")]
+macro_rules! unified_wires {
+    (Point) => {
+        2
+    };
+    (Element) => {
+        1
+    };
+}
+
+/// Whether a field type is a single circuit-field element.
+#[cfg(feature = "unstable-fuzzing")]
+macro_rules! unified_is_element {
+    (Point) => {
+        false
+    };
+    (Element) => {
+        true
+    };
+}
+
 /// Creates a `Slot` initializer for a field (works for both Point and Element).
 macro_rules! unified_slot_new {
     (Point, $field:ident, $instance:expr) => {
@@ -243,6 +265,29 @@ macro_rules! define_unified_instance {
 
             fn assert_complete(self) {
                 $( Self::assert_covered(self.$field, stringify!($field)); )+
+            }
+
+            /// The positions, in the unified output's $k(Y)$ order, of the
+            /// covered *element* slots: the values the covering circuit
+            /// derives in-circuit ([`Slot::provide`]) or receives and checks
+            /// ([`Slot::receive`]). Covered *point* slots are received
+            /// commitments, which no circuit derives, so they are omitted.
+            ///
+            /// This is a circuit's output declaration for the patcher
+            /// harness (see [`patcher`](crate::patcher)): with every other
+            /// instance wire pinned, these are the wires its constraints
+            /// must determine.
+            #[cfg(feature = "unstable-fuzzing")]
+            pub fn covered_element_positions(&self) -> alloc::vec::Vec<usize> {
+                let mut positions = alloc::vec::Vec::new();
+                let mut position = 0;
+                $(
+                    if unified_is_element!($field_type) && self.$field {
+                        positions.push(position);
+                    }
+                    position += unified_wires!($field_type);
+                )+
+                positions
             }
         }
     };

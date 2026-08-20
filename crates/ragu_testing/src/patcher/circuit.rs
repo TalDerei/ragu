@@ -14,27 +14,34 @@
 //!
 //! # Staged circuits
 //!
-//! A [`MultiStage`](ragu_circuits::staging::MultiStage)-wrapped circuit —
-//! every internal recursion circuit is one — reserves its stage wires
-//! through `configure_stage`, which allocates them holding `Coeff::Zero` in
-//! the consuming driver; the real stage values live in the separately
-//! committed stage polynomials `r(X) = trace + Σ rx`. So the raw recording
-//! of such a circuit is *internally inconsistent*: a post-stage gadget
-//! computed a gate from a stage output's honest value but copy-constrained
-//! that gate to the stage wire, which reads zero. [`capture`] repairs this
-//! with a [stage overlay](overlay_stages) before returning, so its result
-//! satisfies [`constraints_hold`](super::constraints_hold) like any other.
-//! For a plain (non-staged) circuit the overlay is a no-op.
+//! A [`MultiStage`]-wrapped circuit — every internal recursion circuit is
+//! one — reserves its stage wires through `configure_stage`, which allocates
+//! them holding `Coeff::Zero` in the consuming driver; the real stage values
+//! live in the separately committed stage polynomials `r(X) = trace + Σ rx`.
+//! So the raw recording of such a circuit is *internally inconsistent*: a
+//! post-stage gadget computed a gate from a stage output's honest value but
+//! copy-constrained that gate to the stage wire, which reads zero.
+//! [`capture_staged`] repairs this with a [reserved-wire
+//! overlay](overlay_reserved) before returning, so its result satisfies
+//! [`constraints_hold`](super::constraints_hold) like any other, and names
+//! every reserved wire in [`Capture::stage_wires`] so an oracle can declare
+//! each one. [`capture`] does the same for a caller that only holds a
+//! [`Circuit`], locating the reserved prefix structurally; see its docs for
+//! the one way that can over-approximate.
 
 use ragu_arithmetic::ff::Field;
-use ragu_circuits::Circuit;
+use ragu_circuits::{
+    Circuit,
+    polynomials::Rank,
+    staging::{MultiStage, MultiStageCircuit},
+};
 use ragu_core::{
     Result,
     maybe::{Always, MaybeKind},
 };
 use ragu_primitives::{Element, GadgetExt};
 
-use super::{Playback, Recorder, recorder::deduce};
+use super::{Event, Playback, Recorder, recorder::deduce};
 
 /// A circuit synthesized through the [`Recorder`].
 pub struct Capture<F> {
@@ -46,16 +53,38 @@ pub struct Capture<F> {
     /// The wires of the circuit's public instance, in the order the
     /// circuit's output gadget writes them — the $k(Y)$ order.
     pub instance: Vec<usize>,
-    /// Stage wires the [overlay](overlay_stages) recovered — reserved wires
-    /// a `MultiStage` circuit leaves free by contract (constrained by the
-    /// bonding masks and sibling circuits, not here). Empty for a plain
-    /// circuit. A soundness oracle must treat these as *declared inputs*:
-    /// their freedom is real but external, not a bug in this circuit.
+    /// The reserved stage wires of a `MultiStage` circuit, in reservation
+    /// order: index `i` is the `i`-th wire of the whole stage chain, the same
+    /// numbering `StageGuard` injects into the stage gadgets. Empty for a
+    /// plain circuit.
+    ///
+    /// Reserved wires are free by contract — constrained by the bonding masks
+    /// and by whichever sibling circuit *checks* them, never by reservation —
+    /// so a soundness oracle must declare every one: as an input it pins, or,
+    /// for the stage values this circuit is responsible for checking, as an
+    /// output it watches. A reserved wire nothing in the circuit reads could
+    /// not be recovered by the overlay and keeps zero; pinning it is harmless.
     pub stage_wires: Vec<usize>,
 }
 
+/// The number of gates a [`MultiStage`] circuit's stage chain reserves — the
+/// contiguous prefix of its recording that [`capture_staged`] overlays.
+///
+/// Every `configure_stage` call happens before the circuit can touch the
+/// driver (`StageBuilder` only releases it from `finish`), and each stage
+/// reserves exactly `num_gates` allocation gates through a fresh pooling
+/// allocator, so the chain occupies the first
+/// [`MultiStage::reserved_gates`] gates of any recording. This is that
+/// count, with the circuit type inferred from a value.
+pub fn reserved_gates<F: Field, R: Rank, S: MultiStageCircuit<F, R>>(
+    _circuit: &MultiStage<F, R, S>,
+) -> usize {
+    MultiStage::<F, R, S>::reserved_gates()
+}
+
 /// Synthesizes `circuit` on `witness` through the [`Recorder`], then applies
-/// the [stage overlay](overlay_stages).
+/// the [reserved-wire overlay](overlay_reserved) to a structurally located
+/// reserved prefix.
 ///
 /// Runs [`Circuit::witness`] and then writes the resulting output gadget
 /// into an element buffer, as trace evaluation does (a `Write` impl may
@@ -64,26 +93,71 @@ pub struct Capture<F> {
 /// every captured constraint, which the engine's oracles assume and
 /// [`constraints_hold`](super::constraints_hold) can re-check.
 ///
+/// The reserved prefix is taken to be the leading run of all-zero
+/// allocation-gate / `assign_extra` pairs, which every reservation is. A
+/// circuit whose very first action after `finish` is to allocate an honestly
+/// zero value extends that run by one gate, which this over-approximation
+/// then reports among [`Capture::stage_wires`] — an over-declared input,
+/// which wastes a probe but cannot manufacture a violation. Callers that
+/// hold the [`MultiStage`] type should prefer [`capture_staged`] with
+/// [`reserved_gates`], which is exact.
+///
 /// # Errors
 ///
 /// Propagates any error from the circuit's witness generation or from
-/// serializing its output. Returns [`InvalidWitness`](ragu_core::Error::InvalidWitness)
-/// if the overlay cannot make the capture consistent — a non-satisfying
-/// witness, or a staging shape the overlay does not model — rather than
-/// handing back a capture that silently violates its own constraints.
+/// serializing its output, and any error from [`overlay_reserved`].
 pub fn capture<'witness, F: Field, C: Circuit<F>>(
     circuit: &C,
     witness: C::Witness<'witness>,
 ) -> Result<Capture<F>> {
-    let mut recorder = Recorder::<F>::new();
-    let output = circuit
-        .witness(&mut recorder, Always::maybe_just(|| witness))?
-        .into_output();
-    let mut buffer: Vec<Element<'_, Recorder<F>>> = Vec::new();
-    output.write(&mut recorder, &mut buffer)?;
-    let instance = buffer.iter().map(|e| *e.wire()).collect();
+    let (recorder, instance) = record(circuit, witness)?;
+    let reserved = leading_reserved_gates(&recorder.events, &recorder.values);
+    finish(recorder, instance, reserved)
+}
 
-    let stage_wires = overlay_stages(&recorder.events, &mut recorder.values)?;
+/// [`capture`] for a circuit whose stage chain reserves exactly
+/// `reserved_gates` gates (see [`reserved_gates`]); the overlay is then
+/// exact rather than structurally located.
+///
+/// # Errors
+///
+/// As [`capture`]; additionally fails if the recording does not begin with
+/// `reserved_gates` reserved gates.
+pub fn capture_staged<'witness, F: Field, C: Circuit<F>>(
+    circuit: &C,
+    witness: C::Witness<'witness>,
+    reserved_gates: usize,
+) -> Result<Capture<F>> {
+    let (recorder, instance) = record(circuit, witness)?;
+    finish(recorder, instance, reserved_gates)
+}
+
+/// [`capture_staged`] with the honest stage values supplied by the caller
+/// instead of recovered by deduction.
+///
+/// `stage_values[i]` is the value of the `i`-th reserved wire of the whole
+/// stage chain, in the order `StageGuard` injects them — each stage's output
+/// wires in traversal order, padded with zeros to the two wires per gate the
+/// stage reserves; what the stage polynomials commit to, without the alpha.
+/// A harness that holds the stage witnesses can produce this by running each
+/// `Stage::witness` on an extractor emulator, and then the overlay is exact
+/// for any circuit shape — including one that reads a stage wire only
+/// through a combination the deduction overlay cannot split, such as the
+/// coordinate differences of an incomplete point addition.
+///
+/// # Errors
+///
+/// As [`capture`]; additionally fails if `stage_values` does not cover
+/// exactly the reserved prefix, or if the capture does not satisfy its
+/// constraints once the values are in — a non-satisfying witness, or stage
+/// values that are not the witness's.
+pub fn capture_with_stage_values<'witness, F: Field, C: Circuit<F>>(
+    circuit: &C,
+    witness: C::Witness<'witness>,
+    stage_values: &[F],
+) -> Result<Capture<F>> {
+    let (mut recorder, instance) = record(circuit, witness)?;
+    let stage_wires = overlay_stage_values(&recorder.events, &mut recorder.values, stage_values)?;
     Ok(Capture {
         recorder,
         instance,
@@ -91,8 +165,112 @@ pub fn capture<'witness, F: Field, C: Circuit<F>>(
     })
 }
 
-/// Repairs the stage wires of a raw capture in place, returning the wires it
-/// overlaid.
+/// Writes the given honest stage values onto the reserved prefix of a raw
+/// capture and recomputes every virtual wire from them, returning the stage
+/// wires in reservation order.
+///
+/// Two values per reserved gate, onto its `a` and `d` wires; the gate's
+/// `b` and `c` stay zero, as reserved. Virtual [`Lin`](Event::Lin) wires are
+/// definitions, so they are simply re-evaluated in emission order, after
+/// which every value the recorder computed from a zero stage wire is
+/// current.
+///
+/// # Errors
+///
+/// Returns [`InvalidWitness`](ragu_core::Error::InvalidWitness) if
+/// `stage_values` has an odd length, if the recording does not begin with
+/// that many reserved gates, or if the overlaid witness violates a captured
+/// constraint.
+pub fn overlay_stage_values<F: Field>(
+    events: &[Event<F>],
+    values: &mut [F],
+    stage_values: &[F],
+) -> Result<Vec<usize>> {
+    if !stage_values.len().is_multiple_of(2) {
+        return Err(ragu_core::Error::InvalidWitness(
+            "stage values come two per reserved gate".into(),
+        ));
+    }
+    let mut stage_wires = Vec::with_capacity(stage_values.len());
+    let mut prefix = events.iter();
+    for gate in 0..stage_values.len() / 2 {
+        match (prefix.next(), prefix.next()) {
+            (Some(Event::Gate { a, b, c }), Some(Event::Extra { c: extra_c, d }))
+                if c == extra_c && [*a, *b, *c, *d].iter().all(|&w| values[w] == F::ZERO) =>
+            {
+                values[*a] = stage_values[2 * gate];
+                values[*d] = stage_values[2 * gate + 1];
+                stage_wires.extend([*a, *d]);
+            }
+            _ => {
+                return Err(ragu_core::Error::InvalidWitness(
+                    "the recording does not begin with as many reserved gates as the stage \
+                     values cover"
+                        .into(),
+                ));
+            }
+        }
+    }
+
+    for ev in events {
+        if let Event::Lin { out, terms } = ev {
+            values[*out] = terms.iter().map(|(w, c)| values[*w] * c).sum();
+        }
+    }
+
+    if !super::constraints_hold(events, values) {
+        return Err(ragu_core::Error::InvalidWitness(
+            "the supplied stage values do not satisfy the capture".into(),
+        ));
+    }
+
+    Ok(stage_wires)
+}
+
+fn record<'witness, F: Field, C: Circuit<F>>(
+    circuit: &C,
+    witness: C::Witness<'witness>,
+) -> Result<(Recorder<F>, Vec<usize>)> {
+    let mut recorder = Recorder::<F>::new();
+    let output = circuit
+        .witness(&mut recorder, Always::maybe_just(|| witness))?
+        .into_output();
+    let mut buffer: Vec<Element<'_, Recorder<F>>> = Vec::new();
+    output.write(&mut recorder, &mut buffer)?;
+    let instance = buffer.iter().map(|e| *e.wire()).collect();
+    Ok((recorder, instance))
+}
+
+fn finish<F: Field>(
+    mut recorder: Recorder<F>,
+    instance: Vec<usize>,
+    reserved_gates: usize,
+) -> Result<Capture<F>> {
+    let stage_wires = overlay_reserved(&recorder.events, &mut recorder.values, reserved_gates)?;
+    Ok(Capture {
+        recorder,
+        instance,
+        stage_wires,
+    })
+}
+
+/// The length of the leading run of reserved-shaped gates: an allocation
+/// gate whose three wires are all zero, immediately followed by the
+/// `assign_extra` of its $D$ wire, also zero.
+fn leading_reserved_gates<F: Field>(events: &[Event<F>], values: &[F]) -> usize {
+    events
+        .chunks_exact(2)
+        .take_while(|pair| match pair {
+            [Event::Gate { a, b, c }, Event::Extra { c: extra_c, d }] => {
+                c == extra_c && [*a, *b, *c, *d].iter().all(|&w| values[w] == F::ZERO)
+            }
+            _ => false,
+        })
+        .count()
+}
+
+/// Repairs the reserved stage wires of a raw capture in place, returning
+/// them in reservation order.
 ///
 /// `configure_stage` reserves each stage wire holding **zero**, while the
 /// gadget bound to it keeps the stage output's *honest* value — so a raw
@@ -100,61 +278,73 @@ pub fn capture<'witness, F: Field, C: Circuit<F>>(
 ///
 /// * a gate input copy-constrained to a reserved stage wire holds the honest
 ///   value while the stage wire reads zero; and
-/// * every virtual [`Lin`](super::Event::Lin) wire the recorder computed
-///   *from* a reserved wire is stale, because it summed zeros.
+/// * every virtual [`Lin`](Event::Lin) wire the recorder computed *from* a
+///   reserved wire is stale, because it summed zeros.
 ///
-/// Both are repaired without any knowledge of the staging internals, by
-/// separating the wires that can be trusted from those that cannot:
+/// The first `reserved_gates` gates of the recording are the reservation
+/// (see [`reserved_gates`]): each is an allocation gate `a · 0 = 0` followed
+/// by the `assign_extra` of its $D$ wire, and `a` and `d` are the two stage
+/// wires it carries. The overlay separates what can be trusted from what
+/// cannot:
 ///
-/// * A wire is **stale** if it reads zero and is not a virtual wire (every
-///   reserved wire is such a wire; a legitimately-zero wire is stale too,
-///   harmlessly, since re-deriving it yields zero again), or if it is a
-///   virtual wire computed from a stale one — taint that propagates forward
-///   in emission order, since a virtual wire only reads earlier wires.
+/// * Every wire of a reserved gate is **stale**, and so is every virtual wire
+///   computed from a stale one — taint that propagates forward in emission
+///   order, since a virtual wire only reads earlier wires.
 /// * Everything else still holds the honest value the gadgets computed, so
 ///   it seeds the known set.
-/// * The engine's deduction pass then forces every wire the honest knowns
-///   pin: a stage wire directly from the copy-constraint tying it to a gate
-///   input (`stage := input`), or indirectly by first recovering the stale
-///   virtual wire from its copy-constraint and then back-solving the stage
-///   wire from the virtual wire's own definition. Deduction only — never the
-///   repair solver's guessing tier — so nothing is invented, and a wire left
-///   unforced simply keeps its raw value.
+/// * The engine's deduction pass then forces every stale wire the honest
+///   knowns pin: a stage wire directly from the copy-constraint tying it to
+///   a gate input (`stage := input`), or indirectly by first recovering the
+///   stale virtual wire from its copy-constraint and then back-solving the
+///   stage wire from the virtual wire's own definition. Deduction only —
+///   never the repair solver's guessing tier — so nothing is invented, and a
+///   reserved wire nothing reads keeps its zero.
 ///
-/// The overlaid wires are the reserved wires some output depends on — the
-/// ones a soundness oracle must pin as inputs (see [`Capture::stage_wires`]);
-/// recomputed virtual wires are excluded, being derived rather than free. For
-/// a plain circuit nothing is stale that re-derivation changes, so the result
-/// is empty and `values` is unchanged.
+/// Working from the reservation rather than from which wires happen to read
+/// zero is what makes the result complete: a stage value that is honestly
+/// zero is indistinguishable from its reservation by value alone, and an
+/// oracle that went undeclared on it would cheat it as if it were a hint.
 ///
 /// # Errors
 ///
 /// Returns [`InvalidWitness`](ragu_core::Error::InvalidWitness) if the
-/// overlaid witness still violates a captured constraint — the capture is
-/// unusable, so this fails closed rather than returning it.
-pub fn overlay_stages<F: Field>(
-    events: &[super::Event<F>],
+/// recording does not begin with `reserved_gates` reserved gates, or if the
+/// overlaid witness still violates a captured constraint — a non-satisfying
+/// witness, or a stage wire this circuit reads only through a relation the
+/// bounded solver cannot invert. Either way the capture is unusable, so this
+/// fails closed rather than returning it.
+pub fn overlay_reserved<F: Field>(
+    events: &[Event<F>],
     values: &mut [F],
+    reserved_gates: usize,
 ) -> Result<Vec<usize>> {
     let n = values.len();
-    let before = values.to_vec();
+    let mut stage_wires = Vec::with_capacity(2 * reserved_gates);
+    let mut stale = vec![false; n];
 
-    // A virtual wire is defined by its terms, so it is never itself reserved —
-    // but it goes stale when what it reads does.
-    let mut is_virtual = vec![false; n];
-    for ev in events {
-        if let super::Event::Lin { out, .. } = ev {
-            is_virtual[*out] = true;
+    let mut prefix = events.iter();
+    for _ in 0..reserved_gates {
+        match (prefix.next(), prefix.next()) {
+            (Some(Event::Gate { a, b, c }), Some(Event::Extra { c: extra_c, d }))
+                if c == extra_c && [*a, *b, *c, *d].iter().all(|&w| values[w] == F::ZERO) =>
+            {
+                stage_wires.extend([*a, *d]);
+                for w in [*a, *b, *c, *d] {
+                    stale[w] = true;
+                }
+            }
+            _ => {
+                return Err(ragu_core::Error::InvalidWitness(
+                    "the recording does not begin with the declared reserved stage prefix".into(),
+                ));
+            }
         }
     }
 
-    // Taint the reserved (zero, non-virtual) wires, then carry the taint
-    // forward through the virtual wires that read them.
-    let mut stale: Vec<bool> = (0..n)
-        .map(|w| values[w] == F::ZERO && !is_virtual[w])
-        .collect();
+    // A virtual wire is defined by its terms, so it is never itself reserved —
+    // but it goes stale when what it reads does.
     for ev in events {
-        if let super::Event::Lin { out, terms } = ev
+        if let Event::Lin { out, terms } = ev
             && terms.iter().any(|(w, _)| stale[*w])
         {
             stale[*out] = true;
@@ -170,9 +360,7 @@ pub fn overlay_stages<F: Field>(
         ));
     }
 
-    Ok((0..n)
-        .filter(|&w| !is_virtual[w] && values[w] != before[w])
-        .collect())
+    Ok(stage_wires)
 }
 
 /// Re-runs `circuit` on `witness` through [`Playback`] over the injected
@@ -214,7 +402,8 @@ mod tests {
     use crate::{
         circuits::{MySimpleCircuit, SquareCircuit},
         patcher::{
-            allocation_waste, constraints_hold, determinism_sweep, discover_free_advice, repair,
+            allocation_waste, constraints_hold, determinism_sweep, discover_free_advice, forced_by,
+            repair,
         },
     };
 
@@ -533,10 +722,11 @@ mod tests {
 
     /// The stage overlay makes a staged capture self-consistent: the raw
     /// recording reads zero on the stage wire the squared output depends on,
-    /// and `capture` recovers the honest value so `constraints_hold` passes
-    /// and `stage_wires` names the recovered wire. The healthy circuit then
-    /// sweeps clean with that wire declared, and — the point — playback over
-    /// the overlaid witness independently re-accepts it.
+    /// and `capture` recovers the honest value so `constraints_hold` passes,
+    /// while `stage_wires` names *both* reserved wires — the unused `b` too,
+    /// which keeps its zero. The healthy circuit then sweeps clean with those
+    /// wires declared, and — the point — playback over the overlaid witness
+    /// independently re-accepts it.
     #[test]
     fn staged_capture_overlays_and_sweeps_clean() -> Result<()> {
         let circuit = MultiStage::new(StagedSquare::<true>);
@@ -549,10 +739,15 @@ mod tests {
         );
         assert_eq!(
             cap.stage_wires,
-            vec![1],
-            "the squared output depends on stage wire 1; it was overlaid",
+            vec![1, 4],
+            "StageW2's one reserved gate carries `a` on its `a` wire and `b` on its `d` wire",
         );
         assert_eq!(rec.values[1], Fp::from(3u64), "recovered honest stage `a`");
+        assert_eq!(
+            rec.values[4],
+            Fp::ZERO,
+            "nothing reads stage `b`, so the overlay has nothing to recover it from",
+        );
         assert_eq!(rec.values[cap.instance[0]], Fp::from(9u64));
         assert!(playback(
             &circuit,
@@ -604,6 +799,240 @@ mod tests {
                 "each evidence witness must be independently accepted",
             );
         }
+        Ok(())
+    }
+
+    /// The exact reservation from the type agrees with the structurally
+    /// located one, and a wrong count fails closed either way: too many
+    /// gates runs into the square gate (not reserved-shaped), too few leaves
+    /// the stage wire reading zero against its honest copy.
+    #[test]
+    fn capture_staged_is_exact_and_fails_closed() -> Result<()> {
+        let circuit = MultiStage::new(StagedSquare::<true>);
+        let witness = (Fp::from(3u64), Fp::from(5u64));
+        assert_eq!(reserved_gates(&circuit), 1);
+
+        let exact = capture_staged(&circuit, witness, reserved_gates(&circuit))?;
+        let located = capture(&circuit, witness)?;
+        assert_eq!(exact.stage_wires, located.stage_wires);
+        assert_eq!(exact.recorder.values, located.recorder.values);
+
+        assert!(capture_staged(&circuit, witness, 2).is_err());
+        assert!(capture_staged(&circuit, witness, 0).is_err());
+        Ok(())
+    }
+
+    /// A stage value that is honestly zero is indistinguishable from its
+    /// zero-holding reservation by value alone, so an overlay that went by
+    /// value would leave it undeclared — and the oracle, cheating it as a
+    /// hint, would report the output following it as a violation. Working
+    /// from the reservation declares it, and the healthy circuit sweeps
+    /// clean; the same sweep with nothing declared shows the false positive
+    /// that was at stake.
+    #[test]
+    fn honestly_zero_stage_value_is_still_declared() -> Result<()> {
+        let circuit = MultiStage::new(StagedSquare::<true>);
+        let cap = capture(&circuit, (Fp::ZERO, Fp::from(5u64)))?;
+        let rec = &cap.recorder;
+        assert!(constraints_hold(&rec.events, &rec.values));
+        assert_eq!(cap.stage_wires, vec![1, 4]);
+        assert_eq!(rec.values[1], Fp::ZERO);
+        assert_eq!(rec.values[cap.instance[0]], Fp::ZERO);
+
+        let report = determinism_sweep(&rec.events, &rec.values, &cap.stage_wires, &cap.instance);
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+
+        let report = determinism_sweep(&rec.events, &rec.values, &[], &cap.instance);
+        assert_eq!(
+            report.violations.len(),
+            1,
+            "undeclared, the zero stage value moves the square: the false positive",
+        );
+        assert_eq!(report.violations[0].advice, 1);
+        Ok(())
+    }
+
+    /// `forced_by` is the static pinned-input check: with the stage input
+    /// declared, the honest square is forced; with the planted bug it is
+    /// not, before any cheat is tried.
+    #[test]
+    fn forced_by_flags_the_planted_bug_statically() -> Result<()> {
+        let witness = (Fp::from(3u64), Fp::from(5u64));
+
+        let sound = MultiStage::new(StagedSquare::<true>);
+        let cap = capture(&sound, witness)?;
+        let forced = forced_by(&cap.recorder.events, &cap.recorder.values, &cap.stage_wires);
+        assert!(
+            forced.contains(&cap.instance[0]),
+            "the square follows the stage input"
+        );
+
+        let buggy = MultiStage::new(StagedSquare::<false>);
+        let cap = capture(&buggy, witness)?;
+        let forced = forced_by(&cap.recorder.events, &cap.recorder.values, &cap.stage_wires);
+        assert!(
+            !forced.contains(&cap.instance[0]),
+            "the free \"square\" is not a function of the declared input",
+        );
+        Ok(())
+    }
+
+    /// Like `StagedSquare<true>`, but the first thing the circuit does after
+    /// `finish` is allocate two honest zeros through one pooling allocator —
+    /// a gate and its `assign_extra`, the exact shape of a reservation.
+    #[derive(Clone, Default)]
+    struct StagedZerosFirst;
+
+    impl MultiStageCircuit<Fp, TestRank> for StagedZerosFirst {
+        type Last = StageW2;
+        type Instance<'source> = ();
+        type Witness<'source> = (Fp, Fp);
+        type Output = Kind![Fp; Element<'_, _>];
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _instance: DriverValue<D, ()>,
+        ) -> Result<Bound<'dr, D, Self::Output>>
+        where
+            Self: 'dr,
+        {
+            unreachable!("instance is not exercised by the patcher")
+        }
+
+        fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            builder: StageBuilder<'a, 'dr, D, TestRank, (), StageW2>,
+            witness: DriverValue<D, (Fp, Fp)>,
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, ()>>>
+        where
+            Self: 'dr,
+        {
+            let (guard, builder) = builder.configure_stage(StageW2)?;
+            let dr = builder.finish();
+            let zeros = &mut Standard::new();
+            Element::alloc(dr, zeros, D::just(|| Fp::ZERO))?;
+            Element::alloc(dr, zeros, D::just(|| Fp::ZERO))?;
+            let TwoWires { a, b: _ } = guard.unenforced(dr, witness)?;
+            Ok(WithAux::new(a.square(dr)?, D::unit()))
+        }
+    }
+
+    /// `capture`'s structural prefix over-approximates on a reservation-shaped
+    /// run of honest zeros — in the safe direction: the two extra wires are
+    /// declared as stage wires, the capture is still consistent and sweeps
+    /// clean, and `capture_staged` with the count from the type is exact.
+    #[test]
+    fn structural_prefix_over_approximates_safely() -> Result<()> {
+        let circuit = MultiStage::new(StagedZerosFirst);
+        let witness = (Fp::from(3u64), Fp::from(5u64));
+
+        let located = capture(&circuit, witness)?;
+        assert_eq!(
+            located.stage_wires,
+            vec![1, 4, 5, 8],
+            "the zero pair after `finish` is taken for a second reserved gate",
+        );
+        assert!(constraints_hold(
+            &located.recorder.events,
+            &located.recorder.values
+        ));
+        assert_eq!(located.recorder.values[located.instance[0]], Fp::from(9u64));
+        let report = determinism_sweep(
+            &located.recorder.events,
+            &located.recorder.values,
+            &located.stage_wires,
+            &located.instance,
+        );
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+
+        assert_eq!(reserved_gates(&circuit), 1);
+        let exact = capture_staged(&circuit, witness, reserved_gates(&circuit))?;
+        assert_eq!(exact.stage_wires, vec![1, 4]);
+        assert_eq!(exact.recorder.values, located.recorder.values);
+        Ok(())
+    }
+
+    /// Squares the *sum* of the two stage outputs: each stage wire is read
+    /// only through a two-term combination, which the deduction overlay
+    /// cannot split (it knows `a + b`, not `a` or `b`) — while the overlay
+    /// from supplied stage values does not need to.
+    #[derive(Clone, Default)]
+    struct StagedSumSquare;
+
+    impl MultiStageCircuit<Fp, TestRank> for StagedSumSquare {
+        type Last = StageW2;
+        type Instance<'source> = ();
+        type Witness<'source> = (Fp, Fp);
+        type Output = Kind![Fp; Element<'_, _>];
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _instance: DriverValue<D, ()>,
+        ) -> Result<Bound<'dr, D, Self::Output>>
+        where
+            Self: 'dr,
+        {
+            unreachable!("instance is not exercised by the patcher")
+        }
+
+        fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            builder: StageBuilder<'a, 'dr, D, TestRank, (), StageW2>,
+            witness: DriverValue<D, (Fp, Fp)>,
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, ()>>>
+        where
+            Self: 'dr,
+        {
+            let (guard, builder) = builder.configure_stage(StageW2)?;
+            let dr = builder.finish();
+            let TwoWires { a, b } = guard.unenforced(dr, witness)?;
+            let sum = a.add(dr, &b);
+            Ok(WithAux::new(sum.square(dr)?, D::unit()))
+        }
+    }
+
+    /// Supplied stage values overlay exactly where deduction cannot: the
+    /// deduction overlay fails closed on `StagedSumSquare`, the value overlay
+    /// recovers both wires (even the one `StagedSquare` never reads), and
+    /// wrong values are refused.
+    #[test]
+    fn stage_values_overlay_where_deduction_cannot() -> Result<()> {
+        let witness = (Fp::from(3u64), Fp::from(5u64));
+
+        let circuit = MultiStage::new(StagedSumSquare);
+        assert!(
+            capture(&circuit, witness).is_err(),
+            "deduction cannot split a + b between the two stage wires",
+        );
+        let cap = capture_with_stage_values(&circuit, witness, &[witness.0, witness.1])?;
+        assert_eq!(cap.stage_wires, vec![1, 4]);
+        assert_eq!(cap.recorder.values[1], Fp::from(3u64));
+        assert_eq!(cap.recorder.values[4], Fp::from(5u64));
+        assert_eq!(cap.recorder.values[cap.instance[0]], Fp::from(64u64));
+        assert!(playback(&circuit, witness, cap.recorder.values.clone())?);
+        let report = determinism_sweep(
+            &cap.recorder.events,
+            &cap.recorder.values,
+            &cap.stage_wires,
+            &cap.instance,
+        );
+        assert!(report.violations.is_empty(), "{:?}", report.violations);
+
+        let circuit = MultiStage::new(StagedSquare::<true>);
+        let cap = capture_with_stage_values(&circuit, witness, &[witness.0, witness.1])?;
+        assert_eq!(
+            cap.recorder.values[4],
+            Fp::from(5u64),
+            "the unread stage wire is recovered too",
+        );
+        assert!(
+            capture_with_stage_values(&circuit, witness, &[Fp::from(4u64), witness.1]).is_err()
+        );
+        assert!(capture_with_stage_values(&circuit, witness, &[witness.0]).is_err());
         Ok(())
     }
 }

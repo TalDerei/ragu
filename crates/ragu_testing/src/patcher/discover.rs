@@ -57,7 +57,7 @@
 
 use ragu_arithmetic::ff::Field;
 
-use super::recorder::{Event, Recorder, deduce};
+use super::recorder::{Event, Recorder, deduce, deduce_by_cases};
 
 /// The `(b, c)` waste-wire pairs of the allocation gates in a recorded
 /// graph, in emission order — recovered structurally, for callers that did
@@ -119,6 +119,40 @@ pub fn allocation_waste<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<(usi
             }
             _ => None,
         })
+        .collect()
+}
+
+/// The wires the bounded solver forces from a declared input set at the
+/// satisfying witness `values` — the static half of the pinned-input
+/// oracle.
+///
+/// Seeds the known set with `inputs` and the fixed ONE wire, runs the
+/// solver — [`deduce`] plus case analysis on booleans, which is what decides
+/// an endoscalar's bits from the value they decompose — to a fixpoint, and
+/// returns every other wire it marked known, ascending. A declared *output*
+/// that is missing from the result is not a function of the declared inputs
+/// as far as the constraints (and the bounded solver) can tell: either the
+/// circuit leaves it under-constrained, or the witness sits at a degenerate
+/// point where the constraint that pins it vanishes (a conditional enforce
+/// whose condition is off, say). Both are worth a look before any fuzzing,
+/// and neither is something a cheat sweep can exercise. `values` is not
+/// modified.
+///
+/// The converse carries the usual solver caveat: a wire *is* forced when the
+/// bounded solver can reach it, so one pinned only through a coupled cluster
+/// wider than its cap is reported unforced even though it is determined.
+pub fn forced_by<F: Field>(events: &[Event<F>], values: &[F], inputs: &[usize]) -> Vec<usize> {
+    let mut scratch = values.to_vec();
+    let mut known = vec![false; scratch.len()];
+    known[Recorder::<F>::ONE] = true;
+    let mut declared = vec![false; scratch.len()];
+    for &w in inputs {
+        known[w] = true;
+        declared[w] = true;
+    }
+    deduce_by_cases(events, &mut scratch, &mut known);
+    (0..known.len())
+        .filter(|&w| known[w] && !declared[w] && w != Recorder::<F>::ONE)
         .collect()
 }
 
@@ -248,6 +282,46 @@ mod tests {
             vec![x, b, y, bit]
         );
         assert_eq!(allocation_waste(&rec.events, &rec.values), alloc.wasted);
+        Ok(())
+    }
+
+    /// The case analysis decides what a value forces through its endoscalar
+    /// decomposition: each bit is bound to whether `value + i` is a square,
+    /// which needs a root to decide, so discovery (no case analysis) leaves
+    /// every bit free while `forced_by` from the value alone reaches all 128
+    /// of them and the lifted scalar.
+    #[test]
+    fn forced_by_decides_endoscalar_bits() -> ragu_core::Result<()> {
+        use ragu_primitives::Endoscalar;
+
+        let mut rec = Recorder::<Fp>::new();
+        let mut alloc = TrackingAllocator::default();
+        let value = Element::alloc(
+            &mut rec,
+            &mut alloc,
+            Recorder::<Fp>::just(|| Fp::from(0x1234_5678_9abc_def0u64)),
+        )?;
+        let endoscalar = Endoscalar::extract(&mut rec, &mut alloc, value.clone())?;
+        let lifted = endoscalar.lift(&mut rec)?;
+        assert!(constraints_hold(&rec.events, &rec.values));
+
+        let bits: Vec<usize> = endoscalar.bits().map(|bit| *bit.wire()).collect();
+        assert_eq!(bits.len(), 128);
+        let free = discover_free_advice(&rec.events, &rec.values);
+        assert!(
+            bits.iter().all(|bit| free.binary_search(bit).is_ok()),
+            "discovery alone cannot split a boolean",
+        );
+
+        let forced = forced_by(&rec.events, &rec.values, &[*value.wire()]);
+        assert!(
+            bits.iter().all(|bit| forced.binary_search(bit).is_ok()),
+            "every bit follows from the value alone",
+        );
+        assert!(
+            forced.binary_search(lifted.wire()).is_ok(),
+            "and so does the lifted endoscalar",
+        );
         Ok(())
     }
 

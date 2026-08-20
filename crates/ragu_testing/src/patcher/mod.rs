@@ -36,12 +36,23 @@
 //! * [`Playback`] — the independent cross-check: re-runs the same synthesis
 //!   and verifies an injected witness live, so a recorder capture bug cannot
 //!   silently corrupt a verdict.
-//! * [`capture`] / [`playback`] — the [`Circuit`](ragu_circuits::Circuit)
-//!   entry points: run a circuit's `witness` (and its output serialization)
-//!   through the drivers, exposing the wires of its public instance.
-//!   [`capture`] applies [`overlay_stages`] so even a staged
+//! * [`capture`] / [`capture_staged`] / [`playback`] — the
+//!   [`Circuit`](ragu_circuits::Circuit) entry points: run a circuit's
+//!   `witness` (and its output serialization) through the drivers, exposing
+//!   the wires of its public instance. Both captures apply
+//!   [`overlay_reserved`] so even a staged
 //!   [`MultiStage`](ragu_circuits::staging::MultiStage) circuit — every
-//!   internal recursion circuit is one — yields a self-consistent capture.
+//!   internal recursion circuit is one — yields a self-consistent capture
+//!   that names its reserved stage wires; [`reserved_gates`] gives
+//!   [`capture_staged`] the exact reservation from the type, and
+//!   [`capture_with_stage_values`] takes the honest stage values outright
+//!   from a harness that has the stage witnesses.
+//! * [`forced_by`] — the static half of the pinned-input oracle: the wires
+//!   a declared input set determines, so a declared output that is not
+//!   among them is flagged before any cheat is tried.
+//! * [`Prepared`] — the pinned-input oracle with the input-forced part of
+//!   the witness solved once, for harnesses that probe the same capture
+//!   thousands of times.
 //! * [`selftest`] — a planted under-constrained circuit whose signal must
 //!   fire, so the soundness direction is never vacuous.
 //!
@@ -53,9 +64,14 @@ mod discover;
 mod oracle;
 mod recorder;
 
-pub use circuit::{Capture, capture, overlay_stages, playback};
-pub use discover::{allocation_waste, discover_free_advice};
-pub use oracle::{ProbeOutcome, SweepReport, Violation, determinism_probe, determinism_sweep};
+pub use circuit::{
+    Capture, capture, capture_staged, capture_with_stage_values, overlay_reserved,
+    overlay_stage_values, playback, reserved_gates,
+};
+pub use discover::{allocation_waste, discover_free_advice, forced_by};
+pub use oracle::{
+    Prepared, ProbeOutcome, SweepReport, Violation, determinism_probe, determinism_sweep,
+};
 pub use recorder::{
     Event, Playback, Recorder, TrackingAllocator, constraints_hold, repair, selftest,
     underconstrained_derived,

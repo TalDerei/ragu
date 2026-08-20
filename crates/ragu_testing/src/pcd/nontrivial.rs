@@ -102,6 +102,59 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     }
 }
 
+/// Hashes two internal nodes into a parent, so a tree can grow past the one
+/// level [`Hash2`] (which takes leaves) allows.
+///
+/// A fuse of two leaves is a degenerate point for the recursion: the
+/// children carry trivial accumulators, so every error term the collapse
+/// circuits fold is zero. A fuse of two `Hash2` nodes sees children that
+/// carry real ones.
+pub struct Merge2<'params, C: Cycle> {
+    /// The Poseidon parameters the sponge is instantiated with.
+    pub poseidon_params: &'params C::CircuitPoseidon,
+}
+
+impl<C: Cycle> Step<C> for Merge2<'_, C> {
+    const INDEX: Index = Index::new(2);
+    type Witness<'source> = ();
+    type Aux<'source> = ();
+    type Left = InternalNode;
+    type Right = InternalNode;
+    type Output = InternalNode;
+
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>, const HEADER_SIZE: usize>(
+        &self,
+        dr: &mut D,
+        _: DriverValue<D, Self::Witness<'source>>,
+        left: DriverValue<D, C::CircuitField>,
+        right: DriverValue<D, C::CircuitField>,
+    ) -> Result<(
+        (
+            Encoded<'dr, D, Self::Left, HEADER_SIZE>,
+            Encoded<'dr, D, Self::Right, HEADER_SIZE>,
+            Encoded<'dr, D, Self::Output, HEADER_SIZE>,
+        ),
+        DriverValue<D, <Self::Output as Header<C::CircuitField>>::Data>,
+        DriverValue<D, Self::Aux<'source>>,
+    )>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        let left = Encoded::new(dr, allocator, left)?;
+        let right = Encoded::new(dr, allocator, right)?;
+
+        let mut sponge = Sponge::new(dr, self.poseidon_params);
+        sponge.absorb(dr, left.as_gadget())?;
+        sponge.absorb(dr, right.as_gadget())?;
+        let output = sponge.squeeze(dr)?;
+        let output_data = output.value().map(|v| *v);
+        let output = Encoded::from_gadget(output);
+
+        Ok(((left, right, output), output_data, D::unit()))
+    }
+}
+
 /// A [`Step`] with no children that hashes a witnessed field element into a
 /// [`LeafNode`], seeding the tree.
 pub struct WitnessLeaf<'params, C: Cycle> {
