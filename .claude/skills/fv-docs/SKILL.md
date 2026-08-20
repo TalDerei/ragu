@@ -11,57 +11,54 @@ The FV documentation lives in the repo. This skill is a routing layer: pick the 
 
 ## Where the docs live
 
-The docs root depends on the branch:
+The FV docs are Part IV of the Ragu book, rooted at **`book/src/fv/`**. Treat `<docs>` below as that path.
 
-- **`qa/lean/docs/src/`** — `fv-organization` branch and going forward (FV docs co-located with the Lean project at `qa/lean/`).
-- **`fv/docs/src/`** — `upstream/main` (as landed in [#689](https://github.com/tachyon-zcash/ragu/pull/689)), prior to the reorg.
-
-Treat `<docs>` below as whichever of the two exists in the current checkout. If unsure, `ls qa/lean/docs/src/ 2>/dev/null || ls fv/docs/src/` resolves it.
+Older checkouts predate the merge into the book and have the docs as a standalone mdBook at `qa/lean/docs/src/` (or, earlier still, `fv/docs/src/`), with `clean/core/` in place of `clean/`, `ragu/` in place of `circuits/`, and `introduction.md` in place of `index.md`. If unsure, `ls book/src/fv/ 2>/dev/null || ls qa/lean/docs/src/` resolves it.
 
 ## Topic → file (what each doc answers)
 
 **Clean DSL:**
-- `<docs>/clean/introduction.md` — what Clean is; soundness vs completeness as concepts; compositionality.
-- `<docs>/clean/core/circuit.md` — the `Circuit` monad: `ℕ → α × List (Operation F)`, `bind` semantics, witness offset threading.
-- `<docs>/clean/core/mul.md` — minimal worked example: a multiplication circuit walked end-to-end.
-- `<docs>/clean/core/provable.md` — `TypeMap`, `ProvableType`, `ProvableStruct`; structured values vs symbolic forms; `field`, `Var`.
-- `<docs>/clean/core/expression.md` — `Variable`, `Expression`, `ProverEnvironment`; how symbolic circuits are evaluated.
-- `<docs>/clean/core/operations.md` — `FlatOperation` vs `Operation`; witness / assert / lookup; why operations are the ground truth.
-- `<docs>/clean/core/formal.md` — the formal-circuit bundle family (`FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`); the prover/verifier precondition split (`Assumptions`, `ProverAssumptions`, `ProverSpec`, `ProverData`, `ProverHint`); structure of `main` / `Assumptions` / `Spec` / `soundness` / `completeness` fields; the formal definitions of soundness and completeness.
-- `<docs>/clean/core/example.md` — full worked example tying circuit + provable + expression + formal together (`DivNonzero`).
-- `<docs>/clean/core/parameters.md` — compile-time parameters as ordinary Lean function arguments; partial-application instantiation.
+- `<docs>/clean/index.md` — what Clean is; soundness vs completeness as concepts; compositionality.
+- `<docs>/clean/circuit.md` — the `Circuit` monad: `ℕ → α × List (Operation F)`, `bind` semantics, witness offset threading.
+- `<docs>/clean/mul.md` — minimal worked example: a multiplication circuit walked end-to-end.
+- `<docs>/clean/provable.md` — `TypeMap`, `ProvableType`, `ProvableStruct`; structured values vs symbolic forms; `field`, `Var`.
+- `<docs>/clean/expression.md` — `Variable`, `Expression`, `ProverEnvironment`; how symbolic circuits are evaluated.
+- `<docs>/clean/operations.md` — `FlatOperation` vs `Operation`; witness / assert / lookup; why operations are the ground truth.
+- `<docs>/clean/formal.md` — the formal-circuit bundle family (`FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`); the prover/verifier precondition split (`Assumptions`, `ProverAssumptions`, `ProverSpec`, `ProverData`, `ProverHint`); structure of `main` / `Assumptions` / `Spec` / `soundness` / `completeness` fields; the formal definitions of soundness and completeness.
+- `<docs>/clean/example.md` — full worked example tying circuit + provable + expression + formal together (`DivNonzero`).
+- `<docs>/clean/parameters.md` — compile-time parameters as ordinary Lean function arguments; partial-application instantiation.
 
 **Ragu FV pipeline:**
-- `<docs>/ragu/introduction.md` — the two-approach analysis (high-level export vs. low-level trace); why Ragu chose the low-level export with a Lean reimplementation; the formal instance interface and its fields.
-- `<docs>/ragu/extraction.md` — `ExtractionDriver`, `MaybeKind = Empty`, `ImplWire = Expr<F>`; how `alloc` / `mul` / `add` / `enforce_zero` / `constant` map to operations.
-- `<docs>/ragu/input-outputs-serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
-- `<docs>/ragu/fingerprint.md` — the vk-style fingerprint equivalence check (the sole Rust↔Lean tie since the autogen trace files and `same_constraints` proofs were removed): canonical byte encoding + SHA-256 digest of the op trace, computed in both the Rust extractor (`lean_extraction -- fingerprint`) and Lean (`lake exe fingerprints`), compared in CI; the `2³²` input-variable index region; trust assumptions of the check.
-- `<docs>/ragu/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
-- `<docs>/ragu/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/lean/Ragu.lean` are checked; fingerprint comparison step.
+- `<docs>/circuits/index.md` — the two-approach analysis (high-level export vs. low-level trace); why Ragu chose the low-level export with a Lean reimplementation; the formal instance interface and its fields.
+- `<docs>/circuits/extraction.md` — `ExtractionDriver`, `MaybeKind = Empty`, `ImplWire = Expr<F>`; how `alloc` / `mul` / `add` / `enforce_zero` / `constant` map to operations.
+- `<docs>/circuits/serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
+- `<docs>/circuits/fingerprint.md` — the vk-style fingerprint equivalence check (the sole Rust↔Lean tie since the autogen trace files and `same_constraints` proofs were removed): canonical byte encoding + SHA-256 digest of the op trace, computed in both the Rust extractor (`lean_extraction -- fingerprint`) and Lean (`lake exe fingerprints`), compared in CI; the `2³²` input-variable index region; trust assumptions of the check.
+- `<docs>/circuits/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
+- `<docs>/circuits/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/lean/Ragu.lean` are checked; fingerprint comparison step.
 
-The mdBook TOC lives at `<docs>/SUMMARY.md` if you want the canonical reading order.
+The book TOC lives at `book/src/SUMMARY.md` if you want the canonical reading order.
 
 ## Term → file (use for definition lookups)
 
 | Term | Defined in |
 |---|---|
-| `Circuit` (monad), `bind`, witness offset | `clean/core/circuit.md` |
-| `Variable`, `Expression`, `ProverEnvironment` | `clean/core/expression.md` |
-| `Operation`, `FlatOperation`, `witness`, `assert`, `lookup` | `clean/core/operations.md` |
-| `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/core/provable.md` |
-| `FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`, `.toWithHint`, `Assumptions`, `ProverAssumptions`, `Spec`, `ProverSpec`, `ProverData`, `ProverHint`, soundness, completeness (formal definitions) | `clean/core/formal.md` |
-| Compile-time parameters, partial-application instantiation | `clean/core/parameters.md` |
-| `FormalInstance`, `reimplementation` | `ragu/introduction.md` |
-| `same_constraints`, `same_output`, `exportedOperations`, `exportedOutput` (removed; superseded by the fingerprint check) | `ragu/fingerprint.md` |
-| `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `ragu/extraction.md` |
-| `input_var.get`, `alloc_input_wires`, `serializeOutput`, `deserializeInput` | `ragu/input-outputs-serialization.md` |
-| Fingerprint, canonical encoding, `lean_extraction -- fingerprint`, `lake exe fingerprints`, `Ragu.Fingerprint`, `inputVarOffset` | `ragu/fingerprint.md` |
-| Trust assumptions, axiom dependencies | `ragu/assumptions.md` |
-| `--wfail`, `lean_extraction -- check`, what CI verifies | `ragu/ci.md` |
+| `Circuit` (monad), `bind`, witness offset | `clean/circuit.md` |
+| `Variable`, `Expression`, `ProverEnvironment` | `clean/expression.md` |
+| `Operation`, `FlatOperation`, `witness`, `assert`, `lookup` | `clean/operations.md` |
+| `TypeMap`, `ProvableType`, `ProvableStruct`, `field`, `Var` | `clean/provable.md` |
+| `FormalCircuit`, `FormalAssertion`, `GeneralFormalCircuit`, `GeneralFormalCircuit.WithHint`, `.toWithHint`, `Assumptions`, `ProverAssumptions`, `Spec`, `ProverSpec`, `ProverData`, `ProverHint`, soundness, completeness (formal definitions) | `clean/formal.md` |
+| Compile-time parameters, partial-application instantiation | `clean/parameters.md` |
+| `FormalInstance`, `reimplementation` | `circuits/index.md` |
+| `same_constraints`, `same_output`, `exportedOperations`, `exportedOutput` (removed; superseded by the fingerprint check) | `circuits/fingerprint.md` |
+| `ExtractionDriver`, `MaybeKind`, `ImplWire`, driver-method → op-trace mapping | `circuits/extraction.md` |
+| `input_var.get`, `alloc_input_wires`, `serializeOutput`, `deserializeInput` | `circuits/serialization.md` |
+| Fingerprint, canonical encoding, `lean_extraction -- fingerprint`, `lake exe fingerprints`, `Ragu.Fingerprint`, `inputVarOffset` | `circuits/fingerprint.md` |
+| Trust assumptions, axiom dependencies | `circuits/assumptions.md` |
+| `--wfail`, `lean_extraction -- check`, what CI verifies | `circuits/ci.md` |
 
 ## Reading order (for new readers)
 
-`clean/introduction` → `clean/core/circuit` → `clean/core/provable` → `clean/core/expression` → `clean/core/operations` → `clean/core/formal` → `clean/core/mul` → `clean/core/example` → `clean/core/parameters` → `ragu/introduction` → `ragu/extraction` → `ragu/input-outputs-serialization` → `ragu/fingerprint` → `ragu/assumptions` → `ragu/ci`.
+`<docs>/index` (scope, what is and is not verified) → `clean/index` → `clean/circuit` → `clean/provable` → `clean/expression` → `clean/operations` → `clean/formal` → `clean/mul` → `clean/example` → `clean/parameters` → `circuits/index` → `circuits/extraction` → `circuits/serialization` → `circuits/fingerprint` → `circuits/assumptions` → `circuits/ci`.
 
 ## Out of scope
 
