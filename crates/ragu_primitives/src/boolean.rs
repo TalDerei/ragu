@@ -72,16 +72,10 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
 
     /// Wraps an existing wire as a boolean **without** constraining it.
     ///
-    /// Nothing ties `wire` to `0` or `1`; that invariant is the caller's. This
-    /// exists so the trace-extraction tooling (`qa/crates/lean_extraction`) can
-    /// pass its symbolic input wires to the real gadgets that take a
-    /// [`Boolean`] — the Lean reimplementations carry the boolean-ness as an
-    /// `Assumptions` — instead of re-implementing those gadgets' bodies.
-    ///
-    /// Available only under the `unstable-fv` feature; not part of the stable
-    /// public API.
+    /// Crate-internal; the trace-extraction tooling reaches it through
+    /// `fv_utils::boolean_unchecked` under the `unstable-fv` feature.
     #[cfg(feature = "unstable-fv")]
-    pub fn new_unchecked(wire: D::Wire, value: DriverValue<D, bool>) -> Self {
+    pub(crate) fn new_unchecked(wire: D::Wire, value: DriverValue<D, bool>) -> Self {
         Boolean { wire, value }
     }
 

@@ -56,14 +56,8 @@ jobs:
           cache-suffix: lean-extraction
 
       # `lean_extraction` is its own workspace (see its Cargo.toml), so every
-      # cargo invocation addresses it by manifest path; the root workspace's
-      # fmt / clippy / test jobs do not cover it.
-      - name: Check extraction tooling formatting
-        run: cargo fmt --manifest-path qa/crates/lean_extraction/Cargo.toml -- --check
-
-      - name: Lint extraction tooling
-        run: cargo clippy --locked --manifest-path qa/crates/lean_extraction/Cargo.toml --all-targets -- -D warnings
-
+      # cargo invocation addresses it by manifest path. The root workspace's
+      # test job does not cover it (its fmt / clippy run in rust.yml).
       - name: Test extraction tooling
         run: cargo test --locked --manifest-path qa/crates/lean_extraction/Cargo.toml
 

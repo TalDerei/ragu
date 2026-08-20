@@ -35,6 +35,9 @@ pub mod suffix;
 mod util;
 pub mod vec;
 
+#[cfg(feature = "unstable-fv")]
+pub mod fv_utils;
+
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{

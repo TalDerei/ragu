@@ -71,6 +71,12 @@ jobs:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
         run: cargo fmt --all -- --config-path rustfmt.nightly.toml --check
 
+      # `qa/crates/lean_extraction` is its own workspace (see its Cargo.toml).
+      - name: Check formatting (extraction tooling)
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
+        run: cargo fmt --manifest-path qa/crates/lean_extraction/Cargo.toml --all -- --config-path rustfmt.nightly.toml --check
+
   clippy:
     name: clippy
     needs: changes
@@ -86,6 +92,10 @@ jobs:
           components: clippy
       - name: Run clippy
         run: cargo clippy --workspace --lib --tests --benches --locked --all-features -- -D warnings
+
+      # `qa/crates/lean_extraction` is its own workspace (see its Cargo.toml).
+      - name: Run clippy (extraction tooling)
+        run: cargo clippy --manifest-path qa/crates/lean_extraction/Cargo.toml --all-targets --locked -- -D warnings
 
   # The `mock` feature is off by default and is the root crate's only API. It
   # gets its own job to exercise the no-default-features configuration used by

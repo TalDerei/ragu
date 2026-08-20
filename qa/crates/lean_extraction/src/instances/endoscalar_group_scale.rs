@@ -135,7 +135,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
     /// `conditional_negate` / `conditional_endo` are the real `Point` methods;
     /// only the incomplete additions and their `divide` are mirrored. An
     /// `Endoscalar` could be assembled from the input wires the same way (an
-    /// `unstable-fv` constructor, like `Boolean::new_unchecked`), but driving
+    /// `unstable-fv` constructor, like `fv_utils::boolean_unchecked`), but driving
     /// the real `group_scale` would record the accumulator as an exponentially
     /// large tree — see the freshening note below — so the loop body is
     /// mirrored instead.

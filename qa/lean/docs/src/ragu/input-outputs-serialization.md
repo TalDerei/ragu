@@ -30,7 +30,7 @@ let mut nonzero = WireDeserializer::new(nonzero_input).into_gadget(&element_temp
 ```
 
 The template only supplies the gadget's *structure*; every wire it carries is replaced.
-Gadgets whose every constructor emits operations (`Boolean`) are instead built directly from the input wire with `Boolean::new_unchecked`, which `ragu_primitives` exposes only under its `unstable-fv` feature; `lean_extraction` is its own Cargo workspace precisely so that enabling this feature cannot leak into the library builds. Either way the instance then calls the real gadget methods — `Boolean::and`, `Point::conditional_negate`, … — instead of mirroring their bodies.
+Gadgets whose every constructor emits operations (`Boolean`) are instead built directly from the input wire with `fv_utils::boolean_unchecked`, which `ragu_primitives` exposes only under its `unstable-fv` feature; `lean_extraction` is its own Cargo workspace precisely so that enabling this feature cannot leak into the library builds. Either way the instance then calls the real gadget methods — `Boolean::and`, `Point::conditional_negate`, … — instead of mirroring their bodies.
 
 So the flat input interface is composed of:
 

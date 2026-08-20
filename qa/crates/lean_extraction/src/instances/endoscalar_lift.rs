@@ -21,7 +21,7 @@ impl CircuitInstance for EndoscalarLiftInstance {
     ///
     /// The body is still mirrored rather than invoked: an `Endoscalar` could be
     /// assembled from the input wires the same way (an `unstable-fv`
-    /// constructor, like `Boolean::new_unchecked`), but the real
+    /// constructor, like `fv_utils::boolean_unchecked`), but the real
     /// `Endoscalar::lift` would then record its accumulator as an exponentially
     /// large tree; see the divergence note.
     ///
