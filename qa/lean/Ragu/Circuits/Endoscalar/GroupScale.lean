@@ -398,7 +398,9 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   --   4. The top-level `groupScaleNative ≠ none` assumption supplies each
   --      unchecked addition's non-degeneracy via `all_accAfter_ne`, so
   --      `groupScaleNative = some output` follows at m = 64.
-  circuit_proof_start [Step.circuit, Step.Assumptions, Step.Spec,
+  -- `main` is `@[irreducible]` (see its docstring), so `circuit_proof_start`
+  -- cannot auto-unfold it and it must be named here.
+  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
     Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
     Point.AddIncompleteUnchecked.Spec,
     Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec]
@@ -501,7 +503,9 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   -- Assumptions), and per-step `stepNative ≠ none` extracted from
   -- `groupScaleNative ≠ none` via the `accAfter` helpers above. The init
   -- AddIncomplete needs `(ζ-1)·p.x ≠ 0` (from `h_zeta_ne_one` + `h_px_ne`).
-  circuit_proof_start [Step.circuit, Step.Assumptions, Step.Spec,
+  -- `main` is `@[irreducible]` (see its docstring), so `circuit_proof_start`
+  -- cannot auto-unfold it and it must be named here.
+  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
     Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
     Point.AddIncompleteUnchecked.Spec,
     Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec]

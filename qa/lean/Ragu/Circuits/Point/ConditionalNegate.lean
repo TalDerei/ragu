@@ -40,9 +40,8 @@ instance elaborated : ElaboratedCircuit (F p) Input Spec.Point where
     simp [main, circuit_norm, Boolean.ConditionalSelect.circuit]
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  simp [circuit_norm, Boolean.ConditionalSelect.circuit,
-    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec] at h_holds
+  circuit_proof_start [Boolean.ConditionalSelect.circuit,
+    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by

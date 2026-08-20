@@ -53,6 +53,7 @@ instance elaborated :
     rcases input with ⟨x, y⟩
     simp [main, circuit_norm, Element.Square.circuit, Element.Divide.circuit,
       Element.Mul.circuit]
+    exact ⟨rfl, rfl⟩
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by

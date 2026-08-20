@@ -85,6 +85,7 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
     rcases input with ⟨⟨x_p, y_p⟩, ⟨x_q, y_q⟩⟩
     simp [main, circuit_norm, Element.Divide.circuit, Element.Square.circuit,
       Element.Mul.circuit]
+    exact ⟨rfl, rfl⟩
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
@@ -134,8 +135,8 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     input_P1_x input_P1_y input_P2_x input_P2_y
     (env.get i₀) (env.get (i₀ + 3 + 2)) (env.get (i₀ + 3 + 3))
     (env.get (i₀ + 3 + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 3 + 2))
-    h_x_ne h_delta (by linear_combination h_sq1) h_r_ne_xp h_lam2half
-    (by linear_combination h_sq2) (by linear_combination h_yterm)
+    h_x_ne h_delta (by linear_combination (id h_sq1 : @Eq (F p) _ _)) h_r_ne_xp h_lam2half
+    (by linear_combination (id h_sq2 : @Eq (F p) _ _)) (by linear_combination (id h_yterm : @Eq (F p) _ _))
   refine ⟨_, h_add_eq1, h_add_eq2, ?_⟩
   have h_r_curve := by
     simpa [h_add_eq1] using Lemmas.add_incomplete_preserves_membership

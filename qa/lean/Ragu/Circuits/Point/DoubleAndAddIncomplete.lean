@@ -142,8 +142,8 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     x_p y_p x_q y_q
     (env.get (i₀ + 3)) (env.get (i₀ + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 3))
     (env.get (i₀ + 3 + 3 + 3 + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 3 + 3 + 3 + 2))
-    h_x_ne h_lam1 (by linear_combination h_sq1) h_r_ne_xp h_lam2half
-    (by linear_combination h_sq2) (by linear_combination h_yterm)
+    h_x_ne h_lam1 (by linear_combination (id h_sq1 : @Eq (F p) _ _)) h_r_ne_xp h_lam2half
+    (by linear_combination (id h_sq2 : @Eq (F p) _ _)) (by linear_combination (id h_yterm : @Eq (F p) _ _))
   refine ⟨_, h_add_eq1, h_add_eq2, ?_⟩
   have h_r_curve := by
     simpa [h_add_eq1] using Lemmas.add_incomplete_preserves_membership

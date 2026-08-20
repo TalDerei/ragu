@@ -45,9 +45,8 @@ instance elaborated (curveParams : Spec.CurveParams p)
 
 theorem soundness (curveParams : Spec.CurveParams p)
     : Soundness (F p) (elaborated curveParams) (Assumptions curveParams) (Spec curveParams) := by
-  circuit_proof_start
-  simp [circuit_norm, Boolean.ConditionalSelect.circuit,
-    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec] at h_holds
+  circuit_proof_start [Boolean.ConditionalSelect.circuit,
+    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
 theorem completeness (curveParams : Spec.CurveParams p)
