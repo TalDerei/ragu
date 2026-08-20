@@ -55,8 +55,20 @@ jobs:
         with:
           cache-suffix: lean-extraction
 
+      # `lean_extraction` is its own workspace (see its Cargo.toml), so every
+      # cargo invocation addresses it by manifest path; the root workspace's
+      # fmt / clippy / test jobs do not cover it.
+      - name: Check extraction tooling formatting
+        run: cargo fmt --manifest-path qa/crates/lean_extraction/Cargo.toml -- --check
+
+      - name: Lint extraction tooling
+        run: cargo clippy --locked --manifest-path qa/crates/lean_extraction/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test extraction tooling
+        run: cargo test --locked --manifest-path qa/crates/lean_extraction/Cargo.toml
+
       - name: Check exported Lean files are up to date
-        run: cargo run --locked -p lean_extraction -- check
+        run: cargo run --locked --manifest-path qa/crates/lean_extraction/Cargo.toml -- check
 
       # We install elan + invoke `lake` directly instead of using
       # `leanprover/lean-action`: that composite transitively references
@@ -93,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo run --locked -p lean_extraction -- fingerprint \
+          cargo run --locked --manifest-path qa/crates/lean_extraction/Cargo.toml -- fingerprint \
             | sort > "$RUNNER_TEMP/fingerprints-rust.txt"
           (cd qa/lean && lake env lean --run Ragu/Fingerprint/Main.lean) \
             | sort > "$RUNNER_TEMP/fingerprints-lean.txt"

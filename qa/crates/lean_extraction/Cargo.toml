@@ -1,19 +1,34 @@
+# Trace-extraction tooling for the formal-verification pipeline.
+#
+# Deliberately its own workspace (the empty `[workspace]` table below), not a
+# member of the repo-root one: it enables `ragu_primitives/unstable-fv` to reach
+# constructors that bypass gadget invariants, and Cargo unifies features across
+# a workspace, so as a root member that feature would leak into every ordinary
+# `cargo build` / `cargo test` of the library crates. `qa/fuzz` stands alone for
+# the same reason.
+#
+# Invoke from the repo root with
+# `cargo run --locked --manifest-path qa/crates/lean_extraction/Cargo.toml -- <check|export|fingerprint>`.
+
 [package]
 name = "lean_extraction"
-version.workspace = true
-authors.workspace = true
+version = "0.0.0"
+authors = ["Sean Bowe <ewillbefull@gmail.com>"]
 description = "Extracts Ragu circuit instances for formal verification in Lean"
-license.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
+license = "MIT OR Apache-2.0"
+edition = "2024"
+rust-version = "1.97"
+homepage = "https://github.com/tachyon-zcash/ragu"
+repository = "https://github.com/tachyon-zcash/ragu"
+publish = false
+
+[workspace]
 
 [dependencies]
 ragu_core = { path = "../../../crates/ragu_core", version = "0.0.0" }
 ragu_arithmetic = { path = "../../../crates/ragu_arithmetic", version = "0.0.0" }
-ragu_primitives = { path = "../../../crates/ragu_primitives", version = "0.0.0" }
+ragu_primitives = { path = "../../../crates/ragu_primitives", version = "0.0.0", features = ["unstable-fv"] }
 ragu_pasta = { path = "../../../crates/ragu_pasta", version = "0.0.0" }
 clap = { version = "4.5", features = ["derive"] }
-ff = { workspace = true }
-group = { workspace = true }
+ff = { version = "0.14", default-features = false }
+group = { version = "0.14", default-features = false }

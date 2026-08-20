@@ -1,14 +1,14 @@
-use ff::{Field, WithSmallOrderMulGroup};
+use ff::Field;
 use group::CurveAffine;
 use ragu_arithmetic::Coeff;
-use ragu_core::drivers::{Driver, LinearExpression};
+use ragu_core::drivers::Driver;
 use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::{Element, Point};
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer},
+    instance::{CircuitInstance, WireCollector, WireDeserializer, boolean_from_wire},
 };
 
 type Dr = ExtractionDriver<Fp>;
@@ -130,9 +130,15 @@ pub struct EndoscalarGroupScaleInstance;
 impl CircuitInstance for EndoscalarGroupScaleInstance {
     type Field = Fp;
 
-    /// Mirrors `Endoscalar::group_scale` on the constraint side without going
-    /// through `Endoscalar` (whose fields are private) or `Boolean::alloc`
-    /// (which would allocate fresh wires for each input bit).
+    /// Mirrors `Endoscalar::group_scale` on the constraint side. The bit wires
+    /// are wrapped as `Boolean`s (see [`boolean_from_wire`]) and the per-step
+    /// `conditional_negate` / `conditional_endo` are the real `Point` methods;
+    /// only the incomplete additions and their `divide` are mirrored. An
+    /// `Endoscalar` could be assembled from the input wires the same way (an
+    /// `unstable-fv` constructor, like `Boolean::new_unchecked`), but driving
+    /// the real `group_scale` would record the accumulator as an exponentially
+    /// large tree — see the freshening note below — so the loop body is
+    /// mirrored instead.
     ///
     /// Input wires (in order):
     ///   * bits[0..128]   (128 wires) — the 128 boolean bits of the endoscalar
@@ -167,53 +173,22 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
         let point_template = Point::constant(dr, EpAffine::generator())?;
         let p = WireDeserializer::new(point_input_wires).into_gadget(&point_template)?;
 
-        // Extract p's x and y wires as Expr for inline reuse.
-        let p_wires = WireCollector::collect_from(&p)?;
-        let p_x_wire = p_wires[0].clone();
-        let p_y_wire = p_wires[1].clone();
-        let p_x = Element::promote(p_x_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
-        let p_y = Element::promote(p_y_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
-
         let one_elem = Element::constant(dr, Fp::ONE);
 
-        // Init step: p_endo = (ζ·p.x, p.y).
-        let p_endo = {
-            let endo_x = p_x.scale(dr, Coeff::Arbitrary(Fp::ZETA));
-            let endo_x_wire = WireCollector::collect_from(&endo_x)?[0].clone();
-            let wires = vec![endo_x_wire, p_y_wire.clone()];
-            WireDeserializer::new(wires).into_gadget(&point_template)?
-        };
+        // Init step, as in `group_scale`: `p.endo()` is the real `Point` method.
+        let p_endo = p.endo(dr);
 
         let acc_pre = add_incomplete_unchecked(dr, &p_endo, &p, &point_template)?;
         let mut acc = acc_pre.double(dr)?;
 
         for i in 0..64usize {
-            let n_wire = &bit_wires[2 * i];
-            let e_wire = &bit_wires[2 * i + 1];
-
-            // Inline ConditionalNegate (Boolean.ConditionalSelect on y / -y).
-            let neg_y = p_y.scale(dr, Coeff::Arbitrary(-Fp::ONE));
-            let diff_y = neg_y.sub(dr, &p_y);
-            let (mul_a_n, mul_b_n, mul_c_n) =
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-            dr.enforce_equal(&mul_a_n, n_wire)?;
-            let diff_y_wire = WireCollector::collect_from(&diff_y)?[0].clone();
-            dr.enforce_equal(&mul_b_n, &diff_y_wire)?;
-            let s_y_wire = dr.add(|lc| lc.add(&p_y_wire).add(&mul_c_n));
-
-            // Inline ConditionalEndo (Boolean.ConditionalSelect on x / ζ·x).
-            let endo_x = p_x.scale(dr, Coeff::Arbitrary(Fp::ZETA));
-            let diff_x = endo_x.sub(dr, &p_x);
-            let (mul_a_e, mul_b_e, mul_c_e) =
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-            dr.enforce_equal(&mul_a_e, e_wire)?;
-            let diff_x_wire = WireCollector::collect_from(&diff_x)?[0].clone();
-            dr.enforce_equal(&mul_b_e, &diff_x_wire)?;
-            let s_x_wire = dr.add(|lc| lc.add(&p_x_wire).add(&mul_c_e));
-
-            let s_wires = vec![s_x_wire, s_y_wire];
-            let s: Point<'_, _, EpAffine> =
-                WireDeserializer::new(s_wires).into_gadget(&point_template)?;
+            // As in `group_scale`: negate on the first bit of the pair, then endo
+            // on the second, both the real `Point` methods.
+            let negate_bit = boolean_from_wire(bit_wires[2 * i].clone());
+            let endo_bit = boolean_from_wire(bit_wires[2 * i + 1].clone());
+            let s = p
+                .conditional_negate(dr, &negate_bit)?
+                .conditional_endo(dr, &endo_bit)?;
 
             // acc' = acc.double_and_add_incomplete(s) with the unchecked bank.
             let acc_sym = double_and_add_incomplete_unchecked(dr, &acc, &s, &point_template)?;

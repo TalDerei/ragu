@@ -29,11 +29,10 @@ The circuit-side `main` separates the two phases of the loop:
 
 Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_lift.rs`,
 tied to this reimpl by the fingerprint equivalence check via the formal instance
-in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance inlines
-`Boolean::and` (gate + 2 `enforce_equal`s, the same pattern as `boolean_and.rs`,
-because `Boolean` has no constructor from a bare wire) and otherwise drives the
-deployed `Element::{zero, scale, add, constant}` calls of `Endoscalar::lift`,
-with `double` replaced by `scale(2)` for the tree-size reason documented on
+in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance wraps the
+bit wires as `Boolean`s and drives the deployed `Boolean::and` and
+`Element::{zero, scale, add, constant}` calls of `Endoscalar::lift`, with
+`double` replaced by `scale(2)` for the tree-size reason documented on
 `stepCircuit` — the one value-preserving divergence from the shipped output. -/
 structure Input (F : Type) where
   bits : Vector F 128

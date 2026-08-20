@@ -1,13 +1,12 @@
 use ff::{Field, WithSmallOrderMulGroup};
 use ragu_arithmetic::Coeff;
-use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    instance::{CircuitInstance, WireCollector},
+    instance::{CircuitInstance, WireCollector, boolean_from_wire},
 };
 
 pub struct EndoscalarLiftInstance;
@@ -15,13 +14,16 @@ pub struct EndoscalarLiftInstance;
 impl CircuitInstance for EndoscalarLiftInstance {
     type Field = Fp;
 
-    /// Mirrors `Endoscalar::lift` on the constraint side without going through
-    /// `Endoscalar` (whose fields are private). For each of the 64 bit pairs
-    /// `(n, e)` the `Boolean::and(n, e)` body is inlined — one `mul` gate plus
-    /// two `enforce_equal`s, the same pattern as `boolean_and.rs`, because
-    /// `Boolean` has no constructor from a bare wire. Everything else is the
-    /// deployed gadget's own `Element` calls (`zero`, `scale`, `add`,
-    /// `constant`), in the deployed order.
+    /// Mirrors `Endoscalar::lift` line for line: the 128 input wires are wrapped
+    /// as `Boolean`s (see [`boolean_from_wire`]) and every operation is the
+    /// deployed gadget's own call — `Boolean::and`, `Element::{zero, scale,
+    /// add, constant}` — in the deployed order.
+    ///
+    /// The body is still mirrored rather than invoked: an `Endoscalar` could be
+    /// assembled from the input wires the same way (an `unstable-fv`
+    /// constructor, like `Boolean::new_unchecked`), but the real
+    /// `Endoscalar::lift` would then record its accumulator as an exponentially
+    /// large tree; see the divergence note.
     ///
     /// **One deliberate divergence**: the deployed `acc.double()` is
     /// `acc.add(acc)`, which the extraction driver records as `Add(acc, acc)`
@@ -56,25 +58,18 @@ impl CircuitInstance for EndoscalarLiftInstance {
             let n_wire = &bit_wires[2 * i];
             let e_wire = &bit_wires[2 * i + 1];
 
-            // Inline `Boolean::and(n, e)`: one mul gate (`a * b = c`) plus two
-            // `enforce_equal`s binding the gate's `a`/`b` wires to `n` and `e`.
-            // The output `ne` is the gate's `c` wire.
-            let (mul_a, mul_b, mul_c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-            dr.enforce_equal(&mul_a, n_wire)?;
-            dr.enforce_equal(&mul_b, e_wire)?;
-
-            let n = Element::promote(n_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
-            let e = Element::promote(e_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
-            let ne = Element::promote(mul_c, ExtractionDriver::<Fp>::just(|| Fp::ZERO));
+            let n = boolean_from_wire(n_wire.clone());
+            let e = boolean_from_wire(e_wire.clone());
+            let ne = n.and(dr, &e)?;
 
             // Deployed: `acc.double()` — see the divergence note above.
             acc = acc.scale(dr, Coeff::Two);
             constant_term = constant_term.double();
             constant_term += Fp::ONE;
 
-            let n = n.scale(dr, Coeff::Arbitrary(coeffs[0]));
-            let e = e.scale(dr, Coeff::Arbitrary(coeffs[1]));
-            let ne = ne.scale(dr, Coeff::Arbitrary(coeffs[2]));
+            let n = n.element().scale(dr, Coeff::Arbitrary(coeffs[0]));
+            let e = e.element().scale(dr, Coeff::Arbitrary(coeffs[1]));
+            let ne = ne.element().scale(dr, Coeff::Arbitrary(coeffs[2]));
 
             acc = acc.add(dr, &n);
             acc = acc.add(dr, &e);

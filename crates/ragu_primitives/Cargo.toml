@@ -28,6 +28,13 @@ all-features = true
 alloc = []
 default = ["alloc"]
 std = []
+# Exposes constructors that bypass a gadget's invariant (e.g. a `Boolean` over
+# an arbitrary wire) so the trace-extraction tooling
+# (`qa/crates/lean_extraction`, its own workspace) can hand input wires to the
+# real gadgets instead of re-implementing them. Not part of the stable public
+# API; never enable it from a member of the repo-root workspace, where Cargo
+# would unify it into the library builds.
+unstable-fv = []
 
 [lib]
 bench = false
