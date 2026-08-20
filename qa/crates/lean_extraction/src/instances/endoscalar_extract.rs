@@ -23,6 +23,11 @@ impl CircuitInstance for EndoscalarExtractInstance {
     /// (`try_just`) and the per-bit witness closures never run, so the trace
     /// is exactly those constraints.
     ///
+    /// The unit allocator stands in for `compute_v`'s `Standard` pool: the only
+    /// thing `Boolean::alloc` hands an allocator is its gate's spare `D` wire,
+    /// which the extractor's three-wire model does not have (`Extra = ()`), so
+    /// the choice of allocator leaves the trace unchanged.
+    ///
     /// Input wire: `elem` (1 wire). Output: the 128 endoscalar bit wires,
     /// least significant first.
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {

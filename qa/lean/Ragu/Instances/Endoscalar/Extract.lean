@@ -20,6 +20,6 @@ def formal_instance : Core.Statements.FormalInstance where
   serializeOutput
 
   reimplementation :=
-    (Circuits.Endoscalar.Extract.circuit 254 (by decide) (by decide)).toWithHint
+    (Circuits.Endoscalar.Extract.circuit 254 (by decide : 2 ^ 254 < p) (by decide : 128 ≤ 254)).toWithHint
 
 end Ragu.Instances.Endoscalar.Extract
