@@ -1,0 +1,137 @@
+//! Mutable access to a [`Proof`]'s components, for the corruption
+//! vocabulary in [`fuzz_utils`](crate::fuzz_utils).
+//!
+//! This lives in its own module, compiled only under `unstable-fuzzing`, so
+//! that the production `proof` module carries no fuzzing surface beyond the
+//! one-line `mod` declaration that pulls this in. It is a *child* of `proof`,
+//! which is what lets it reach `Proof`'s private fields — the `Cached` bridge
+//! polynomials and the commitment caches are private to that module, and a
+//! corruption harness has to address the whole proof.
+//!
+//! The accessors mirror the read-only [`Index`](core::ops::Index) impls on
+//! `Proof`, so a corruption names a component exactly the way a verifier
+//! check does rather than reaching for whichever field happens to be
+//! reachable.
+
+use alloc::sync::Arc;
+
+use ragu_arithmetic::Cycle;
+use ragu_circuits::polynomials::{Rank, sparse};
+
+use super::{ChildStageRx, Proof};
+use crate::internal::{
+    nested,
+    native::{RxComponent, RxIndex},
+    nested::ChildBridgeKind,
+};
+
+impl<C: Cycle, R: Rank> Proof<C, R> {
+    /// The native polynomial named by `component`, mutably.
+    pub(crate) fn native_component_mut(
+        &mut self,
+        component: RxComponent,
+    ) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        use RxIndex::*;
+        match component {
+            RxComponent::AbA => &mut self.native_a_poly,
+            RxComponent::AbB => &mut self.native_b_poly,
+            RxComponent::Rx(idx) => match idx {
+                Preamble => &mut self.native_preamble_rx,
+                InnerError => &mut self.native_inner_error_rx,
+                OuterError => &mut self.native_outer_error_rx,
+                Query => &mut self.native_query_rx,
+                Eval => &mut self.native_eval_rx,
+                Application => &mut self.native_application_rx,
+                Hashes1 => &mut self.native_hashes_1_rx,
+                Hashes2 => &mut self.native_hashes_2_rx,
+                InnerCollapse => &mut self.native_inner_collapse_rx,
+                OuterCollapse => &mut self.native_outer_collapse_rx,
+                ComputeV => &mut self.native_compute_v_rx,
+            },
+        }
+    }
+
+    /// The `registry_xy` polynomial, mutably.
+    pub(crate) fn native_registry_xy_poly_mut(
+        &mut self,
+    ) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        &mut self.native_registry_xy_poly
+    }
+
+    /// The `p` polynomial, mutably.
+    pub(crate) fn native_p_poly_mut(&mut self) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        &mut self.native_p_poly
+    }
+
+    /// The nested polynomial named by `idx`, mutably.
+    ///
+    /// The `Arc`-shared polynomials are unshared through
+    /// [`Arc::make_mut`](alloc::sync::Arc::make_mut), so corrupting a parent's
+    /// copy never reaches back into a child proof that still holds the
+    /// original.
+    pub(crate) fn nested_rx_mut(
+        &mut self,
+        idx: nested::RxIndex,
+    ) -> &mut sparse::Polynomial<C::ScalarField, R> {
+        use nested::RxIndex::*;
+        match idx {
+            EndoscalingStep(step) => &mut self.nested_endoscaling_step_rxs[step as usize],
+            EndoscalarStage => &mut self.nested_endoscalar_rx,
+            PointsStage => Arc::make_mut(&mut self.nested_points_rx),
+            BridgePreamble => Arc::make_mut(&mut self.bridge_preamble_rx),
+            BridgeSPrime => Arc::make_mut(&mut self.bridge_s_prime_rx),
+            BridgeInnerError => Arc::make_mut(&mut self.bridge_inner_error_rx),
+            BridgeOuterError => Arc::make_mut(&mut self.bridge_outer_error_rx.0),
+            BridgeAB => Arc::make_mut(&mut self.bridge_ab_rx.0),
+            BridgeQuery => Arc::make_mut(&mut self.bridge_query_rx.0),
+            BridgeF => Arc::make_mut(&mut self.bridge_f_rx),
+            BridgeEval => Arc::make_mut(&mut self.bridge_eval_rx.0),
+            ChildPointsStage(side) => {
+                Arc::make_mut(&mut self.child_stage_rx_mut(side).points_stage)
+            }
+            ChildBridge(kind, side) => {
+                let child = self.child_stage_rx_mut(side);
+                Arc::make_mut(match kind {
+                    ChildBridgeKind::SPrime => &mut child.bridge_s_prime,
+                    ChildBridgeKind::InnerError => &mut child.bridge_inner_error,
+                    ChildBridgeKind::OuterError => &mut child.bridge_outer_error,
+                    ChildBridgeKind::AB => &mut child.bridge_ab,
+                    ChildBridgeKind::Query => &mut child.bridge_query,
+                    ChildBridgeKind::Eval => &mut child.bridge_eval,
+                })
+            }
+        }
+    }
+
+    /// The bridge commitment named by `which`, mutably.
+    ///
+    /// These are the eight nested-curve points the unified instance carries
+    /// (see `unified::Output::alloc_from_proof`); the native commitment caches
+    /// have no accessor because single-proof verification never reads them.
+    pub(crate) fn bridge_commitment_mut(
+        &mut self,
+        which: crate::fuzz_utils::BridgeCommitment,
+    ) -> &mut C::NestedCurve {
+        use crate::fuzz_utils::BridgeCommitment::*;
+        match which {
+            Preamble => &mut self.bridge_preamble_commitment,
+            SPrime => &mut self.bridge_s_prime_commitment,
+            InnerError => &mut self.bridge_inner_error_commitment,
+            F => &mut self.bridge_f_commitment,
+            OuterError => &mut self.bridge_outer_error_commitment.0,
+            AB => &mut self.bridge_ab_commitment.0,
+            Query => &mut self.bridge_query_commitment.0,
+            Eval => &mut self.bridge_eval_commitment.0,
+        }
+    }
+
+    fn child_stage_rx_mut(
+        &mut self,
+        side: crate::internal::Side,
+    ) -> &mut ChildStageRx<C::ScalarField, R> {
+        match side {
+            crate::internal::Side::Left => &mut self.child_left_stage_rx,
+            crate::internal::Side::Right => &mut self.child_right_stage_rx,
+        }
+    }
+}
