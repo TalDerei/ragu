@@ -74,6 +74,17 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
   main
   -- divide1 (3) + square1 (3) + divide2 (3) + square2 (3) + mul_for_y (3) = 15
   localLength _ := 15
+  -- Offsets follow the sub-gadget layout: `x_r` uses the first Square's
+  -- product wire, `x_s` the second's, `y_s` the trailing Mul's.
+  output input offset :=
+    ⟨varFromOffset field (offset + 3 + 3 + 3 + 2) -
+        (varFromOffset field (offset + 3 + 2) - input.P1.x - input.P2.x) - input.P1.x,
+     varFromOffset field (offset + 3 + 3 + 3 + 3 + 2) - input.P1.y⟩
+  output_eq := by
+    intro input offset
+    rcases input with ⟨⟨x_p, y_p⟩, ⟨x_q, y_q⟩⟩
+    simp [main, circuit_norm, Element.Divide.circuit, Element.Square.circuit,
+      Element.Mul.circuit]
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
@@ -114,60 +125,17 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     linear_combination -h
   have h_r_ne_xp : (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x) ≠ input_P1_x :=
     fun h => h_xpr_ne (by rw [h]; ring)
-  have h_diff_ne : input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x) ≠ 0 := by
-    rw [sub_eq_add_neg]; exact h_xpr_ne
   have h_lam2half : env.get (i₀ + 3 + 3) =
       (input_P1_y + input_P1_y) /
         (input_P1_x + -(env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) :=
     h_div2 (Or.inl h_xpr_ne)
-  have h_lam2_mul : env.get (i₀ + 3 + 3) *
-      (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) =
-      input_P1_y + input_P1_y := by
-    rw [sub_eq_add_neg, h_lam2half, div_mul_cancel₀ _ h_xpr_ne]
-  have h_slope :
-      (input_P1_y - (env.get i₀ *
-            (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) - input_P1_y)) /
-          (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) =
-        env.get (i₀ + 3 + 3) - env.get i₀ := by
-    rw [show input_P1_y - (env.get i₀ *
-                (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) - input_P1_y) =
-            input_P1_y + input_P1_y - env.get i₀ *
-                (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) by ring]
-    rw [← h_lam2_mul,
-        show env.get (i₀ + 3 + 3) *
-              (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) -
-            env.get i₀ * (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) =
-          (env.get (i₀ + 3 + 3) - env.get i₀) *
-            (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) by ring]
-    exact mul_div_cancel_right₀ _ h_diff_ne
-  -- The intermediate point r = P1 + P2, on the circuit's wires.
-  have h_add_eq1 :
-      ({ x := input_P1_x, y := input_P1_y } : Spec.Point (F p)).add_incomplete
-          { x := input_P2_x, y := input_P2_y } =
-        some { x := env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x,
-               y := env.get i₀ *
-                      (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) -
-                    input_P1_y } := by
-    simp only [Spec.Point.add_incomplete, if_neg h_x_ne, Option.some.injEq,
-      Spec.Point.mk.injEq]
-    refine ⟨?_, ?_⟩
-    · rw [h_sq1, h_delta]; ring
-    · rw [h_sq1, h_delta]; ring
-  have h_add_eq2 :
-      ({ x := env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x,
-         y := env.get i₀ *
-                (input_P1_x - (env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x)) -
-              input_P1_y } :
-            Spec.Point (F p)).add_incomplete { x := input_P1_x, y := input_P1_y } =
-        some { x := env.get (i₀ + 3 + 3 + 3 + 2) +
-                      -(env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x) + -input_P1_x,
-               y := env.get (i₀ + 3 + 3 + 3 + 3 + 2) + -input_P1_y } := by
-    simp only [Spec.Point.add_incomplete, if_neg h_r_ne_xp, Option.some.injEq,
-      Spec.Point.mk.injEq]
-    refine ⟨?_, ?_⟩
-    · rw [h_slope, h_sq2]; ring
-    · rw [h_slope, h_yterm, h_sq2]
-      linear_combination (-h_lam2_mul)
+  -- The two chained additions on the circuit's wires (shared algebra).
+  obtain ⟨h_add_eq1, h_add_eq2⟩ := Lemmas.double_and_add_incomplete_eq_of_wires
+    input_P1_x input_P1_y input_P2_x input_P2_y
+    (env.get i₀) (env.get (i₀ + 3 + 2)) (env.get (i₀ + 3 + 3))
+    (env.get (i₀ + 3 + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 3 + 2))
+    h_x_ne h_delta (by linear_combination h_sq1) h_r_ne_xp h_lam2half
+    (by linear_combination h_sq2) (by linear_combination h_yterm)
   refine ⟨_, h_add_eq1, h_add_eq2, ?_⟩
   have h_r_curve := by
     simpa [h_add_eq1] using Lemmas.add_incomplete_preserves_membership

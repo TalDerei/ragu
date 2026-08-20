@@ -224,4 +224,73 @@ lemma add_incomplete_preserves_membership (p1 p2 : Point (F p)) (cp : CurveParam
   have : p1.y ^ 2 - p1.x ^ 3 - cp.b = p1.y ^ 2 - (p1.x ^ 3 + cp.b) := by ring
   rw [this, hm1, sub_self]
 
+/-! ### Wire-level forms of the incomplete additions
+
+The checked and unchecked `add_incomplete` / `double_and_add_incomplete`
+reimpls emit the same affine-addition gates and differ only in the bank
+bookkeeping around them, so their soundness proofs share the algebra that
+turns the gate outputs into `Point.add_incomplete` equations. The statements
+are in the `a + -b` normal form `circuit_proof_start` produces. -/
+
+/-- One incomplete addition on the circuit's wires: given the chord slope
+`delta`, its square `delta_sq`, and `y_term = delta · (x₁ - x₃)`, the wires
+`(delta_sq - x₁ - x₂, y_term - y₁)` are the affine sum `P₁ + P₂`. -/
+lemma add_incomplete_eq_of_wires (x1 y1 x2 y2 delta delta_sq y_term : F p)
+    (h_ne : x1 ≠ x2)
+    (h_delta : delta = (y2 + -y1) / (x2 + -x1))
+    (h_sq : delta_sq = delta ^ 2)
+    (h_y : y_term = delta * (x1 - (delta_sq + -x1 + -x2))) :
+    Point.add_incomplete ⟨x1, y1⟩ ⟨x2, y2⟩ =
+      some ⟨delta_sq + -x1 + -x2, y_term + -y1⟩ := by
+  subst h_y h_sq h_delta
+  simp only [Point.add_incomplete, if_neg h_ne, Option.some.injEq, Point.mk.injEq]
+  exact ⟨by ring, by ring⟩
+
+/-- The two chained incomplete additions of `double_and_add_incomplete` on the
+circuit's wires: `r = P₁ + P₂` from the first slope `lambda_1`, then
+`r + P₁` from the second slope `lambda_2_half - lambda_1`, where
+`lambda_2_half = 2y₁ / (x₁ - x_r)`. -/
+lemma double_and_add_incomplete_eq_of_wires (x_p y_p x_q y_q : F p)
+    (lambda_1 lambda_1_sq lambda_2_half lambda_2_sq y_term : F p)
+    (h_ne : x_p ≠ x_q)
+    (h_lam1 : lambda_1 = (y_q + -y_p) / (x_q + -x_p))
+    (h_sq1 : lambda_1_sq = lambda_1 ^ 2)
+    (h_r_ne : lambda_1_sq + -x_p + -x_q ≠ x_p)
+    (h_lam2 : lambda_2_half = (y_p + y_p) / (x_p + -(lambda_1_sq + -x_p + -x_q)))
+    (h_sq2 : lambda_2_sq = (lambda_2_half - lambda_1) ^ 2)
+    (h_y : y_term = (lambda_2_half - lambda_1) *
+      (x_p - (lambda_2_sq + -(lambda_1_sq + -x_p + -x_q) + -x_p))) :
+    Point.add_incomplete ⟨x_p, y_p⟩ ⟨x_q, y_q⟩ =
+        some ⟨lambda_1_sq + -x_p + -x_q,
+              lambda_1 * (x_p - (lambda_1_sq + -x_p + -x_q)) - y_p⟩ ∧
+      Point.add_incomplete
+          ⟨lambda_1_sq + -x_p + -x_q, lambda_1 * (x_p - (lambda_1_sq + -x_p + -x_q)) - y_p⟩
+          ⟨x_p, y_p⟩ =
+        some ⟨lambda_2_sq + -(lambda_1_sq + -x_p + -x_q) + -x_p, y_term + -y_p⟩ := by
+  have h_diff_ne : x_p + -(lambda_1_sq + -x_p + -x_q) ≠ 0 := by
+    intro h
+    apply h_r_ne
+    linear_combination -h
+  have h_diff_ne' : x_p - (lambda_1_sq + -x_p + -x_q) ≠ 0 := by
+    rw [sub_eq_add_neg]; exact h_diff_ne
+  have h_lam2_mul :
+      lambda_2_half * (x_p + -(lambda_1_sq + -x_p + -x_q)) = y_p + y_p := by
+    rw [h_lam2]
+    exact div_mul_cancel₀ _ h_diff_ne
+  refine ⟨?_, ?_⟩
+  · subst h_sq1 h_lam1
+    simp only [Point.add_incomplete, if_neg h_ne, Option.some.injEq, Point.mk.injEq]
+    exact ⟨by ring, by ring⟩
+  · have h_slope :
+        (y_p - (lambda_1 * (x_p - (lambda_1_sq + -x_p + -x_q)) - y_p)) /
+            (x_p - (lambda_1_sq + -x_p + -x_q)) =
+          lambda_2_half - lambda_1 := by
+      rw [div_eq_iff h_diff_ne']
+      linear_combination -h_lam2_mul
+    simp only [Point.add_incomplete, if_neg h_r_ne, Option.some.injEq, Point.mk.injEq]
+    refine ⟨?_, ?_⟩
+    · rw [h_slope, h_sq2]; ring
+    · rw [h_slope, h_y, h_sq2]
+      linear_combination -h_lam2_mul
+
 end Ragu.Circuits.Point.Lemmas

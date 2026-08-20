@@ -59,6 +59,16 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
   main
   -- divide (3) + square (3) + mul_for_y (3) = 9 wires
   localLength _ := 9
+  -- Offsets follow the sub-gadget layout: Divide (3), then Square's product
+  -- wire, then Mul's product wire.
+  output input offset :=
+    ⟨varFromOffset field (offset + 3 + 2) - input.P1.x - input.P2.x,
+     varFromOffset field (offset + 3 + 3 + 2) - input.P1.y⟩
+  output_eq := by
+    intro input offset
+    rcases input with ⟨⟨x1, y1⟩, ⟨x2, y2⟩⟩
+    simp [main, circuit_norm, Element.Divide.circuit, Element.Square.circuit,
+      Element.Mul.circuit]
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
@@ -76,12 +86,10 @@ theorem soundness (curveParams : Spec.CurveParams p) :
       Spec.Point.add_incomplete { x := input_P1_x, y := input_P1_y }
           { x := input_P2_x, y := input_P2_y } =
         some { x := env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x,
-               y := env.get (i₀ + 3 + 3 + 2) + -input_P1_y } := by
-    simp only [Spec.Point.add_incomplete, if_neg h_x_ne, Option.some.injEq,
-      Spec.Point.mk.injEq]
-    refine ⟨?_, ?_⟩
-    · rw [h_sq, h_delta]; ring
-    · rw [h_y_term, h_sq, h_delta]; ring
+               y := env.get (i₀ + 3 + 3 + 2) + -input_P1_y } :=
+    Lemmas.add_incomplete_eq_of_wires input_P1_x input_P1_y input_P2_x input_P2_y
+      (env.get i₀) (env.get (i₀ + 3 + 2)) (env.get (i₀ + 3 + 3 + 2))
+      h_x_ne h_delta (by linear_combination h_sq) (by linear_combination h_y_term)
   refine ⟨h_add_eq, ?_⟩
   simpa [h_add_eq] using
     Lemmas.add_incomplete_preserves_membership

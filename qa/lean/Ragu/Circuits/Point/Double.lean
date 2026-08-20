@@ -43,6 +43,16 @@ instance elaborated :
     ElaboratedCircuit (F p) Spec.Point Spec.Point where
   main
   localLength _ := 12
+  -- Offsets follow the sub-gadget layout: Square (3) + Divide (3), then the
+  -- second Square's product wire, then Mul's product wire.
+  output input offset :=
+    ⟨varFromOffset field (offset + 3 + 3 + 2) - (input.x + input.x),
+     varFromOffset field (offset + 3 + 3 + 3 + 2) - input.y⟩
+  output_eq := by
+    intro input offset
+    rcases input with ⟨x, y⟩
+    simp [main, circuit_norm, Element.Square.circuit, Element.Divide.circuit,
+      Element.Mul.circuit]
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by

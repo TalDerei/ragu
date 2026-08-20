@@ -171,15 +171,12 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
     Soundness (F p) (elaborated curveParams)
       (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
-    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
+    Point.ConditionalNegate.Spec,
     Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
-    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
-    Boolean.ConditionalSelect.circuit,
+    Point.ConditionalEndo.Spec,
     Point.DoubleAndAddIncompleteUnchecked.circuit,
     Point.DoubleAndAddIncompleteUnchecked.Assumptions,
     Point.DoubleAndAddIncompleteUnchecked.Spec,
-    Point.DoubleAndAddIncompleteUnchecked.main,
-    Element.Divide.circuit, Element.Square.circuit,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
   obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
   obtain ⟨h_neg, h_endo, h_daa, h_fx, h_fy⟩ := h_holds
@@ -220,15 +217,12 @@ omit [NeZero (2 : F p)] in
 theorem completeness (curveParams : Point.Spec.CurveParams p) :
     Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
   circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
-    Point.ConditionalNegate.Spec, Point.ConditionalNegate.main,
+    Point.ConditionalNegate.Spec,
     Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
-    Point.ConditionalEndo.Spec, Point.ConditionalEndo.main,
-    Boolean.ConditionalSelect.circuit,
+    Point.ConditionalEndo.Spec,
     Point.DoubleAndAddIncompleteUnchecked.circuit,
     Point.DoubleAndAddIncompleteUnchecked.Assumptions,
     Point.DoubleAndAddIncompleteUnchecked.Spec,
-    Point.DoubleAndAddIncompleteUnchecked.main,
-    Element.Divide.circuit, Element.Square.circuit,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
   obtain ⟨h_pt_curve, h_acc_curve, h_n_bool, h_e_bool, h_step_ne⟩ := h_assumptions
   obtain ⟨h_neg_env, h_endo_env, _⟩ := h_env
@@ -267,7 +261,9 @@ def circuit (curveParams : Point.Spec.CurveParams p) :
 
 end Step
 
-instance : Inhabited (Var Point.Spec.Point (F p)) := ⟨⟨0, 0⟩⟩
+/-- `Circuit.foldl` needs an inhabited accumulator type; file-local so it
+leaks into no importer. -/
+local instance : Inhabited (Var Point.Spec.Point (F p)) := ⟨⟨0, 0⟩⟩
 
 /-- `@[irreducible]` is a defeq seal only: it stops the unifier/kernel from
 whnf-unrolling the 64-iteration foldl during structure-update type checks
@@ -402,11 +398,10 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   --   4. The top-level `groupScaleNative ≠ none` assumption supplies each
   --      unchecked addition's non-degeneracy via `all_accAfter_ne`, so
   --      `groupScaleNative = some output` follows at m = 64.
-  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
+  circuit_proof_start [Step.circuit, Step.Assumptions, Step.Spec,
     Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
-    Point.AddIncompleteUnchecked.Spec, Point.AddIncompleteUnchecked.main,
-    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.Mul.circuit]
+    Point.AddIncompleteUnchecked.Spec,
+    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec]
   obtain ⟨h_pt_curve, h_no2, h_bits, h_native_ne⟩ := h_assumptions
   obtain ⟨h_add, h_double, h_step0, h_steps⟩ := h_holds
   obtain ⟨h_bits_eval, _, _⟩ := h_input
@@ -506,11 +501,10 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   -- Assumptions), and per-step `stepNative ≠ none` extracted from
   -- `groupScaleNative ≠ none` via the `accAfter` helpers above. The init
   -- AddIncomplete needs `(ζ-1)·p.x ≠ 0` (from `h_zeta_ne_one` + `h_px_ne`).
-  circuit_proof_start [main, Step.circuit, Step.Assumptions, Step.Spec,
+  circuit_proof_start [Step.circuit, Step.Assumptions, Step.Spec,
     Point.AddIncompleteUnchecked.circuit, Point.AddIncompleteUnchecked.Assumptions,
-    Point.AddIncompleteUnchecked.Spec, Point.AddIncompleteUnchecked.main,
-    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec, Point.Double.main,
-    Element.Divide.circuit, Element.Square.circuit, Element.Mul.circuit]
+    Point.AddIncompleteUnchecked.Spec,
+    Point.Double.circuit, Point.Double.Assumptions, Point.Double.Spec]
   obtain ⟨h_pt_curve, h_no2, h_bits, h_native_ne⟩ := h_assumptions
   obtain ⟨h_add_env, h_double_env, h_step0_env, h_steps_env⟩ := h_env
   obtain ⟨h_bits_eval, _, _⟩ := h_input

@@ -29,11 +29,11 @@ The circuit-side `main` separates the two phases of the loop:
 
 Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_lift.rs`,
 tied to this reimpl by the fingerprint equivalence check via the formal instance
-in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance uses an
-inlined `Boolean::and` (gate + 2 `enforce_equal`s, same pattern as
-`boolean_and.rs`) and shapes its output Expression tree to match this reimpl's
-`stepCircuit` form verbatim, so the structural output encoding in the
-fingerprint digests agrees. -/
+in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance inlines
+`Boolean::and` (gate + 2 `enforce_equal`s, the same pattern as `boolean_and.rs`,
+because `Boolean` has no constructor from a bare wire) and otherwise drives the
+deployed `Element::{zero, double, scale, add, constant}` calls of
+`Endoscalar::lift`, so the output tree it records is the shipped gadget's. -/
 structure Input (F : Type) where
   bits : Vector F 128
 deriving ProvableStruct
@@ -53,15 +53,18 @@ def liftNative (ζ : F p) (bits : Vector (F p) 128) : F p :=
         (bits[2 * i.val + 1]'(by have := i.isLt; omega)))
     (2 * (ζ + 1))
 
-/-- Per-iteration symbolic accumulator update (pure expression, no constraints).
+/-- Per-iteration symbolic accumulator update (pure expression, no constraints),
+shaped exactly as the deployed `Endoscalar::lift` builds it from `Element`
+operations: `acc.double()` is `acc + acc`, then the three `scale`d terms are
+`add`ed one at a time, so the tree is left-nested with constants on the left.
 Encodes the native step `2·acc + (n?-1:1)·(e?ζ:1)` as an affine expression in
 `n`, `e`, and `ne = n·e`. The constant `1` from the algebraic identity is *not*
 included here — it's accumulated separately via the closed-form `ctFinal`. -/
 def stepCircuit (ζ : F p) (n e ne acc : Expression (F p)) : Expression (F p) :=
-  Expression.const 2 * acc +
-    (Expression.const (-2) * n +
-     Expression.const (ζ - 1) * e +
-     Expression.const (2 * (1 - ζ)) * ne)
+  acc + acc +
+    Expression.const (-2) * n +
+    Expression.const (ζ - 1) * e +
+    Expression.const (2 * (1 - ζ)) * ne
 
 /-- The constant component of the running accumulator after `k` iterations,
 starting from `2·(ζ+1)`. Each iteration applies `ct → 2·ct + 1`, so the closed
