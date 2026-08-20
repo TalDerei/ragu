@@ -33,8 +33,6 @@ macro_rules! par_join {
 
 #[cfg(test)]
 mod tests {
-    use crate::par_join;
-
     #[test]
     fn flattens_to_tuple() {
         let (a, b) = par_join!(|| 1u32, || "two");
