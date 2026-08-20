@@ -173,6 +173,11 @@ impl ChildBridgeKind {
     ];
 }
 
+/// Enum identifying which nested-field rx polynomial component of a proof to
+/// address.
+///
+/// The scalar-field counterpart of
+/// [`native::RxIndex`](super::native::RxIndex).
 #[derive(Clone, Copy, Debug)]
 pub enum RxIndex {
     /// EndoscalingStep circuit rx polynomial (indexed by step number).
