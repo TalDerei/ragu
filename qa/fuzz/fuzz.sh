@@ -12,6 +12,16 @@
 #   ./fuzz.sh cmin [target]                   # Minimize corpora in place (all targets if omitted)
 #   ./fuzz.sh regress [target]                # Replay committed crash reproducers once each
 #   ./fuzz.sh coverage [target]               # Corpus coverage report (union report if all targets)
+#   ./fuzz.sh seeds [target] [seconds]        # Regenerate committed seeds from a short run
+#   ./fuzz.sh census                          # Check the target lists and seeds agree
+#
+# Committed seeds: seeds/<target>/ is tracked in git and read-only to a run.
+# Every target starts from its seeds merged with whatever corpus it has, so a
+# cold cache — or an evicted one, which is what CI usually has — never begins
+# from nothing. `./fuzz.sh seeds` regenerates them: it fuzzes into a scratch
+# corpus, minimizes it, and copies the smallest surviving inputs across.
+# `./fuzz.sh census` is what CI runs to check every target is listed in
+# fuzz.sh, in both workflow matrices, and has seeds committed.
 #
 # Crash-regression inputs: when a fuzz run finds a real bug, commit the
 # minimized reproducer to regressions/<target>/ (tracked in git, unlike
@@ -30,7 +40,7 @@
 # fuzz_poseidon_sponge, ~10% on fuzz_element_ops. ASAN catches memory
 # bugs (UAF, OOB on unwise unsafe, leaks across `Simulator::simulate`
 # closures); to opt back in, set ASAN=1. The scheduled cron in
-# `.github/workflows/fuzz-cron.yml` invokes `cargo +nightly fuzz run`
+# `.github/workflows/fuzz-cron.yml` invokes `cargo "$NIGHTLY" fuzz run`
 # directly and keeps ASAN regardless of this script's default. Crash
 # artifacts found here should be reproduced under ASAN=1 before triaging
 # to get proper allocation history.
@@ -47,10 +57,20 @@
 # "dead cheat" false positive.
 #
 # Regenerate dict.txt via:
-#   cargo +nightly run --release --bin extract_dict > dict.txt
+#   cargo "$NIGHTLY" run --release --bin extract_dict > dict.txt
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Which nightly to build against. `+nightly` is whatever rustup calls nightly
+# on this machine, which drifts and is regularly older than the workspace's
+# MSRV — `cargo fuzz` then fails with "requires rustc 1.97" rather than
+# anything about fuzzing. Set NIGHTLY to the pinned toolchain from
+# `.github/actions/rust-nightly-setup/action.yml` to build exactly what CI
+# builds:
+#
+#   NIGHTLY=+nightly-2026-05-23 ./fuzz.sh seeds
+NIGHTLY="${NIGHTLY:-+nightly}"
 
 TARGETS=(
   fuzz_poseidon_sponge
@@ -69,6 +89,8 @@ TARGETS=(
   fuzz_sxy_agreement
   fuzz_poseidon_differential
   fuzz_verify_reject
+  fuzz_verify_reject_full
+  fuzz_pcd_lifecycle
   fuzz_witness_cheat
   fuzz_driver_metamorphic
   fuzz_witness_coverage
@@ -78,6 +100,7 @@ TARGETS=(
   fuzz_point_identities
   fuzz_consistent
   fuzz_io_roundtrip
+  fuzz_registry
 )
 
 # `summarize` subcommand: decode a single corpus/crash input via DEBUG_INPUT.
@@ -92,7 +115,7 @@ if [[ "${1:-}" == "summarize" ]]; then
     echo "Input file not found: $INPUT_FILE" >&2
     exit 1
   fi
-  DEBUG_INPUT=1 cargo +nightly fuzz run --fuzz-dir . "$TARGET" "$INPUT_FILE"
+  DEBUG_INPUT=1 cargo "$NIGHTLY" fuzz run --fuzz-dir . "$TARGET" "$INPUT_FILE"
   exit
 fi
 
@@ -108,7 +131,80 @@ if [[ "${1:-}" == "triage" ]]; then
     echo "Input file not found: $INPUT_FILE" >&2
     exit 1
   fi
-  TRIAGE_CHEAT=1 cargo +nightly fuzz run --fuzz-dir . fuzz_witness_cheat "$INPUT_FILE"
+  TRIAGE_CHEAT=1 cargo "$NIGHTLY" fuzz run --fuzz-dir . fuzz_witness_cheat "$INPUT_FILE"
+  exit
+fi
+
+# `census` subcommand: check the four places the target list is written down
+# still agree, and that every target has committed seeds.
+if [[ "${1:-}" == "census" ]]; then
+  exec ./check_targets.sh
+fi
+
+# `seeds` subcommand: regenerate the committed seed set for one target, or for
+# every target when none is given.
+#
+# Fuzzes into a scratch corpus (never the working one, so a local corpus is
+# neither consumed nor polluted), minimizes it for coverage, and copies the
+# smallest surviving inputs into seeds/<target>/. Small inputs are preferred
+# because a seed's job is to be a cheap starting point, not a complete corpus:
+# libFuzzer will grow it.
+#
+# The existing seeds are merged into the scratch corpus first, so regenerating
+# never loses coverage a previous generation found.
+if [[ "${1:-}" == "seeds" ]]; then
+  SEED_SAN_FLAG="-s none"
+  if [[ -n "${ASAN:-}" ]]; then
+    SEED_SAN_FLAG=""
+  fi
+  if [[ -n "${2:-}" ]]; then
+    SEED_TARGETS=("$2")
+  else
+    SEED_TARGETS=("${TARGETS[@]}")
+  fi
+  SEED_DURATION="${3:-30}"
+  # How many inputs to keep per target. Enough to cover a target's branches
+  # without committing a corpus: the cron accumulates the real one.
+  SEED_KEEP="${SEED_KEEP:-8}"
+  # A target that crashes while generating seeds is a finding, not a reason to
+  # abandon the other twenty-six: collect them and report at the end.
+  SEED_CRASHED=()
+  for target in "${SEED_TARGETS[@]}"; do
+    SCRATCH="$(mktemp -d)"
+    trap 'rm -rf "$SCRATCH"' EXIT
+    if [[ -d "seeds/$target" ]]; then
+      find "seeds/$target" -type f -exec cp {} "$SCRATCH/" \;
+    fi
+    echo "=== seeds $target (${SEED_DURATION}s) ==="
+    if ! cargo "$NIGHTLY" fuzz run --fuzz-dir . $SEED_SAN_FLAG "$target" "$SCRATCH" -- \
+      -max_len=1024 \
+      -max_total_time="$SEED_DURATION" 2>&1 | tail -3; then
+      echo "=== $target: CRASHED while generating seeds ==="
+      SEED_CRASHED+=("$target")
+    fi
+    cargo "$NIGHTLY" fuzz cmin --fuzz-dir . $SEED_SAN_FLAG "$target" "$SCRATCH" 2>&1 | tail -2 || true
+    mkdir -p "seeds/$target"
+    rm -f "seeds/$target"/*
+    # Smallest first, then by name — libFuzzer names an input after its
+    # content hash, so the committed set is stable across machines rather than
+    # dependent on directory order. `wc -c` rather than `stat`, whose size
+    # flag differs between BSD and GNU.
+    while read -r _size file; do
+      cp "$file" "seeds/$target/$(basename "$file")"
+    done < <(
+      find "$SCRATCH" -type f -exec sh -c 'echo "$(wc -c < "$1") $1"' _ {} \; \
+        | sort -n -k1,1 -k2,2 | head -"$SEED_KEEP"
+    )
+    KEPT=$(find "seeds/$target" -type f | wc -l | tr -d ' ')
+    echo "=== $target: $KEPT seeds committed to seeds/$target/ ==="
+    rm -rf "$SCRATCH"
+    trap - EXIT
+  done
+  if [[ ${#SEED_CRASHED[@]} -gt 0 ]]; then
+    echo "=== crashed during seed generation: ${SEED_CRASHED[*]} ===" >&2
+    echo "Reproducers are under artifacts/<target>/." >&2
+    exit 1
+  fi
   exit
 fi
 
@@ -133,7 +229,7 @@ if [[ "${1:-}" == "cmin" ]]; then
     fi
     BEFORE=$(find "corpus/$target" -type f | wc -l | tr -d ' ')
     echo "=== cmin $target ($BEFORE inputs) ==="
-    cargo +nightly fuzz cmin --fuzz-dir . $CMIN_SAN_FLAG "$target"
+    cargo "$NIGHTLY" fuzz cmin --fuzz-dir . $CMIN_SAN_FLAG "$target"
     AFTER=$(find "corpus/$target" -type f | wc -l | tr -d ' ')
     echo "=== $target: $BEFORE -> $AFTER inputs ==="
   done
@@ -159,7 +255,7 @@ if [[ "${1:-}" == "regress" ]]; then
       continue
     fi
     echo "=== regress $target (${#files[@]} inputs) ==="
-    cargo +nightly fuzz run --fuzz-dir . $REG_SAN_FLAG "$target" "${files[@]}"
+    cargo "$NIGHTLY" fuzz run --fuzz-dir . $REG_SAN_FLAG "$target" "${files[@]}"
   done
   echo "=== regressions OK ==="
   exit
@@ -173,8 +269,8 @@ fi
 # fuzzing reach at all" view. Requires llvm-tools-preview:
 #   rustup component add llvm-tools-preview --toolchain nightly
 if [[ "${1:-}" == "coverage" ]]; then
-  HOST=$(rustc +nightly -vV | sed -n 's/^host: //p')
-  TOOLS="$(rustc +nightly --print sysroot)/lib/rustlib/${HOST}/bin"
+  HOST=$(rustc "$NIGHTLY" -vV | sed -n 's/^host: //p')
+  TOOLS="$(rustc "$NIGHTLY" --print sysroot)/lib/rustlib/${HOST}/bin"
   if [[ ! -x "$TOOLS/llvm-cov" ]]; then
     echo "llvm-cov not found under $TOOLS" >&2
     echo "Install it with: rustup component add llvm-tools-preview --toolchain nightly" >&2
@@ -208,7 +304,7 @@ if [[ "${1:-}" == "coverage" ]]; then
       continue
     fi
     echo "=== coverage $target ==="
-    cargo +nightly fuzz coverage --fuzz-dir . -s none "$target" "${dirs[@]}"
+    cargo "$NIGHTLY" fuzz coverage --fuzz-dir . -s none "$target" "${dirs[@]}"
     BIN="target/${HOST}/coverage/${HOST}/release/$target"
     PROF="coverage/$target/coverage.profdata"
     "$TOOLS/llvm-cov" report --instr-profile="$PROF" "$BIN" \
@@ -261,7 +357,7 @@ run_target() {
     dirs+=("seeds/$target")
   fi
   mkdir -p "corpus/$target"
-  cargo +nightly fuzz run --fuzz-dir . $SAN_FLAG "$target" "${dirs[@]}" -- \
+  cargo "$NIGHTLY" fuzz run --fuzz-dir . $SAN_FLAG "$target" "${dirs[@]}" -- \
     $DICT_FLAG \
     -max_len=1024 \
     -max_total_time="$DURATION" \

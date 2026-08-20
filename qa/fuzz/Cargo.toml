@@ -298,3 +298,33 @@ path = "fuzz_targets/fuzz_internal_circuits.rs"
 test = false
 doc = false
 bench = false
+
+# Verifier rejection over nontrivial proofs: the same corruption vocabulary as
+# fuzz_verify_reject, but against a leaf, a fuse of two leaves and a fuse of
+# two such nodes, where the challenges, headers and accumulators are real.
+[[bin]]
+name = "fuzz_verify_reject_full"
+path = "fuzz_targets/fuzz_verify_reject_full.rs"
+test = false
+doc = false
+bench = false
+
+# End-to-end PCD lifecycle: a fuzzer-chosen registry and tree shape, seeded
+# and fused from fuzzer-chosen witnesses, verified at every level, optionally
+# rerandomized, then corrupted and required to be rejected.
+[[bin]]
+name = "fuzz_pcd_lifecycle"
+path = "fuzz_targets/fuzz_pcd_lifecycle.rs"
+test = false
+doc = false
+bench = false
+
+# Registry construction past one circuit at index zero: multiple circuits
+# across all four RegistryBuilder categories, fuzzer-chosen rank, category
+# concatenation order, index/domain-padding mapping, and the rank ceiling.
+[[bin]]
+name = "fuzz_registry"
+path = "fuzz_targets/fuzz_registry.rs"
+test = false
+doc = false
+bench = false
