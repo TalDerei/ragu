@@ -37,6 +37,7 @@ use crate::instances::{
     element_mul::ElementMulInstance,
     element_square::ElementSquareInstance,
     endoscalar_alloc::EndoscalarAllocInstance,
+    endoscalar_extract::EndoscalarExtractInstance,
     endoscalar_group_scale::EndoscalarGroupScaleInstance,
     endoscalar_lift::EndoscalarLiftInstance,
     nonzero_bank_scope::NonzeroBankScopeInstanceK2,
@@ -173,6 +174,10 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Endoscalar.Alloc",
         fingerprint: fingerprint_instance::<EndoscalarAllocInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Endoscalar.Extract",
+        fingerprint: fingerprint_instance::<EndoscalarExtractInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Endoscalar.GroupScale",

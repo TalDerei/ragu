@@ -288,6 +288,10 @@ mod tests {
             element_is_zero::ElementIsZeroInstance,
             element_mul::ElementMulInstance,
             element_square::ElementSquareInstance,
+            endoscalar_alloc::EndoscalarAllocInstance,
+            endoscalar_extract::EndoscalarExtractInstance,
+            endoscalar_group_scale::EndoscalarGroupScaleInstance,
+            endoscalar_lift::EndoscalarLiftInstance,
             nonzero_bank_scope::NonzeroBankScopeInstanceK2,
             point_add_incomplete::PointAddIncompleteInstance,
             point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
@@ -325,6 +329,10 @@ mod tests {
         assert_roundtrip::<BooleanAndInstance>();
         assert_roundtrip::<BooleanConditionalSelectInstance>();
         assert_roundtrip::<BooleanConditionalEnforceEqualInstance>();
+        assert_roundtrip::<EndoscalarAllocInstance>();
+        assert_roundtrip::<EndoscalarExtractInstance>();
+        assert_roundtrip::<EndoscalarGroupScaleInstance>();
+        assert_roundtrip::<EndoscalarLiftInstance>();
     }
 
     /// The modulus encoding must round-trip through the canonical field
