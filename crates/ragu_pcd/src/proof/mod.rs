@@ -49,8 +49,15 @@ use crate::{
 /// Wraps a value that can be recomputed from primary proof data. Used to
 /// distinguish commitment caches from primary polynomial fields at the type
 /// level. Immutable once constructed.
+///
+/// Both the type and its field are `pub(crate)` rather than private, so that
+/// `fuzz_utils` can address the whole proof from one place. That is a real
+/// concession: "immutable once constructed" is no longer enforced by the
+/// type, only by convention. It is made deliberately, because the only code
+/// in the crate that writes through it is the corruption harness, whose whole
+/// purpose is to break proofs and watch the verifier reject them.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Cached<T>(T);
+pub(crate) struct Cached<T>(pub(crate) T);
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
 /// some accompanying data.
@@ -169,10 +176,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) bridge_f_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
 
     // Bridge rx polynomials (cached, derived from bridge_alpha + native commitments)
-    bridge_outer_error_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    bridge_query_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    bridge_eval_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    pub(crate) bridge_outer_error_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    pub(crate) bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    pub(crate) bridge_query_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    pub(crate) bridge_eval_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling data (ScalarField, NestedCurve commitment)
     pub(crate) nested_endoscaling_step_rxs: Vec<sparse::Polynomial<C::ScalarField, R>>,
@@ -221,10 +228,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) bridge_f_commitment: C::NestedCurve,
 
     // Bridge commitments (cached, derived from cached bridge rx)
-    bridge_outer_error_commitment: Cached<C::NestedCurve>,
-    bridge_ab_commitment: Cached<C::NestedCurve>,
-    bridge_query_commitment: Cached<C::NestedCurve>,
-    bridge_eval_commitment: Cached<C::NestedCurve>,
+    pub(crate) bridge_outer_error_commitment: Cached<C::NestedCurve>,
+    pub(crate) bridge_ab_commitment: Cached<C::NestedCurve>,
+    pub(crate) bridge_query_commitment: Cached<C::NestedCurve>,
+    pub(crate) bridge_eval_commitment: Cached<C::NestedCurve>,
 
     // Children's stage rx polynomials (for copying circuit claims)
     pub(crate) child_left_stage_rx: ChildStageRx<C::ScalarField, R>,
@@ -464,22 +471,6 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         self.nested_points_commitment.0
     }
 }
-
-/// Mutable access to the proof's components, for the corruption vocabulary in
-/// [`fuzz_utils`](crate::fuzz_utils).
-///
-/// The accessors mirror the read-only [`Index`](core::ops::Index) impls above
-/// so a corruption names a component exactly the way a verifier check does,
-/// rather than reaching for a field that happens to be `pub(crate)`. The
-/// `Cached` bridge polynomials and every commitment cache are private to this
-/// module, and a corruption harness has to reach them to cover the whole
-/// proof; these are that seam, and they exist only under the fuzzing feature.
-/// Mutable component access for the fuzzing corruption vocabulary.
-///
-/// Kept in its own module so this file carries no fuzzing surface; see
-/// [`fuzz`] for why it has to be a child of `proof`.
-#[cfg(feature = "unstable-fuzzing")]
-mod fuzz;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     crate::Application<'_, C, R, HEADER_SIZE, B>

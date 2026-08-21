@@ -31,9 +31,7 @@ pub mod transcript;
 /// Identifies which of the two child proofs a component came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
-    /// The left child.
     Left,
-    /// The right child.
     Right,
 }
 

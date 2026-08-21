@@ -55,7 +55,7 @@
 //! those checks land, the polynomials they check want variants alongside
 //! [`Corruption::RegistryXyCoeff`].
 
-use alloc::vec;
+use alloc::{sync::Arc, vec};
 
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
@@ -63,12 +63,211 @@ use ragu_circuits::{
     registry::CircuitIndex,
 };
 
-pub use crate::internal::{
-    Side,
-    native::{RxComponent, RxIndex as NativeRx},
-    nested::{ChildBridgeKind, RxIndex as NestedRx},
-};
-use crate::{Application, Proof};
+use crate::{Application, Proof, proof::ChildStageRx};
+
+// The corruption vocabulary names proof components, and the names it uses are
+// the ones `internal` uses. Those enums are *not* re-exported here, and the
+// duplication below is deliberate.
+//
+// `internal` is a private module. Re-exporting its enums would make them
+// public API of the crate whenever this feature is on, which drags
+// `#![deny(missing_docs)]` onto production files and, more to the point,
+// means a fuzzing feature decides what the crate publishes. Mirroring keeps
+// every fuzzing-driven change inside this module.
+//
+// Drift is a compile error, not a silent gap: the mappings in
+// `crate::proof::fuzz` match these exhaustively, so a variant added to
+// `internal` without a counterpart here fails to build.
+
+/// Identifies which of the two child proofs a component came from.
+///
+/// Mirrors `internal::Side`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    /// The left child.
+    Left,
+    /// The right child.
+    Right,
+}
+
+/// A native-field polynomial component of a proof.
+///
+/// Mirrors `internal::native::RxComponent`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RxComponent {
+    /// The `a` polynomial from the AB proof (revdot claim).
+    AbA,
+    /// The `b` polynomial from the AB proof (revdot claim).
+    AbB,
+    /// An rx polynomial component indexed by [`NativeRx`].
+    Rx(NativeRx),
+}
+
+/// Which native-field rx polynomial of a proof to address.
+///
+/// Mirrors `internal::native::RxIndex`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeRx {
+    /// The application circuit's rx polynomial.
+    Application,
+    /// The `hashes_1` circuit's rx polynomial.
+    Hashes1,
+    /// The `hashes_2` circuit's rx polynomial.
+    Hashes2,
+    /// The `inner_collapse` circuit's rx polynomial.
+    InnerCollapse,
+    /// The `outer_collapse` circuit's rx polynomial.
+    OuterCollapse,
+    /// The `compute_v` circuit's rx polynomial.
+    ComputeV,
+    /// The `preamble` stage's rx polynomial.
+    Preamble,
+    /// The `inner_error` stage's rx polynomial.
+    InnerError,
+    /// The `outer_error` stage's rx polynomial.
+    OuterError,
+    /// The `query` stage's rx polynomial.
+    Query,
+    /// The `eval` stage's rx polynomial.
+    Eval,
+}
+
+impl Side {
+    const fn from_internal(v: crate::internal::Side) -> Self {
+        match v {
+            crate::internal::Side::Left => Self::Left,
+            crate::internal::Side::Right => Self::Right,
+        }
+    }
+}
+
+impl NativeRx {
+    /// The number of native rx polynomial components.
+    pub const NUM: usize = crate::internal::native::RxIndex::NUM;
+
+    /// All variants, in the canonical order `internal` defines.
+    ///
+    /// Derived from `internal::native::RxIndex::ALL` rather than restated.
+    /// That order is not cosmetic — it drives the `Write` impl for `RxValues`
+    /// and the evaluation order in `poly_queries` — and a hand-copied list
+    /// could drift from it silently, which an exhaustive `match` would not
+    /// catch.
+    pub const ALL: [Self; Self::NUM] = Self::derive_all();
+
+    const fn derive_all() -> [Self; Self::NUM] {
+        let src = crate::internal::native::RxIndex::ALL;
+        let mut out = [Self::Application; Self::NUM];
+        let mut i = 0;
+        while i < Self::NUM {
+            out[i] = Self::from_internal(src[i]);
+            i += 1;
+        }
+        out
+    }
+
+    const fn from_internal(v: crate::internal::native::RxIndex) -> Self {
+        use crate::internal::native::RxIndex as I;
+        match v {
+            I::Application => Self::Application,
+            I::Hashes1 => Self::Hashes1,
+            I::Hashes2 => Self::Hashes2,
+            I::InnerCollapse => Self::InnerCollapse,
+            I::OuterCollapse => Self::OuterCollapse,
+            I::ComputeV => Self::ComputeV,
+            I::Preamble => Self::Preamble,
+            I::InnerError => Self::InnerError,
+            I::OuterError => Self::OuterError,
+            I::Query => Self::Query,
+            I::Eval => Self::Eval,
+        }
+    }
+}
+
+/// Which bridge stage a child proof's rx polynomial comes from.
+///
+/// Mirrors `internal::nested::ChildBridgeKind`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChildBridgeKind {
+    /// Child proof's `BridgeSPrime` rx polynomial.
+    SPrime,
+    /// Child proof's `BridgeInnerError` rx polynomial.
+    InnerError,
+    /// Child proof's `BridgeOuterError` rx polynomial.
+    OuterError,
+    /// Child proof's `BridgeAB` rx polynomial.
+    AB,
+    /// Child proof's `BridgeQuery` rx polynomial.
+    Query,
+    /// Child proof's `BridgeEval` rx polynomial.
+    Eval,
+}
+
+impl ChildBridgeKind {
+    /// All kinds in the canonical slot order `internal` defines.
+    ///
+    /// Derived, not restated: this order is the source of truth for the
+    /// relative position of `ChildBridge` entries in the nested `ALL`, and is
+    /// pinned by `test_nested_registry_digest` — re-ordering it changes the
+    /// nested registry digest.
+    pub const ALL: [Self; 6] = Self::derive_all();
+
+    const fn derive_all() -> [Self; 6] {
+        let src = crate::internal::nested::ChildBridgeKind::ALL;
+        let mut out = [Self::SPrime; 6];
+        let mut i = 0;
+        while i < 6 {
+            out[i] = Self::from_internal(src[i]);
+            i += 1;
+        }
+        out
+    }
+
+    const fn from_internal(v: crate::internal::nested::ChildBridgeKind) -> Self {
+        use crate::internal::nested::ChildBridgeKind as I;
+        match v {
+            I::SPrime => Self::SPrime,
+            I::InnerError => Self::InnerError,
+            I::OuterError => Self::OuterError,
+            I::AB => Self::AB,
+            I::Query => Self::Query,
+            I::Eval => Self::Eval,
+        }
+    }
+}
+
+/// Which nested-field rx polynomial of a proof to address.
+///
+/// Mirrors `internal::nested::RxIndex`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NestedRx {
+    /// EndoscalingStep circuit rx polynomial (indexed by step number).
+    EndoscalingStep(u32),
+    /// EndoscalarStage rx polynomial.
+    EndoscalarStage,
+    /// PointsStage rx polynomial.
+    PointsStage,
+    /// Bridge `preamble` rx polynomial.
+    BridgePreamble,
+    /// Bridge `s_prime` rx polynomial.
+    BridgeSPrime,
+    /// Bridge `inner_error` rx polynomial.
+    BridgeInnerError,
+    /// Bridge `outer_error` rx polynomial.
+    BridgeOuterError,
+    /// Bridge `ab` rx polynomial.
+    BridgeAB,
+    /// Bridge `query` rx polynomial.
+    BridgeQuery,
+    /// Bridge `f` rx polynomial.
+    BridgeF,
+    /// Bridge `eval` rx polynomial.
+    BridgeEval,
+    /// Child proof's `PointsStage` rx polynomial (per-side, for copying).
+    ChildPointsStage(Side),
+    /// Child proof's bridge rx polynomial (per-side, for copying),
+    /// keyed by which bridge stage it comes from.
+    ChildBridge(ChildBridgeKind, Side),
+}
 
 /// Whether [`verify`](crate::Application::verify) is obliged to reject a
 /// corrupted proof.
@@ -474,5 +673,173 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Create a trivial (all-zero) proof for testing.
     pub fn test_trivial_proof(&self) -> Proof<C, R> {
         self.trivial_proof()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mutable component access
+// ---------------------------------------------------------------------------
+//
+// The accessors below mirror the read-only `Index` impls on `Proof`, so a
+// corruption names a component exactly the way a verifier check does rather
+// than reaching for whichever field happens to be visible.
+//
+// They live here, in the one module the fuzzing feature gates, rather than
+// beside `Proof`. The cost of that is `Cached` and the eight fields it wraps
+// being `pub(crate)` instead of private to `proof`; the benefit is that
+// `proof/mod.rs` carries no fuzzing surface at all, not even a `#[cfg]` line,
+// and there is a single file to read to know everything this feature adds.
+//
+// Every `match` is exhaustive over the mirrors declared above, which is what
+// keeps them honest: a mirror variant with no field mapped to it fails to
+// compile.
+
+impl<C: Cycle, R: Rank> Proof<C, R> {
+    /// The native polynomial named by `component`, mutably.
+    pub(crate) fn native_component_mut(
+        &mut self,
+        component: RxComponent,
+    ) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        use NativeRx::*;
+        match component {
+            RxComponent::AbA => &mut self.native_a_poly,
+            RxComponent::AbB => &mut self.native_b_poly,
+            RxComponent::Rx(idx) => match idx {
+                Preamble => &mut self.native_preamble_rx,
+                InnerError => &mut self.native_inner_error_rx,
+                OuterError => &mut self.native_outer_error_rx,
+                Query => &mut self.native_query_rx,
+                Eval => &mut self.native_eval_rx,
+                Application => &mut self.native_application_rx,
+                Hashes1 => &mut self.native_hashes_1_rx,
+                Hashes2 => &mut self.native_hashes_2_rx,
+                InnerCollapse => &mut self.native_inner_collapse_rx,
+                OuterCollapse => &mut self.native_outer_collapse_rx,
+                ComputeV => &mut self.native_compute_v_rx,
+            },
+        }
+    }
+
+    /// The `registry_xy` polynomial, mutably.
+    pub(crate) fn native_registry_xy_poly_mut(
+        &mut self,
+    ) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        &mut self.native_registry_xy_poly
+    }
+
+    /// The `p` polynomial, mutably.
+    pub(crate) fn native_p_poly_mut(&mut self) -> &mut sparse::Polynomial<C::CircuitField, R> {
+        &mut self.native_p_poly
+    }
+
+    /// The nested polynomial named by `idx`, mutably.
+    ///
+    /// The `Arc`-shared polynomials are unshared through
+    /// [`Arc::make_mut`](alloc::sync::Arc::make_mut), so corrupting a parent's
+    /// copy never reaches back into a child proof that still holds the
+    /// original.
+    pub(crate) fn nested_rx_mut(
+        &mut self,
+        idx: NestedRx,
+    ) -> &mut sparse::Polynomial<C::ScalarField, R> {
+        use NestedRx::*;
+        match idx {
+            EndoscalingStep(step) => &mut self.nested_endoscaling_step_rxs[step as usize],
+            EndoscalarStage => &mut self.nested_endoscalar_rx,
+            PointsStage => Arc::make_mut(&mut self.nested_points_rx),
+            BridgePreamble => Arc::make_mut(&mut self.bridge_preamble_rx),
+            BridgeSPrime => Arc::make_mut(&mut self.bridge_s_prime_rx),
+            BridgeInnerError => Arc::make_mut(&mut self.bridge_inner_error_rx),
+            BridgeOuterError => Arc::make_mut(&mut self.bridge_outer_error_rx.0),
+            BridgeAB => Arc::make_mut(&mut self.bridge_ab_rx.0),
+            BridgeQuery => Arc::make_mut(&mut self.bridge_query_rx.0),
+            BridgeF => Arc::make_mut(&mut self.bridge_f_rx),
+            BridgeEval => Arc::make_mut(&mut self.bridge_eval_rx.0),
+            ChildPointsStage(side) => {
+                Arc::make_mut(&mut self.child_stage_rx_mut(side).points_stage)
+            }
+            ChildBridge(kind, side) => {
+                let child = self.child_stage_rx_mut(side);
+                Arc::make_mut(match kind {
+                    ChildBridgeKind::SPrime => &mut child.bridge_s_prime,
+                    ChildBridgeKind::InnerError => &mut child.bridge_inner_error,
+                    ChildBridgeKind::OuterError => &mut child.bridge_outer_error,
+                    ChildBridgeKind::AB => &mut child.bridge_ab,
+                    ChildBridgeKind::Query => &mut child.bridge_query,
+                    ChildBridgeKind::Eval => &mut child.bridge_eval,
+                })
+            }
+        }
+    }
+
+    /// The bridge commitment named by `which`, mutably.
+    ///
+    /// These are the eight nested-curve points the unified instance carries
+    /// (see `unified::Output::alloc_from_proof`); the native commitment caches
+    /// have no accessor because single-proof verification never reads them.
+    pub(crate) fn bridge_commitment_mut(&mut self, which: BridgeCommitment) -> &mut C::NestedCurve {
+        use BridgeCommitment::*;
+        match which {
+            Preamble => &mut self.bridge_preamble_commitment,
+            SPrime => &mut self.bridge_s_prime_commitment,
+            InnerError => &mut self.bridge_inner_error_commitment,
+            F => &mut self.bridge_f_commitment,
+            OuterError => &mut self.bridge_outer_error_commitment.0,
+            AB => &mut self.bridge_ab_commitment.0,
+            Query => &mut self.bridge_query_commitment.0,
+            Eval => &mut self.bridge_eval_commitment.0,
+        }
+    }
+
+    fn child_stage_rx_mut(&mut self, side: Side) -> &mut ChildStageRx<C::ScalarField, R> {
+        match side {
+            Side::Left => &mut self.child_left_stage_rx,
+            Side::Right => &mut self.child_right_stage_rx,
+        }
+    }
+}
+
+impl NestedRx {
+    /// The number of nested rx components.
+    pub const NUM: usize = crate::internal::nested::RxIndex::NUM;
+
+    /// All variants, in the canonical order `internal` defines.
+    ///
+    /// Derived from `internal::nested::RxIndex::ALL` for the same reason as
+    /// [`NativeRx::ALL`], and more urgently: this order is pinned by
+    /// `test_nested_registry_digest`, so restating it by hand would put a
+    /// consensus-relevant ordering in two places.
+    pub const ALL: [Self; Self::NUM] = Self::derive_all();
+
+    const fn derive_all() -> [Self; Self::NUM] {
+        let src = crate::internal::nested::RxIndex::ALL;
+        let mut out = [Self::EndoscalarStage; Self::NUM];
+        let mut i = 0;
+        while i < Self::NUM {
+            out[i] = Self::from_internal(src[i]);
+            i += 1;
+        }
+        out
+    }
+
+    const fn from_internal(v: crate::internal::nested::RxIndex) -> Self {
+        use crate::internal::nested::RxIndex as I;
+        match v {
+            I::EndoscalingStep(n) => Self::EndoscalingStep(n),
+            I::EndoscalarStage => Self::EndoscalarStage,
+            I::PointsStage => Self::PointsStage,
+            I::BridgePreamble => Self::BridgePreamble,
+            I::BridgeSPrime => Self::BridgeSPrime,
+            I::BridgeInnerError => Self::BridgeInnerError,
+            I::BridgeOuterError => Self::BridgeOuterError,
+            I::BridgeAB => Self::BridgeAB,
+            I::BridgeQuery => Self::BridgeQuery,
+            I::BridgeF => Self::BridgeF,
+            I::BridgeEval => Self::BridgeEval,
+            I::ChildPointsStage(s) => Self::ChildPointsStage(Side::from_internal(s)),
+            I::ChildBridge(k, s) => {
+                Self::ChildBridge(ChildBridgeKind::from_internal(k), Side::from_internal(s))
+            }
+        }
     }
 }

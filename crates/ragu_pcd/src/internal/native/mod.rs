@@ -194,28 +194,17 @@ impl<T> InternalCircuitValues<T> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RxIndex {
     // Circuits
-    /// The application circuit's rx polynomial.
     Application,
-    /// The `hashes_1` circuit's rx polynomial.
     Hashes1,
-    /// The `hashes_2` circuit's rx polynomial.
     Hashes2,
-    /// The `inner_collapse` circuit's rx polynomial.
     InnerCollapse,
-    /// The `outer_collapse` circuit's rx polynomial.
     OuterCollapse,
-    /// The `compute_v` circuit's rx polynomial.
     ComputeV,
     // Stages
-    /// The `preamble` stage's rx polynomial.
     Preamble,
-    /// The `inner_error` stage's rx polynomial.
     InnerError,
-    /// The `outer_error` stage's rx polynomial.
     OuterError,
-    /// The `query` stage's rx polynomial.
     Query,
-    /// The `eval` stage's rx polynomial.
     Eval,
 }
 
