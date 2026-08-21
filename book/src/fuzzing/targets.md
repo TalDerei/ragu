@@ -1,45 +1,64 @@
 # Targets
 
-The catalog of fuzz targets: what each one generates, what it asserts, and
-where it sits relative to the [oracle families](oracles.md). The authoritative
-per-target reference is `qa/fuzz/README.md`; this chapter should give the
-reader the shape of the coverage rather than restate it.
+The 24 targets, grouped by what they drive. Per-target detail lives in
+`qa/fuzz/README.md`; this is the map.
 
-## Planned contents
+## Op-stream
 
-- **The shared substrate.** The op grammar, the total byte decoder with
-  decode-time clamping, per-op capability flags and `OpSet` masks, and the
-  proptest strategies that let in-tree property tests run over the same
-  abstract syntax under plain `cargo test`. This is the piece that makes the
-  corpora interchangeable, and it belongs first.
+Random gadget programs over the [shared substrate](index.md).
 
-- **Op-stream targets.** Random gadget compositions over `Element` and
-  `Boolean`: the robustness workhorse, a witness-state-hash variant that biases
-  the search toward distinct internal states, a mid-stream substitution target,
-  and the driver differential.
+| Target | Checks |
+|---|---|
+| `fuzz_element_ops` | Random compositions must not crash and must produce self-consistent witnesses. |
+| `fuzz_witness_coverage` | The same, plus a witness-state hash spread over coverage branches to bias the search toward distinct internal states. |
+| `fuzz_witness_cheat` | Swaps an element mid-stream for a fresh allocation of a different value, then compares fingerprints against the honest run. |
+| `fuzz_driver_metamorphic` | `Simulator` and `Emulator<Wired<Fp>>` must assign the same wire values. |
 
-- **Soundness and patcher targets.** The under-constraint family over generated
-  circuits — trace-coefficient mutation against the revdot identity, witness
-  mutation with re-tracing, and advice mutation repaired through a captured
-  constraint graph.
+## Under-constraint
 
-- **Gadget-API property targets.** Algebraic identities on the gadget surface,
-  assertion gadgets accepting and rejecting correctly, bit packing round-trips,
-  the `Consistent` invariants, and serialization round-trips.
+Each starts from a satisfying witness, plants a cheat, and demands rejection.
 
-- **Primitive-level targets.** Poseidon sponge sequences and the native-versus-
-  circuit differential, endoscalar operations, the reverse-dot-product
-  primitive and its folding, and registry consistency for $s(X, Y)$.
+| Target | Checks |
+|---|---|
+| `fuzz_witness_pinning` | Mutates one occupied trace-polynomial coefficient; the revdot identity must reject it. The circuit is made fully pinned, so a survivor means a wire nothing constrains. |
+| `fuzz_circuit_cheat` | Mutates a witness input, re-traces, and compares the constraint verdict against a native oracle. |
+| `fuzz_advice_patcher` | Mutates free advice wires and repairs through the *captured constraint graph* rather than gadget logic — which catches under-constrained advice that re-tracing would quietly fix. |
+| `fuzz_completeness` | The other direction: arbitrary witnesses through anchorless circuits must all be accepted. |
 
-- **Circuit-pipeline targets.** The higher-layer targets that drive full
-  witness, evaluation, and assembly pipelines rather than calling gadgets
-  directly, including the staging system's per-stage and combined invariants.
+## Gadget API
 
-- **Verifier robustness.** Corrupted proof bytes against the verifier.
+| Target | Checks |
+|---|---|
+| `fuzz_algebraic_identities` | Around sixteen gadget-level identities — commutativity, identities, distributivity, conditional select. |
+| `fuzz_element_assertions` | Assertion gadgets accept valid inputs and reject invalid ones. |
+| `fuzz_point_identities` | Group-law identities on the point gadget. |
+| `fuzz_multipack` | Packing bits into elements round-trips. |
+| `fuzz_consistent` | The `Consistent` invariants hold for arbitrary inputs. |
+| `fuzz_io_roundtrip` | Gadget serialization round-trips through the IO buffer. |
 
-## Coverage gaps
+## Primitives
 
-A catalog is most useful when it says what is missing. This chapter should
-close by naming the parts of the system no target currently generates, so that
-the list of targets is read as a map with edges rather than as a claim of
-completeness.
+| Target | Checks |
+|---|---|
+| `fuzz_poseidon_sponge` | Arbitrary absorb and squeeze sequences through the circuit sponge. |
+| `fuzz_poseidon_differential` | Native and circuit sponges must agree. |
+| `fuzz_endoscalar` | Endoscalar operations, with a special-scalar table of its own. |
+| `fuzz_revdot` | The reverse-dot-product primitive. |
+| `fuzz_fold_revdot` | Folding of the same. |
+| `fuzz_sxy_agreement` | Registry consistency: $s(X, Y)$ must agree however it is evaluated. |
+
+## Circuit pipeline
+
+Full `witness` to `eval` to `assemble` pipelines, rather than gadget calls.
+
+| Target | Checks |
+|---|---|
+| `fuzz_circuit_witness` | The witness pipeline against a native shadow, plus bespoke arms for gadget families the grammar does not generate — points, custom routines, known-prediction routines. |
+| `fuzz_circuit_revdot_identity` | The canonical revdot identity over arbitrary generated circuits, in the accepting direction. |
+| `fuzz_staging` | Per-stage and combined staging invariants, the final-mask check, and structural cross-mask bounds, across three stage shapes. |
+
+## Verifier
+
+| Target | Checks |
+|---|---|
+| `fuzz_verify_reject` | Corrupted proof bytes must be rejected. |

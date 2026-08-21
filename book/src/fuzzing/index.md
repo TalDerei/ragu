@@ -1,56 +1,46 @@
 # Overview
 
 Formal verification proves things about the circuits it covers, and the
-[previous part](../fv/index.md) is explicit about how narrow that coverage is
-today. Fuzzing covers the rest, and it covers it differently: instead of a
-proof about one gadget, a coverage-guided search over millions of generated
-programs, looking for the input that breaks an invariant nobody thought to
-test.
+[previous part](../fv/index.md) is explicit about how narrow that coverage is.
+Fuzzing covers the rest, more weakly: a coverage-guided search for an input
+that breaks an invariant, over the parts of the system no proof reaches yet.
 
-The two techniques answer different questions. A proof says a property holds
-for every input. A fuzzer says it failed to find a counterexample in the region
-it explored — weaker, but available for parts of the system no proof reaches
-yet, including the recursion circuits, the staging system, and the full witness
-pipeline.
+The harness lives in `qa/fuzz`, built on
+[cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz). It is its own workspace
+root, so the nightly toolchain and libFuzzer flags it needs stay out of the
+main build. There are 24 targets, plus a tool that extracts Ragu's field
+constants into a fuzzer dictionary.
 
-## The harness
+## The shared substrate
 
-Ragu's fuzzing lives in `qa/fuzz`, a standalone cargo-fuzz workspace holding 24
-targets plus a dictionary-extraction tool. It is its own workspace root so that
-the nightly toolchain and libFuzzer flags it needs do not leak into the rest of
-the repository.
+Most targets are built on one module, `ragu_testing_fuzz::substrate`, layered
+so each target takes only what it needs:
 
-Most targets share one substrate: a byte decoder that turns the fuzzer's raw
-input into a program over a stack of gadget calls, with a common op grammar and
-driver-generic synthesis. Targets carve their vocabulary out of that union, so
-corpora are shared and a mutation that reaches deep circuit structure in one
-target reaches it in the others.
+1. An op grammar over `Element` and `Boolean` gadget calls, with per-op
+   capability flags so each target can carve out its own vocabulary.
+2. A total byte decoder, so any input libFuzzer produces is a valid program —
+   and `proptest` strategies over the same grammar, for deterministic tests
+   under plain `cargo test`.
+3. A driver-generic interpreter, run under `Simulator`, `Emulator`, or the
+   patcher's recording driver.
+4. A native `Fp` evaluator giving each op's true semantics, for differential
+   oracles.
+5. A wrapper making a generated program a registerable `Circuit`, for the
+   constraint-level oracles.
 
-## Oracles, not crashes
+Because the grammar and wire format are shared, so are the corpora: a mutation
+that reaches deep circuit structure in one target reaches it in the others.
 
-The interesting question for a proof system is not whether the code panics. It
-is whether a witness that should be rejected is accepted. Ragu's targets are
-built around explicit [oracles](oracles.md) — a property checked on every
-input, whose violation is the finding.
+## Running it
 
-The oracles fall into a few families: completeness (an honest witness must be
-accepted), differential and metamorphic (two implementations, or two paths
-through one implementation, must agree), under-constraint (a planted cheat must
-be rejected), and robustness (a corrupted proof must not verify). The
-under-constraint family is the one that speaks to soundness, and it is the
-hardest to get right — an oracle that never fires on a real bug is worse than
-no oracle, so several targets ship a planted-bug self-test that proves the
-oracle can fire.
+```bash
+./fuzz.sh              # every target, 30s each, sequentially
+./fuzz.sh 300 -j       # five minutes each, in parallel
+./fuzz.sh regress      # replay every committed crash regression
+./fuzz.sh cmin         # minimize the corpora in place
+./fuzz.sh coverage     # per-target and union coverage reports
+```
 
-## What remains to be written
-
-- [Oracles](oracles.md) — the property each family checks, why it is the right
-  property, and how a planted-bug self-test establishes that the oracle has
-  teeth.
-- [Targets](targets.md) — the catalog: what each target generates, what it
-  asserts, and which bugs it has caught.
-- [Corpus and triage](corpus.md) — corpus accumulation, the field-constant
-  dictionary, committed crash regressions, and the environment variables for
-  reducing a crash artifact to a readable cause.
-- [Scheduled runs](scheduled.md) — the cron and coverage workflows, and how to
-  read a coverage report as a map of what the search has not reached.
+`DICT=1` loads the constant dictionary. `ASAN=1` re-enables AddressSanitizer,
+off by default because it costs roughly 70% throughput on the simulator-heavy
+targets — but worth turning on when triaging a crash.

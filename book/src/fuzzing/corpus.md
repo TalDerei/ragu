@@ -1,33 +1,42 @@
 # Corpus and Triage
 
-A coverage-guided fuzzer is only as strong as the corpus it starts from, and a
-crash is only useful once it has been reduced to a cause. This chapter will
-cover both halves of that operational story.
+Corpora are not committed. Each target accumulates its own across scheduled
+runs, cached per target and restored at the start of the next one — including
+after a run that ended in a crash, so a crashing input never costs the corpus.
+`./fuzz.sh cmin` minimizes them in place.
 
-## Planned contents
+`dict.txt` is a libFuzzer dictionary of Ragu's field constants: the Poseidon
+round constants and MDS matrices for both fields, plus special values, around
+seven hundred entries. Regenerate it with
 
-- **Corpus accumulation.** Each target keeps its own corpus, restored at the
-  start of a scheduled run and saved at the end — including runs that ended in
-  a crash. Minimization keeps the corpus from growing without adding coverage.
+```bash
+cargo +nightly run --release --bin extract_dict > dict.txt
+```
 
-- **The constant dictionary.** Ragu's field-element constants — the Poseidon
-  round constants and MDS matrices for both fields, plus special values such as
-  the cube root of unity — are extracted into a libFuzzer dictionary. It ships
-  opt-in rather than always-on, because it helps on sponge-heavy targets and is
-  roughly neutral elsewhere; the reasoning behind that default belongs here.
+It ships opt-in (`DICT=1`) rather than always-on, because it helps on
+sponge-heavy targets and is roughly neutral elsewhere.
 
-- **Committed regressions.** Every crash that has been fixed leaves a committed
-  input that is replayed on each run, so a fix cannot silently regress.
+Fixed crashes leave their input in `regressions/`, replayed by
+`./fuzz.sh regress` so that a fix cannot quietly come undone.
 
-- **Triage.** Reducing an artifact to a readable cause: printing the decoded
-  input rather than raw bytes, and — for the under-constraint targets —
-  measuring whether a cheated wire was ever read downstream, which separates a
-  real finding from a dead cheat.
+## Triage
 
-## What a finding looks like
+Every target honors `DEBUG_INPUT=1`, which parses the input and prints its
+`Debug` form instead of running the body — turning a crash artifact into
+something readable:
 
-The chapter should close with a worked example: a real crash artifact, the
-commands that turned it into a diagnosis, and the fix. Several of the bugs
-already found are good candidates, including a precondition violation on
-squeezing from an empty sponge, an asymmetry between the native and circuit
-sponge APIs, and a divide-by-zero reachable through registry key construction.
+```bash
+DEBUG_INPUT=1 cargo +nightly fuzz run fuzz_element_ops \
+  artifacts/fuzz_element_ops/crash-abc123
+```
+
+For the [under-constraint targets](oracles.md), `TRIAGE_CHEAT=1` additionally
+reports how many downstream operations read the cheated wire. Zero reads is a
+dead cheat; a high count means the cheat propagated and the constraints failed
+to notice, which is the bug class worth chasing.
+
+## What it has found
+
+- Squeezing from an empty sponge violated a precondition.
+- The native and circuit sponge APIs disagreed on that same case.
+- `Key::new(0)` divided by zero during registry construction.

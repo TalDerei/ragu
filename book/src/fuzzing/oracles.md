@@ -1,41 +1,35 @@
 # Oracles
 
-A fuzz target is only as good as the property it checks. This chapter will
-cover the oracle families Ragu's targets are built from, and what each one can
-and cannot establish.
+A fuzz target is only as good as the property it checks. Ragu's targets check
+five kinds.
 
-## Planned contents
+**Completeness.** An honest witness must be accepted. A rejection means the
+circuit is over-constrained — a liveness bug, found without needing to know
+what the right answer was.
 
-- **Completeness oracles.** An honest witness through an anchorless,
-  value-infallible circuit must be accepted. Rejection is an over-constraint
-  signal, independent of any repair search.
+**Differential.** Two implementations of the same thing must agree:
+`Simulator` against `Emulator<Wired<Fp>>`, the circuit sponge against the
+native sponge, an assembled constraint verdict against the native evaluator.
 
-- **Differential oracles.** The same generated program run through two
-  implementations must agree — `Simulator` against `Emulator<Wired<_>>`, the
-  circuit sponge against the native sponge, an assembled constraint verdict
-  against a native shadow computation.
+**Metamorphic.** One implementation, two paths that must agree — a witness
+re-traced after mutation, or an algebraic identity that must hold however the
+circuit was built.
 
-- **Metamorphic oracles.** One implementation, two paths that must agree: a
-  witness re-traced after mutation, a polynomial evaluated in two bases, a
-  registry consistency identity that must hold however the circuit was built.
+**Under-constraint.** Start from a satisfying witness, plant a prover-style
+cheat, and demand that the constraint system rejects it. This is the family
+that speaks to soundness, and the only one whose failures are exploitable.
 
-- **Under-constraint oracles.** The soundness-relevant family. Start from a
-  satisfying witness, introduce a prover-style cheat, and demand rejection.
-  The distinctions that matter here — mutating a witness input and re-tracing
-  versus repairing through the captured constraint graph, and why the latter
-  catches under-constrained advice that the former masks — deserve their own
-  treatment.
+**Robustness.** Corrupted proof bytes must not verify. This tests verifier
+hardening, not soundness in the sense the protocol means.
 
-- **Robustness oracles.** Corrupt proof bytes must be rejected by the verifier.
-  This tests hardening of the implementation, not soundness in the sense the
-  protocol means.
+## Two ways an oracle lies
 
-## Why oracle self-tests matter
+An under-constraint oracle can fire on a cheat that no later operation ever
+reads. The rejection is real and the finding is not, because the mutated wire
+was irrelevant. `TRIAGE_CHEAT=1` counts the downstream reads, which separates
+a dead cheat from a live one.
 
-An oracle that cannot fire is indistinguishable from an oracle that finds no
-bugs, and the fuzzer will report success either way. Several targets carry a
-planted-bug mode that deliberately introduces the flaw the oracle exists to
-catch and asserts that it is caught. This chapter should explain the failure
-modes that motivate those self-tests, including dead cheats — a cheated wire
-that no downstream operation ever reads, which produces a signal that looks
-like a soundness finding and is not.
+The opposite failure is worse, because it is silent: an oracle that *cannot*
+fire looks exactly like an oracle that found no bugs, and the fuzzer reports
+success either way. `PATCHER_SELFTEST=1` plants the bug the advice-patcher
+oracle exists to catch and asserts that it is caught.
