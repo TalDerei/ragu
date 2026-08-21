@@ -169,10 +169,11 @@ jobs:
             cargo run --release --bin extract_dict > dict.txt
             DICT_FLAG="-dict=dict.txt"
           fi
-          # Corpus layout: corpus/<target> (cache-restored, receives new
-          # units) plus seeds/<target> (committed read-only seed inputs)
-          # when present, so cold-cache runs don't start from an empty
-          # corpus.
+          # Corpus layout: corpus/<target>, cache-restored and receiving new
+          # units. `seeds/<target>` is merged in when it exists, which on a
+          # runner it never does — it is local-only, for warming up a laptop
+          # run. A cold corpus is not a problem here: the substrate's decoder
+          # is total, so libFuzzer bootstraps from nothing.
           mkdir -p "corpus/${FUZZ_TARGET}"
           CORPUS_DIRS="corpus/${FUZZ_TARGET}"
           if [ -d "seeds/${FUZZ_TARGET}" ]; then

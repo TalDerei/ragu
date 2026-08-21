@@ -8,11 +8,18 @@ name: Fuzz coverage
 # ("which code does fuzzing reach at all") and fails when a target's line
 # coverage falls below its committed baseline.
 #
-# Inputs come from three places, in order: the corpus cache the fuzz cron
-# writes, the corpus *artifact* the same cron uploads (which cache eviction
-# cannot take away), and the committed seeds. A target with none of the three
-# fails — it used to exit successfully with a one-line report saying it had
-# skipped, which is indistinguishable in the Actions UI from a target that ran.
+# Inputs come from two places, in order: the corpus cache the fuzz cron
+# writes, and the corpus *artifact* the same cron uploads, which cache
+# eviction cannot take away.
+#
+# A target with neither is one of two very different things, and the
+# distinction is the whole point of this workflow. If the cron has produced a
+# corpus for it before, something is broken and the job fails — that case used
+# to exit successfully with a one-line report saying it had skipped, which in
+# the Actions UI is indistinguishable from a target that ran. If the cron has
+# never produced one, the target simply has not been fuzzed yet; that is
+# reported as having no data, not as a failure, and the union job lists it as
+# unmeasured.
 
 on:
   # Mondays 06:00 UTC, after the Sunday 00:00 UTC fuzz run has extended
@@ -128,7 +135,11 @@ jobs:
           echo "run-id=${RUN_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Restore corpus from the campaign artifact
+        id: artifact
         if: steps.campaign.outputs.run-id != ''
+        # A miss here is not automatically an error: it also means "this
+        # target has never been fuzzed". The coverage step tells the two
+        # apart from this step's outcome.
         continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -148,6 +159,9 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
           FUZZ_TARGET: ${{ matrix.target }}
+          # 'success' when a prior campaign's corpus artifact came down, so
+          # the target is established; 'failure'/'skipped' when none exists.
+          ARTIFACT_OUTCOME: ${{ steps.artifact.outcome }}
         run: |
           set -euo pipefail
           REPORT="coverage-report-${FUZZ_TARGET}.txt"
@@ -163,15 +177,22 @@ jobs:
             INPUT_DIRS+=("seeds/${FUZZ_TARGET}")
           fi
           if [ "${#INPUT_DIRS[@]}" -eq 0 ]; then
-            # Every target has committed seeds — `qa/fuzz/check_targets.sh`
-            # fails a pull request that adds one without them — so reaching
-            # here means the checkout, the cache and the campaign artifact all
-            # produced nothing. That is a broken run, not an empty one, and it
-            # used to exit green with a one-line report that read exactly like
-            # a target which had been measured.
-            echo "No corpus or seed inputs found for ${FUZZ_TARGET}." | tee "$REPORT"
-            echo "::error::${FUZZ_TARGET} has no inputs: seeds/${FUZZ_TARGET} is missing from the checkout and no corpus was restored."
-            exit 1
+            if [ "$ARTIFACT_OUTCOME" = "success" ]; then
+              # The artifact downloaded and still left us with nothing to
+              # replay: the corpus this target is known to have is gone.
+              # That is a broken run, not an empty one, and it used to exit
+              # green with a report that read exactly like a measurement.
+              echo "No corpus inputs found for ${FUZZ_TARGET}." | tee "$REPORT"
+              echo "::error::${FUZZ_TARGET} is established but produced no inputs: its campaign artifact restored empty and no corpus cache survived."
+              exit 1
+            fi
+            # No campaign has ever uploaded a corpus for this target, so it
+            # is new rather than broken. Say so plainly — the report is what
+            # the union job reads, and it must not look like a measurement of
+            # zero coverage.
+            echo "${FUZZ_TARGET} has no coverage data yet: no campaign has produced a corpus for it." | tee "$REPORT"
+            echo "::notice::${FUZZ_TARGET} has not been fuzzed yet; skipping coverage until the first campaign completes."
+            exit 0
           fi
           echo "Replaying ${FUZZ_TARGET} over: ${INPUT_DIRS[*]}"
           HOST=$(rustc -vV | sed -n 's/^host: //p')

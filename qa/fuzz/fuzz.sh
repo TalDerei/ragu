@@ -12,16 +12,18 @@
 #   ./fuzz.sh cmin [target]                   # Minimize corpora in place (all targets if omitted)
 #   ./fuzz.sh regress [target]                # Replay committed crash reproducers once each
 #   ./fuzz.sh coverage [target]               # Corpus coverage report (union report if all targets)
-#   ./fuzz.sh seeds [target] [seconds]        # Regenerate committed seeds from a short run
-#   ./fuzz.sh census                          # Check the target lists and seeds agree
+#   ./fuzz.sh seeds [target] [seconds]        # Generate a local seed set from a short run
+#   ./fuzz.sh census                          # Check the four target lists agree
 #
-# Committed seeds: seeds/<target>/ is tracked in git and read-only to a run.
-# Every target starts from its seeds merged with whatever corpus it has, so a
-# cold cache — or an evicted one, which is what CI usually has — never begins
-# from nothing. `./fuzz.sh seeds` regenerates them: it fuzzes into a scratch
-# corpus, minimizes it, and copies the smallest surviving inputs across.
+# Seeds: seeds/<target>/ is gitignored, local-only, and read-only to a run.
+# Nothing is committed. This substrate's decoder is total — every byte slice
+# is a valid program — so libFuzzer bootstraps any target from an empty
+# corpus, and CI relies on the cron's durable corpus artifact rather than on
+# seeds. They exist only to warm up a laptop run: `./fuzz.sh seeds` fuzzes
+# into a scratch corpus, minimizes it, and copies the smallest survivors
+# across.
 # `./fuzz.sh census` is what CI runs to check every target is listed in
-# fuzz.sh, in both workflow matrices, and has seeds committed.
+# fuzz.sh, and in both workflow matrices.
 #
 # Crash-regression inputs: when a fuzz run finds a real bug, commit the
 # minimized reproducer to regressions/<target>/ (tracked in git, unlike
@@ -136,12 +138,12 @@ if [[ "${1:-}" == "triage" ]]; then
 fi
 
 # `census` subcommand: check the four places the target list is written down
-# still agree, and that every target has committed seeds.
+# still agree.
 if [[ "${1:-}" == "census" ]]; then
   exec ./check_targets.sh
 fi
 
-# `seeds` subcommand: regenerate the committed seed set for one target, or for
+# `seeds` subcommand: generate a local seed set for one target, or for
 # every target when none is given.
 #
 # Fuzzes into a scratch corpus (never the working one, so a local corpus is
@@ -186,7 +188,7 @@ if [[ "${1:-}" == "seeds" ]]; then
     mkdir -p "seeds/$target"
     rm -f "seeds/$target"/*
     # Smallest first, then by name — libFuzzer names an input after its
-    # content hash, so the committed set is stable across machines rather than
+    # content hash, so the set is stable across machines rather than
     # dependent on directory order. `wc -c` rather than `stat`, whose size
     # flag differs between BSD and GNU.
     while read -r _size file; do
@@ -196,7 +198,7 @@ if [[ "${1:-}" == "seeds" ]]; then
         | sort -n -k1,1 -k2,2 | head -"$SEED_KEEP"
     )
     KEPT=$(find "seeds/$target" -type f | wc -l | tr -d ' ')
-    echo "=== $target: $KEPT seeds committed to seeds/$target/ ==="
+    echo "=== $target: $KEPT seeds written to seeds/$target/ ==="
     rm -rf "$SCRATCH"
     trap - EXIT
   done
@@ -350,7 +352,7 @@ run_target() {
   local target="$1"
   echo "=== $target (${DURATION}s) ==="
   # First dir receives new units; seeds/<target> (when present) is a
-  # committed, read-only seed set merged in at startup so cold starts
+  # local, read-only seed set merged in at startup so cold starts
   # never begin from an empty corpus.
   local dirs=("corpus/$target")
   if [[ -d "seeds/$target" ]]; then

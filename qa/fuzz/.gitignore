@@ -1,16 +1,18 @@
-# Build output, and the corpora and crash artifacts a local run accumulates.
+# Build output, and the corpora, seeds and crash artifacts a local run
+# accumulates.
+#
+# `seeds/` is local-only on purpose. `./fuzz.sh seeds` generates a scratch set
+# to warm up a laptop run, but nothing is committed: this substrate's decoder
+# is total — every byte slice is a valid program — so libFuzzer bootstraps
+# these targets from nothing, and committed seeds would only be 200 blobs that
+# silently change meaning whenever a target's `Input` gains a field. Inputs
+# genuinely worth keeping in git go in `regressions/<target>/`, which the cron
+# replays before every campaign.
 target
 corpus
 artifacts
 coverage
-
-# `seeds/` is deliberately NOT ignored. It holds the committed, read-only seed
-# inputs every target starts from — the cron merges them into its corpus and
-# the coverage workflow replays them, so a cold or evicted corpus cache still
-# has something to run. They were unreachable while this file ignored them:
-# the workflows read `seeds/<target>` but nothing could ever be committed
-# there, so coverage reported "No corpus or seed inputs found" and exited
-# green. `check_targets.sh` now fails when a target has none.
+seeds
 
 # Tracked, overriding the repo-root rule: this workspace is not covered by the
 # root lockfile, so without one here every CI run re-resolves from scratch and

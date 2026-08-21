@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Census of the fuzz target list, and of the seeds every target needs.
+# Census of the fuzz target list.
 #
 # The target list is written down in four places — `Cargo.toml`'s `[[bin]]`
 # sections, `fuzz.sh`'s `TARGETS`, and the matrices of `fuzz-cron.yml` and
@@ -7,12 +7,14 @@
 # `Cargo.toml` and forgotten in the cron is simply never fuzzed, silently and
 # for as long as nobody counts.
 #
-# Committed seeds get the same treatment. `seeds/<target>` is what the cron
-# merges into a cold corpus and what the coverage workflow replays when no
-# corpus cache survives; a target with none makes coverage report
-# "No corpus or seed inputs found" and exit green, which reads exactly like a
-# clean run. So an empty seed directory fails here, on the pull request that
-# introduced it, rather than passing quietly in a weekly report.
+# Seeds are deliberately not checked. This substrate's decoder is total —
+# every byte slice is a valid program — so libFuzzer bootstraps any target
+# from an empty corpus, and requiring committed seeds would mean 200 blobs in
+# git that silently change meaning whenever a target's `Input` gains a field.
+# The empty-coverage failure this census was written alongside is handled
+# where it belongs, in `fuzz-coverage.yml`: a target that has produced a
+# corpus before and has none now fails; one that has never been fuzzed
+# reports that it has no data yet.
 #
 # Usage:
 #   ./check_targets.sh          # census; non-zero exit on any mismatch
@@ -83,19 +85,7 @@ compare "fuzz.sh's TARGETS" "${script[@]}"
 compare "fuzz-cron.yml's matrix" "${cron[@]}"
 compare "fuzz-coverage.yml's matrix" "${coverage[@]}"
 
-# Every target needs at least one committed seed, so a run with no corpus
-# cache still has an input to replay.
-seedless=()
-for target in "${manifest[@]}"; do
-  if [ -z "$(find "seeds/$target" -type f -print -quit 2>/dev/null)" ]; then
-    seedless+=("$target")
-  fi
-done
-if [ "${#seedless[@]}" -ne 0 ]; then
-  note "no committed seeds for: ${seedless[*]}. Generate them with \`./fuzz.sh seeds <target>\` and commit seeds/<target>/."
-fi
-
 if [ "$fail" -eq 0 ]; then
-  echo "=== target census OK: ${#manifest[@]} targets, all scheduled, all seeded ==="
+  echo "=== target census OK: ${#manifest[@]} targets, all scheduled ==="
 fi
 exit "$fail"

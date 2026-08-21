@@ -7,9 +7,9 @@ don't leak into the rest of the repo.
 
 The target list is written down in four places — `Cargo.toml`'s `[[bin]]`
 sections, `fuzz.sh`'s `TARGETS`, and the matrices of `fuzz-cron.yml` and
-`fuzz-coverage.yml`. `./fuzz.sh census` checks they agree and that every
-target has committed seeds; `rust.yml` runs it on every pull request, so a
-target cannot be added and then quietly never scheduled.
+`fuzz-coverage.yml`. `./fuzz.sh census` checks they agree; `rust.yml` runs it
+on every pull request, so a target cannot be added and then quietly never
+scheduled.
 
 ## Quick start
 
@@ -43,11 +43,11 @@ cargo +nightly fuzz run fuzz_element_ops -- -max_total_time=60
 # Generate per-target reports and a union coverage report locally.
 ./fuzz.sh coverage
 
-# Regenerate the committed seed corpus (see "Seeds" below).
+# Generate a local (gitignored) seed set to warm up a run.
 ./fuzz.sh seeds                    # every target, 30s each
 ./fuzz.sh seeds fuzz_element_ops 120
 
-# Check the target lists agree and every target has seeds.
+# Check the four target lists agree.
 ./fuzz.sh census
 ```
 
@@ -60,37 +60,54 @@ toolchain CI uses (from `.github/actions/rust-nightly-setup/action.yml`):
 NIGHTLY=+nightly-2026-05-23 ./fuzz.sh seeds
 ```
 
-## Seeds
+## Corpus durability
 
-`seeds/<target>/` holds a small, committed, read-only set of inputs every
-target starts from. The cron merges them into whatever corpus it restored and
-the coverage workflow replays them, so a cold cache — or an evicted one, which
-is what CI usually has — never begins from nothing.
+The fuzzing itself was never the broken part. `fuzz-cron.yml` runs every
+target for five hours, three times a week, and libFuzzer generates its own
+inputs — this substrate's decoder is *total*, so every byte slice is a valid
+program and a cold start costs nothing but a little depth.
 
-They matter more than they look. `corpus/` lives only in the GitHub Actions
-cache, which evicts least-recently-used entries once the repository hits its
-storage limit; this harness writes a fresh run-scoped entry per target per
-campaign, three campaigns a week, so corpora churn through that budget and
-disappear. When that happened, `fuzz-coverage` found no corpus, no seeds
-either — `seeds/` was in `.gitignore`, so nothing could ever be committed
-there — and reported "No corpus or seed inputs found ... skipping coverage"
-while exiting green. Weeks of coverage reports were empty and looked passing.
+What broke was everything downstream of keeping the corpus. `corpus/` lived
+only in the GitHub Actions cache, which evicts least-recently-used entries
+once the repository hits its storage limit; this harness writes a fresh
+run-scoped entry per target per campaign, three campaigns a week, so corpora
+churned through that budget and disappeared. Two consequences, one of them
+invisible:
 
-Three things now stand between that and a repeat:
+- Every campaign restarted from a cold corpus, so runs never accumulated
+  depth. Five hours of shallow fuzzing, repeatedly.
+- `fuzz-coverage` had nothing to replay, reported "No corpus or seed inputs
+  found ... skipping coverage", and **exited green**. Weeks of coverage
+  reports were empty and looked passing — which is what hid the first point.
 
-- `seeds/` is tracked, and `./fuzz.sh census` fails a pull request that adds a
-  target without seeds.
+Two things now stand between that and a repeat:
+
 - `fuzz-cron.yml` minimizes its corpus and uploads it as a **90-day
   artifact**. Artifacts are not subject to cache eviction, and
   `fuzz-coverage.yml` falls back to the most recent campaign's artifact when
-  the cache misses.
-- `fuzz-coverage.yml` now **fails** when a target has no inputs, instead of
-  exiting successfully with a report that says it skipped.
+  the cache misses. This is the load-bearing fix: it restores both the
+  accumulation and the measurement.
+- `fuzz-coverage.yml` distinguishes the two reasons a target can have no
+  inputs. One whose campaign artifact exists but restored empty is **broken**
+  and fails the job. One that has never produced a corpus has simply not been
+  fuzzed yet, and reports that rather than failing.
 
-Regenerate seeds with `./fuzz.sh seeds [target] [seconds]`: it fuzzes into a
-scratch corpus (merging the existing seeds first, so nothing regresses),
-minimizes it, and commits the `SEED_KEEP` (default 8) smallest survivors.
-Small inputs on purpose — a seed is a cheap starting point, not a corpus.
+### Why no committed seeds
+
+An earlier cut of this work committed a seed corpus per target. It was
+dropped, and the reasoning is worth keeping:
+
+- Seeds are for formats where random bytes never survive the parser. Here
+  decoding is total, so libFuzzer bootstraps any target from nothing. Eight
+  tiny inputs add nothing to a five-hour campaign.
+- They are a standing maintenance tax. When a target's `Input` gains a field,
+  old seed bytes decode into something else entirely — and stale seeds do not
+  fail loudly, they just quietly mean something different.
+- Inputs genuinely worth keeping in git already have a home:
+  `regressions/<target>/`, which the cron replays before every campaign.
+
+`./fuzz.sh seeds [target] [seconds]` still exists for warming up a local run;
+`seeds/` is gitignored.
 
 ## Targets
 
@@ -281,8 +298,9 @@ Three workflows in `.github/workflows/`:
 
 - **`fuzz-coverage.yml`** runs every Monday at 06:00 UTC, after the Sunday
   fuzz run. Each matrix job assembles its inputs from the corpus cache, the
-  cron's corpus artifact when the cache missed, and the committed seeds; a
-  target with none of the three **fails**. It generates an `llvm-cov` per-file
+  cron's corpus artifact when the cache missed. A target whose artifact
+  exists but restored empty **fails**; one that has never been fuzzed reports
+  that it has no data yet. It generates an `llvm-cov` per-file
   report and a machine-readable `--summary-only` export, writes the headline
   totals to the job summary, and uploads both with 90-day retention.
 
