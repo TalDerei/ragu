@@ -303,6 +303,19 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         Ok(Endoscalar { bits, value })
     }
 
+    /// Wraps already-demoted bits and a witness as an endoscalar, with no check
+    /// that the two agree.
+    ///
+    /// Crate-internal; the trace-extraction tooling reaches it through
+    /// `fv_utils::endoscalar_unchecked` under the `unstable-fv` feature.
+    #[cfg(feature = "unstable-fv")]
+    pub(crate) fn new_unchecked(
+        bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ u128::BITS as usize }>>,
+        value: DriverValue<D, u128>,
+    ) -> Self {
+        Endoscalar { bits, value }
+    }
+
     /// Returns an iterator over the bits in this endoscalar, little endian order.
     pub fn bits(&self) -> impl Iterator<Item = Boolean<'dr, D>> {
         let mut bits = self

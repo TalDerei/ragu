@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use std::sync::Arc;
 
 use ff::Field;
 use ragu_arithmetic::Coeff;
@@ -126,10 +127,10 @@ impl<F: Field> DriverTypes for ExtractionDriver<F> {
 
         // a * b - c = 0
         let constraint = Expr::Add(
-            Box::new(Expr::Mul(Box::new(Expr::Var(a)), Box::new(Expr::Var(b)))),
-            Box::new(Expr::Mul(
-                Box::new(Expr::Const(Coeff::NegativeOne)),
-                Box::new(Expr::Var(c)),
+            Arc::new(Expr::Mul(Arc::new(Expr::Var(a)), Arc::new(Expr::Var(b)))),
+            Arc::new(Expr::Mul(
+                Arc::new(Expr::Const(Coeff::NegativeOne)),
+                Arc::new(Expr::Var(c)),
             )),
         );
         self.ops.push(Op::Assert(constraint));

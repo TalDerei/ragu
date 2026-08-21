@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 
@@ -17,6 +19,14 @@ use ragu_arithmetic::Coeff;
 /// [`super::driver::ExtractionDriver`]) are represented as [`Expr::Var`].
 /// Virtual wires (returned by [`ragu_core::drivers::Driver::add`]) are
 /// expression trees built by composing [`Expr::Add`] and [`Expr::Mul`] nodes.
+///
+/// Children are reference-counted, so the expressions a circuit builds form a
+/// DAG: an `Element::double` of a virtual wire records `Add(w, w)` sharing `w`
+/// instead of copying it. This keeps extraction linear in the number of driver
+/// calls even when a gadget feeds its own symbolic output back into the next
+/// iteration (`Endoscalar::lift`, `Endoscalar::group_scale`). The fingerprint
+/// never hashes this shape; it hashes the expression's canonical polynomial
+/// normal form (see [`crate::fingerprint`]).
 #[derive(Clone)]
 pub enum Expr<F: Field> {
     /// A physical wire identified by its allocation index.
@@ -26,9 +36,9 @@ pub enum Expr<F: Field> {
     /// A field element constant (stored symbolically as [`Coeff`]).
     Const(Coeff<F>),
     /// Sum of two sub-expressions.
-    Add(Box<Expr<F>>, Box<Expr<F>>),
+    Add(Arc<Expr<F>>, Arc<Expr<F>>),
     /// Product of two sub-expressions.
-    Mul(Box<Expr<F>>, Box<Expr<F>>),
+    Mul(Arc<Expr<F>>, Arc<Expr<F>>),
 }
 
 /// A single operation collected during circuit synthesis.
