@@ -5,7 +5,10 @@
 //! $f(u)$ is derived from the aforementioned evaluations.
 
 use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
-use ragu_circuits::{polynomials::Rank, staging::StageExt};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    staging::StageExt,
+};
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 
@@ -13,22 +16,21 @@ use super::{NativeSPrime, RegistryWy};
 use crate::{Application, Proof, internal::native, proof::ProofBuilder};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_eval<'dr, D, RNG: CryptoRng>(
+    pub(super) fn compute_eval<'dr, D>(
         &self,
-        rng: &mut RNG,
         u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
-    ) -> Result<native::stages::eval::Witness<C::CircuitField>>
+        builder: &ProofBuilder<'_, C, R>,
+    ) -> native::stages::eval::Witness<C::CircuitField>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
         let u = *u.value().take();
 
-        let eval_witness = native::stages::eval::Witness {
+        native::stages::eval::Witness {
             left: native::stages::eval::ChildEvaluationsWitness::from_proof(left, u),
             right: native::stages::eval::ChildEvaluationsWitness::from_proof(right, u),
             current: native::stages::eval::CurrentStepWitness {
@@ -43,14 +45,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 b_poly: builder.native_b_poly().eval(u),
                 registry_xy: builder.native_registry_xy_poly().eval(u),
             },
-        };
-        let rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
+        }
+    }
+
+    /// Samples a fresh eval-stage blinding and returns its rx together with the
+    /// bridge eval commitment.
+    ///
+    /// The `pre_beta` rejection loop calls this once per attempt, re-deriving
+    /// the challenge from a fresh commitment until it lands in range. Only the
+    /// accepted rx is committed to the builder (via `set_native_eval_rx`), so
+    /// this computes the commitment without populating the builder's cached eval
+    /// cells.
+    pub(super) fn sample_eval_commitment<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        eval_witness: &native::stages::eval::Witness<C::CircuitField>,
+        builder: &ProofBuilder<'_, C, R>,
+    ) -> Result<(sparse::Polynomial<C::CircuitField, R>, C::NestedCurve)> {
+        let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
             C::CircuitField::random(&mut *rng),
-            &eval_witness,
+            eval_witness,
         )?;
+        let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
+        let bridge_eval_commitment =
+            builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
 
-        builder.set_native_eval_rx(rx);
-
-        Ok(eval_witness)
+        Ok((eval_rx, bridge_eval_commitment))
     }
 }

@@ -1,4 +1,4 @@
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::CurveAffine;
 use ragu_arithmetic::Cycle;
 use ragu_core::{
@@ -58,6 +58,11 @@ pub fn setup_emu<Fns: SetupEmu<T>, T>(fns: Fns) -> (BenchEmu, T) {
 pub fn alloc_elem(emu: &mut BenchEmu, rng: &mut StdRng) -> Element<'static, BenchEmu> {
     let v = Fp::random(rng);
     Element::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
+}
+
+pub fn alloc_endoscalar_elem(emu: &mut BenchEmu, rng: &mut StdRng) -> Element<'static, BenchEmu> {
+    let value = Fp::from_u128(rng.random());
+    Element::alloc(emu, &mut (), BenchEmu::just(|| value)).unwrap()
 }
 
 pub fn alloc_point(emu: &mut BenchEmu, rng: &mut StdRng) -> Point<'static, BenchEmu, EpAffine> {

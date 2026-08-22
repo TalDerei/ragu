@@ -16,10 +16,10 @@ use core::ops::AddAssign;
 
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar};
+use ragu_core::Result;
+use ragu_primitives::{EndoscalarChallenge, lift_endoscalar};
 
-use super::{NativeF, NativeSPrime, RegistryWy};
+use super::{NativeF, NativeFuseEmulator, NativeSPrime, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{
@@ -48,20 +48,17 @@ impl<C: Cycle, R: Rank> Accumulator<'_, C, R> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_p<'dr, D, RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(super) fn compute_p<'dr, RNG: ragu_arithmetic::rand::CryptoRng>(
         &self,
         rng: &mut RNG,
-        pre_beta: &Element<'dr, D>,
+        pre_beta: &EndoscalarChallenge<'dr, NativeFuseEmulator<C>>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
         f: &NativeF<C, R>,
         builder: &mut ProofBuilder<'_, C, R>,
-    ) -> Result<()>
-    where
-        D: Driver<'dr, F = C::CircuitField>,
-    {
+    ) -> Result<()> {
         let mut poly = f.poly.clone();
 
         // Collect commitments for PointsWitness construction.
@@ -73,9 +70,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // We accumulate polynomials while collecting MSM terms for the
         // commitment computation.
 
-        // Extract endoscalar from pre_beta and compute effective beta
-        let pre_beta_value = *pre_beta.value().take();
-        let beta_endo = extract_endoscalar(pre_beta_value);
+        // Extract endoscalar from pre_beta and compute effective beta. Going
+        // through the validated `EndoscalarChallenge` makes the
+        // `value < 2^CAPACITY` precondition a type invariant rather than an
+        // unchecked argument to `extract_endoscalar`.
+        let beta_endo = pre_beta.extract_native();
         let effective_beta = lift_endoscalar(beta_endo);
 
         {

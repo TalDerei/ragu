@@ -7,11 +7,12 @@ use std::hint::black_box;
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_pasta::{EpAffine, Fp, PoseidonFp};
 use ragu_primitives::{
-    Boolean, Element, Endoscalar, NonzeroBank, Point, multiadd, multipack, poseidon::Sponge,
+    Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, multiadd, multipack,
+    poseidon::Sponge,
 };
 use setup::{
-    BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo, alloc_point,
-    alloc_sponge, setup_emu,
+    BenchEmu, alloc_bools, alloc_coeffs, alloc_elem, alloc_elems, alloc_endo,
+    alloc_endoscalar_elem, alloc_point, alloc_sponge, setup_emu,
 };
 
 #[library_benchmark(setup = setup_emu)]
@@ -158,9 +159,10 @@ fn endoscalar_group_scale(
 }
 
 #[library_benchmark(setup = setup_emu)]
-#[bench::endoscalar_extract((alloc_elem,))]
+#[bench::endoscalar_extract((alloc_endoscalar_elem,))]
 fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
+    let challenge = EndoscalarChallenge::from_element(&mut emu, &mut (), elem).unwrap();
+    black_box(Endoscalar::extract(challenge));
 }
 
 #[library_benchmark(setup = setup_emu)]

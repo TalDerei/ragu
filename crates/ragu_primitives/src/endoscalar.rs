@@ -13,24 +13,258 @@
 //! recovering the effective scalar that an endoscalar maps to for a particular
 //! prime field.
 
-use alloc::vec::Vec;
+use alloc::boxed::Box;
 
 use ragu_arithmetic::{
     Coeff, CurveAffine,
-    ff::{Field, PrimeField, WithSmallOrderMulGroup},
+    ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup},
 };
 use ragu_core::{
-    Result,
-    drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
+    Error, Result,
+    drivers::{
+        Driver, DriverValue,
+        emulator::{Emulator, Wireless},
+    },
     gadgets::Gadget,
-    maybe::Maybe,
+    maybe::{Always, Maybe},
 };
 
 use crate::{
     Boolean, Element, NonzeroBank, Point,
+    allocator::Allocator,
+    boolean::decompose,
     promotion::Demoted,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
+
+/// An error indicating that an element is out of range for an endoscalar
+/// challenge.
+///
+/// [`EndoscalarChallenge::from_element`] boxes this type as the source of
+/// [`Error::InvalidWitness`] when the element's canonical representative is
+/// not below $2^{\mathtt{CAPACITY}}$. A caller that grinds candidate
+/// challenges detects this condition with [`Error::invalid_witness_source`],
+/// resamples, and retries; every other error reports a distinct failure.
+///
+/// # Examples
+///
+/// ```
+/// use ragu_core::Error;
+/// use ragu_primitives::EndoscalarRangeError;
+///
+/// let err = Error::InvalidWitness(Box::new(EndoscalarRangeError));
+/// assert!(err.invalid_witness_source::<EndoscalarRangeError>().is_some());
+/// ```
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[error("endoscalar challenge must satisfy value < 2^CAPACITY")]
+pub struct EndoscalarRangeError;
+
+/// A transcript challenge constrained for endoscalar extraction.
+///
+/// Carries the precondition required by [`Endoscalar::extract`]: the element's
+/// canonical representative is below $2^{\mathtt{CAPACITY}}$, so it admits a
+/// canonical $\mathtt{CAPACITY}$-bit decomposition with no separate in-circuit
+/// canonicity check.
+///
+/// Construction decomposes the element and constrains the decomposition to it,
+/// so every satisfying assignment places the element below
+/// $2^{\mathtt{CAPACITY}}$.
+///
+/// Deliberately not a [`Gadget`]: this type certifies that an [`Element`] has a
+/// particular quality, and a gadget must never carry a contract over its
+/// witness. It is a plain wrapper holding that element alongside the
+/// decomposition wires constraining it, so it cannot be remapped into another
+/// circuit without re-emitting those constraints through [`from_element`].
+///
+/// # Field requirements
+///
+/// The field must have at least 128 bits of capacity; Ragu's supported Pasta
+/// fields satisfy this.
+///
+/// [`from_element`]: EndoscalarChallenge::from_element
+pub struct EndoscalarChallenge<'dr, D: Driver<'dr>> {
+    elem: Element<'dr, D>,
+
+    endoscalar: Endoscalar<'dr, D>,
+}
+
+impl<'dr, D: Driver<'dr>> EndoscalarChallenge<'dr, D> {
+    /// Validates an in-range element as an endoscalar challenge.
+    ///
+    /// The single-attempt constructor, which emits the binding decomposition
+    /// directly.
+    ///
+    /// It serves the in-circuit verifier path, where an honest prover has
+    /// already ground the challenge into range and it is only re-derived
+    /// (see the `compute_v` internal circuit). Native provers sampling a fresh
+    /// challenge must use [`sample`] instead, which owns the rejection-sampling
+    /// loop and so cannot be skipped.
+    ///
+    /// # Soundness
+    ///
+    /// Any satisfying assignment makes the represented element equal the
+    /// returned challenge's canonical $\mathtt{CAPACITY}$-bit decomposition,
+    /// and so places it below $2^{\mathtt{CAPACITY}}$.
+    ///
+    /// # Completeness
+    ///
+    /// Honest proving succeeds only when `elem` is in range. The witness value
+    /// is checked directly as well, so the emulators — which compute witness
+    /// data without evaluating constraints — reject an out-of-range element
+    /// rather than returning a truncated endoscalar.
+    ///
+    /// # Errors
+    ///
+    /// Witness generation fails with [`Error::InvalidWitness`] when `elem` is
+    /// out of range ($\mathtt{elem} \geq 2^{\mathtt{CAPACITY}}$). The boxed
+    /// source is an [`EndoscalarRangeError`] value, which callers that grind
+    /// candidate challenges can detect with
+    /// [`Error::invalid_witness_source`]. Any other error propagates
+    /// unchanged.
+    ///
+    /// [`sample`]: EndoscalarChallenge::sample
+    pub fn from_element<A: Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        elem: Element<'dr, D>,
+    ) -> Result<Self>
+    where
+        D::F: PrimeFieldBits,
+    {
+        // Emulator drivers never evaluate the decomposition constraints, so
+        // also reject an out-of-range witness value directly; `try_just` runs
+        // only during witness generation and emits nothing, leaving circuit
+        // structure untouched.
+        D::try_just(|| {
+            if !endoscalar_in_range(*elem.value().take()) {
+                return Err(Error::InvalidWitness(Box::new(EndoscalarRangeError)));
+            }
+
+            Ok(())
+        })?;
+
+        let endoscalar = Endoscalar::extract_element(dr, allocator, &elem)?;
+
+        Ok(Self { elem, endoscalar })
+    }
+
+    /// Returns the underlying field element.
+    ///
+    /// Construction of this challenge constrains the element in range.
+    pub fn element(&self) -> &Element<'dr, D> {
+        &self.elem
+    }
+}
+
+type NativeEmulator<F> = Emulator<Wireless<Always<()>, F>>;
+
+impl<'dr, F: PrimeFieldBits> EndoscalarChallenge<'dr, NativeEmulator<F>> {
+    /// Attempts to validate an element as an endoscalar challenge, reporting an
+    /// out-of-range element as `Ok(None)` rather than an error.
+    ///
+    /// The rejection-sampling primitive behind [`sample`], and the prover-side
+    /// counterpart to [`from_element`]: it delegates validation to
+    /// [`from_element`] — the single place the range rule is checked — and
+    /// translates its typed range failure ([`EndoscalarRangeError`]) into the
+    /// *expected* out-of-range outcome (`Ok(None)`, a retry signal). Every
+    /// other failure is a *genuine* error, to propagate, not retry.
+    ///
+    /// # Errors
+    ///
+    /// An out-of-range element is reported as `Ok(None)` rather than as an
+    /// error; errors arise only while validating an in-range element.
+    ///
+    /// [`sample`]: EndoscalarChallenge::sample
+    /// [`from_element`]: EndoscalarChallenge::from_element
+    pub(crate) fn try_from_element(
+        dr: &mut NativeEmulator<F>,
+        elem: Element<'dr, NativeEmulator<F>>,
+    ) -> Result<Option<Self>> {
+        match Self::from_element(dr, &mut (), elem) {
+            Ok(challenge) => Ok(Some(challenge)),
+            Err(err)
+                if err
+                    .invalid_witness_source::<EndoscalarRangeError>()
+                    .is_some() =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Produces a validated endoscalar challenge by rejection sampling.
+    ///
+    /// `produce` is invoked to (re)sample fresh randomness, returning a
+    /// candidate challenge [`Element`] together with a `payload` of side state
+    /// derived from it. The candidate is validated by `try_from_element`: on
+    /// acceptance the challenge and its payload are returned; on an
+    /// out-of-range candidate `produce` is called again with fresh randomness.
+    ///
+    /// Baking the loop into the constructor means a native prover cannot
+    /// obtain a challenge from a rejected sample: [`from_element`] refuses an
+    /// out-of-range element outright, so no [`EndoscalarChallenge`] can exist
+    /// whose element is out of range, and this is the only constructor that
+    /// retries rather than fails.
+    ///
+    /// `produce` is required to differ between calls rather than to agree with
+    /// itself: it runs during native witness generation, never on a driver
+    /// walk, so the determinism requirement on circuit code does not apply.
+    ///
+    /// # Completeness
+    ///
+    /// With uniformly random field elements each attempt succeeds with
+    /// overwhelming probability (about $1 - 2^{-129}$ over the Pasta fields),
+    /// so the loop terminates after a handful of iterations in expectation.
+    ///
+    /// # Errors
+    ///
+    /// An error from `produce`, or from validating an in-range candidate,
+    /// propagates immediately; the loop retries only on the expected
+    /// out-of-range condition and so cannot spin on a real error.
+    ///
+    /// [`from_element`]: EndoscalarChallenge::from_element
+    pub fn sample<T>(
+        dr: &mut NativeEmulator<F>,
+        mut produce: impl FnMut(&mut NativeEmulator<F>) -> Result<(Element<'dr, NativeEmulator<F>>, T)>,
+    ) -> Result<(Self, T)> {
+        loop {
+            let (elem, payload) = produce(dr)?;
+            if let Some(challenge) = Self::try_from_element(dr, elem)? {
+                return Ok((challenge, payload));
+            }
+        }
+    }
+
+    /// Extracts the native endoscalar from this validated challenge.
+    ///
+    /// Returns the low 128 bits of the challenge's canonical bit
+    /// decomposition, the native, wireless counterpart to
+    /// [`Endoscalar::extract`], intended for native provers that constructed the
+    /// challenge via [`sample`]. Because an [`EndoscalarChallenge`] already
+    /// contains the constrained extraction, this operation is infallible.
+    ///
+    /// [`sample`]: EndoscalarChallenge::sample
+    pub fn extract_native(&self) -> u128 {
+        *self.endoscalar.value.snag()
+    }
+}
+
+/// Reports whether `value` lies in the range admitted by an endoscalar
+/// challenge (canonical representative below $2^{\mathtt{CAPACITY}}$).
+///
+/// A pure, wireless mirror of the canonical bit decomposition enforced in
+/// circuit by [`EndoscalarChallenge::from_element`]: it checks that no bit at
+/// index $\geq \mathtt{CAPACITY}$ of the canonical little-endian bit
+/// decomposition is set, so it is `true` exactly when that in-circuit
+/// decomposition is satisfiable.
+///
+/// An implementation detail of `from_element`, which reports an out-of-range
+/// value as a typed [`EndoscalarRangeError`] failure that rejection-sampling
+/// callers detect with [`Error::invalid_witness_source`].
+fn endoscalar_in_range<F: PrimeFieldBits>(value: F) -> bool {
+    value.to_le_bits()[F::CAPACITY as usize..].not_any()
+}
 
 /// Represents a challenge used to scale elliptic curve points.
 #[derive(Gadget)]
@@ -81,93 +315,46 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         })
     }
 
-    /// Extracts an endoscalar from a random element in the field.
+    /// Returns the endoscalar constrained during challenge construction.
     ///
-    /// # Soundness
-    ///
-    /// Any satisfying assignment makes each returned bit encode whether
-    /// `elem + i` is a quadratic residue for the corresponding bit position
-    /// `i`, except where `elem + i == 0`. At those exceptional inputs
-    /// (`elem = -i` for `0 <= i < 128`) both quadratic-residue branches are
-    /// zero, which is a square, so a malicious prover can flip that bit. This
-    /// is unreachable when `elem` is a transcript-derived challenge (forcing
-    /// `elem = -i` requires grinding ~`|F| / 128` hashes). [#765] tracks the
-    /// canonical bit-decomposition that closes the gap.
-    ///
-    /// [#765]: https://github.com/tachyon-zcash/ragu/issues/765
-    pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
+    /// The endoscalar is the low 128 bits of the challenge's canonical bit
+    /// decomposition. [`EndoscalarChallenge::from_element`] already emitted the
+    /// binding decomposition and range constraint, so extraction emits no
+    /// additional constraints.
+    pub fn extract(challenge: EndoscalarChallenge<'dr, D>) -> Self {
+        challenge.endoscalar
+    }
+
+    /// Constrains `elem` to its canonical decomposition and returns its low 128
+    /// bits as an endoscalar.
+    fn extract_element<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
-        elem: Element<'dr, D>,
+        elem: &Element<'dr, D>,
     ) -> Result<Self>
     where
-        D::F: WithSmallOrderMulGroup<3>,
+        D::F: PrimeFieldBits,
     {
-        let mut bits = Vec::with_capacity(u128::BITS as usize);
-        let mut value = D::just(|| 0u128);
-        let mut constant = D::F::ZERO;
+        let bits = decompose(dr, allocator, elem)?;
 
-        let mut coeff_0 = D::F::ZERO;
-        let mut coeff_1 = D::F::ZERO;
-        let coeff_2 = D::F::MULTIPLICATIVE_GENERATOR;
-        let coeff_3 = D::F::ONE - D::F::MULTIPLICATIVE_GENERATOR;
-
-        for i in 0..(u128::BITS as usize) {
-            let (sqrt, bit) = D::try_just(|| {
-                let value = *elem.value().take() + constant;
-
-                if let Some(sqrt) = value.sqrt().into_option() {
-                    Ok((sqrt, true))
-                } else {
-                    let sqrt = (value * D::F::MULTIPLICATIVE_GENERATOR)
-                        .sqrt()
-                        .into_option()
-                        .expect("should produce a square if the other didn't");
-                    Ok((sqrt, false))
+        let value = elem.value().map(|v| {
+            let le_bits = v.to_le_bits();
+            let mut acc = 0u128;
+            for i in 0..(u128::BITS as usize) {
+                if le_bits[i] {
+                    acc |= 1u128 << i;
                 }
-            })?
-            .cast();
+            }
+            acc
+        });
 
-            value.as_mut().map(|v| {
-                if *bit.snag() {
-                    *v |= 1u128 << i
-                }
-            });
+        let bits = bits
+            .iter()
+            .take(u128::BITS as usize)
+            .map(|bit| Demoted::new(bit))
+            .try_collect_fixed()?;
 
-            let bit = Boolean::alloc(dr, allocator, bit)?;
-            let (_, square) = Element::alloc_square(dr, sqrt)?;
-            let vb = elem.mul(dr, &bit.element())?;
-
-            // Enforce that the square is equal to
-            //     (elem + i) if bit == 1
-            //     (elem + i) * MULTIPLICATIVE_GENERATOR) if bit == 0
-            // This is done by enforcing the constraint:
-            //
-            //     square = bit * (elem + i)
-            //            + (1 - bit) * ((elem + i) * MULTIPLICATIVE_GENERATOR)
-            //
-            //            = i * MULTIPLICATIVE_GENERATOR
-            //            + bit * (i * (1 - MULTIPLICATIVE_GENERATOR))
-            //            + elem * MULTIPLICATIVE_GENERATOR
-            //            + vb * (1 - MULTIPLICATIVE_GENERATOR)
-            dr.enforce_zero(|lc| {
-                lc.add_term(&D::ONE, coeff_0.into())
-                    .add_term(bit.wire(), coeff_1.into())
-                    .add_term(elem.wire(), coeff_2.into())
-                    .add_term(vb.wire(), coeff_3.into())
-                    .sub(square.wire())
-            })?;
-
-            bits.push(Demoted::new(&bit)?);
-            constant += D::F::ONE;
-            coeff_0 += coeff_2;
-            coeff_1 += coeff_3;
-        }
-
-        Ok(Endoscalar {
-            bits: FixedVec::try_from(bits)?,
-            value,
-        })
+        Ok(Endoscalar { bits, value })
     }
 
     /// Scale a point by the endoscalar.
@@ -294,32 +481,60 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: u128) -> F {
     acc
 }
 
-/// Extracts an endoscalar from a random field element.
+/// Extracts an endoscalar from a validated field element.
 ///
-/// Given a random output of a secure algebraic hash function, this extracts
-/// `k` bits of "randomness" from the value by checking whether `value + i`
-/// is a quadratic residue for each bit position `i`.
-pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> u128 {
+/// Returns the low 128 bits of the element's canonical bit decomposition, the
+/// native counterpart to [`Endoscalar::extract`].
+///
+/// A low-level helper: prefer [`EndoscalarChallenge::extract_native`], which
+/// upholds the precondition below as a type invariant. This function is exposed
+/// directly only for native setup paths with no [`EndoscalarChallenge`] in
+/// scope (e.g. the trivial proof construction over a constant that is in range
+/// by inspection).
+///
+/// # Completeness
+///
+/// Infallible when `value` has already passed rejection sampling
+/// ($\mathtt{value} < 2^{\mathtt{CAPACITY}}$). An out-of-range value is
+/// rejected by the [`EndoscalarChallenge`] construction it delegates to,
+/// matching the in-circuit path that becomes unsatisfiable before
+/// [`Endoscalar::extract`] is reachable.
+///
+/// # Field requirements
+///
+/// The field must have at least 128 bits of capacity; Ragu's supported Pasta
+/// fields satisfy this.
+///
+/// # Errors
+///
+/// Fails with [`Error::InvalidWitness`] when `value` is out of range
+/// ($\mathtt{value} \geq 2^{\mathtt{CAPACITY}}$); the boxed source is an
+/// [`EndoscalarRangeError`], so callers modeling transcript rejection can
+/// detect the condition with [`Error::invalid_witness_source`].
+pub fn extract_endoscalar<F: PrimeFieldBits>(value: F) -> Result<u128> {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
-        let endo = Endoscalar::extract(dr, &mut (), elem)?;
+        let challenge = EndoscalarChallenge::from_element(dr, &mut (), elem)?;
+        let endo = Endoscalar::extract(challenge);
         Ok(*endo.value.snag())
     })
-    .expect("wireless emulation should not fail")
 }
 
 #[cfg(test)]
 mod tests {
     use ragu_arithmetic::{
         CurveAffine, CurveExt,
-        ff::{Field, PrimeField, WithSmallOrderMulGroup},
+        ff::{Field, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup},
         group::{CurveAffine as _, Group},
         rand::RngExt,
     };
-    use ragu_core::Result;
+    use ragu_core::{Result, drivers::emulator::Wireless};
     use ragu_pasta::{EpAffine, Fp};
 
-    use super::{Element, Endoscalar, Maybe, Point};
+    use super::{
+        Always, Element, Emulator, Endoscalar, EndoscalarChallenge, EndoscalarRangeError, Maybe,
+        Point,
+    };
     use crate::{Simulator, allocator::Standard};
 
     pub struct EndoscalarTest {
@@ -351,9 +566,10 @@ mod tests {
         }
     }
 
-    pub fn extract<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> EndoscalarTest {
+    pub fn extract<F: PrimeFieldBits + WithSmallOrderMulGroup<3>>(value: F) -> EndoscalarTest {
         EndoscalarTest {
-            value: super::extract_endoscalar(value),
+            value: super::extract_endoscalar(value)
+                .expect("test challenge should satisfy value < 2^CAPACITY"),
         }
     }
 
@@ -376,7 +592,12 @@ mod tests {
     #[test]
     fn test_extract() -> Result<()> {
         let p = EpAffine::generator();
-        let r = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let r = loop {
+            let r = Fp::random(&mut ragu_arithmetic::rand::rng());
+            if super::endoscalar_in_range(r) {
+                break r;
+            }
+        };
         let extracted = extract(r).value;
 
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
@@ -384,7 +605,12 @@ mod tests {
             let p = Point::alloc(dr, p)?;
             let allocator = &mut Standard::new();
             let r = Element::alloc(dr, allocator, r)?;
-            let my_extracted = Endoscalar::extract(dr, &mut (), r)?;
+            let constraints_before_challenge = dr.num_constraints();
+            let r = EndoscalarChallenge::from_element(dr, allocator, r)?;
+            let constraints_after_challenge = dr.num_constraints();
+            assert!(constraints_after_challenge > constraints_before_challenge);
+            let my_extracted = Endoscalar::extract(r);
+            assert_eq!(dr.num_constraints(), constraints_after_challenge);
             let allocated = Endoscalar::alloc(dr, extracted)?;
 
             assert_eq!(my_extracted.value.snag(), allocated.value.snag());
@@ -395,6 +621,194 @@ mod tests {
 
             Ok(())
         })?;
+
+        Ok(())
+    }
+
+    /// Out-of-range rejection fails with the typed [`EndoscalarRangeError`]
+    /// source, so grinding callers can detect the condition programmatically.
+    #[test]
+    fn test_endoscalar_challenge_rejects_out_of_range() {
+        let err = super::extract_endoscalar(-Fp::ONE)
+            .expect_err("out-of-range challenge must not extract");
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
+
+        let result = Simulator::<Fp>::simulate(-Fp::ONE, |dr, witness| {
+            let elem = Element::alloc(dr, &mut (), witness)?;
+            EndoscalarChallenge::from_element(dr, &mut (), elem)?;
+            Ok(())
+        });
+
+        let Err(err) = result else {
+            panic!("out-of-range challenge must be rejected");
+        };
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
+    }
+
+    /// `from_element` rejects an out-of-range witness value even on drivers
+    /// that do not evaluate constraints (the wireless emulator), so the range
+    /// contract cannot be bypassed by driver choice.
+    #[test]
+    fn test_from_element_rejects_out_of_range_wireless() {
+        let result =
+            Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(-Fp::ONE, |dr, value| {
+                let elem = Element::alloc(dr, &mut (), value)?;
+                EndoscalarChallenge::from_element(dr, &mut (), elem)?;
+                Ok(())
+            });
+
+        let err = result.expect_err("out-of-range challenge must be rejected");
+        assert_eq!(
+            err.invalid_witness_source::<EndoscalarRangeError>(),
+            Some(&EndoscalarRangeError)
+        );
+    }
+
+    /// The pure-value range predicate must agree with the simulator-based
+    /// decomposition check for every value, so that rejection sampling using
+    /// `endoscalar_in_range` never disagrees with what the circuit enforces.
+    ///
+    /// Exercises `decompose` directly rather than `from_element`, whose native
+    /// witness check would reject an out-of-range value before the emitted
+    /// constraints are ever evaluated.
+    #[test]
+    fn test_in_range_matches_constraints() {
+        let largest_in_range = {
+            let mut acc = Fp::ZERO;
+            for _ in 0..(Fp::CAPACITY as usize) {
+                acc = acc.double() + Fp::ONE;
+            }
+            acc
+        };
+
+        let cases = [
+            Fp::ZERO,
+            Fp::ONE,
+            Fp::from(0x0123_4567_89ab_cdefu64),
+            largest_in_range,
+            largest_in_range + Fp::ONE, // first out-of-range value
+            -Fp::ONE,                   // p - 1, out of range
+        ];
+
+        let constraints_accept = |value| {
+            Simulator::<Fp>::simulate(value, |dr, witness| {
+                let elem = Element::alloc(dr, &mut (), witness)?;
+                crate::boolean::decompose(dr, &mut (), &elem)?;
+                Ok(())
+            })
+            .is_ok()
+        };
+
+        for value in cases {
+            assert_eq!(
+                super::endoscalar_in_range(value),
+                constraints_accept(value),
+                "in-range predicate disagreed with circuit constraints",
+            );
+        }
+
+        // Random sampling: the predicate must match validation on fresh draws,
+        // exercising the overwhelmingly-in-range path.
+        for _ in 0..32 {
+            let value = Fp::random(&mut ragu_arithmetic::rand::rng());
+            assert_eq!(super::endoscalar_in_range(value), constraints_accept(value));
+        }
+    }
+
+    /// `sample` grinds an out-of-range candidate away and returns the accepted
+    /// candidate together with its payload; `extract_native` then matches the
+    /// in-circuit extraction.
+    #[test]
+    fn test_sample_grinds_until_in_range() -> Result<()> {
+        // Feed one out-of-range candidate followed by an in-range one. `sample`
+        // must reject the first, accept the second, and thread the payload
+        // through unchanged. The wireless emulator is the only driver `sample`
+        // accepts (native witness generation, `Wire = ()`).
+        let in_range = Fp::from(0x0123_4567_89ab_cdefu64);
+
+        Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(in_range, |dr, in_range| {
+            let in_range = in_range.take();
+            let candidates = [(-Fp::ONE, 7u32), (in_range, 9u32)];
+            let mut attempt = 0usize;
+
+            let (challenge, payload) = EndoscalarChallenge::sample(dr, |dr| {
+                let (value, tag) = candidates[attempt];
+                attempt += 1;
+                let elem = Element::alloc(dr, &mut (), Always::<Fp>::just(|| value))?;
+                Ok((elem, tag))
+            })?;
+
+            assert_eq!(attempt, 2, "expected exactly one rejection");
+            assert_eq!(payload, 9, "accepted candidate's payload must be returned");
+            assert_eq!(
+                challenge.extract_native(),
+                super::extract_endoscalar(in_range)?,
+            );
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// A genuine error from `produce` propagates immediately instead of being
+    /// retried: the rejection loop retries only on the expected out-of-range
+    /// outcome, never on a real error.
+    #[test]
+    fn test_sample_propagates_produce_error() -> Result<()> {
+        // The wireless emulator is the sole driver `sample` accepts; the
+        // witness is unused here.
+        Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless((), |dr, _| {
+            let mut calls = 0usize;
+            let outcome = EndoscalarChallenge::sample(dr, |_dr| {
+                calls += 1;
+                Result::<(Element<'_, _>, ())>::Err(ragu_core::Error::InvalidWitness(
+                    "produce failure".into(),
+                ))
+            });
+
+            assert!(outcome.is_err(), "produce error must surface as Err");
+            assert_eq!(calls, 1, "produce error must not be retried");
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    /// `try_from_element` classifies an out-of-range element as `Ok(None)` (the
+    /// retry signal) and an in-range element as `Ok(Some(_))`, pinning the
+    /// acceptance boundary at `2^CAPACITY`.
+    #[test]
+    fn test_try_from_element_classifies_range() -> Result<()> {
+        let largest_in_range = {
+            let mut acc = Fp::ZERO;
+            for _ in 0..(Fp::CAPACITY as usize) {
+                acc = acc.double() + Fp::ONE;
+            }
+            acc
+        };
+
+        let check = |value: Fp, expect_in_range: bool| -> Result<()> {
+            Emulator::<Wireless<Always<()>, Fp>>::emulate_wireless(value, |dr, value| {
+                let elem = Element::alloc(dr, &mut (), value)?;
+                let classified = EndoscalarChallenge::try_from_element(dr, elem)?;
+                assert_eq!(classified.is_some(), expect_in_range);
+                Ok(())
+            })?;
+            Ok(())
+        };
+
+        check(Fp::ZERO, true)?;
+        check(largest_in_range, true)?; // 2^CAPACITY - 1, the largest in range
+        check(largest_in_range + Fp::ONE, false)?; // 2^CAPACITY, first out of range
+        check(-Fp::ONE, false)?; // p - 1, out of range
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use ragu_arithmetic::{
     Coeff,
-    ff::{Field, PrimeField},
+    ff::{Field, PrimeField, PrimeFieldBits},
 };
 use ragu_core::{
     Result,
@@ -304,6 +304,54 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
     Ok(v)
 }
 
+/// Decomposes a field element into its little-endian bits.
+///
+/// Returns `D::F::CAPACITY` booleans $b_0, b_1, \ldots$ constrained so that
+/// $b_0 + 2 b_1 + 4 b_2 + \cdots = \mathtt{elem}$. This is the inverse of
+/// [`multipack`].
+///
+/// $\mathtt{CAPACITY}$ bits represent exactly the values in
+/// $\[0, 2^{\mathtt{CAPACITY}})$, a subset of $\[0, p)$, so the decomposition
+/// is canonical by construction: every in-range element has a unique bit
+/// string and no wrapped alias is representable, requiring no range check.
+///
+/// # Soundness
+///
+/// Any satisfying assignment makes the returned booleans the unique
+/// little-endian bit decomposition of $\mathtt{elem}$, and so places
+/// $\mathtt{elem}$ below $2^{\mathtt{CAPACITY}}$.
+///
+/// # Completeness
+///
+/// Honest proving succeeds only when $\mathtt{elem} < 2^{\mathtt{CAPACITY}}$;
+/// a larger element has no $\mathtt{CAPACITY}$-bit decomposition, so the
+/// constraints are unsatisfiable. Over the Pasta fields a uniformly random
+/// element falls outside this range with negligible probability (about
+/// $2^{-129}$).
+pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeFieldBits>>(
+    dr: &mut D,
+    allocator: &mut impl Allocator<'dr, D>,
+    elem: &Element<'dr, D>,
+) -> Result<Vec<Boolean<'dr, D>>> {
+    let le_bits = elem.value().map(|v| v.to_le_bits());
+    let bits = (0..D::F::CAPACITY as usize)
+        .map(|i| {
+            let bit = le_bits.as_ref().map(move |le_bits| le_bits[i]);
+            Boolean::alloc(dr, allocator, bit)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let recomposed = dr.add(|mut lc| {
+        for bit in &bits {
+            lc = lc.add(bit.wire()).gain(Coeff::Two);
+        }
+        lc
+    });
+    dr.enforce_equal(&recomposed, elem.wire())?;
+
+    Ok(bits)
+}
+
 impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         Self::alloc(dr, &mut (), self.value())?.enforce_conservative_equal(dr, self)
@@ -494,6 +542,55 @@ mod tests {
 
             Ok(())
         })?;
+
+        Ok(())
+    }
+
+    /// Checks that `decompose` recomposes to the original element for in-range
+    /// values, and rejects an out-of-range element (`>= 2^CAPACITY`).
+    #[test]
+    fn test_decompose() -> Result<()> {
+        let check = |x: F| -> Result<()> {
+            Simulator::simulate(x, |dr, x| {
+                let allocator = &mut Standard::new();
+                let x = Element::alloc(dr, allocator, x)?;
+                let bits = decompose(dr, allocator, &x)?;
+
+                assert_eq!(bits.len(), F::CAPACITY as usize);
+
+                let mut acc = F::ZERO;
+                let mut gain = F::ONE;
+                for bit in &bits {
+                    if bit.value().take() {
+                        acc += gain;
+                    }
+                    gain = gain.double();
+                }
+                assert_eq!(acc, *x.value().take());
+
+                Ok(())
+            })?;
+            Ok(())
+        };
+
+        check(F::ZERO)?;
+        check(F::ONE)?;
+        check(F::from(0x0123_4567_89ab_cdefu64))?;
+
+        // Largest in-range value: 2^CAPACITY - 1 (all CAPACITY bits set).
+        let mut all_ones = F::ZERO;
+        for _ in 0..(F::CAPACITY as usize) {
+            all_ones = all_ones.double() + F::ONE;
+        }
+        check(all_ones)?;
+
+        let too_large = Simulator::simulate(-F::ONE, |dr, x| {
+            let allocator = &mut Standard::new();
+            let x = Element::alloc(dr, allocator, x)?;
+            decompose(dr, allocator, &x)?;
+            Ok(())
+        });
+        assert!(too_large.is_err());
 
         Ok(())
     }
