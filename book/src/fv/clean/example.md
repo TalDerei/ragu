@@ -1,8 +1,9 @@
-# A full example
+# A Full Example
 
-Let's walk through a simple example that shows all the concepts discussed so far.
-This is part of the Ragu gadgets currently formalized.
-Let's say we want to define a division circuit, that guarantees the correctness of the output as long as the provided denominator or numerator is non-zero.
+Let's walk through a simple example that shows all the concepts discussed so
+far. This is part of the Ragu gadgets currently formalized. Let's say we want to
+define a division circuit, that guarantees the correctness of the output as long
+as the provided denominator or numerator is non-zero.
 
 Let's start with a basic template definition.
 
@@ -62,15 +63,21 @@ def circuit : GeneralFormalCircuit (F p) Input field :=
 end Ragu.Circuits.Element.DivNonzero
 ```
 
-In this template we define the input shape, which is a structure with two inputs: `x` and `y`.
-The goal of the template is to return the division over the field `x / y`, as long as `x` or `y` is different from zero.
-The circuit invokes as a subcircuit `Core.mul`, which allocates a triple `(a, b, c)` and enforces that `a * b = c`, returning the allocated triple to the caller.
-The division circuit enforces that the input `x` is equal to the third component of the triple, and that the input `y` is equal to the second component of the triple, returning the first component.
+In this template we define the input shape, which is a structure with two
+inputs: `x` and `y`. The goal of the template is to return the division over the
+field `x / y`, as long as `x` or `y` is different from zero. The circuit invokes
+as a subcircuit `Core.mul`, which allocates a triple `(a, b, c)` and enforces
+that `a * b = c`, returning the allocated triple to the caller. The division
+circuit enforces that the input `x` is equal to the third component of the
+triple, and that the input `y` is equal to the second component of the triple,
+returning the first component.
 
-Intuitively, to compute `x / y`, the prover witnesses the result `z`, and then checks that `z * y = x`.
-Notice that if the caller provides both `x = 0` and `y = 0`, the circuit makes no guarantees.
+Intuitively, to compute `x / y`, the prover witnesses the result `z`, and then
+checks that `z * y = x`. Notice that if the caller provides both `x = 0` and
+`y = 0`, the circuit makes no guarantees.
 
-The property that is provided by the circuit is that, assuming either `x` or `y` is non-zero, the output is the result of the division of `x` and `y`.
+The property that is provided by the circuit is that, assuming either `x` or `y`
+is non-zero, the output is the result of the division of `x` and `y`.
 
 ```lean
 def Spec (input : Input (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
@@ -94,16 +101,21 @@ inst✝ : Fact (Nat.Prime p)
 ⊢ GeneralFormalCircuit.Soundness (F p) elaborated Assumptions Spec
 ```
 
-The first thing to do is invoking the `circuit_proof_start` tactic, that will set up the proof, and get rid of most of the machinery going on behind the scenes.
-Internally, this tactic uses the `circuit_norm` simp set, so definitions such as `Core.mul`, its `Spec`, and its output shape are unfolded automatically.
-For other circuits, pass additional definitions to `circuit_proof_start`, especially when using subcircuits to unfold their definitions, specs and assumptions.
+The first thing to do is invoking the `circuit_proof_start` tactic, that will
+set up the proof, and get rid of most of the machinery going on behind the
+scenes. Internally, this tactic uses the `circuit_norm` simp set, so definitions
+such as `Core.mul`, its `Spec`, and its output shape are unfolded automatically.
+For other circuits, pass additional definitions to `circuit_proof_start`,
+especially when using subcircuits to unfold their definitions, specs and
+assumptions.
 
 ```lean
 theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
 ```
 
-The proof state now becomes more interesting and already exposes the concrete constraints:
+The proof state now becomes more interesting and already exposes the concrete
+constraints:
 
 ```lean
 p : ℕ
@@ -123,10 +135,16 @@ h_holds :
 Let's describe every important hypothesis and the goal:
 - `input_x` and `input_y` are the input field elements.
 - `h_assumptions` is the verifier-side precondition `input.y ≠ 0 ∨ input.x ≠ 0`.
-- `h_holds` is the hypothesis that the constraints hold. It says the allocated row satisfies `quotient * denominator = numerator`, and that `numerator` and `denominator` were constrained to the input fields.
-- The goal is the specification, under the verifier-side assumption that `x` or `y` is nonzero.
+- `h_holds` is the hypothesis that the constraints hold. It says the allocated
+  row satisfies `quotient * denominator = numerator`, and that `numerator` and
+  `denominator` were constrained to the input fields.
+- The goal is the specification, under the verifier-side assumption that `x` or
+  `y` is nonzero.
 
-All the ingredients are there. The first conjunct of `h_holds` is the multiplication constraint, while the other two conjuncts connect the allocated row back to the input. From these facts, the field equation in the goal is immediate.
+All the ingredients are there. The first conjunct of `h_holds` is the
+multiplication constraint, while the other two conjuncts connect the allocated
+row back to the input. From these facts, the field equation in the goal is
+immediate.
 
 A single `grind` tactic finishes the proof.
 

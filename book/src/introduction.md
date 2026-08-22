@@ -21,8 +21,9 @@ feature support that is competitive with other ECC-based
 circuit arithmetizations.
 
 * This book documents [working with Ragu](guide/getting_started.md), the
-  [protocol's design](protocol/index.md), and
-  [implementation details](implementation/arch.md).
+  [protocol's design](protocol/index.md),
+  [implementation details](implementation/arch.md), and how the circuits are
+  [formally verified](fv/index.md) and [fuzzed](fuzzing/index.md).
 * The official Ragu source code repository is
   [available on GitHub](https://github.com/tachyon-zcash/ragu).
 * [Crate documentation](https://docs.rs/ragu) is available for official Ragu

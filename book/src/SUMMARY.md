@@ -60,6 +60,29 @@
   - [Staging](implementation/staging.md) <!-- todo -->
   - [Drivers]()
     - [Writing Custom Drivers](implementation/drivers/custom.md) <!-- todo -->
+- [Part IV: Formal Verification]()
+  - [Scope](fv/index.md)
+  - [The Clean Framework](fv/clean/index.md)
+    - [The Circuit Monad](fv/clean/circuit.md)
+    - [A Tiny Multiplication Circuit](fv/clean/mul.md)
+    - [Provable Types and Structs](fv/clean/provable.md)
+    - [Expressions and Environment](fv/clean/expression.md)
+    - [Operations](fv/clean/operations.md)
+    - [Formal Circuits](fv/clean/formal.md)
+    - [A Full Example](fv/clean/example.md)
+    - [Compile-Time Parameters](fv/clean/parameters.md)
+  - [Verified Circuits](fv/circuits/index.md)
+    - [Extraction](fv/circuits/extraction.md)
+    - [Inputs, Outputs, and Serialization](fv/circuits/serialization.md)
+    - [Fingerprint Equivalence Check](fv/circuits/fingerprint.md)
+    - [Assumptions](fv/circuits/assumptions.md)
+    - [CI Integration](fv/circuits/ci.md)
+- [Part V: Fuzzing]()
+  - [Overview](fuzzing/index.md) <!-- todo -->
+  - [Oracles](fuzzing/oracles.md) <!-- todo -->
+  - [Targets](fuzzing/targets.md) <!-- todo -->
+  - [Corpus and Triage](fuzzing/corpus.md) <!-- todo -->
+  - [Scheduled Runs](fuzzing/scheduled.md) <!-- todo -->
 
 ---
 
