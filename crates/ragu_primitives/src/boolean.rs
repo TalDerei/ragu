@@ -32,11 +32,11 @@ use crate::{
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
     #[ragu(wire)]
-    wire: D::Wire,
+    pub(crate) wire: D::Wire,
 
     /// Witness data for this boolean.
     #[ragu(value)]
-    value: DriverValue<D, bool>,
+    pub(crate) value: DriverValue<D, bool>,
 }
 
 impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
@@ -68,15 +68,6 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         allocator.donate(extra);
 
         Ok(Boolean { value, wire: a })
-    }
-
-    /// Wraps an existing wire as a boolean **without** constraining it.
-    ///
-    /// Crate-internal; the trace-extraction tooling reaches it through
-    /// `fv_utils::boolean_unchecked` under the `unstable-fv` feature.
-    #[cfg(feature = "unstable-fv")]
-    pub(crate) fn new_unchecked(wire: D::Wire, value: DriverValue<D, bool>) -> Self {
-        Boolean { wire, value }
     }
 
     /// Computes the NOT of this boolean. This is "free" in the circuit model.

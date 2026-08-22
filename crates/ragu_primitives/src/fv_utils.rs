@@ -1,10 +1,8 @@
 //! Escape hatches for the trace-extraction tooling (`qa/crates/lean_extraction`).
 //!
-//! This module exposes crate-internal constructors that bypass a gadget's
-//! invariant, so the formal-verification instances can hand their symbolic
-//! input wires to the real gadgets instead of re-implementing the gadgets'
-//! bodies. Each helper is a thin wrapper over a `pub(crate)` constructor, so
-//! the constructors themselves stay a single definition, and this module is
+//! This module provides constructors that bypass a gadget's invariant, so the
+//! formal-verification instances can hand their symbolic input wires to the
+//! real gadgets instead of re-implementing the gadgets' bodies. This module is
 //! the complete list of such hatches.
 //!
 //! Gated behind the `unstable-fv` feature; not part of the stable public API.
@@ -28,7 +26,7 @@ pub fn boolean_unchecked<'dr, D: Driver<'dr>>(
     wire: D::Wire,
     value: DriverValue<D, bool>,
 ) -> Boolean<'dr, D> {
-    Boolean::new_unchecked(wire, value)
+    Boolean { wire, value }
 }
 
 /// Assembles an [`Endoscalar`] from its 128 bits, least significant first,
@@ -47,5 +45,5 @@ pub fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
     value: DriverValue<D, u128>,
 ) -> Result<Endoscalar<'dr, D>> {
     let bits = bits.iter().map(Demoted::new).try_collect_fixed()?;
-    Ok(Endoscalar::new_unchecked(bits, value))
+    Ok(Endoscalar { bits, value })
 }
