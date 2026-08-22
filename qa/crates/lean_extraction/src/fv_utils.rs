@@ -1,18 +1,11 @@
-//! Escape hatches for the trace-extraction tooling (`qa/crates/lean_extraction`).
+//! Gadget-input helpers used only by the formal-verification extractor.
 //!
-//! This module provides constructors that bypass a gadget's invariant, so the
-//! formal-verification instances can hand their symbolic input wires to the
-//! real gadgets instead of re-implementing the gadgets' bodies. This module is
-//! the complete list of such hatches.
 //! The helpers build ordinary gadgets on a constraint-free wireless emulator,
 //! then use the public gadget-mapping API to replace their dummy wires with the
-//! extraction inputs; no gadget internals are exposed for this purpose.
-//!
-//! Gated behind the `unstable-fv` feature; not part of the stable public API.
-//! `lean_extraction` is its own Cargo workspace precisely so that enabling the
-//! feature cannot unify into the library builds.
+//! extraction inputs. This lets instances call the real gadget implementations
+//! without exposing any extraction-specific API from `ragu_primitives`.
 
-use alloc::vec::{IntoIter, Vec};
+use std::vec::{IntoIter, Vec};
 
 use ragu_core::{
     Error, Result,
@@ -23,8 +16,7 @@ use ragu_core::{
     },
     gadgets::{Bound, Gadget},
 };
-
-use crate::{Boolean, Endoscalar};
+use ragu_primitives::{Boolean, Endoscalar};
 
 type TemplateDriver<D> =
     Emulator<Wireless<<D as DriverTypes>::MaybeKind, <D as DriverTypes>::ImplField>>;
@@ -77,37 +69,18 @@ where
     template.map(&mut WireRemapper::<D>::new(wires))
 }
 
-/// Wraps an existing wire as a [`Boolean`] **without** constraining it.
-///
-/// Nothing ties `wire` to `0` or `1`; that invariant is the caller's. The
-/// extraction instances use this to pass input wires to gadgets that take a
-/// `&Boolean` (`Boolean::and`, `Point::conditional_negate`, …); the Lean
-/// reimplementations carry the boolean-ness as an `Assumptions`.
-///
-/// # Errors
-///
-/// Returns an error if the wireless template cannot be constructed or remapped.
-pub fn boolean_unchecked<'dr, D: Driver<'dr>>(
+/// Wraps an existing wire as a [`Boolean`] without constraining it.
+pub(crate) fn boolean_unchecked<'dr, D: Driver<'dr>>(
     wire: D::Wire,
     value: DriverValue<D, bool>,
 ) -> Result<Boolean<'dr, D>> {
     let mut dr = TemplateDriver::<D>::wireless();
     let template = Boolean::alloc(&mut dr, &mut (), value)?;
-    remap_template(&template, alloc::vec![wire])
+    remap_template(&template, vec![wire])
 }
 
-/// Assembles an [`Endoscalar`] from its 128 bits, least significant first,
-/// **without** any check that they are booleans.
-///
-/// `value` is the witness the bits are supposed to encode; nothing ties the
-/// two together (exactly as with [`Endoscalar::alloc`], whose `value` is also
-/// unconstrained witness data). The extraction instances use this to hand
-/// input-wire booleans to the real `Endoscalar::lift` / `group_scale`.
-///
-/// # Errors
-///
-/// Fails unless exactly 128 bits are given.
-pub fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
+/// Assembles an [`Endoscalar`] from exactly 128 input-wire booleans.
+pub(crate) fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
     bits: &[Boolean<'dr, D>],
     value: DriverValue<D, u128>,
 ) -> Result<Endoscalar<'dr, D>> {

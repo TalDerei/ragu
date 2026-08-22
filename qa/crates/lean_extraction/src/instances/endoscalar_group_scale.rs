@@ -1,11 +1,12 @@
 use group::CurveAffine;
 use ragu_core::drivers::Driver;
 use ragu_pasta::{EpAffine, Fp};
-use ragu_primitives::{Point, fv_utils};
+use ragu_primitives::Point;
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
+    fv_utils,
     instance::{CircuitInstance, WireCollector, WireDeserializer, boolean_from_wire},
 };
 

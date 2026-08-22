@@ -1,10 +1,10 @@
 use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
-use ragu_primitives::fv_utils;
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
+    fv_utils,
     instance::{CircuitInstance, WireCollector, boolean_from_wire},
 };
 
