@@ -32,11 +32,11 @@ use crate::{
 pub struct Boolean<'dr, D: Driver<'dr>> {
     /// The wire constrained to hold either `0` or `1` in the scalar field.
     #[ragu(wire)]
-    pub(crate) wire: D::Wire,
+    wire: D::Wire,
 
     /// Witness data for this boolean.
     #[ragu(value)]
-    pub(crate) value: DriverValue<D, bool>,
+    value: DriverValue<D, bool>,
 }
 
 impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {

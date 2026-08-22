@@ -113,7 +113,13 @@ impl<F: Field> WireMap<F> for WireDeserializer<F> {
 /// under the `unstable-fv` feature this crate enables. The boolean-ness of the
 /// wire is not established here; on the Lean side it is the corresponding
 /// `Assumptions` (`IsBool cond`).
-pub fn boolean_from_wire<'dr, F: Field>(wire: Expr<F>) -> Boolean<'dr, ExtractionDriver<F>> {
+///
+/// # Errors
+///
+/// Propagates a structural error from the feature-gated gadget remapping.
+pub fn boolean_from_wire<'dr, F: Field>(
+    wire: Expr<F>,
+) -> ragu_core::Result<Boolean<'dr, ExtractionDriver<F>>> {
     fv_utils::boolean_unchecked(wire, ExtractionDriver::<F>::just(|| false))
 }
 

@@ -271,11 +271,11 @@ fn endoscalar_in_range<F: PrimeFieldBits>(value: F) -> bool {
 pub struct Endoscalar<'dr, D: Driver<'dr>> {
     /// The bits of this endoscalar in little-endian order.
     #[ragu(gadget)]
-    pub(crate) bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ u128::BITS as usize }>>,
+    bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ u128::BITS as usize }>>,
 
     /// Witness data for the represented endoscalar in compact representation.
     #[ragu(value)]
-    pub(crate) value: DriverValue<D, u128>,
+    value: DriverValue<D, u128>,
 }
 
 impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {

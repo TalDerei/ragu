@@ -22,7 +22,7 @@ impl CircuitInstance for PointConditionalNegateInstance {
         let cond_wires = dr.alloc_input_wires(1);
         let point_wires = dr.alloc_input_wires(2);
 
-        let cond = boolean_from_wire(cond_wires[0].clone());
+        let cond = boolean_from_wire(cond_wires[0].clone())?;
         let point_template = Point::constant(dr, EpAffine::generator())?;
         let point = WireDeserializer::new(point_wires).into_gadget(&point_template)?;
 

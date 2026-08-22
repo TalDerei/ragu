@@ -24,7 +24,7 @@ impl CircuitInstance for EndoscalarLiftInstance {
             .alloc_input_wires(128)
             .into_iter()
             .map(boolean_from_wire)
-            .collect();
+            .collect::<ragu_core::Result<_>>()?;
         let endo = fv_utils::endoscalar_unchecked(&bits, ExtractionDriver::<Fp>::just(|| 0u128))?;
 
         let lifted = endo.lift(dr)?;

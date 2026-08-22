@@ -29,7 +29,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
             .alloc_input_wires(128)
             .into_iter()
             .map(boolean_from_wire)
-            .collect();
+            .collect::<ragu_core::Result<_>>()?;
         let point_wires = dr.alloc_input_wires(2);
 
         let endo = fv_utils::endoscalar_unchecked(&bits, ExtractionDriver::<Fp>::just(|| 0u128))?;

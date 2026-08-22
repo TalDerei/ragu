@@ -22,7 +22,7 @@ impl CircuitInstance for BooleanConditionalSelectInstance {
         let a_wires = dr.alloc_input_wires(1);
         let b_wires = dr.alloc_input_wires(1);
 
-        let cond = boolean_from_wire(cond_wires[0].clone());
+        let cond = boolean_from_wire(cond_wires[0].clone())?;
         let element_template = Element::constant(dr, Fp::ZERO);
         let a = WireDeserializer::new(a_wires).into_gadget(&element_template)?;
         let b = WireDeserializer::new(b_wires).into_gadget(&element_template)?;

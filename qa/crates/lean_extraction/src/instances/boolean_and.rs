@@ -17,8 +17,8 @@ impl CircuitInstance for BooleanAndInstance {
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
         let a_wires = dr.alloc_input_wires(1);
         let b_wires = dr.alloc_input_wires(1);
-        let a = boolean_from_wire(a_wires[0].clone());
-        let b = boolean_from_wire(b_wires[0].clone());
+        let a = boolean_from_wire(a_wires[0].clone())?;
+        let b = boolean_from_wire(b_wires[0].clone())?;
 
         let result = a.and(dr, &b)?;
 
