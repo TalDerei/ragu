@@ -34,11 +34,14 @@ def Spec (input : Input (F p)) (output : Spec.Point (F p)) :=
 instance elaborated : ElaboratedCircuit (F p) Input Spec.Point where
   main
   localLength _ := 3
+  -- `y` selected against `-y`: the `ConditionalSelect` output is `y + (its Mul wire)`.
+  output input offset := ⟨input.x, input.y + varFromOffset field (offset + 2)⟩
+  output_eq := by
+    simp [main, circuit_norm, Boolean.ConditionalSelect.circuit]
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  simp [circuit_norm, Boolean.ConditionalSelect.circuit,
-    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec] at h_holds
+  circuit_proof_start [Boolean.ConditionalSelect.circuit,
+    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by

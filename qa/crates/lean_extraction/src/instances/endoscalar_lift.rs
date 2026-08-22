@@ -2,8 +2,13 @@ use ff::{Field, WithSmallOrderMulGroup};
 use ragu_arithmetic::Coeff;
 use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
+use ragu_primitives::Element;
 
-use crate::{driver::ExtractionDriver, expr::Expr, instance::CircuitInstance};
+use crate::{
+    driver::ExtractionDriver,
+    expr::Expr,
+    instance::{CircuitInstance, WireCollector},
+};
 
 pub struct EndoscalarLiftInstance;
 
@@ -12,39 +17,40 @@ impl CircuitInstance for EndoscalarLiftInstance {
 
     /// Mirrors `Endoscalar::lift` on the constraint side without going through
     /// `Endoscalar` (whose fields are private). For each of the 64 bit pairs
-    /// `(n, e)`, we inline the `Boolean::and(n, e)` body — one `mul` gate plus
-    /// two `enforce_equal`s — and build the output `Expression` tree to match
-    /// the Lean reimpl's `stepCircuit` shape verbatim. Without this manual tree
-    /// shaping, the actual `Endoscalar::lift` (which uses `acc.double() + .add`
-    /// chains) would produce a left-associated tree that the formal-instance
-    /// proof couldn't byte-equate against the Lean's right-grouped form.
+    /// `(n, e)` the `Boolean::and(n, e)` body is inlined — one `mul` gate plus
+    /// two `enforce_equal`s, the same pattern as `boolean_and.rs`, because
+    /// `Boolean` has no constructor from a bare wire. Everything else is the
+    /// deployed gadget's own `Element` calls (`zero`, `scale`, `add`,
+    /// `constant`), in the deployed order.
     ///
-    /// `boolean_and.rs` follows the same inlining pattern for the same reason
-    /// (no public `Boolean` constructor from a bare wire).
+    /// **One deliberate divergence**: the deployed `acc.double()` is
+    /// `acc.add(acc)`, which the extraction driver records as `Add(acc, acc)`
+    /// with *two copies* of the accumulator tree — the tree doubles every
+    /// iteration and the output would have `2^64` nodes, which neither the
+    /// encoder nor the Lean fingerprint traversal can materialize (production
+    /// wires are indices, so the shipped circuit never pays this). The instance
+    /// uses `acc.scale(Coeff::Two)` instead, recorded as `Mul(Const 2, acc)`:
+    /// equal in value, one reference, linear in size. The Lean reimpl
+    /// (`Lift.stepCircuit`) mirrors this same shape, so the digest certifies the
+    /// shipped output up to that one value-preserving rewrite — the same class
+    /// of tree-encoding workaround as `group_scale`'s freshening, verified by
+    /// inspection rather than by the fingerprint.
+    ///
+    /// Input wires: `bits[0..128]` (128 wires). Output: the lifted element.
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        // Allocate 128 input wires: bits[0..128].
         let bit_wires: Vec<Expr<Fp>> = (0..128usize)
             .map(|_| dr.alloc_input_wires(1).into_iter().next().unwrap())
             .collect();
 
-        let zeta = Fp::ZETA;
-        let one = Fp::ONE;
-        let coeff_n = -Fp::from(2);
-        let coeff_e = zeta - one;
-        let coeff_ne = (one - zeta).double();
+        // Same constants, in the same order, as `Endoscalar::lift`.
+        let mut constant_term = (Fp::ZETA + Fp::ONE).double();
+        let coeffs = [
+            -Fp::from(2),
+            Fp::ZETA - Fp::ONE,
+            (Fp::ONE - Fp::ZETA).double(),
+        ];
 
-        // Compute `ctFinal ζ 64 = 2^65 * (ζ+1) + 2^64 - 1`, iteratively the
-        // same way `Endoscalar::lift` does it.
-        let mut ct = (zeta + one).double(); // 2 * (ζ + 1)
-        for _ in 0..64 {
-            ct = ct.double();
-            ct += one;
-        }
-        let ct_final = ct;
-
-        // Build acc as an Expr tree. Start at `Expression.const 0` to mirror
-        // the Lean reimpl's `Fin.foldl 64 ... (Expression.const 0)`.
-        let mut acc: Expr<Fp> = Expr::Const(Coeff::Zero);
+        let mut acc = Element::zero(dr);
 
         for i in 0..64usize {
             let n_wire = &bit_wires[2 * i];
@@ -56,37 +62,28 @@ impl CircuitInstance for EndoscalarLiftInstance {
             let (mul_a, mul_b, mul_c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
             dr.enforce_equal(&mul_a, n_wire)?;
             dr.enforce_equal(&mul_b, e_wire)?;
-            let ne_wire = mul_c;
 
-            // Build the Lean-shaped `stepCircuit` update:
-            //   acc' = (Const 2 * acc) + ((Const coeff_n * n + Const coeff_e * e) + Const coeff_ne * ne)
-            let term_acc = Expr::Mul(Box::new(Expr::Const(Coeff::Two)), Box::new(acc));
-            let term_n = Expr::Mul(
-                Box::new(Expr::Const(Coeff::Arbitrary(coeff_n))),
-                Box::new(n_wire.clone()),
-            );
-            let term_e = Expr::Mul(
-                Box::new(Expr::Const(Coeff::Arbitrary(coeff_e))),
-                Box::new(e_wire.clone()),
-            );
-            let term_ne = Expr::Mul(
-                Box::new(Expr::Const(Coeff::Arbitrary(coeff_ne))),
-                Box::new(ne_wire),
-            );
-            let inner = Expr::Add(
-                Box::new(Expr::Add(Box::new(term_n), Box::new(term_e))),
-                Box::new(term_ne),
-            );
-            acc = Expr::Add(Box::new(term_acc), Box::new(inner));
+            let n = Element::promote(n_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
+            let e = Element::promote(e_wire.clone(), ExtractionDriver::<Fp>::just(|| Fp::ZERO));
+            let ne = Element::promote(mul_c, ExtractionDriver::<Fp>::just(|| Fp::ZERO));
+
+            // Deployed: `acc.double()` — see the divergence note above.
+            acc = acc.scale(dr, Coeff::Two);
+            constant_term = constant_term.double();
+            constant_term += Fp::ONE;
+
+            let n = n.scale(dr, Coeff::Arbitrary(coeffs[0]));
+            let e = e.scale(dr, Coeff::Arbitrary(coeffs[1]));
+            let ne = ne.scale(dr, Coeff::Arbitrary(coeffs[2]));
+
+            acc = acc.add(dr, &n);
+            acc = acc.add(dr, &e);
+            acc = acc.add(dr, &ne);
         }
 
-        // Final output: `acc + Const ct_final` (mirrors the trailing
-        // `return acc + Expression.const (ctFinal ζ 64)` in the Lean reimpl).
-        let result = Expr::Add(
-            Box::new(acc),
-            Box::new(Expr::Const(Coeff::Arbitrary(ct_final))),
-        );
+        let tmp = Element::constant(dr, constant_term);
+        acc = acc.add(dr, &tmp);
 
-        Ok(vec![result])
+        WireCollector::collect_from(&acc)
     }
 }

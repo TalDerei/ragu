@@ -116,12 +116,11 @@ theorem soundness (curveParams : Spec.CurveParams p) :
   have h_add_eq :
       Spec.Point.add_incomplete { x := x1, y := y1 } { x := x2, y := y2 } =
         some { x := env.get (i₀ + 3 + 3 + 2) + -x1 + -x2,
-               y := env.get (i₀ + 3 + 3 + 3 + 2) + -y1 } := by
-    simp only [Spec.Point.add_incomplete, if_neg h_x_ne, Option.some.injEq,
-      Spec.Point.mk.injEq]
-    refine ⟨?_, ?_⟩
-    · rw [h_sq, h_delta]; ring
-    · rw [h_y_term, h_sq, h_delta]; ring
+               y := env.get (i₀ + 3 + 3 + 3 + 2) + -y1 } :=
+    Lemmas.add_incomplete_eq_of_wires x1 y1 x2 y2
+      (env.get (i₀ + 3)) (env.get (i₀ + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 2))
+      h_x_ne h_delta (by linear_combination (id h_sq : @Eq (F p) _ _))
+      (by linear_combination (id h_y_term : @Eq (F p) _ _))
   refine ⟨h_add_eq, ?_⟩
   simpa [h_add_eq] using
     Lemmas.add_incomplete_preserves_membership

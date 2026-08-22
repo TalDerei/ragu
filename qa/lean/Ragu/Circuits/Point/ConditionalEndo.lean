@@ -38,12 +38,15 @@ instance elaborated (curveParams : Spec.CurveParams p)
     : ElaboratedCircuit (F p) Input Spec.Point where
   main := main curveParams
   localLength _ := 3
+  -- `x` selected against `ζ·x`: the `ConditionalSelect` output is `x + (its Mul wire)`.
+  output input offset := ⟨input.x + varFromOffset field (offset + 2), input.y⟩
+  output_eq := by
+    simp [main, circuit_norm, Boolean.ConditionalSelect.circuit]
 
 theorem soundness (curveParams : Spec.CurveParams p)
     : Soundness (F p) (elaborated curveParams) (Assumptions curveParams) (Spec curveParams) := by
-  circuit_proof_start
-  simp [circuit_norm, Boolean.ConditionalSelect.circuit,
-    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec] at h_holds
+  circuit_proof_start [Boolean.ConditionalSelect.circuit,
+    Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
 theorem completeness (curveParams : Spec.CurveParams p)
