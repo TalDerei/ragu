@@ -29,6 +29,11 @@ let p2 = WireDeserializer::new(input_wires_2).into_gadget(&point_template)?;
 let mut nonzero = WireDeserializer::new(nonzero_input).into_gadget(&element_template)?;
 ```
 
+The template only supplies the gadget's *structure*; every wire it carries is replaced.
+For gadgets whose public constructors emit operations (`Boolean`, `Endoscalar`), the private `wire_remap` module builds a constraint-free template on Ragu's wireless emulator and replaces its dummy wires with the symbolic inputs through the public gadget-mapping API.
+The remapping emits no Boolean constraints, so each Lean instance supplies any required `IsBool` preconditions through its `Assumptions`.
+Either way, the extraction instance then calls the real gadget methods — `Boolean::and`, `Point::conditional_negate`, … — instead of mirroring their bodies, without requiring extraction-specific API in `ragu_primitives`.
+
 So the flat input interface is composed of:
 
 - two input wires for `P1`,

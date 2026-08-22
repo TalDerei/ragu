@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ff::Field;
 use ragu_arithmetic::Coeff;
 use ragu_core::drivers::LinearExpression;
@@ -50,12 +52,12 @@ impl<F: Field> LinearExpression<Expr<F>, F> for ExprLc<F> {
         // multiplication node to keep the expression compact.
         let term = match effective {
             Coeff::One => wire.clone(),
-            other => Expr::Mul(Box::new(Expr::Const(other)), Box::new(wire.clone())),
+            other => Expr::Mul(Arc::new(Expr::Const(other)), Arc::new(wire.clone())),
         };
 
         self.expr = Some(match self.expr {
             None => term,
-            Some(acc) => Expr::Add(Box::new(acc), Box::new(term)),
+            Some(acc) => Expr::Add(Arc::new(acc), Arc::new(term)),
         });
 
         self

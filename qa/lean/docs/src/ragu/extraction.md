@@ -40,6 +40,7 @@ It mirrors the shape of `Clean`'s `Expression` type:
 
 Variables are referenced by their index, allocated contiguously starting at `0`, mimicking the circuit model of `Clean`.
 The driver's `ONE` wire is represented as the constant expression `1` rather than as a variable.
+Sub-expressions are reference-counted, so a circuit that uses the same virtual wire twice (`Element::double` is `add(self, self)`) records a shared node rather than a copy; this keeps extraction linear for gadgets that feed their own symbolic output back into the next iteration, and the fingerprint hashes each expression's polynomial normal form rather than this tree shape.
 
 ## Mapping into `Clean` operation semantics
 

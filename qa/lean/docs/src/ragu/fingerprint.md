@@ -5,11 +5,12 @@ established by a *fingerprint equivalence check*, in the style of comparing
 verification keys.
 
 A fingerprint is the SHA-256 digest of a canonical byte encoding of a
-circuit's operation trace and output expressions. It is computed twice,
-through two independent implementations:
+circuit's operation trace and output expressions, with every expression
+taken in its *polynomial normal form* (below). It is computed twice, through
+two independent implementations:
 
 - The **Rust extractor** computes it directly from its in-memory extracted
-  trace: `cargo run -p lean_extraction -- fingerprint` prints one
+  trace: `cargo run --manifest-path qa/crates/lean_extraction/Cargo.toml -- fingerprint` prints one
   `<module name> <digest>` line per exported instance.
 - The **Lean side** computes it from each `FormalInstance`'s
   `reimplementation` — the structured `Clean` circuit — instantiated at a
@@ -24,10 +25,22 @@ Lean side also fails the comparison.
 
 ## What a match means
 
-The encoding is injective: every token is either fixed-width or tag-prefixed
-with fixed arity, so the trace can be unambiguously decoded from the digest
-preimage. Two traces therefore produce the same digest only if they are
-identical, up to SHA-256 collisions.
+Expressions are not hashed in the tree shape a driver happened to build them
+in but as canonical polynomials over the wire variables: a sorted list of
+monomials with their coefficients, zero terms dropped. `w + w` and `2 · w`
+therefore encode identically, as do `(a + b) + c` and `a + (b + c)`. This is
+the semantics a constraint system actually has — a constraint `e = 0` and a
+virtual wire `e` depend on `e` only as a polynomial in the wires, which is
+exactly what a production driver flattens an `add`/`enforce_zero` linear
+combination into. It is also what makes the check total: a gadget such as
+`Endoscalar::lift` feeds its own virtual output back into itself 64 times, so
+its output *as a tree* has `2⁶⁴` nodes, while its polynomial has a few hundred
+terms.
+
+The encoding of a normal form is injective: every token is either fixed-width
+or length-prefixed, so the normalized trace can be unambiguously decoded from
+the digest preimage. Two traces therefore produce the same digest only if
+they are identical as polynomials, up to SHA-256 collisions.
 
 A match consequently shows that the reimplementation emits exactly the same
 witness allocations, constraints, and outputs as the Rust circuit. Combined
@@ -49,6 +62,11 @@ implementations of the encoding (Rust:
 
 - The check trusts that both encoder implementations realize the documented
   encoding, and it trusts SHA-256 collision resistance.
+- It trusts that both normalizers compute the same normal form. The Rust
+  extractor keeps expressions as reference-counted DAGs and normalizes them
+  with a pass memoized by node address; the Lean side normalizes `Clean`'s
+  `Expression` trees structurally. Both are small, deterministic functions
+  (`normalize` in each encoder) and are part of the trusted base.
 - The reimplementation is instantiated at one canonical input vector rather
   than universally quantified over symbolic inputs. Since the trace is a
   function of the input expressions only through their occurrence inside
@@ -68,30 +86,36 @@ All integers are unsigned 64-bit little-endian; field elements and the
 modulus are 32-byte little-endian. The digest preimage is:
 
 ```text
-"ragu-fv-fingerprint-v1"      (22 raw ASCII bytes, domain separator)
+"ragu-fv-fingerprint-v2"      (22 raw ASCII bytes, domain separator)
 modulus                       (32 bytes)
 inputLen                      (u64)
 outputLen                     (u64)
 opCount                       (u64)
 op*                           (opCount operations)
-output*                       (outputLen expressions)
+output*                       (outputLen polynomials)
 ```
 
 Operations (`FlatOperation`, after flattening subcircuits):
 
 ```text
 witness: 0x01 ++ count (u64)
-assert:  0x02 ++ expr
+assert:  0x02 ++ poly
 ```
 
-Expressions:
+Polynomials, the normal form of an expression:
 
 ```text
-var:   0x01 ++ index (u64)
-const: 0x02 ++ value (32 bytes)
-add:   0x03 ++ expr ++ expr
-mul:   0x04 ++ expr ++ expr
+poly: termCount (u64) ++ term*
+term: degree (u64) ++ varIndex (u64) × degree ++ coefficient (32 bytes)
 ```
+
+A term's variable indices are ascending, with multiplicity (`x₃²` is
+`[3, 3]`); the empty monomial is the constant term. Terms are sorted by
+monomial in lexicographic order, a proper prefix sorting first (the constant
+term, if any, comes first), and terms with a zero coefficient are omitted, so
+the constant `0` is the empty polynomial. Normalization expands `add` into a
+merge of the two operands' terms and `mul` into the distributed product with
+each product monomial re-sorted.
 
 `Clean`'s `Expression` type has no constructor for input variables, so the
 Lean side instantiates the reimplementation at the canonical input vector
@@ -109,7 +133,7 @@ reimplementation; a contrived one falls under the trust assumptions above.
 The list of fingerprinted instances,
 `qa/lean/Ragu/Fingerprint/Instances.lean`, is generated by the exporter
 (together with the `Ragu/Instances.lean` import root) and kept up to date by
-`cargo run -p lean_extraction -- check`, so adding a new instance to the
+`cargo run --manifest-path qa/crates/lean_extraction/Cargo.toml -- check`, so adding a new instance to the
 exporter's target table automatically enrolls it in the fingerprint check
 and requires the corresponding `formal_instance` to exist. The SHA-256
 implementations are hand-rolled on both sides (the digest comparison is a

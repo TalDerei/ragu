@@ -43,9 +43,12 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let lambda_2_half ← Element.Divide.circuit ⟨y_p + y_p, x_p - x_r⟩
   let lambda_2 := lambda_2_half - lambda_1
 
-  -- x_s = λ₂² - x_r - x_p
+  -- x_s = λ₂² - x_r - x_p, written with x_r expanded and the two x_p cancelled
+  -- (x_s = λ₂² - λ₁² + x_q). Same polynomial as the Rust gadget's expression,
+  -- which is all the fingerprint compares; spelling it this way keeps the
+  -- accumulator's symbolic tree linear when `group_scale` chains 64 of these.
   let lambda_2_sq ← Element.Square.circuit lambda_2
-  let x_s := lambda_2_sq - x_r - x_p
+  let x_s := lambda_2_sq - lambda_1_sq + x_q
 
   -- y_s = λ₂ (x_p - x_s) - y_p
   let y_term ← Element.Mul.circuit ⟨lambda_2, x_p - x_s⟩
@@ -74,11 +77,10 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
   main
   -- divide1 (3) + square1 (3) + divide2 (3) + square2 (3) + mul_for_y (3) = 15
   localLength _ := 15
-  -- Offsets follow the sub-gadget layout: `x_r` uses the first Square's
-  -- product wire, `x_s` the second's, `y_s` the trailing Mul's.
+  -- Offsets follow the sub-gadget layout: `x_s` uses the two Squares' product
+  -- wires, `y_s` the trailing Mul's.
   output input offset :=
-    ⟨varFromOffset field (offset + 3 + 3 + 3 + 2) -
-        (varFromOffset field (offset + 3 + 2) - input.P1.x - input.P2.x) - input.P1.x,
+    ⟨varFromOffset field (offset + 3 + 3 + 3 + 2) - varFromOffset field (offset + 3 + 2) + input.P2.x,
      varFromOffset field (offset + 3 + 3 + 3 + 3 + 2) - input.P1.y⟩
   output_eq := by
     intro input offset
@@ -137,6 +139,11 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     (env.get (i₀ + 3 + 3 + 3 + 2)) (env.get (i₀ + 3 + 3 + 3 + 3 + 2))
     h_x_ne h_delta (by linear_combination (id h_sq1 : @Eq (F p) _ _)) h_r_ne_xp h_lam2half
     (by linear_combination (id h_sq2 : @Eq (F p) _ _)) (by linear_combination (id h_yterm : @Eq (F p) _ _))
+  -- The circuit's `x_s` is the cancelled form of the lemma's; bridge the two.
+  have h_xs : env.get (i₀ + 3 + 3 + 3 + 2) + -env.get (i₀ + 3 + 2) + input_P2_x =
+      env.get (i₀ + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 2) + -input_P1_x + -input_P2_x) +
+        -input_P1_x := by ring
+  rw [h_xs]
   refine ⟨_, h_add_eq1, h_add_eq2, ?_⟩
   have h_r_curve := by
     simpa [h_add_eq1] using Lemmas.add_incomplete_preserves_membership
