@@ -1,13 +1,12 @@
 use group::CurveAffine;
-use ragu_core::drivers::Driver;
 use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    fv_utils,
-    instance::{CircuitInstance, WireCollector, WireDeserializer, boolean_from_wire},
+    instance::{CircuitInstance, WireCollector, WireDeserializer},
+    wire_remap::{boolean_from_wire, endoscalar_from_bits},
 };
 
 pub struct EndoscalarGroupScaleInstance;
@@ -17,7 +16,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
 
     /// Drives the real `Endoscalar::group_scale` on an `Endoscalar` assembled
     /// from the bit input wires (see [`boolean_from_wire`] and
-    /// `fv_utils::endoscalar_unchecked`) and a point assembled from the
+    /// [`endoscalar_from_bits`]) and a point assembled from the
     /// coordinate input wires. The gadget builds its own unchecked
     /// `NonzeroBank`, so — as in the deployed circuit — no fold or discharge
     /// constraints are emitted; the Lean reimplementation carries that
@@ -33,7 +32,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
             .collect::<ragu_core::Result<_>>()?;
         let point_wires = dr.alloc_input_wires(2);
 
-        let endo = fv_utils::endoscalar_unchecked(&bits, ExtractionDriver::<Fp>::just(|| 0u128))?;
+        let endo = endoscalar_from_bits(&bits)?;
         let point_template = Point::constant(dr, EpAffine::generator())?;
         let p = WireDeserializer::new(point_wires).into_gadget(&point_template)?;
 

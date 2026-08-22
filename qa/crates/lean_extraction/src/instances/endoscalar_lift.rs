@@ -1,11 +1,10 @@
-use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
 
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    fv_utils,
-    instance::{CircuitInstance, WireCollector, boolean_from_wire},
+    instance::{CircuitInstance, WireCollector},
+    wire_remap::{boolean_from_wire, endoscalar_from_bits},
 };
 
 pub struct EndoscalarLiftInstance;
@@ -14,8 +13,7 @@ impl CircuitInstance for EndoscalarLiftInstance {
     type Field = Fp;
 
     /// Drives the real `Endoscalar::lift` on an `Endoscalar` assembled from the
-    /// 128 input wires (see [`boolean_from_wire`] and
-    /// `fv_utils::endoscalar_unchecked`).
+    /// 128 input wires (see [`boolean_from_wire`] and [`endoscalar_from_bits`]).
     ///
     /// Input wires: `bits[0..128]`, least significant first. Output: the lifted
     /// element.
@@ -25,7 +23,7 @@ impl CircuitInstance for EndoscalarLiftInstance {
             .into_iter()
             .map(boolean_from_wire)
             .collect::<ragu_core::Result<_>>()?;
-        let endo = fv_utils::endoscalar_unchecked(&bits, ExtractionDriver::<Fp>::just(|| 0u128))?;
+        let endo = endoscalar_from_bits(&bits)?;
 
         let lifted = endo.lift(dr)?;
 

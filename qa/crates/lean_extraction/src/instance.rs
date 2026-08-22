@@ -1,13 +1,11 @@
 use core::marker::PhantomData;
 
 use ff::{Field, PrimeField};
-use ragu_core::{convert::WireMap, drivers::Driver, gadgets::Gadget};
-use ragu_primitives::Boolean;
+use ragu_core::{convert::WireMap, gadgets::Gadget};
 
 use crate::{
     driver::ExtractionDriver,
     expr::{Expr, Op},
-    fv_utils,
 };
 
 /// A [`WireMap`] that collects all physical wires from a gadget by cloning
@@ -104,23 +102,6 @@ impl<F: Field> WireMap<F> for WireDeserializer<F> {
             .next()
             .ok_or_else(|| ragu_core::Error::InvalidWitness("WireDeserializer exhausted".into()))
     }
-}
-
-/// Wraps an input wire as a [`Boolean`] without emitting any operation, so an
-/// instance can pass it to the real `Boolean` / `Point` gadget methods that
-/// take `&Boolean` instead of mirroring their bodies.
-///
-/// Uses the extractor's private `fv_utils::boolean_unchecked` helper. The
-/// boolean-ness of the wire is not established here; on the Lean side it is
-/// the corresponding `Assumptions` (`IsBool cond`).
-///
-/// # Errors
-///
-/// Propagates a structural error from the gadget remapping.
-pub fn boolean_from_wire<'dr, F: Field>(
-    wire: Expr<F>,
-) -> ragu_core::Result<Boolean<'dr, ExtractionDriver<F>>> {
-    fv_utils::boolean_unchecked(wire, ExtractionDriver::<F>::just(|| false))
 }
 
 /// A circuit's extracted trace: its input wire count, recorded operations,

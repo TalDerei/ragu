@@ -7,6 +7,7 @@
 
 use std::vec::{IntoIter, Vec};
 
+use ff::Field;
 use ragu_core::{
     Error, Result,
     convert::WireMap,
@@ -17,6 +18,8 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
 };
 use ragu_primitives::{Boolean, Endoscalar};
+
+use crate::{driver::ExtractionDriver, expr::Expr};
 
 type TemplateDriver<D> =
     Emulator<Wireless<<D as DriverTypes>::MaybeKind, <D as DriverTypes>::ImplField>>;
@@ -70,7 +73,7 @@ where
 }
 
 /// Wraps an existing wire as a [`Boolean`] without constraining it.
-pub(crate) fn boolean_unchecked<'dr, D: Driver<'dr>>(
+fn boolean_unchecked<'dr, D: Driver<'dr>>(
     wire: D::Wire,
     value: DriverValue<D, bool>,
 ) -> Result<Boolean<'dr, D>> {
@@ -80,7 +83,7 @@ pub(crate) fn boolean_unchecked<'dr, D: Driver<'dr>>(
 }
 
 /// Assembles an [`Endoscalar`] from exactly 128 input-wire booleans.
-pub(crate) fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
+fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
     bits: &[Boolean<'dr, D>],
     value: DriverValue<D, u128>,
 ) -> Result<Endoscalar<'dr, D>> {
@@ -88,4 +91,31 @@ pub(crate) fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
     let template = Endoscalar::alloc(&mut dr, value)?;
     let wires = bits.iter().map(|bit| bit.wire().clone()).collect();
     remap_template(&template, wires)
+}
+
+/// Wraps an input wire as a [`Boolean`] without emitting any operation, so an
+/// instance can pass it to real gadget methods that take `&Boolean`.
+///
+/// The boolean-ness of the wire is not established here; on the Lean side it
+/// is the corresponding `Assumptions` (`IsBool cond`).
+///
+/// # Errors
+///
+/// Propagates a structural error from the gadget remapping.
+pub(crate) fn boolean_from_wire<'dr, F: Field>(
+    wire: Expr<F>,
+) -> Result<Boolean<'dr, ExtractionDriver<F>>> {
+    boolean_unchecked(wire, ExtractionDriver::<F>::just(|| false))
+}
+
+/// Assembles an [`Endoscalar`] from exactly 128 wrapped input bits without
+/// emitting any operation.
+///
+/// # Errors
+///
+/// Propagates a structural error from the gadget remapping.
+pub(crate) fn endoscalar_from_bits<'dr, F: Field>(
+    bits: &[Boolean<'dr, ExtractionDriver<F>>],
+) -> Result<Endoscalar<'dr, ExtractionDriver<F>>> {
+    endoscalar_unchecked(bits, ExtractionDriver::<F>::just(|| 0u128))
 }

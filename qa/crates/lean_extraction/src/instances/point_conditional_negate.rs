@@ -5,7 +5,8 @@ use ragu_primitives::Point;
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer, boolean_from_wire},
+    instance::{CircuitInstance, WireCollector, WireDeserializer},
+    wire_remap::boolean_from_wire,
 };
 
 pub struct PointConditionalNegateInstance;

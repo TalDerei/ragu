@@ -3,7 +3,8 @@ use ragu_pasta::Fp;
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    instance::{CircuitInstance, WireCollector, boolean_from_wire},
+    instance::{CircuitInstance, WireCollector},
+    wire_remap::boolean_from_wire,
 };
 
 pub struct BooleanAndInstance;

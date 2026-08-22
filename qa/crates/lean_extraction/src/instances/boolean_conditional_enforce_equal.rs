@@ -5,7 +5,8 @@ use ragu_primitives::Element;
 use crate::{
     driver::ExtractionDriver,
     expr::Expr,
-    instance::{CircuitInstance, WireDeserializer, boolean_from_wire},
+    instance::{CircuitInstance, WireDeserializer},
+    wire_remap::boolean_from_wire,
 };
 
 pub struct BooleanConditionalEnforceEqualInstance;

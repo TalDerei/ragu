@@ -1,11 +1,11 @@
 mod driver;
 mod expr;
 mod fingerprint;
-mod fv_utils;
 mod instance;
 mod instances;
 mod linexp;
 mod sha256;
+mod wire_remap;
 
 use std::{
     fs,
