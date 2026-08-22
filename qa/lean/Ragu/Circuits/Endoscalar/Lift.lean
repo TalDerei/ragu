@@ -30,7 +30,7 @@ The circuit-side `main` separates the two phases of the loop:
 Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_lift.rs`,
 tied to this reimpl by the fingerprint equivalence check via the formal instance
 in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance wraps the
-bit wires as `Boolean`s (`fv_utils::endoscalar_unchecked`) and calls the
+bit wires as `Boolean`s (`wire_remap::endoscalar_from_bits`) and calls the
 deployed `Endoscalar::lift` itself, so the extracted trace is the shipped
 gadget's. The fingerprint hashes polynomial normal forms, so the tree shape
 in which either side builds its accumulator expression is irrelevant. -/

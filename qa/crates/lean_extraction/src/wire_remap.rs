@@ -16,6 +16,7 @@ use ragu_core::{
         emulator::{Emulator, Wireless},
     },
     gadgets::{Bound, Gadget},
+    maybe::Empty,
 };
 use ragu_primitives::{Boolean, Endoscalar};
 
@@ -96,8 +97,9 @@ fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
 /// Wraps an input wire as a [`Boolean`] without emitting any operation, so an
 /// instance can pass it to real gadget methods that take `&Boolean`.
 ///
-/// The boolean-ness of the wire is not established here; on the Lean side it
-/// is the corresponding `Assumptions` (`IsBool cond`).
+/// This does not establish the boolean-ness of the wire. Each extracted
+/// instance supplies any required Boolean precondition through its Lean
+/// `Assumptions`.
 ///
 /// # Errors
 ///
@@ -105,11 +107,14 @@ fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
 pub(crate) fn boolean_from_wire<'dr, F: Field>(
     wire: Expr<F>,
 ) -> Result<Boolean<'dr, ExtractionDriver<F>>> {
-    boolean_unchecked(wire, ExtractionDriver::<F>::just(|| false))
+    boolean_unchecked(wire, Empty)
 }
 
 /// Assembles an [`Endoscalar`] from exactly 128 wrapped input bits without
 /// emitting any operation.
+///
+/// This does not add Boolean constraints; the endoscalar instances require
+/// `IsBool` for each input bit through their Lean `Assumptions`.
 ///
 /// # Errors
 ///
@@ -117,5 +122,5 @@ pub(crate) fn boolean_from_wire<'dr, F: Field>(
 pub(crate) fn endoscalar_from_bits<'dr, F: Field>(
     bits: &[Boolean<'dr, ExtractionDriver<F>>],
 ) -> Result<Endoscalar<'dr, ExtractionDriver<F>>> {
-    endoscalar_unchecked(bits, ExtractionDriver::<F>::just(|| 0u128))
+    endoscalar_unchecked(bits, Empty)
 }
