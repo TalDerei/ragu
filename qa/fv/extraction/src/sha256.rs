@@ -1,6 +1,6 @@
 //! Minimal SHA-256 (FIPS 180-4) over byte slices, used for circuit
 //! fingerprints. Hand-rolled to avoid a dependency; mirrored by
-//! `qa/lean/Ragu/Fingerprint/Sha256.lean` and validated against the
+//! `qa/fv/Ragu/Fingerprint/Sha256.lean` and validated against the
 //! FIPS 180-2 test vectors on both sides.
 
 /// The 64 SHA-256 round constants.

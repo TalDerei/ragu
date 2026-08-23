@@ -24,9 +24,9 @@ The native range check in `from_element` (`try_just`) runs only during witness
 generation and emits nothing, so it has no counterpart here;
 `ProverAssumptions` carries it.
 
-Extraction instance: `qa/lean/extraction/src/instances/endoscalar_extract.rs`
+Extraction instance: `qa/fv/extraction/src/instances/endoscalar_extract.rs`
 (drives the real gadget). Formal instance:
-`qa/lean/Ragu/Instances/Endoscalar/Extract.lean` pins `n = 254`, the Pasta
+`qa/fv/Ragu/Instances/Endoscalar/Extract.lean` pins `n = 254`, the Pasta
 capacity. -/
 def main (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n) (input : Var field (F p))
     : Circuit (F p) (Var (fields 128) (F p)) := do

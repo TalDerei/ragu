@@ -295,7 +295,7 @@ def main (curveParams : Point.Spec.CurveParams p) (input : Var Input (F p))
 no-collision condition: the unchecked additions emit no distinct-x
 constraints, so soundness is conditional on it. For transcript-derived
 endoscalars on the Pasta curves this holds by the BGH19 Appendix C bound
-(whose integer core is formalized in `Ragu.Contrib.EndoscalarProof`). The
+(whose integer core is formalized in `Ragu.Lemmas.EndoscalarProof`). The
 remaining curve-side bridge from that core to this affine `groupScaleNative`
 precondition is still future work, so the condition remains an assumption here. -/
 def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=

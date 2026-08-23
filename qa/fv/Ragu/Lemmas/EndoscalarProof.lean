@@ -14,7 +14,7 @@ import Mathlib.Tactic.Ring
   `endoscaleCharacteristicBound n`, then `endoscaleN ζ` is injective.
 -/
 
-namespace Ragu.Contrib.EndoscalarProof
+namespace Ragu.Lemmas.EndoscalarProof
 
 /-- An endoscaling input with exactly `n` two-bit pairs. -/
 def EndoscaleInput (n : ℕ) :=
@@ -768,4 +768,4 @@ theorem groupScale_collision_combinations_ne_zero
     simp only [h66, abs_le] <;>
     omega
 
-end Ragu.Contrib.EndoscalarProof
+end Ragu.Lemmas.EndoscalarProof

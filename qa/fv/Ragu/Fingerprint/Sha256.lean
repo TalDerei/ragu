@@ -2,7 +2,7 @@
 # SHA-256
 
 Minimal SHA-256 (FIPS 180-4) over `ByteArray`, used for circuit
-fingerprints. Mirrors `qa/lean/extraction/src/sha256.rs` and is
+fingerprints. Mirrors `qa/fv/extraction/src/sha256.rs` and is
 validated against the FIPS 180-2 test vectors on both sides.
 -/
 

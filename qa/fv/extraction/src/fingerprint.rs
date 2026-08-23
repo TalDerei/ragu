@@ -15,7 +15,7 @@
 //! The byte-level encoding, the input-variable index convention, and the
 //! trust assumptions of the check are specified in the FV book
 //! (`book/src/fv/circuits/fingerprint.md`); this module and
-//! `qa/lean/Ragu/Fingerprint.lean` implement that spec and must stay in
+//! `qa/fv/Ragu/Fingerprint.lean` implement that spec and must stay in
 //! lockstep.
 
 use std::{
