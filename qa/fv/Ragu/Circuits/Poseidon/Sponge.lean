@@ -34,8 +34,8 @@ state with `xs[i]` added into word `i`.
 
 This models the Rust sponge only for `k ≤ RATE`. Rust absorbs into the rate
 words alone and permutes once the buffer is full, so at `k > RATE` this would
-both contaminate the capacity word and skip a permutation. `Hash1` is stated
-for a single block; see its `circuit`. -/
+both contaminate the capacity word and skip a permutation. `Hash1.circuit`
+carries the corresponding hypothesis. -/
 def initialState {k : ℕ} (xs : Vector (Expression (F p)) k) : Vector (Expression (F p)) t :=
   Vector.ofFn fun i => if h : i.val < k then (0 : Expression (F p)) + xs[i.val] else 0
 
@@ -96,12 +96,24 @@ theorem completeness (P : Params (F p) t) (k : ℕ) :
 
 /-- `Sponge::new`, `k` absorbs and one squeeze — a single-block hash.
 
-`k` must not exceed the rate: at `k > RATE` the Rust sponge permutes twice and
-never absorbs into the capacity word, so this circuit would not model it. The
-bound is a side condition on the caller rather than a hypothesis, because it
-constrains the circuit's parameter and not its input; the fingerprint check
-rejects any instance registered outside it. -/
-def circuit (P : Params (F p) t) (k : ℕ) : FormalCircuit (F p) (fields k) field :=
+The hypotheses pin the family to the shapes the Rust sponge actually runs,
+and are not used by the circuit body:
+
+- `_hk0`: the Rust sponge refuses to squeeze before anything was absorbed
+  (`squeeze` returns an initialization error), so `k = 0` models no Rust
+  circuit at all.
+- `_hkt`: for this sponge family the capacity is the last state word and the
+  rate is `t - 1`, so `k < t` is exactly `k ≤ RATE`. Beyond the rate the Rust
+  sponge runs a second permutation and never touches the capacity word —
+  and past `t`, `initialState` would silently drop inputs — so `k ≥ t`
+  models no Rust circuit either.
+
+Absorption is additive from the zero state, so a trailing zero element is
+invisible: on `xs.push 0` this circuit computes the same value as on `xs` at
+one block size smaller. That is the Rust sponge's documented behavior, not a
+defect of the model; protocols must fix the element count. -/
+def circuit (P : Params (F p) t) (k : ℕ) (_hk0 : 0 < k) (_hkt : k < t) :
+    FormalCircuit (F p) (fields k) field :=
   { elaborated P k with
     Assumptions
     Spec := Spec P

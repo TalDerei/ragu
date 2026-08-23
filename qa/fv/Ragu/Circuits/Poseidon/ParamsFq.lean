@@ -13,6 +13,11 @@ Nothing compares the transcription against Rust textually, and nothing needs
 to: every constant below ends up as a coefficient of some constraint or output
 polynomial the sponge emits, so one wrong digit changes the instance's
 fingerprint and CI fails the digest comparison against the extractor.
+
+That check ties these constants to the Rust tables, not to the Poseidon
+reference implementation the tables were generated from — a defect shared by
+both sides would pass it. Pinning the Rust permutation to external reference
+vectors is Rust-side test work, tracked separately.
 -/
 
 namespace Ragu.Circuits.Poseidon.ParamsFq

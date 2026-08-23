@@ -39,6 +39,7 @@ def formal_instance : Core.Statements.FormalInstance where
   serializeOutput
 
   reimplementation :=
-    (Circuits.Poseidon.Sponge.Hash1.circuit params 1).isGeneralFormalCircuit.toWithHint
+    (Circuits.Poseidon.Sponge.Hash1.circuit params 1 (by decide)
+      (by decide)).isGeneralFormalCircuit.toWithHint
 
 end Ragu.Instances.Poseidon.Hash1Fq
