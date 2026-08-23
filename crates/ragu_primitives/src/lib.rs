@@ -28,6 +28,8 @@ mod invertible;
 pub mod io;
 mod point;
 pub mod poseidon;
+#[cfg(test)]
+mod poseidon_halo2_vectors;
 pub mod promotion;
 mod sendable;
 mod simulator;
