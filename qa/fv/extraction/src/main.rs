@@ -49,6 +49,7 @@ use crate::instances::{
     point_conditional_negate::PointConditionalNegateInstance,
     point_double::PointDoubleInstance,
     point_double_and_add_incomplete::PointDoubleAndAddIncompleteInstance,
+    poseidon_sponge::{PoseidonHash1InstanceFp, PoseidonHash1InstanceFq, PoseidonHash4InstanceFp},
 };
 
 struct ExportTarget {
@@ -208,6 +209,18 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Horner.KyN3",
         fingerprint: fingerprint_instance::<HornerKyInstanceN3>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Poseidon.Hash1Fp",
+        fingerprint: fingerprint_instance::<PoseidonHash1InstanceFp>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Poseidon.Hash4Fp",
+        fingerprint: fingerprint_instance::<PoseidonHash4InstanceFp>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Poseidon.Hash1Fq",
+        fingerprint: fingerprint_instance::<PoseidonHash1InstanceFq>,
     },
 ];
 

@@ -1,4 +1,6 @@
-use ragu_pasta::{Fp, PoseidonFp};
+use ff::PrimeField;
+use ragu_arithmetic::PoseidonPermutation;
+use ragu_pasta::{Fp, Fq, PoseidonFp, PoseidonFq};
 use ragu_primitives::{Element, poseidon::Sponge};
 
 use crate::{
@@ -12,30 +14,56 @@ use crate::{
 /// state `[x, 0, 0, 0, 0]`, returning its first rate word.
 ///
 /// Input wire: `x` (1 wire). Output: the squeezed element (1 wire).
-///
-/// Not yet an export target: the Lean reimplementation is in progress (see
-/// `qa/lean/CHECKLIST.md` §2), so until then this instance only backs the
-/// `trace_stats` spike test.
-#[cfg_attr(not(test), allow(dead_code))]
-pub struct PoseidonSpongeAbsorb1Instance;
+pub struct PoseidonHash1InstanceFp;
 
-impl CircuitInstance for PoseidonSpongeAbsorb1Instance {
+impl CircuitInstance for PoseidonHash1InstanceFp {
     type Field = Fp;
 
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        sponge_absorb_n::<1>(dr)
+        sponge_absorb_n::<Fp, PoseidonFp, 1>(dr, &PoseidonFp)
     }
 }
 
-/// Absorbs `N` input wires (at most `RATE`, so one permutation) and squeezes
-/// one element.
-#[cfg_attr(not(test), allow(dead_code))]
-fn sponge_absorb_n<const N: usize>(
-    dr: &mut ExtractionDriver<Fp>,
-) -> ragu_core::Result<Vec<Expr<Fp>>> {
-    let element_template = Element::constant(dr, Fp::zero());
+/// As [`PoseidonHash1InstanceFp`] with a full rate block: `absorb` four
+/// elements, then `squeeze` — still a single permutation, of the state
+/// `[x₀, x₁, x₂, x₃, 0]`.
+///
+/// Input wires: `x₀, …, x₃` (4 wires). Output: the squeezed element (1 wire).
+pub struct PoseidonHash4InstanceFp;
 
-    let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
+impl CircuitInstance for PoseidonHash4InstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        sponge_absorb_n::<Fp, PoseidonFp, 4>(dr, &PoseidonFp)
+    }
+}
+
+/// As [`PoseidonHash1InstanceFp`] over `PoseidonFq`, the other field of the
+/// cycle: same shape, different round constants and MDS matrix.
+pub struct PoseidonHash1InstanceFq;
+
+impl CircuitInstance for PoseidonHash1InstanceFq {
+    type Field = Fq;
+
+    fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
+        sponge_absorb_n::<Fq, PoseidonFq, 1>(dr, &PoseidonFq)
+    }
+}
+
+/// Absorbs `N` input wires (at most `P::RATE`, so one permutation) into a
+/// fresh sponge and squeezes one element.
+fn sponge_absorb_n<F: PrimeField, P: PoseidonPermutation<F>, const N: usize>(
+    dr: &mut ExtractionDriver<F>,
+    params: &'static P,
+) -> ragu_core::Result<Vec<Expr<F>>> {
+    assert!(
+        N <= P::RATE,
+        "more than one block would need a second permutation"
+    );
+    let element_template = Element::constant(dr, F::ZERO);
+
+    let mut sponge = Sponge::<'_, _, P>::new(dr, params);
     for _ in 0..N {
         let input_wires = dr.alloc_input_wires(1);
         let x = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
@@ -53,13 +81,15 @@ mod tests {
     use super::*;
     use crate::{expr::Op, fingerprint::normalize};
 
-    /// Spike statistics for the Poseidon design: how large the extracted
-    /// trace is and how many monomials the largest normalized constraint
-    /// carries. Run with `cargo test -p lean_extraction -- --nocapture`.
+    /// Statistics that shaped the Lean reimplementation: how large the
+    /// extracted trace is and how many monomials the largest normalized
+    /// constraint carries (the partial rounds' linear words must be flattened
+    /// on the Lean side, see `Ragu/Circuits/Poseidon/Linear.lean`). Run with
+    /// `cargo test -p lean_extraction -- --nocapture`.
     #[test]
     fn trace_stats() {
         let start = Instant::now();
-        let trace = PoseidonSpongeAbsorb1Instance::extracted_trace();
+        let trace = PoseidonHash1InstanceFp::extracted_trace();
         let extracted = start.elapsed();
 
         let mut witnesses = 0usize;
@@ -83,7 +113,7 @@ mod tests {
             .map(|o| normalize(o).terms().count())
             .collect();
         let start = Instant::now();
-        let digest = PoseidonSpongeAbsorb1Instance::fingerprint();
+        let digest = PoseidonHash1InstanceFp::fingerprint();
         let fingerprinted = start.elapsed();
 
         println!(
