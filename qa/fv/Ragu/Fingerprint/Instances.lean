@@ -45,7 +45,10 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Horner.N3", Ragu.Instances.Horner.N3.formal_instance),
   ("Ragu.Instances.Horner.N7", Ragu.Instances.Horner.N7.formal_instance),
   ("Ragu.Instances.Horner.N19", Ragu.Instances.Horner.N19.formal_instance),
-  ("Ragu.Instances.Horner.KyN3", Ragu.Instances.Horner.KyN3.formal_instance)
+  ("Ragu.Instances.Horner.KyN3", Ragu.Instances.Horner.KyN3.formal_instance),
+  ("Ragu.Instances.Poseidon.Hash1Fp", Ragu.Instances.Poseidon.Hash1Fp.formal_instance),
+  ("Ragu.Instances.Poseidon.Hash4Fp", Ragu.Instances.Poseidon.Hash4Fp.formal_instance),
+  ("Ragu.Instances.Poseidon.Hash1Fq", Ragu.Instances.Poseidon.Hash1Fq.formal_instance)
 ]
 
 end Ragu.Fingerprint
