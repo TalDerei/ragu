@@ -35,6 +35,19 @@ impl CircuitInstance for ElementFoldInstanceN7 {
     }
 }
 
+pub struct ElementFoldInstanceN19;
+
+impl CircuitInstance for ElementFoldInstanceN19 {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        // n = 19: matches `RevdotParameters::NumGroups` in
+        // `crates/ragu_pcd/src/internal/native/mod.rs`. This is the outer-fold
+        // length `fold_revdot.rs::fold_two_layer` uses over the group results.
+        fold_at_length::<19>(dr)
+    }
+}
+
 fn fold_at_length<const N: usize>(
     dr: &mut ExtractionDriver<Fp>,
 ) -> ragu_core::Result<Vec<Expr<Fp>>> {
