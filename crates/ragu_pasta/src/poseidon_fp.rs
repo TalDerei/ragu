@@ -3,18 +3,9 @@
 /// in the Pasta cycle).
 ///
 /// Constants generated using the [Hades/Poseidon reference
-/// implementation](https://extgit.isec.tugraz.at/krypto/hadeshash) (via the
-/// [`daira/pasta-hadeshash`](https://github.com/daira/pasta-hadeshash) fork,
-/// revision `5959f2684a25b372fba347e62467efb00e7e2c3f`) with state size 5,
-/// $x^5$ sbox, 8 full rounds, and 56 partial rounds:
-///
-/// ```text
-/// $ sage generate_parameters_grain.sage 1 0 255 5 8 56 0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001
-/// ```
-///
-/// `qa/params/check_poseidon_params.py` regenerates the tables below from that
-/// invocation and fails if they differ, so the provenance recorded here is
-/// checked rather than asserted.
+/// implementation](https://extgit.isec.tugraz.at/krypto/hadeshash)
+/// (via the `daira/pasta-hadeshash` fork) with state size 5, $x^5$ sbox,
+/// 8 full rounds, and 56 partial rounds.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PoseidonFp;
 impl ragu_arithmetic::PoseidonPermutation<ragu_arithmetic::pasta_curves::Fp> for PoseidonFp {
