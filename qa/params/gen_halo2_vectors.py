@@ -1,7 +1,7 @@
 """Emit the vendored halo2_poseidon test fixture consumed by ragu_primitives.
 
 Reads a halo2 checkout and writes
-`crates/ragu_primitives/src/poseidon_halo2_vectors.rs`: the P128Pow5T3
+`crates/ragu_primitives/src/poseidon/tests/halo2_vectors.rs`: the P128Pow5T3
 parameters (t=3) for both Pasta base fields, and halo2's permutation test
 vectors, which come from zcash-test-vectors' `orchard_poseidon/permute`.
 
@@ -65,10 +65,17 @@ impl PoseidonPermutation<{field}> for {struct_name} {{
 
 
 def parse_constants(path, t=3, rounds=64):
+    """ROUND_CONSTANTS and MDS from a halo2_poseidon fp.rs / fq.rs.
+
+    The file lays out the round constants, then MDS, then MDS_INV, all as
+    `from_raw` limb arrays; MDS_INV is parsed and dropped.
+    """
     values = []
     for match in FROM_RAW.finditer(path.read_text()):
         limbs = [int(x.replace("_", ""), 16) for x in match.group(1).split(",") if x.strip()]
         values.append(sum(limb << (64 * i) for i, limb in enumerate(limbs)))
+    if len(values) != rounds * t + 2 * t * t:
+        raise ValueError(f"{path}: parsed {len(values)} elements, expected {rounds * t + 2 * t * t}")
     flat, rest = values[: rounds * t], values[rounds * t :]
     round_constants = [flat[r * t : (r + 1) * t] for r in range(rounds)]
     mds = [rest[i * t : (i + 1) * t] for i in range(t)]

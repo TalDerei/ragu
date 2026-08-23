@@ -11,10 +11,12 @@ Covers the two pieces that produce the committed tables:
 * `create_mds_p` - the Cauchy matrix built from the next `2*t` Grain samples.
 
 Not ported: `algorithm_1/2/3`, the MDS security filter. Those only decide
-whether a candidate matrix is *accepted*; if the first candidate is accepted
-(the reference prints "Secure MDS: 0" in that case) the matrix this module
-emits is the final one. A mismatch therefore means "not the first candidate",
-not "wrong" - see `check.py` for how that is reported.
+whether a candidate matrix is *accepted*; the reference resamples until they
+do, and this module emits the first candidate. The two agree exactly when the
+first candidate was accepted, which is established by comparing this module's
+output against the reference's pinned under `reference/` -- the script does
+not report which candidate it settled on, and its printed algorithm results
+are re-run on the matrix it returns, so they read `True` regardless.
 """
 
 

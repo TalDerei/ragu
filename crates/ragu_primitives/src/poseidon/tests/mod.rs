@@ -30,7 +30,7 @@ use crate::allocator::Standard;
 /// `fuzz_poseidon_sponge` and `fuzz_poseidon_differential` cover. The
 /// parameters themselves are checked separately, against the generator that
 /// produced them, by `qa/params`.
-fn check_permutation_vectors<F, P>(params: &'static P, vectors: &[([F; 3], [F; 3])]) -> Result<()>
+fn check_permutation_vectors<F, P>(params: &P, vectors: &[([F; 3], [F; 3])]) -> Result<()>
 where
     F: Field,
     P: ragu_arithmetic::PoseidonPermutation<F>,
@@ -69,12 +69,12 @@ where
 }
 
 #[test]
-fn permutation_matches_halo2_vectors_fp() -> Result<()> {
+fn test_permutation_matches_halo2_vectors_fp() -> Result<()> {
     check_permutation_vectors(&P128Pow5T3Fp, FP_PERMUTE_VECTORS)
 }
 
 #[test]
-fn permutation_matches_halo2_vectors_fq() -> Result<()> {
+fn test_permutation_matches_halo2_vectors_fq() -> Result<()> {
     check_permutation_vectors(&P128Pow5T3Fq, FQ_PERMUTE_VECTORS)
 }
 

@@ -1,14 +1,12 @@
-"""Check committed Poseidon tables against the Grain generator that produced them.
+"""Check the committed Poseidon tables against the generator that produced them.
 
-Run with no arguments to check every table this repository ships, plus the
-halo2 tables the port is calibrated against:
+    python3 qa/params/check_poseidon_params.py [--halo2-dir DIR] [--ragu-dir DIR]
 
-    python3 tools/check_poseidon_params.py [--halo2-dir DIR] [--ragu-dir DIR]
-
-The halo2 pass is a self-test of the port, not a check of this repository: those
-constants are deployed Orchard consensus parameters, so reproducing them is
-evidence that the port matches the reference script. The ragu pass is the real
-check.
+The default run checks the tables this repository ships, three ways: the
+committed Rust tables, the pinned Sage output under `reference/`, and the
+Python port's regeneration must all agree. `--halo2-dir` adds a self-test of
+the port against halo2's P128Pow5T3 tables, deployed Orchard parameters from
+the same script at t=3; it needs a halo2 checkout and is not run in CI.
 """
 
 import argparse
@@ -16,39 +14,25 @@ import re
 import sys
 from pathlib import Path
 
+from gen_halo2_vectors import parse_constants as parse_halo2
 from poseidon_params import PALLAS_BASE, VESTA_BASE, generate
 
-FROM_RAW = re.compile(
-    r"from_raw\(\[\s*((?:0x[0-9a-fA-F_]+,\s*){4})\]\)", re.MULTILINE
-)
 HEX_LITERAL = re.compile(r"(?:fp|fq)!\(0x([0-9a-fA-F]{64})\)")
 SAGE_HEX = re.compile(r"0x([0-9a-f]{1,64})")
 
 
-def parse_halo2(path, t):
-    """ROUND_CONSTANTS and MDS from a halo2_poseidon fp.rs / fq.rs."""
-    text = path.read_text()
-    values = []
-    for match in FROM_RAW.finditer(text):
-        limbs = [int(x.replace("_", ""), 16) for x in match.group(1).split(",") if x.strip()]
-        values.append(sum(limb << (64 * i) for i, limb in enumerate(limbs)))
-    rounds = 64
-    rc_flat, rest = values[: rounds * t], values[rounds * t :]
-    round_constants = [rc_flat[r * t : (r + 1) * t] for r in range(rounds)]
-    mds = [rest[i * t : (i + 1) * t] for i in range(t)]  # MDS_INV follows, ignored
-    return round_constants, mds
-
-
-def parse_ragu(path, t):
+def parse_ragu(path, t, rounds=64):
     """ROUND_CONSTANTS and MDS_MATRIX from a ragu_pasta poseidon_f*.rs."""
     text = path.read_text()
     head, _, tail = text.partition("const MDS_MATRIX")
     rc_flat = [int(m, 16) for m in HEX_LITERAL.findall(head)]
     mds_flat = [int(m, 16) for m in HEX_LITERAL.findall(tail)]
-    rounds = len(rc_flat) // t
-    round_constants = [rc_flat[r * t : (r + 1) * t] for r in range(rounds)]
-    mds = [mds_flat[i * t : (i + 1) * t] for i in range(t)]
-    return round_constants, mds
+    if len(rc_flat) != rounds * t or len(mds_flat) != t * t:
+        raise ValueError(f"{path}: parsed {len(rc_flat)} constants and {len(mds_flat)} MDS entries")
+    return (
+        [rc_flat[r * t : (r + 1) * t] for r in range(rounds)],
+        [mds_flat[i * t : (i + 1) * t] for i in range(t)],
+    )
 
 
 def parse_sage(path, t, rounds=64):

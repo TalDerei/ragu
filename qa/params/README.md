@@ -1,11 +1,11 @@
 # Poseidon parameter provenance
 
 The Poseidon tables in `crates/ragu_pasta/src/poseidon_f{p,q}.rs` are roughly
-700 hand-transcribable field elements that no proof, fingerprint, or
-differential test can validate. Every theorem and test downstream of them is
-quantified over whatever the tables happen to contain: replace a constant and
-nothing fails, because nothing anywhere asserts what the constants should be.
-Their only external authority is the script that generated them.
+700 hand-transcribable field elements that no fingerprint or differential test
+can validate. Every test downstream of them is generic in whatever the tables
+happen to contain: replace a constant and nothing fails, because nothing
+anywhere asserts what the constants should be. Their only external authority
+is the script that generated them.
 
 `check_poseidon_params.py` regenerates the tables and compares:
 
@@ -50,11 +50,13 @@ and the MDS matrix.
 
 The port does not implement `algorithm_1/2/3`, the reference's MDS security
 filter, which decides whether a Cauchy candidate is *accepted*; it emits the
-first candidate. That costs nothing here, because the pinned Sage runs report
-`Result Algorithm 1: [True, 0]` and `[True, None]` for the other two — the
-filter accepted the first candidate for both fields. A future parameter set
-landing on a later candidate would show up as a port/Sage disagreement rather
-than passing silently.
+first candidate. That costs nothing here: the port's matrix equals the pinned
+Sage output's for both fields, and the reference resamples on rejection, so
+the first candidate is the one it accepted. (The `Result Algorithm` lines in
+the Sage output are not evidence of this — the script re-runs the filter on
+the matrix it returns, so they read `True` whatever it rejected on the way.)
+A future parameter set landing on a later candidate would show up as a
+port/Sage disagreement rather than passing silently.
 
 Not covered, deliberately: whether these parameters are *good* — round counts
 against the known attacks, MDS security. That is the reference script's
@@ -65,7 +67,7 @@ judgement and the Poseidon literature's, not this check's. This answers only
 
 Parameters being genuine says nothing about the permutation consuming them
 correctly. That is pinned separately, in
-`crates/ragu_primitives/src/poseidon.rs`, against halo2's permutation test
+`crates/ragu_primitives/src/poseidon/tests/`, against halo2's permutation test
 vectors — see `gen_halo2_vectors.py`, which vendors them. The two checks are
 complementary and neither implies the other:
 
