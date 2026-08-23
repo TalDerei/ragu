@@ -63,7 +63,7 @@ members = [
   "crates/ragu_primitives",
   "crates/ragu_pcd",
   "crates/ragu_testing",
-  "qa/crates/lean_extraction",
+  "qa/lean/extraction",
 ]
 
 resolver = "2"

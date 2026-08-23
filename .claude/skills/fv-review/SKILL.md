@@ -14,7 +14,7 @@ Sections fall into three groups: **Trust model** frames what's trusted vs untrus
 the clean reimplementation and formal instance can be black-boxed and LLM-generated since they’re untrusted. the formal instance is tied to the extracted trace by the fingerprint equivalence check (CI compares the canonical digest the Rust extractor computes from its trace against the one computed in Lean from the reimpl), and the reimpl proves the soundness / completeness against the spec (loosely an IO contract). so this transitively reduces trust to just manually inspecting that the spec is correct, and assuming the trusted extractor, serialization impl, and fingerprint encoders are correct, everything else follows
 
 **Artifact map.** Spelling out trusted/untrusted by artifact:
-- *Trusted (must be manually inspected):* Rust circuit instance (`CircuitInstance`), extractor / extraction driver, serialization impl, the fingerprint encoders on both sides (`qa/crates/lean_extraction/src/fingerprint.rs`, `qa/lean/Ragu/Fingerprint.lean`), and — on the Lean side — `Inputs` / `Outputs` struct definitions, `Spec`, `Assumptions`.
+- *Trusted (must be manually inspected):* Rust circuit instance (`CircuitInstance`), extractor / extraction driver, serialization impl, the fingerprint encoders on both sides (`qa/lean/extraction/src/fingerprint.rs`, `qa/lean/Ragu/Fingerprint.lean`), and — on the Lean side — `Inputs` / `Outputs` struct definitions, `Spec`, `Assumptions`.
 - *Untrusted (can be LLM-generated):* Lean reimpl body (`main`), soundness / completeness theorems. Drift between the reimpl and the Rust circuit is caught by the fingerprint comparison in CI.
 
 **Subtlety: input/output *struct shape* is part of the trusted spec; wire *order* is not.**
@@ -331,7 +331,7 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 
 | File | Trust | What it is |
 |---|---|---|
-| `qa/crates/lean_extraction/src/instances/<gadget>.rs` | trusted | Rust `CircuitInstance` impl: thin wrapper that calls Ragu types / gadgets through `ExtractionDriver`. Its trace digest is printed by `lean_extraction -- fingerprint`. |
+| `qa/lean/extraction/src/instances/<gadget>.rs` | trusted | Rust `CircuitInstance` impl: thin wrapper that calls Ragu types / gadgets through `ExtractionDriver`. Its trace digest is printed by `lean_extraction -- fingerprint`. |
 | `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` | reimpl untrusted; `Inputs` / `Outputs` / `Spec` / `Assumptions` trusted | The reimpl: `main`, `Spec`, `Assumptions`, `elaborated`, `soundness`, `completeness`. |
 | `qa/lean/Ragu/Instances/<Module>/<Gadget>.lean` | serialization trusted | `FormalInstance` packaging: `p`, `deserializeInput` / `serializeOutput`, `reimplementation`. Enrolled in the fingerprint check via the generated `Ragu/Fingerprint/Instances.lean` list. |
 | circuit input types containing `Unconstrained` / `UnconstrainedDep` | trusted | The hint shape exposed to callers; should mirror the Rust API and avoid leaking internal rows. |
@@ -340,7 +340,7 @@ How the artifacts fit together when adding a new gadget to FV. This is *per-gadg
 
 **Canonical per-gadget commit sequence** (PR #642 followed this ~6 times, pre-fingerprint):
 1. Reimpl skeleton in `qa/lean/Ragu/Circuits/<Module>/<Gadget>.lean` — `main`, `Spec`, `Assumptions`, `elaborated`.
-2. Rust `CircuitInstance` in `qa/crates/lean_extraction/src/instances/<gadget>.rs` (top-level only), registered in `EXPORT_TARGETS`.
+2. Rust `CircuitInstance` in `qa/lean/extraction/src/instances/<gadget>.rs` (top-level only), registered in `EXPORT_TARGETS`.
 3. Run `cargo run -p lean_extraction -- export` → regenerates `Ragu/Instances.lean` and `Ragu/Fingerprint/Instances.lean`, which now reference the (yet-to-exist) formal instance — Lean won't build until step 6.
 4. Write `soundness`.
 5. Write `completeness` (define honest witness gen if needed).

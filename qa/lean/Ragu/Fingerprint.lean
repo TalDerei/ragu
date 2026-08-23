@@ -18,7 +18,7 @@ operations and outputs of the Rust circuit.
 The byte-level encoding, the input-variable index convention, and the trust
 assumptions of the check are specified in the FV book
 (`book/src/fv/circuits/fingerprint.md`); this module and
-`qa/crates/lean_extraction/src/fingerprint.rs` implement that spec and must
+`qa/lean/extraction/src/fingerprint.rs` implement that spec and must
 stay in lockstep.
 -/
 
@@ -45,7 +45,7 @@ variable {p : ℕ}
 /-! ### Polynomial normal form
 
 The Rust extractor keeps expressions as DAGs and normalizes them to sparse
-polynomials (`qa/crates/lean_extraction/src/fingerprint.rs`); this is the
+polynomials (`qa/lean/extraction/src/fingerprint.rs`); this is the
 same normal form, computed structurally on `Clean`'s `Expression` trees. -/
 
 /-- A monomial: the indices of the variables it multiplies, ascending, with
