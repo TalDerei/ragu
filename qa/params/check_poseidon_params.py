@@ -22,6 +22,7 @@ FROM_RAW = re.compile(
     r"from_raw\(\[\s*((?:0x[0-9a-fA-F_]+,\s*){4})\]\)", re.MULTILINE
 )
 HEX_LITERAL = re.compile(r"(?:fp|fq)!\(0x([0-9a-fA-F]{64})\)")
+SAGE_HEX = re.compile(r"0x([0-9a-f]{1,64})")
 
 
 def parse_halo2(path, t):
@@ -50,7 +51,31 @@ def parse_ragu(path, t):
     return round_constants, mds
 
 
-def check(label, expected_rc, expected_mds, t, r_f, r_p, p):
+def parse_sage(path, t, rounds=64):
+    """ROUND_CONSTANTS and MDS from verbatim `generate_parameters_grain.sage` stdout."""
+    text = path.read_text()
+    constants = text[text.index("Round constants for GF(p):") : text.index("\nn: ")]
+    matrix = text[text.index("MDS matrix:") : text.index("Inverse MDS matrix:")]
+
+    header = dict(
+        n=int(re.search(r"^n: (\d+)$", text, re.MULTILINE).group(1)),
+        t=int(re.search(r"^t: (\d+)$", text, re.MULTILINE).group(1)),
+    )
+    if header["t"] != t or header["n"] != 255:
+        raise ValueError(f"{path}: header says n={header['n']} t={header['t']}, expected n=255 t={t}")
+
+    rc_flat = [int(h, 16) for h in SAGE_HEX.findall(constants)]
+    mds_flat = [int(h, 16) for h in SAGE_HEX.findall(matrix)]
+    if len(rc_flat) != rounds * t or len(mds_flat) != t * t:
+        raise ValueError(f"{path}: parsed {len(rc_flat)} constants and {len(mds_flat)} MDS entries")
+
+    return (
+        [rc_flat[r * t : (r + 1) * t] for r in range(rounds)],
+        [mds_flat[i * t : (i + 1) * t] for i in range(t)],
+    )
+
+
+def check(label, expected_rc, expected_mds, t, r_f, r_p, p, reference=None):
     actual_rc, actual_mds = generate(t=t, r_f=r_f, r_p=r_p, p=p)
     ok = True
 
@@ -69,12 +94,23 @@ def check(label, expected_rc, expected_mds, t, r_f, r_p, p):
             print(f"  {label}: {len(actual_rc) * t} round constants reproduced")
 
     if actual_mds == expected_mds:
-        print(f"  {label}: MDS matrix reproduced (first Cauchy candidate)")
+        print(f"  {label}: MDS matrix reproduced")
     else:
-        print(f"  {label}: MDS matrix is NOT the first Cauchy candidate")
-        print("    the reference resamples until its security filter accepts; confirming a")
-        print("    later candidate needs the Sage script itself (algorithm_1/2/3)")
+        print(f"  {label}: MDS matrix differs from the committed one")
         ok = False
+
+    if reference is not None:
+        ref_rc, ref_mds = reference
+        if (ref_rc, ref_mds) == (expected_rc, expected_mds):
+            print(f"  {label}: committed tables match the pinned Sage output")
+        else:
+            print(f"  {label}: committed tables DIFFER from the pinned Sage output")
+            ok = False
+        if (ref_rc, ref_mds) == (actual_rc, actual_mds):
+            print(f"  {label}: port agrees with the pinned Sage output")
+        else:
+            print(f"  {label}: port DIFFERS from the pinned Sage output")
+            ok = False
 
     return ok
 
@@ -100,10 +136,14 @@ def main():
             all_ok &= check(field, rc, mds, t=3, r_f=8, r_p=56, p=p)
 
     print("ragu_pasta (t=5):")
-    for name, field, p in (("poseidon_fp", "Fp", PALLAS_BASE), ("poseidon_fq", "Fq", VESTA_BASE)):
+    for name, field, curve, p in (
+        ("poseidon_fp", "Fp", "pallas", PALLAS_BASE),
+        ("poseidon_fq", "Fq", "vesta", VESTA_BASE),
+    ):
         path = args.ragu_dir / "crates" / "ragu_pasta" / "src" / f"{name}.rs"
         rc, mds = parse_ragu(path, 5)
-        all_ok &= check(field, rc, mds, t=5, r_f=8, r_p=56, p=p)
+        reference = parse_sage(here / "reference" / f"{curve}-t5.txt", 5)
+        all_ok &= check(field, rc, mds, t=5, r_f=8, r_p=56, p=p, reference=reference)
 
     return 0 if all_ok else 1
 

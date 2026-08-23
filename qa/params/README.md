@@ -13,44 +13,51 @@ Their only external authority is the script that generated them.
 python3 qa/params/check_poseidon_params.py
 ```
 
-`poseidon_params.py` is a pure-Python port of the Grain LFSR part of
-`generate_parameters_grain.sage`, from the
-[`daira/pasta-hadeshash`](https://github.com/daira/pasta-hadeshash) fork at
-revision `5959f2684a25b372fba347e62467efb00e7e2c3f`. Pure Python so the check
-runs anywhere; Sage is not needed and is not in CI.
+Each field is checked three ways, and all three must agree:
+
+* the committed Rust tables;
+* `reference/`, the verbatim stdout of the real Sage script at ragu's own
+  parameters — see `reference/PROVENANCE.md` for the revision, invocation, and
+  digests;
+* `poseidon_params.py`, a pure-Python port of the Grain LFSR part of
+  `generate_parameters_grain.sage`, which regenerates the tables from scratch
+  on every run.
+
+The Sage output is the authority; the port is what makes the check cheap enough
+to run on every commit. Sage is not a CI dependency — its result is checked in.
 
 ## Calibration
 
-A reimplementation of a generator is only worth as much as its own validation,
-so the port is first run against a set of constants that are already known
-good: halo2's P128Pow5T3 tables, which are deployed Orchard consensus
-parameters produced by the same script at `t = 3`. Point the check at a halo2
-checkout to run that pass:
+A reimplementation of a generator is worth only as much as its own validation,
+so the port is measured against real Sage output twice over. At `t = 5` it is
+compared against `reference/`, produced by the script itself at exactly the
+parameters ragu ships. At `t = 3` it is compared against halo2's P128Pow5T3
+tables, which are deployed Orchard consensus parameters from the same script;
+point the check at a halo2 checkout for that pass:
 
 ```sh
 python3 qa/params/check_poseidon_params.py --halo2-dir path/to/halo2
 ```
 
-Both fields' round constants and MDS matrices reproduce exactly, which is what
-licenses the `t = 5` result. CI runs the ragu pass; the halo2 pass is a
-developer-side calibration for when the port is touched.
+CI runs the ragu pass. The halo2 pass is a developer-side check for when the
+port is touched, and evidence that the port tracks the script across parameter
+sets rather than at one point.
 
 ## What is and isn't covered
 
 Covered: the round constants exactly, including the Grain rejection sampling,
-and the MDS matrix as the first Cauchy candidate.
+and the MDS matrix.
 
-Not covered: `algorithm_1`, `algorithm_2`, and `algorithm_3`, the reference's
-MDS security filter. Those decide whether a candidate is *accepted*, and
-porting them means porting vector spaces and eigenspaces over GF(p). The check
-reports a match only when the committed matrix is the first candidate — which
-it is for every table here, and which the reference itself records as
-`Secure MDS: 0`. If a future parameter set lands on a later candidate the check
-will say so rather than silently pass, and confirming it will need the Sage
-script.
+The port does not implement `algorithm_1/2/3`, the reference's MDS security
+filter, which decides whether a Cauchy candidate is *accepted*; it emits the
+first candidate. That costs nothing here, because the pinned Sage runs report
+`Result Algorithm 1: [True, 0]` and `[True, None]` for the other two — the
+filter accepted the first candidate for both fields. A future parameter set
+landing on a later candidate would show up as a port/Sage disagreement rather
+than passing silently.
 
-Also not covered, deliberately: whether these parameters are *good* — round
-counts against the known attacks, MDS security. That is the reference script's
+Not covered, deliberately: whether these parameters are *good* — round counts
+against the known attacks, MDS security. That is the reference script's
 judgement and the Poseidon literature's, not this check's. This answers only
 "are the committed tables what the recorded command produces".
 
