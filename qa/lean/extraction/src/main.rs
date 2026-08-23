@@ -190,8 +190,9 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     },
 ];
 
+/// The Lean source tree (`qa/lean/`) is the parent directory of this crate.
 fn default_autogen_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../lean")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
 #[derive(Parser)]

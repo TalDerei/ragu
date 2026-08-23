@@ -56,7 +56,7 @@ the formalization, in CI.
 
 The fingerprint check is a computational consistency check between two
 implementations of the encoding (Rust:
-`qa/crates/lean_extraction/src/fingerprint.rs`; Lean:
+`qa/lean/extraction/src/fingerprint.rs`; Lean:
 `qa/lean/Ragu/Fingerprint.lean`), not a kernel-checked proof:
 
 - The check trusts that both encoder implementations realize the documented

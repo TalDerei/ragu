@@ -14,7 +14,7 @@ in `crates/ragu_primitives/src/endoscalar.rs::Endoscalar::alloc`.
 so `Uendo::BITS = u128::BITS = 128`. This Lean reimpl is monomorphic at 128 —
 no polymorphism needed.
 
-Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_alloc.rs`
+Extraction instance: `qa/lean/extraction/src/instances/endoscalar_alloc.rs`
 (which drives the real `Endoscalar::alloc` directly). Tied to this reimpl by the
 fingerprint equivalence check via the formal instance in
 `qa/lean/Ragu/Instances/Endoscalar/Alloc.lean`. -/
