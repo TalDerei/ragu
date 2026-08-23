@@ -34,7 +34,7 @@ Older checkouts predate the merge into the book and have the docs as a standalon
 - `<docs>/circuits/serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
 - `<docs>/circuits/fingerprint.md` — the vk-style fingerprint equivalence check (the sole Rust↔Lean tie since the autogen trace files and `same_constraints` proofs were removed): canonical byte encoding + SHA-256 digest of the op trace, computed in both the Rust extractor (`lean_extraction -- fingerprint`) and Lean (`lake exe fingerprints`), compared in CI; the `2³²` input-variable index region; trust assumptions of the check.
 - `<docs>/circuits/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
-- `<docs>/circuits/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/fv/Ragu.lean` are checked; fingerprint comparison step.
+- `<docs>/circuits/ci.md` — `cargo run -p lean_extraction -- check`, `lake build --wfail` (sorry-as-failure) over every module under `qa/fv/Ragu/` via the lib glob, so an unimported file cannot escape; fingerprint comparison step.
 
 The book TOC lives at `book/src/SUMMARY.md` if you want the canonical reading order.
 
