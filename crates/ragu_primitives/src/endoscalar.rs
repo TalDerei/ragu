@@ -363,7 +363,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// is proven to be injective for all prime fields of size greater than
     /// $4(2^n - 1)^2$, which is comfortably safe for the Pasta fields because
     /// they are larger than $1361129467683753853705924477137396432900$. See
-    /// `qa/lean/Ragu/Contrib/EndoscalarProof.lean`.
+    /// `qa/fv/Ragu/Lemmas/EndoscalarProof.lean`.
     ///
     /// # Exceptional Cases
     ///

@@ -90,6 +90,6 @@ combinators carry `circuit_norm`-tagged simp lemmas so that
 goals expressed in plain Lean/Mathlib terms. See
 [Clean's loop combinators reference](https://deepwiki.com/Verified-zkEVM/clean/2.5-circuit-loops-and-iteration)
 for the menu and semantics. `EnforceRootOfUnity` and `Fold` in the Ragu
-repository (`qa/lean/Ragu/Circuits/Element/`) are worked examples of the
+repository (`qa/fv/Ragu/Circuits/Element/`) are worked examples of the
 `Circuit.foldl (.finRange (k + 1))` pattern, including the standard rcases for
 the `Fin 0`-not-`Inhabited` boundary.
