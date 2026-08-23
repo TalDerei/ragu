@@ -130,7 +130,7 @@ def main():
     src = args.halo2_dir / "halo2_poseidon" / "src"
     out = args.out or (
         Path(__file__).resolve().parents[2]
-        / "crates/ragu_primitives/src/poseidon_halo2_vectors.rs"
+        / "crates/ragu_primitives/src/poseidon/tests/halo2_vectors.rs"
     )
 
     chunks = [HEADER]
