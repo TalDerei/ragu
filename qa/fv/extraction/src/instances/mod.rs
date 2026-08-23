@@ -20,6 +20,7 @@ pub mod endoscalar_alloc;
 pub mod endoscalar_extract;
 pub mod endoscalar_group_scale;
 pub mod endoscalar_lift;
+pub mod horner;
 pub mod nonzero_bank_scope;
 pub mod point_add_incomplete;
 pub mod point_alloc;

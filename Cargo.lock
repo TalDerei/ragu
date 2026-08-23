@@ -604,6 +604,7 @@ dependencies = [
  "ff",
  "group",
  "ragu_arithmetic",
+ "ragu_circuits",
  "ragu_core",
  "ragu_pasta",
  "ragu_primitives",

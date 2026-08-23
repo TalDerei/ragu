@@ -23,6 +23,7 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Element.DivNonzero", Ragu.Instances.Element.DivNonzero.formal_instance),
   ("Ragu.Instances.Element.FoldN3", Ragu.Instances.Element.FoldN3.formal_instance),
   ("Ragu.Instances.Element.FoldN7", Ragu.Instances.Element.FoldN7.formal_instance),
+  ("Ragu.Instances.Element.FoldN19", Ragu.Instances.Element.FoldN19.formal_instance),
   ("Ragu.Instances.Element.EnforceRootOfUnityK2", Ragu.Instances.Element.EnforceRootOfUnityK2.formal_instance),
   ("Ragu.Instances.Element.EnforceRootOfUnityK5", Ragu.Instances.Element.EnforceRootOfUnityK5.formal_instance),
   ("Ragu.Instances.Element.EnforceZero", Ragu.Instances.Element.EnforceZero.formal_instance),
@@ -40,7 +41,11 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Endoscalar.Alloc", Ragu.Instances.Endoscalar.Alloc.formal_instance),
   ("Ragu.Instances.Endoscalar.Extract", Ragu.Instances.Endoscalar.Extract.formal_instance),
   ("Ragu.Instances.Endoscalar.GroupScale", Ragu.Instances.Endoscalar.GroupScale.formal_instance),
-  ("Ragu.Instances.Endoscalar.Lift", Ragu.Instances.Endoscalar.Lift.formal_instance)
+  ("Ragu.Instances.Endoscalar.Lift", Ragu.Instances.Endoscalar.Lift.formal_instance),
+  ("Ragu.Instances.Horner.N3", Ragu.Instances.Horner.N3.formal_instance),
+  ("Ragu.Instances.Horner.N7", Ragu.Instances.Horner.N7.formal_instance),
+  ("Ragu.Instances.Horner.N19", Ragu.Instances.Horner.N19.formal_instance),
+  ("Ragu.Instances.Horner.KyN3", Ragu.Instances.Horner.KyN3.formal_instance)
 ]
 
 end Ragu.Fingerprint

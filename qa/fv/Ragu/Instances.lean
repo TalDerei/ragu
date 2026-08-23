@@ -12,6 +12,7 @@ import Ragu.Instances.Element.AllocSquare
 import Ragu.Instances.Element.DivNonzero
 import Ragu.Instances.Element.FoldN3
 import Ragu.Instances.Element.FoldN7
+import Ragu.Instances.Element.FoldN19
 import Ragu.Instances.Element.EnforceRootOfUnityK2
 import Ragu.Instances.Element.EnforceRootOfUnityK5
 import Ragu.Instances.Element.EnforceZero
@@ -30,3 +31,7 @@ import Ragu.Instances.Endoscalar.Alloc
 import Ragu.Instances.Endoscalar.Extract
 import Ragu.Instances.Endoscalar.GroupScale
 import Ragu.Instances.Endoscalar.Lift
+import Ragu.Instances.Horner.N3
+import Ragu.Instances.Horner.N7
+import Ragu.Instances.Horner.N19
+import Ragu.Instances.Horner.KyN3
