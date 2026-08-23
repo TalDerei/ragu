@@ -35,3 +35,6 @@ import Ragu.Instances.Horner.N3
 import Ragu.Instances.Horner.N7
 import Ragu.Instances.Horner.N19
 import Ragu.Instances.Horner.KyN3
+import Ragu.Instances.Poseidon.Hash1Fp
+import Ragu.Instances.Poseidon.Hash4Fp
+import Ragu.Instances.Poseidon.Hash1Fq

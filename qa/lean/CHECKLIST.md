@@ -98,10 +98,11 @@ the hazard.
       Fingerprint sponge-level shapes (no Rust API change) and keep the bare
       permutation as a Lean sub-circuit with its own theorem — mirrors Rust
       delegation. `poseidon_sponge.rs` already drives absorb-`N` + squeeze.
-- [ ] **Build-time budget.** Prototype `Sbox` + one full round + one partial
-      round as boxed sub-circuits and time `lake build`; extrapolate to 64
-      rounds before committing (heartbeat timeouts = design signal: add
-      `@[irreducible]` seals / explicit outputs, not budget).
+- [x] **Build-time budget.** Non-issue with the boxed design: every layer
+      (`Sbox` → `Round.{Full,Partial}` → `Permutation` by induction over the
+      schedule → `Sponge.Hash1`) elaborates in seconds; no heartbeat bumps,
+      no `@[irreducible]` seals needed. The Lean fingerprint of a 64-round
+      instance runs in well under a second thanks to `normalizeLinear`.
 
 ### 2b. Parameters
 
@@ -113,34 +114,46 @@ the hazard.
 
 ### 2c. Lean circuits (`Ragu/Circuits/Poseidon/`)
 
-- [ ] `Sbox.lean`: `x ↦ x⁵` as `Mul ⟨x,x⟩; Mul ⟨x²,x²⟩; Mul ⟨x⁴,x⟩` (order must
-      match `poseidon.rs::sbox`: `square`, `square`, `mul(x)`). Spec
+- [x] `Sbox.lean`: `x ↦ x⁵` as `Mul ⟨x,x⟩; Mul ⟨x²,x²⟩; Mul ⟨x⁴,x⟩` (order
+      matches `poseidon.rs::sbox`: `square`, `square`, `mul(x)`). Spec
       `out = x^5`.
-- [ ] `Round.lean`: add round constants → S-box on the first `elems` state
-      words (`elems ∈ {5, 1}`) → MDS. Parametric in the round's constants.
-- [ ] `Permutation.lean`: 4 full / 56 partial / 4 full rounds, spec = pure
-      Lean `poseidon : Vector (F p) 5 → Vector (F p) 5` defined from the same
-      parameters. Soundness/completeness by induction on rounds.
-- [ ] `Sponge.lean`: absorb-then-squeeze shapes. `Sponge::new` starts from
-      all-zero state; `absorb` adds into `state[i]` for the i-th pending
-      value; `squeeze` permutes and returns `state[0]` (`get_rate` reverses
-      the rate, `pop` takes the last). Spec `out = (poseidon (pad xs))[0]`.
-- [ ] Decide which sponge shapes to fingerprint: absorb `k ∈ {1, 4}` +
-      squeeze 1 (one permutation); absorb 5 + squeeze (two permutations);
-      squeeze 2 (`values.pop` without a new permutation); absorb after
-      squeeze (mode switch). The transcript (`ragu_pcd/internal/transcript.rs`)
-      and `outer_error.rs` are the production users — match their shapes.
+- [x] `Linear.lean`: `normalizeLinear` + unconditional `eval_normalizeLinear`
+      (see §2a).
+- [x] `Round.lean`: `Round.Full` / `Round.Partial` over `fields t` — add
+      round constants → S-box on all words / word `0` → MDS (outputs
+      normalized). Parametric in `t`, the MDS matrix and the round constants.
+- [x] `Permutation.lean`: recursion over a `List RoundSpec` schedule
+      (`full rc | part rc`), each round the boxed `AnyRound` sub-circuit; spec
+      `out = permuteVal mds rounds state` (pure Lean round function iterated);
+      soundness/completeness/`localLength`/`output`/`subcircuitsConsistent`
+      all by induction on the list.
+- [x] `Sponge.lean`: `schedule full part rcs` (4 full / 56 partial / 4
+      full) and `Hash1 k`: absorb `k ≤ RATE` elements into the zero state,
+      one permutation, output word `0`. Spec
+      `out = (permuteVal mds rounds (initialStateVal xs))[0]`.
+- [x] Single-block shapes fingerprinted: absorb `k ∈ {1, 4}` + squeeze 1
+      over `Fp`, absorb 1 + squeeze 1 over `Fq`.
+- [ ] Multi-op sponge: absorb > `RATE` (second permutation inside `absorb`),
+      squeeze 2 (`values.pop` without a new permutation), squeeze > `RATE`
+      (re-permute in squeeze mode), absorb after squeeze (mode switch). Plan:
+      a `Sponge.Program` circuit parameterized by an op list
+      (`absorb | squeeze`) that simulates `Mode`/`values`/`state` exactly
+      like `poseidon.rs`, with a value-level sponge machine as spec and
+      soundness by induction over the program; instances for the
+      transcript's real shapes (`ragu_pcd/internal/transcript.rs`).
 - [ ] `save_state` / `resume` round trip as an instance (state in = 5 wires,
       state out = 5 wires) if a bare-permutation-like statement is wanted.
 
 ### 2d. Instances and wiring
 
-- [ ] Rust `instances/poseidon_sponge.rs` (+ Fq variant: `Sponge` is generic
-      over the field, so drive both `PoseidonFp` and `PoseidonFq`).
-- [ ] Lean `Ragu/Instances/Poseidon/*.lean`, register, export, build,
-      fingerprint match.
-- [ ] `#print axioms` on the permutation theorems; record anything beyond
-      `p_prime`/`q_prime` in `book/src/fv/circuits/assumptions.md`.
+- [x] Rust `instances/poseidon_sponge.rs`: `PoseidonHash1InstanceFp`,
+      `PoseidonHash4InstanceFp`, `PoseidonHash1InstanceFq`.
+- [x] Lean `Ragu/Instances/Poseidon/{Hash1Fp,Hash4Fp,Hash1Fq}.lean`,
+      registered, exported, built, fingerprints match (40/40).
+- [x] `#print axioms`: every Poseidon theorem (`Sbox`, `Linear`, `Round`,
+      `Permutation`, `Sponge.Hash1`) depends only on `propext`,
+      `Classical.choice`, `Quot.sound` — not even `p_prime`, since the
+      circuits are generic in `p`. Nothing new for the assumptions chapter.
 
 ## 3. Parametric gadgets — extra production-shape instances (cheap, proofs already exist)
 
@@ -170,8 +183,8 @@ Low priority; do only if the gallery should be exhaustive.
 ## 5. Docs
 
 - [ ] `book/src/fv/index.md` "What is verified today": count says 31, the
-      registry has 32 (`Endoscalar/Extract` was added after the prose); update
-      the count and add Poseidon/Horner to the bullet list when they land.
+      registry now has 40; update the count and add Poseidon/Horner to the
+      bullet list.
 - [ ] `book/src/fv/circuits/assumptions.md`: any new axioms or preconditions
       (e.g. Poseidon parameter provenance).
 - [x] `qa/lean/extraction/src/instances/element_fold.rs` comment: the
