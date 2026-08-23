@@ -14,7 +14,7 @@ lean_lib Ragu where
   globs := #[`Ragu.*]
 
 -- Prints the canonical digest of every formal instance's reimplementation;
--- CI compares the output against `cargo run --manifest-path qa/crates/lean_extraction/Cargo.toml -- fingerprint`.
+-- CI compares the output against `cargo run -p lean_extraction -- fingerprint`.
 lean_exe fingerprints where
   root := `Ragu.Fingerprint.Main
 

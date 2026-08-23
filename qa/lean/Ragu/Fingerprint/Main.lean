@@ -4,7 +4,7 @@ import Ragu.Fingerprint.Instances
 
 Prints `<module name> <digest>` for every exported formal instance, computed
 from the `Clean` reimplementation. CI compares this output against
-`cargo run --manifest-path qa/crates/lean_extraction/Cargo.toml -- fingerprint`. -/
+`cargo run -p lean_extraction -- fingerprint`. -/
 def main : IO UInt32 := do
   let mut failed := false
   for (name, inst) in Ragu.Fingerprint.instances do

@@ -11,7 +11,7 @@ variable {p : ℕ} [Fact p.Prime]
 /-- The recomposition `b₀ + 2·b₁ + 4·b₂ + ⋯ + 2ⁿ⁻¹·bₙ₋₁`, shaped exactly as
 the extraction driver's linear-expression accumulator builds it for
 `decompose`'s `lc.add(bit).gain(Two)` loop
-(`qa/crates/lean_extraction/src/linexp.rs`): the coefficient-one first term is
+(`qa/lean/extraction/src/linexp.rs`): the coefficient-one first term is
 the bare wire, every later term is `const 2ⁱ * bᵢ` with the constant on the
 left, and the sum is left-nested. An empty accumulator is the constant `0`.
 

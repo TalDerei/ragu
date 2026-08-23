@@ -24,7 +24,7 @@ The native range check in `from_element` (`try_just`) runs only during witness
 generation and emits nothing, so it has no counterpart here;
 `ProverAssumptions` carries it.
 
-Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_extract.rs`
+Extraction instance: `qa/lean/extraction/src/instances/endoscalar_extract.rs`
 (drives the real gadget). Formal instance:
 `qa/lean/Ragu/Instances/Endoscalar/Extract.lean` pins `n = 254`, the Pasta
 capacity. -/
