@@ -30,7 +30,7 @@ use crate::instances::{
         ElementEnforceRootOfUnityInstanceK2, ElementEnforceRootOfUnityInstanceK5,
     },
     element_enforce_zero::ElementEnforceZeroInstance,
-    element_fold::{ElementFoldInstanceN3, ElementFoldInstanceN7},
+    element_fold::{ElementFoldInstanceN3, ElementFoldInstanceN7, ElementFoldInstanceN19},
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
     element_is_equal::ElementIsEqualInstance,
@@ -41,6 +41,7 @@ use crate::instances::{
     endoscalar_extract::EndoscalarExtractInstance,
     endoscalar_group_scale::EndoscalarGroupScaleInstance,
     endoscalar_lift::EndoscalarLiftInstance,
+    horner::{HornerInstanceN3, HornerInstanceN7, HornerInstanceN19, HornerKyInstanceN3},
     nonzero_bank_scope::NonzeroBankScopeInstanceK2,
     point_add_incomplete::PointAddIncompleteInstance,
     point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
@@ -117,6 +118,10 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         fingerprint: fingerprint_instance::<ElementFoldInstanceN7>,
     },
     ExportTarget {
+        name: "Ragu.Instances.Element.FoldN19",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN19>,
+    },
+    ExportTarget {
         name: "Ragu.Instances.Element.EnforceRootOfUnityK2",
         fingerprint: fingerprint_instance::<ElementEnforceRootOfUnityInstanceK2>,
     },
@@ -187,6 +192,22 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Endoscalar.Lift",
         fingerprint: fingerprint_instance::<EndoscalarLiftInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Horner.N3",
+        fingerprint: fingerprint_instance::<HornerInstanceN3>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Horner.N7",
+        fingerprint: fingerprint_instance::<HornerInstanceN7>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Horner.N19",
+        fingerprint: fingerprint_instance::<HornerInstanceN19>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Horner.KyN3",
+        fingerprint: fingerprint_instance::<HornerKyInstanceN3>,
     },
 ];
 

@@ -13,6 +13,7 @@ repository.workspace = true
 ragu_core = { path = "../../../crates/ragu_core", version = "0.0.0" }
 ragu_arithmetic = { path = "../../../crates/ragu_arithmetic", version = "0.0.0" }
 ragu_primitives = { path = "../../../crates/ragu_primitives", version = "0.0.0" }
+ragu_circuits = { path = "../../../crates/ragu_circuits", version = "0.0.0" }
 ragu_pasta = { path = "../../../crates/ragu_pasta", version = "0.0.0" }
 clap = { version = "4.5", features = ["derive"] }
 ff = { workspace = true }
