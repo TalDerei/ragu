@@ -40,7 +40,7 @@ jobs:
               - '.github/workflows/fv.yml'
               - '.github/actions/**'
 
-  lean:
+  fv:
     name: exporter + lean
     needs: changes
     if: needs.changes.outputs.fv == 'true' || github.event_name == 'push'
