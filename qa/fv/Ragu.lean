@@ -1,2 +1,2 @@
 import Ragu.Instances
-import Ragu.Contrib
+import Ragu.Lemmas

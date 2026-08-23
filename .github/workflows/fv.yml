@@ -36,7 +36,7 @@ jobs:
               - '**/Cargo.toml'
               - '**/Cargo.lock'
               - 'rust-toolchain.toml'
-              - 'qa/lean/**'
+              - 'qa/fv/**'
               - '.github/workflows/fv.yml'
               - '.github/actions/**'
 
@@ -65,11 +65,11 @@ jobs:
       - name: Cache Lake build artifacts
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: qa/lean/.lake
-          key: lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/lean/lean-toolchain') }}-${{ hashFiles('qa/lean/lake-manifest.json') }}-${{ github.sha }}
+          path: qa/fv/.lake
+          key: lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/fv/lean-toolchain') }}-${{ hashFiles('qa/fv/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
-            lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/lean/lean-toolchain') }}-${{ hashFiles('qa/lean/lake-manifest.json') }}-
-            lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/lean/lean-toolchain') }}-
+            lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/fv/lean-toolchain') }}-${{ hashFiles('qa/fv/lake-manifest.json') }}-
+            lake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('qa/fv/lean-toolchain') }}-
 
       - name: Install elan (Lean toolchain manager)
         shell: bash
@@ -81,7 +81,7 @@ jobs:
 
       - name: Build Lean project
         shell: bash
-        working-directory: qa/lean
+        working-directory: qa/fv
         run: lake build --wfail
 
       # The vk-style equivalence check tying the Lean reimplementations to the
@@ -95,7 +95,7 @@ jobs:
           set -euo pipefail
           cargo run --locked -p lean_extraction -- fingerprint \
             | sort > "$RUNNER_TEMP/fingerprints-rust.txt"
-          (cd qa/lean && lake env lean --run Ragu/Fingerprint/Main.lean) \
+          (cd qa/fv && lake env lean --run Ragu/Fingerprint/Main.lean) \
             | sort > "$RUNNER_TEMP/fingerprints-lean.txt"
           diff -u "$RUNNER_TEMP/fingerprints-rust.txt" "$RUNNER_TEMP/fingerprints-lean.txt"
           echo "all fingerprints match"

@@ -21,7 +21,7 @@ updates:
       - dependencies
       - ci
 
-  # Main Cargo workspace (crates/** and qa/lean/extraction).
+  # Main Cargo workspace (crates/** and qa/fv/extraction).
   - package-ecosystem: cargo
     directory: /
     schedule:

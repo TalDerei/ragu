@@ -1,1 +1,0 @@
-import Ragu.Contrib.EndoscalarProof
