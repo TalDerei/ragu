@@ -32,8 +32,9 @@ A reimplementation of a generator is worth only as much as its own validation,
 so the port is measured against real Sage output twice over. At `t = 5` it is
 compared against `reference/`, produced by the script itself at exactly the
 parameters ragu ships. At `t = 3` it is compared against halo2's P128Pow5T3
-tables, which are deployed Orchard consensus parameters from the same script;
-point the check at a halo2 checkout for that pass:
+tables from the same script. The Fp instance is Orchard's deployed nullifier
+permutation; Fq is halo2's companion Pasta-field instance. Point the check at a
+halo2 checkout for that pass:
 
 ```sh
 python3 qa/params/check_poseidon_params.py --halo2-dir path/to/halo2
@@ -41,7 +42,8 @@ python3 qa/params/check_poseidon_params.py --halo2-dir path/to/halo2
 
 CI runs the ragu pass. The halo2 pass is a developer-side check for when the
 port is touched, and evidence that the port tracks the script across parameter
-sets rather than at one point.
+sets rather than at one point. Supplying `--halo2-dir` requires both parameter
+files to be present; a missing or incomplete checkout fails the check.
 
 ## What is and isn't covered
 

@@ -1,12 +1,12 @@
 //! Vendored `halo2_poseidon` P128Pow5T3 parameters and permutation test vectors.
 //!
 //! These pin ragu's Poseidon permutation to an external reference. The
-//! parameters are Orchard's deployed instantiation (t=3, rate 2, alpha 5, 8
-//! full and 56 partial rounds over each Pasta base field) and the vectors are
-//! halo2's, which are transcribed from zcash-test-vectors'
-//! `orchard_poseidon/permute`. Both are fixed by deployed consensus, so they
-//! are vendored rather than pulled in as a dependency: there is no upstream
-//! drift to track.
+//! parameters are halo2's t=3, rate 2, alpha 5 instantiation with 8 full and
+//! 56 partial rounds over each Pasta field. The Fp instance is Orchard's
+//! deployed nullifier permutation; Fq is halo2's companion Pasta-field
+//! instance. The vectors are halo2's, transcribed from zcash-test-vectors'
+//! `orchard_poseidon/permute`. They are vendored rather than pulled in as a
+//! dependency.
 //!
 //! Ragu ships a different instantiation (t=5, rate 4). What transfers is the
 //! permutation *itself* -- round ordering, sbox placement, the full/partial

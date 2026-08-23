@@ -15,6 +15,8 @@ import re
 import sys
 from pathlib import Path
 
+from poseidon_params import PALLAS_BASE, VESTA_BASE
+
 FROM_RAW = re.compile(r"from_raw\(\[\s*((?:0x[0-9a-fA-F_]+,\s*){4})\]\)", re.MULTILINE)
 BYTE_ARRAY = re.compile(r"\[((?:\s*0x[0-9a-fA-F]{2},){32})\s*\]", re.MULTILINE)
 
@@ -22,12 +24,12 @@ HEADER = """\
 //! Vendored `halo2_poseidon` P128Pow5T3 parameters and permutation test vectors.
 //!
 //! These pin ragu's Poseidon permutation to an external reference. The
-//! parameters are Orchard's deployed instantiation (t=3, rate 2, alpha 5, 8
-//! full and 56 partial rounds over each Pasta base field) and the vectors are
-//! halo2's, which are transcribed from zcash-test-vectors'
-//! `orchard_poseidon/permute`. Both are fixed by deployed consensus, so they
-//! are vendored rather than pulled in as a dependency: there is no upstream
-//! drift to track.
+//! parameters are halo2's t=3, rate 2, alpha 5 instantiation with 8 full and
+//! 56 partial rounds over each Pasta field. The Fp instance is Orchard's
+//! deployed nullifier permutation; Fq is halo2's companion Pasta-field
+//! instance. The vectors are halo2's, transcribed from zcash-test-vectors'
+//! `orchard_poseidon/permute`. They are vendored rather than pulled in as a
+//! dependency.
 //!
 //! Ragu ships a different instantiation (t=5, rate 4). What transfers is the
 //! permutation *itself* -- round ordering, sbox placement, the full/partial
@@ -64,7 +66,7 @@ impl PoseidonPermutation<{field}> for {struct_name} {{
 """
 
 
-def parse_constants(path, t=3, rounds=64):
+def parse_constants(path, t=3, rounds=64, modulus=None):
     """ROUND_CONSTANTS and MDS from a halo2_poseidon fp.rs / fq.rs.
 
     The file lays out the round constants, then MDS, then MDS_INV, all as
@@ -76,26 +78,37 @@ def parse_constants(path, t=3, rounds=64):
         values.append(sum(limb << (64 * i) for i, limb in enumerate(limbs)))
     if len(values) != rounds * t + 2 * t * t:
         raise ValueError(f"{path}: parsed {len(values)} elements, expected {rounds * t + 2 * t * t}")
+    if modulus is not None and any(value >= modulus for value in values):
+        raise ValueError(f"{path}: parsed a non-canonical field element")
     flat, rest = values[: rounds * t], values[rounds * t :]
     round_constants = [flat[r * t : (r + 1) * t] for r in range(rounds)]
     mds = [rest[i * t : (i + 1) * t] for i in range(t)]
     return round_constants, mds
 
 
-def parse_vectors(path, field):
+def parse_vectors(path, field, modulus):
     text = path.read_text()
     section = text[text.index(f"pub mod {field}") :]
     end = section.index("pub mod ", 1) if "pub mod " in section[1:] else len(section)
     section = section[:end]
     permute = section[section.index("pub fn permute") : section.index("pub fn hash")]
+    vector_count = permute.count("TestVector {")
+    if vector_count == 0:
+        raise ValueError(f"{field}: no permutation vectors found")
 
     words = []
     for match in BYTE_ARRAY.finditer(permute):
         octets = [int(b, 16) for b in re.findall(r"0x([0-9a-fA-F]{2})", match.group(1))]
         words.append(int.from_bytes(bytes(octets), "little"))
 
-    if len(words) % 6 != 0:
-        raise ValueError(f"{field}: expected 6 words per vector, parsed {len(words)}")
+    expected_words = vector_count * 6
+    if len(words) != expected_words:
+        raise ValueError(
+            f"{field}: found {vector_count} vectors but parsed {len(words)} words; "
+            f"expected {expected_words}"
+        )
+    if any(word >= modulus for word in words):
+        raise ValueError(f"{field}: parsed a non-canonical field element")
     return [(words[i : i + 3], words[i + 3 : i + 6]) for i in range(0, len(words), 6)]
 
 
@@ -141,12 +154,12 @@ def main():
     )
 
     chunks = [HEADER]
-    for name, field, macro, prefix, field_doc in (
-        ("fp", "Fp", "fp", "FP", "Pallas's base field"),
-        ("fq", "Fq", "fq", "FQ", "Vesta's base field"),
+    for name, field, macro, prefix, field_doc, modulus in (
+        ("fp", "Fp", "fp", "FP", "Pallas's base field", PALLAS_BASE),
+        ("fq", "Fq", "fq", "FQ", "Vesta's base field", VESTA_BASE),
     ):
-        round_constants, mds = parse_constants(src / f"{name}.rs")
-        vectors = parse_vectors(src / "test_vectors.rs", name)
+        round_constants, mds = parse_constants(src / f"{name}.rs", modulus=modulus)
+        vectors = parse_vectors(src / "test_vectors.rs", name, modulus)
 
         chunks.append(
             PARAMS_TEMPLATE.format(

@@ -19,11 +19,30 @@ from poseidon_params import PALLAS_BASE, VESTA_BASE, generate
 
 HEX_LITERAL = re.compile(r"(?:fp|fq)!\(0x([0-9a-fA-F]{64})\)")
 SAGE_HEX = re.compile(r"0x([0-9a-f]{1,64})")
+TRAIT_CONST = re.compile(
+    r"^\s*const\s+(T|RATE|FULL_ROUNDS|PARTIAL_ROUNDS|ALPHA)\s*:\s*"
+    r"(?:usize|isize)\s*=\s*(-?\d+)\s*;\s*$",
+    re.MULTILINE,
+)
 
 
-def parse_ragu(path, t, rounds=64):
+def parse_ragu(path, *, t, rate, r_f, r_p, alpha):
     """ROUND_CONSTANTS and MDS_MATRIX from a ragu_pasta poseidon_f*.rs."""
     text = path.read_text()
+    actual_config = {name: int(value) for name, value in TRAIT_CONST.findall(text)}
+    expected_config = {
+        "T": t,
+        "RATE": rate,
+        "FULL_ROUNDS": r_f,
+        "PARTIAL_ROUNDS": r_p,
+        "ALPHA": alpha,
+    }
+    if actual_config != expected_config:
+        raise ValueError(
+            f"{path}: PoseidonPermutation metadata {actual_config}, expected {expected_config}"
+        )
+
+    rounds = r_f + r_p
     head, _, tail = text.partition("const MDS_MATRIX")
     rc_flat = [int(m, 16) for m in HEX_LITERAL.findall(head)]
     mds_flat = [int(m, 16) for m in HEX_LITERAL.findall(tail)]
@@ -35,7 +54,7 @@ def parse_ragu(path, t, rounds=64):
     )
 
 
-def parse_sage(path, t, rounds=64):
+def parse_sage(path, t, p, rounds=64):
     """ROUND_CONSTANTS and MDS from verbatim `generate_parameters_grain.sage` stdout."""
     text = path.read_text()
     constants = text[text.index("Round constants for GF(p):") : text.index("\nn: ")]
@@ -47,6 +66,13 @@ def parse_sage(path, t, rounds=64):
     )
     if header["t"] != t or header["n"] != 255:
         raise ValueError(f"{path}: header says n={header['n']} t={header['t']}, expected n=255 t={t}")
+
+    prime_match = re.search(
+        r"^Prime number:\s+(?:0x)?(0x[0-9a-fA-F]+)$", text, re.MULTILINE
+    )
+    if prime_match is None or int(prime_match.group(1), 16) != p:
+        actual = prime_match.group(1) if prime_match else "missing"
+        raise ValueError(f"{path}: prime is {actual}, expected {p:#x}")
 
     rc_flat = [int(h, 16) for h in SAGE_HEX.findall(constants)]
     mds_flat = [int(h, 16) for h in SAGE_HEX.findall(matrix)]
@@ -113,10 +139,11 @@ def main():
         print("halo2_poseidon P128Pow5T3 (t=3), self-test of the port:")
         for name, field, p in (("fp", "Fp", PALLAS_BASE), ("fq", "Fq", VESTA_BASE)):
             path = args.halo2_dir / "halo2_poseidon" / "src" / f"{name}.rs"
-            if not path.exists():
-                print(f"  {field}: {path} not found, skipped")
+            if not path.is_file():
+                print(f"  {field}: {path} not found")
+                all_ok = False
                 continue
-            rc, mds = parse_halo2(path, 3)
+            rc, mds = parse_halo2(path, 3, modulus=p)
             all_ok &= check(field, rc, mds, t=3, r_f=8, r_p=56, p=p)
 
     print("ragu_pasta (t=5):")
@@ -125,8 +152,8 @@ def main():
         ("poseidon_fq", "Fq", "vesta", VESTA_BASE),
     ):
         path = args.ragu_dir / "crates" / "ragu_pasta" / "src" / f"{name}.rs"
-        rc, mds = parse_ragu(path, 5)
-        reference = parse_sage(here / "reference" / f"{curve}-t5.txt", 5)
+        rc, mds = parse_ragu(path, t=5, rate=4, r_f=8, r_p=56, alpha=5)
+        reference = parse_sage(here / "reference" / f"{curve}-t5.txt", 5, p)
         all_ok &= check(field, rc, mds, t=5, r_f=8, r_p=56, p=p, reference=reference)
 
     return 0 if all_ok else 1
