@@ -39,12 +39,13 @@ def main (hint : ProverEnvironment (F p) → Pair (F p)) :
   assertZero (c - 1)
   return ⟨a, b⟩
 
-/-- Verifier-side spec: the two returned wires multiply to one. That is the
-whole content of the gadget — it implies both are nonzero, and it pins the
-second wire as the first's inverse, which is what licenses `Invertible::invert`
-to swap them without emitting anything. -/
+/-- Verifier-side spec: the allocated element is nonzero and the second wire
+really is its multiplicative inverse. Stated this way rather than as the
+emitted equation `element · inverse = 1` because it is what callers reason
+against: `Nonzero`'s type invariant is the first conjunct, and the second is
+what licenses `Invertible::invert` to swap the two fields and emit nothing. -/
 def Spec (_input : Unit) (out : Pair (F p)) (_data : ProverData (F p)) :=
-  out.element * out.inverse = 1
+  out.element ≠ 0 ∧ out.inverse = out.element⁻¹
 
 /-- Prover-side assumption: the supplied advice really is the inverse, so the
 prover can satisfy `a · b = 1`. This is exactly Rust's documented completeness
@@ -73,13 +74,19 @@ instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Pair) Pair where
   output _ offset := varFromOffset Pair offset
   localLength _ := 3
 
-/-- The gate gives `a · b = c` and the assertion gives `c = 1`. -/
+/-- The gate gives `a · b = c` and the assertion gives `c = 1`; a product of
+one makes the first factor nonzero and the second its inverse. -/
 theorem soundness :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c⟩ := h_holds
   rw [add_neg_eq_zero] at h_c
-  rw [h_mul, h_c]
+  have h1 : env.get i₀ * env.get (i₀ + 1) = 1 := by rw [h_mul, h_c]
+  refine ⟨?_, ?_⟩
+  · intro h0
+    rw [h0, zero_mul] at h1
+    exact zero_ne_one h1
+  · exact eq_inv_of_mul_eq_one_left (by rw [mul_comm]; exact h1)
 
 /-- The honest witness exists whenever the advice inverts the value, and it
 puts the value and advice on the two returned wires. -/
@@ -97,15 +104,5 @@ def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Pair) Pair w
   ProverSpec
   soundness
   completeness
-
-/-- Nonzeroness of the element, the property callers actually quote. Kept as a
-named lemma rather than folded into `Spec` because `Spec` must stay the
-strongest statement the trace supports: `a · b = 1` pins the inverse too, and
-`a ≠ 0` alone would lose that. -/
-theorem element_ne_zero {out : Pair (F p)} (h : out.element * out.inverse = 1) :
-    out.element ≠ 0 := by
-  intro h0
-  rw [h0, zero_mul] at h
-  exact zero_ne_one h
 
 end Ragu.Circuits.Element.Invertible

@@ -184,8 +184,17 @@ def loopVal (P : Params (F p) t) :
         (Permutation.permuteVal P.mds P.rounds (absorbBlockVal state blocks[0]))
 
 /-- The absorb-and-permute loop: one boxed `Permutation` per block, threading
-the state through. Recursion on the block count mirrors `Permutation.main`'s
-recursion on the round schedule. -/
+the state through.
+
+Walked by explicit recursion rather than `Circuit.foldl`, for the same reason
+`Permutation.main` is: `Circuit.foldl` requires the body to be
+`ConstantOutput`, and this body's output is the permutation's output on a
+state built from the *previous* block's result, so it is a function of the
+accumulator rather than of the offset alone. `Circuit.foldlRange` drops that
+requirement but leaves `Circuit.FoldlM.foldlAcc` unexpanded, so the chaining
+is the same induction either way — which is what `loop_localLength`,
+`loop_output`, `loop_consistent`, `loop_soundness` and `loop_completeness`
+below carry out. -/
 def loop (P : Params (F p) t) :
     (n : ℕ) → Vector (Vector (Expression (F p)) rate) n → Var (fields t) (F p) →
       Circuit (F p) (Var (fields t) (F p))
@@ -324,6 +333,8 @@ theorem loop_completeness (P : Params (F p) t) (env : ProverEnvironment (F p)) :
       refine ⟨?_, loop_completeness P env n blocks.tail _ _ h_env_tail⟩
       simp [circuit_norm, Permutation.circuit, Permutation.Assumptions]
 
+/-- Chaining each block's `Permutation` spec along the loop gives `loopVal`,
+started at the zero state `Sponge::new` builds. -/
 theorem soundness (P : Params (F p) t) (n w : ℕ) :
     Soundness (F p) (elaborated P n w) Assumptions (Spec P) := by
   circuit_proof_start
@@ -336,6 +347,8 @@ theorem soundness (P : Params (F p) t) (n w : ℕ) :
   · ext i hi
     simp [zeroState, Expression.eval]
 
+/-- Every block's permutation is total, so the honest witness exists at each
+step and the loop adds no constraints of its own. -/
 theorem completeness (P : Params (F p) t) (n w : ℕ) :
     Completeness (F p) (elaborated P n w) Assumptions := by
   intro offset env blocks_var h_env blocks _ _
@@ -366,8 +379,14 @@ squeeze mode on exactly this state.
 namespace Squeeze
 variable {rate : ℕ}
 
-/-- `s` squeezed elements: the first `s` words of the post-permutation state. -/
-def main (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t)
+/-- `s` squeezed elements: the first `s` words of the post-permutation state.
+
+`hs : s < t` is the rate bound, not a convenience. For this sponge family the
+capacity is the last state word and the rate is `t - 1`, so `s < t` is exactly
+`s ≤ RATE`. At `s = t` the Rust sponge would exhaust its rate words and
+permute again to refill them, so the `t`-th squeezed element comes from a
+*second* permutation — a shape this projection does not model. -/
+def main (P : Params (F p) t) (n w s : ℕ) (hs : s < t)
     (blocks : Var (ProvableVector (fields (w + 1)) n) (F p)) :
     Circuit (F p) (Var (fields s) (F p)) := do
   let state ← Blocks.circuit P n w blocks
@@ -378,7 +397,7 @@ def Assumptions {n w : ℕ} (_blocks : Vector (Vector (F p) (w + 1)) n) := True
 
 /-- The squeezed elements are the leading words of the sponge state after
 absorbing every block. -/
-def Spec (P : Params (F p) t) {n w s : ℕ} (hs : s ≤ t)
+def Spec (P : Params (F p) t) {n w s : ℕ} (hs : s < t)
     (blocks : Vector (Vector (F p) (w + 1)) n) (out : Vector (F p) s) :=
   out = Vector.ofFn fun i =>
     (Blocks.loopVal P n blocks (Vector.replicate t 0))[i.val]'(by omega)
@@ -386,7 +405,7 @@ def Spec (P : Params (F p) t) {n w s : ℕ} (hs : s ≤ t)
 /-- The projection allocates nothing beyond the block loop. A `def` rather
 than an `instance`: neither `t` nor the bound `hs` is determined by the
 instance goal. -/
-def elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
+def elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     ElaboratedCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) where
   main := main P n w s hs
   localLength _ := n * Permutation.localLength P.rounds
@@ -400,7 +419,7 @@ def elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
     simp [main, circuit_norm]
 
 /-- Immediate from `Blocks`' spec, read at the leading words. -/
-theorem soundness (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
+theorem soundness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     Soundness (F p) (elaborated P n w s hs) Assumptions (Spec P hs) := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions, Blocks.Spec]
   ext i hi
@@ -408,12 +427,12 @@ theorem soundness (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
   simpa [Vector.getElem_map] using h
 
 /-- `Blocks` is total, so the honest witness exists. -/
-theorem completeness (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
+theorem completeness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     Completeness (F p) (elaborated P n w s hs) Assumptions := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions]
 
 /-- The Poseidon sponge over `n` blocks, squeezing `s` elements. -/
-def circuit (P : Params (F p) t) (n w s : ℕ) (hs : s ≤ t) :
+def circuit (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     FormalCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) :=
   { elaborated P n w s hs with
     Assumptions

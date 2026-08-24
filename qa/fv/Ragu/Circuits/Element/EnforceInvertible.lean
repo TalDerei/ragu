@@ -43,12 +43,13 @@ def main (input : Var Input (F p)) : Circuit (F p) (Var Invertible.Pair (F p)) :
   assertZero (x - pair.element)
   return pair
 
-/-- Verifier-side spec: the returned element is the caller's wire, and it
-multiplies with the returned inverse to one. Nonzeroness of the input follows
-via `Invertible.element_ne_zero`. -/
+/-- Verifier-side spec: the returned element is the caller's wire, that wire is
+nonzero, and the returned inverse really inverts it. The nonzeroness is the
+point of the gadget — it is what `Nonzero` and `Invertible` encode in their
+types — so it is stated here rather than left implicit in a product. -/
 def Spec (input : Value Input (F p))
     (out : Invertible.Pair (F p)) (_data : ProverData (F p)) :=
-  out.element = input.element ∧ out.element * out.inverse = 1
+  out.element = input.element ∧ out.element ≠ 0 ∧ out.inverse = out.element⁻¹
 
 /-- Prover-side assumption: the hint really inverts the element. -/
 def ProverAssumptions (input : ProverValue Input (F p))
