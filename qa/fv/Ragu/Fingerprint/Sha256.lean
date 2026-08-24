@@ -97,15 +97,17 @@ def hexDigest (bytes : ByteArray) : String :=
     (acc.push (Nat.digitChar (b >>> 4).toNat)).push (Nat.digitChar (b &&& 0xf).toNat)
 
 -- FIPS 180-2 test vectors, plus padding boundary cases (55- and 64-byte inputs).
-example : hexDigest (hash "".toUTF8)
-    = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" := by native_decide
-example : hexDigest (hash "abc".toUTF8)
-    = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" := by native_decide
-example : hexDigest (hash "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".toUTF8)
-    = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1" := by native_decide
-example : hexDigest (hash ⟨.replicate 55 0x61⟩)
-    = "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318" := by native_decide
-example : hexDigest (hash ⟨.replicate 64 0x61⟩)
-    = "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb" := by native_decide
+-- These are executable regression checks, not theorem dependencies. `#guard`
+-- keeps their evaluator out of the theorem axiom footprint.
+#guard hexDigest (hash "".toUTF8)
+    == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+#guard hexDigest (hash "abc".toUTF8)
+    == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+#guard hexDigest (hash "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".toUTF8)
+    == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+#guard hexDigest (hash ⟨.replicate 55 0x61⟩)
+    == "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"
+#guard hexDigest (hash ⟨.replicate 64 0x61⟩)
+    == "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"
 
 end Ragu.Fingerprint.Sha256

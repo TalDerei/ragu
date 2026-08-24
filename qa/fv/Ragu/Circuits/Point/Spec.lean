@@ -1,6 +1,7 @@
 import Clean.Circuit
 import Mathlib.FieldTheory.Finite.Basic
 import Mathlib.Tactic.LinearCombination
+import Mathlib.Tactic.ReduceModChar
 import Ragu.Core
 
 namespace Ragu.Circuits.Point.Spec
@@ -80,14 +81,14 @@ def EpAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.p :=
 {
   b := 5,
   ζ := 0x12ccca834acdba712caad5dc57aab1b01d1f8bd237ad31491dad5ebdfdfe4ab9,
-  h_small_order := by native_decide
+  h_small_order := by decide
 }
 
 def EqAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.q :=
 {
   b := 5,
   ζ := 0x6819a58283e528e511db4d81cf70f5a0fed467d47c033af2aa9d2e050aa0e4f,
-  h_small_order := by native_decide
+  h_small_order := by decide
 }
 
 /-! ### Nonzero coordinates for the concrete Pasta parameters
@@ -97,36 +98,6 @@ A point of order two is an affine point with `y = 0`, i.e. a root of
 Euler's cube criterion `(-5)^((p-1)/3) ≠ 1`), so no such point exists.
 Likewise, `x = 0` would require `y² = 5`, while `5` is not a square in either
 base field. -/
-
-/-- Binary (square-and-multiply) exponentiation. `Monoid.npow` is linear in
-the exponent, so `native_decide` cannot evaluate `a ^ k` at
-cryptographic-size `k`; this computes the same value in `O(log k)`
-multiplications. -/
-def fastPow {M : Type*} [Monoid M] (a : M) (k : ℕ) : M :=
-  if _h : k = 0 then 1
-  else
-    let half := fastPow (a * a) (k / 2)
-    if k % 2 = 0 then half else half * a
-termination_by k
-decreasing_by omega
-
-theorem fastPow_eq {M : Type*} [Monoid M] (a : M) (k : ℕ) :
-    fastPow a k = a ^ k := by
-  induction a, k using fastPow.induct with
-  | case1 a =>
-    simp [fastPow]
-  | case2 a k h h_even ih =>
-    rw [fastPow]
-    simp only [dif_neg h, if_pos h_even, ih]
-    rw [← sq, ← pow_mul]
-    congr 1
-    omega
-  | case3 a k h h_odd ih =>
-    rw [fastPow]
-    simp only [dif_neg h, if_neg h_odd, ih]
-    rw [← sq, ← pow_mul, ← pow_succ]
-    congr 1
-    omega
 
 /-- Euler-style cube criterion: if `−b` fails the cube test
 `(−b)^((q−1)/3) = 1` then `x³ + b` has no root, so the curve has no points
@@ -179,37 +150,49 @@ in `F_p`. Discharges the `noOrderTwoPoints` caller obligation of
 `Point.Double` / `Endoscalar.GroupScale` at the concrete instantiation. -/
 theorem epAffineParams_noOrderTwoPoints : EpAffineParams.noOrderTwoPoints := by
   apply noOrderTwoPoints_of_neg_b_not_cube
-  · native_decide
-  · native_decide
-  · rw [← fastPow_eq]
-    native_decide
+  · decide
+  · decide
+  · change (-5 : ZMod Core.Primes.p) ^ ((Core.Primes.p - 1) / 3) ≠ 1
+    unfold Core.Primes.p
+    norm_num
+    reduce_mod_char!
+    decide
 
 /-- The Vesta parameters have no points of order two: `−5` is not a cube
 in `F_q`. -/
 theorem eqAffineParams_noOrderTwoPoints : EqAffineParams.noOrderTwoPoints := by
   apply noOrderTwoPoints_of_neg_b_not_cube
-  · native_decide
-  · native_decide
-  · rw [← fastPow_eq]
-    native_decide
+  · decide
+  · decide
+  · change (-5 : ZMod Core.Primes.q) ^ ((Core.Primes.q - 1) / 3) ≠ 1
+    unfold Core.Primes.q
+    norm_num
+    reduce_mod_char!
+    decide
 
 /-- Pallas has no on-curve affine point with `x = 0`: `5` is not a square
 in `F_p`. -/
 theorem epAffineParams_noZeroXPoints : EpAffineParams.noZeroXPoints := by
   apply noZeroXPoints_of_b_not_square
-  · native_decide
-  · native_decide
-  · rw [← fastPow_eq]
-    native_decide
+  · decide
+  · decide
+  · change (5 : ZMod Core.Primes.p) ^ ((Core.Primes.p - 1) / 2) ≠ 1
+    unfold Core.Primes.p
+    norm_num
+    reduce_mod_char!
+    decide
 
 /-- Vesta has no on-curve affine point with `x = 0`: `5` is not a square
 in `F_q`. -/
 theorem eqAffineParams_noZeroXPoints : EqAffineParams.noZeroXPoints := by
   apply noZeroXPoints_of_b_not_square
-  · native_decide
-  · native_decide
-  · rw [← fastPow_eq]
-    native_decide
+  · decide
+  · decide
+  · change (5 : ZMod Core.Primes.q) ^ ((Core.Primes.q - 1) / 2) ≠ 1
+    unfold Core.Primes.q
+    norm_num
+    reduce_mod_char!
+    decide
 
 /-- Both coordinates of every affine Pallas point are nonzero. -/
 theorem epAffineParams_nonzeroCoordinates : EpAffineParams.nonzeroCoordinates :=
