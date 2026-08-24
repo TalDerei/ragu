@@ -385,14 +385,19 @@ mod tests {
             element_alloc::ElementAllocInstance,
             element_alloc_square::ElementAllocSquareInstance,
             element_div_nonzero::ElementDivNonzeroInstance,
+            element_enforce_invertible::ElementEnforceInvertibleInstance,
             element_enforce_nonzero::ElementEnforceNonzeroInstance,
             element_enforce_root_of_unity::{
                 ElementEnforceRootOfUnityInstanceK2, ElementEnforceRootOfUnityInstanceK5,
             },
             element_enforce_zero::ElementEnforceZeroInstance,
-            element_fold::{ElementFoldInstanceN3, ElementFoldInstanceN7},
+            element_fold::{
+                ElementFoldInstanceN0, ElementFoldInstanceN1, ElementFoldInstanceN2,
+                ElementFoldInstanceN3, ElementFoldInstanceN7, ElementFoldInstanceN19,
+            },
             element_invert::ElementInvertInstance,
             element_invert_with::ElementInvertWithInstance,
+            element_invertible::ElementInvertibleInstance,
             element_is_equal::ElementIsEqualInstance,
             element_is_zero::ElementIsZeroInstance,
             element_mul::ElementMulInstance,
@@ -401,13 +406,20 @@ mod tests {
             endoscalar_extract::EndoscalarExtractInstance,
             endoscalar_group_scale::EndoscalarGroupScaleInstance,
             endoscalar_lift::EndoscalarLiftInstance,
-            nonzero_bank_scope::NonzeroBankScopeInstanceK2,
+            horner::{HornerInstanceN3, HornerInstanceN7, HornerInstanceN19, HornerKyInstanceN3},
+            nonzero_bank_scope::{
+                NonzeroBankScopeInstanceK0, NonzeroBankScopeInstanceK1, NonzeroBankScopeInstanceK2,
+            },
             point_add_incomplete::PointAddIncompleteInstance,
             point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
             point_conditional_endo::PointConditionalEndoInstance,
             point_conditional_negate::PointConditionalNegateInstance,
             point_double::PointDoubleInstance,
             point_double_and_add_incomplete::PointDoubleAndAddIncompleteInstance,
+            poseidon_sponge::{
+                PoseidonBlocks2Squeeze3InstanceFp, PoseidonHash1InstanceFp,
+                PoseidonHash1InstanceFq, PoseidonHash4InstanceFp, PoseidonHash4InstanceFq,
+            },
         };
 
         assert_roundtrip::<PointAllocInstanceFp>();
@@ -422,14 +434,22 @@ mod tests {
         assert_roundtrip::<ElementAllocInstance>();
         assert_roundtrip::<ElementAllocSquareInstance>();
         assert_roundtrip::<ElementDivNonzeroInstance>();
+        assert_roundtrip::<ElementFoldInstanceN0>();
+        assert_roundtrip::<ElementFoldInstanceN1>();
+        assert_roundtrip::<ElementFoldInstanceN2>();
         assert_roundtrip::<ElementFoldInstanceN3>();
         assert_roundtrip::<ElementFoldInstanceN7>();
+        assert_roundtrip::<ElementFoldInstanceN19>();
         assert_roundtrip::<ElementEnforceRootOfUnityInstanceK2>();
         assert_roundtrip::<ElementEnforceRootOfUnityInstanceK5>();
         assert_roundtrip::<ElementEnforceZeroInstance>();
+        assert_roundtrip::<ElementEnforceInvertibleInstance>();
+        assert_roundtrip::<ElementInvertibleInstance>();
         assert_roundtrip::<ElementInvertInstance>();
         assert_roundtrip::<ElementInvertWithInstance>();
         assert_roundtrip::<ElementEnforceNonzeroInstance>();
+        assert_roundtrip::<NonzeroBankScopeInstanceK0>();
+        assert_roundtrip::<NonzeroBankScopeInstanceK1>();
         assert_roundtrip::<NonzeroBankScopeInstanceK2>();
         assert_roundtrip::<ElementIsEqualInstance>();
         assert_roundtrip::<ElementIsZeroInstance>();
@@ -442,6 +462,15 @@ mod tests {
         assert_roundtrip::<EndoscalarExtractInstance>();
         assert_roundtrip::<EndoscalarGroupScaleInstance>();
         assert_roundtrip::<EndoscalarLiftInstance>();
+        assert_roundtrip::<HornerInstanceN3>();
+        assert_roundtrip::<HornerInstanceN7>();
+        assert_roundtrip::<HornerInstanceN19>();
+        assert_roundtrip::<HornerKyInstanceN3>();
+        assert_roundtrip::<PoseidonHash1InstanceFp>();
+        assert_roundtrip::<PoseidonHash4InstanceFp>();
+        assert_roundtrip::<PoseidonHash1InstanceFq>();
+        assert_roundtrip::<PoseidonBlocks2Squeeze3InstanceFp>();
+        assert_roundtrip::<PoseidonHash4InstanceFq>();
     }
 
     /// The modulus encoding must round-trip through the canonical field
