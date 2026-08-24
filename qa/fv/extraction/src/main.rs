@@ -33,8 +33,7 @@ use crate::instances::{
     },
     element_enforce_zero::ElementEnforceZeroInstance,
     element_fold::{
-        ElementFoldInstanceN0, ElementFoldInstanceN1, ElementFoldInstanceN2, ElementFoldInstanceN3,
-        ElementFoldInstanceN7, ElementFoldInstanceN19,
+        ElementFoldInstanceN2, ElementFoldInstanceN3, ElementFoldInstanceN7, ElementFoldInstanceN19,
     },
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
@@ -61,8 +60,8 @@ use crate::instances::{
     point_double_and_add_incomplete::PointDoubleAndAddIncompleteInstance,
     poseidon_sponge::{
         PoseidonBlocks1Tail2InstanceFp, PoseidonBlocks2Squeeze3InstanceFp, PoseidonHash1InstanceFp,
-        PoseidonHash1InstanceFq, PoseidonHash4InstanceFp, PoseidonHash4InstanceFq,
-        PoseidonInterleavedInstanceFp, PoseidonSaveResumeInstanceFp,
+        PoseidonHash1InstanceFq, PoseidonHash4InstanceFp, PoseidonInterleavedInstanceFp,
+        PoseidonSaveResumeInstanceFp,
     },
 };
 
@@ -131,14 +130,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Element.DivNonzero",
         fingerprint: fingerprint_instance::<ElementDivNonzeroInstance>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Element.FoldN0",
-        fingerprint: fingerprint_instance::<ElementFoldInstanceN0>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Element.FoldN1",
-        fingerprint: fingerprint_instance::<ElementFoldInstanceN1>,
     },
     ExportTarget {
         name: "Ragu.Instances.Element.FoldN2",
@@ -283,10 +274,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Poseidon.Blocks2Squeeze3Fp",
         fingerprint: fingerprint_instance::<PoseidonBlocks2Squeeze3InstanceFp>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Poseidon.Hash4Fq",
-        fingerprint: fingerprint_instance::<PoseidonHash4InstanceFq>,
     },
     ExportTarget {
         name: "Ragu.Instances.Poseidon.Hash1SaveResumeFp",

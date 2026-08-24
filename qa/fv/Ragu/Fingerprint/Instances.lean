@@ -23,8 +23,6 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Element.Alloc", Ragu.Instances.Element.Alloc.formal_instance),
   ("Ragu.Instances.Element.AllocSquare", Ragu.Instances.Element.AllocSquare.formal_instance),
   ("Ragu.Instances.Element.DivNonzero", Ragu.Instances.Element.DivNonzero.formal_instance),
-  ("Ragu.Instances.Element.FoldN0", Ragu.Instances.Element.FoldN0.formal_instance),
-  ("Ragu.Instances.Element.FoldN1", Ragu.Instances.Element.FoldN1.formal_instance),
   ("Ragu.Instances.Element.FoldN2", Ragu.Instances.Element.FoldN2.formal_instance),
   ("Ragu.Instances.Element.FoldN3", Ragu.Instances.Element.FoldN3.formal_instance),
   ("Ragu.Instances.Element.FoldN7", Ragu.Instances.Element.FoldN7.formal_instance),
@@ -61,7 +59,6 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Poseidon.Hash4Fp", Ragu.Instances.Poseidon.Hash4Fp.formal_instance),
   ("Ragu.Instances.Poseidon.Hash1Fq", Ragu.Instances.Poseidon.Hash1Fq.formal_instance),
   ("Ragu.Instances.Poseidon.Blocks2Squeeze3Fp", Ragu.Instances.Poseidon.Blocks2Squeeze3Fp.formal_instance),
-  ("Ragu.Instances.Poseidon.Hash4Fq", Ragu.Instances.Poseidon.Hash4Fq.formal_instance),
   ("Ragu.Instances.Poseidon.Hash1SaveResumeFp", Ragu.Instances.Poseidon.Hash1SaveResumeFp.formal_instance),
   ("Ragu.Instances.Poseidon.InterleavedFp", Ragu.Instances.Poseidon.InterleavedFp.formal_instance),
   ("Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp", Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp.formal_instance)

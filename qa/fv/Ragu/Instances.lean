@@ -12,8 +12,6 @@ import Ragu.Instances.Element.Square
 import Ragu.Instances.Element.Alloc
 import Ragu.Instances.Element.AllocSquare
 import Ragu.Instances.Element.DivNonzero
-import Ragu.Instances.Element.FoldN0
-import Ragu.Instances.Element.FoldN1
 import Ragu.Instances.Element.FoldN2
 import Ragu.Instances.Element.FoldN3
 import Ragu.Instances.Element.FoldN7
@@ -50,7 +48,6 @@ import Ragu.Instances.Poseidon.Hash1Fp
 import Ragu.Instances.Poseidon.Hash4Fp
 import Ragu.Instances.Poseidon.Hash1Fq
 import Ragu.Instances.Poseidon.Blocks2Squeeze3Fp
-import Ragu.Instances.Poseidon.Hash4Fq
 import Ragu.Instances.Poseidon.Hash1SaveResumeFp
 import Ragu.Instances.Poseidon.InterleavedFp
 import Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp

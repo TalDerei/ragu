@@ -37,14 +37,14 @@ this part.
 
 ## What is verified today
 
-Verification currently covers the gadget layer: 56 concrete circuit instances,
+Verification currently covers the gadget layer: 53 concrete circuit instances,
 each one a specific instantiation at a fixed prime field with all compile-time
 parameters made concrete.
 
 - **Field elements** — multiplication, squaring, allocation, inversion,
   division by a nonzero element, zero and equality tests, root-of-unity
   enforcement, invertible allocation, enforcement, and re-establishment, and
-  folding at six arities.
+  folding at four arities.
 - **Curve points** — allocation and contract re-establishment on both curves
   of the cycle, doubling, incomplete addition, incomplete double-and-add, and
   conditional endomorphism application and negation.
@@ -52,7 +52,7 @@ parameters made concrete.
   equality enforcement, and contract re-establishment.
 - **Endoscalars** — allocation, extraction, lifting, and group scaling.
 - **Poseidon** — the permutation at the deployed Pasta parameters on both
-  fields, and the sponge in every control-flow shape the Rust API exposes:
+  fields, and the sponge in several distinct control-flow shapes:
   single-block hashing on each field, uniform blocks across a rate boundary,
   a ragged final block, absorption after a squeeze, repeated squeezes, and
   the save/resume path.

@@ -51,19 +51,6 @@ impl CircuitInstance for PoseidonHash1InstanceFq {
     }
 }
 
-/// As [`PoseidonHash4InstanceFp`] over `PoseidonFq`: a full rate block on the
-/// other field of the cycle. Pairs with [`PoseidonHash1InstanceFq`] so both
-/// fields are covered at both block shapes rather than Fq at `k = 1` alone.
-pub struct PoseidonHash4InstanceFq;
-
-impl CircuitInstance for PoseidonHash4InstanceFq {
-    type Field = Fq;
-
-    fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
-        sponge_absorb_n::<Fq, PoseidonFq, 4>(dr, &PoseidonFq)
-    }
-}
-
 /// Two full rate blocks absorbed, then three squeezes.
 ///
 /// This is the shape `PoseidonHash{1,4}Instance*` cannot reach. Absorbing a

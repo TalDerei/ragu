@@ -33,6 +33,7 @@ def formal_instance : Core.Statements.FormalInstance where
 
   reimplementation :=
     (Circuits.Point.Consistent.circuit
-      Circuits.Point.Spec.EpAffineParams).isGeneralFormalCircuit.toWithHint
+      Circuits.Point.Spec.EpAffineParams
+      Circuits.Point.Spec.epAffineParams_nonzeroCoordinates).isGeneralFormalCircuit.toWithHint
 
 end Ragu.Instances.Point.ConsistentFp

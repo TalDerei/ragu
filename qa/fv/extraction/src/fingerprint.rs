@@ -381,6 +381,7 @@ mod tests {
             boolean_and::BooleanAndInstance,
             boolean_conditional_enforce_equal::BooleanConditionalEnforceEqualInstance,
             boolean_conditional_select::BooleanConditionalSelectInstance,
+            boolean_consistent::BooleanConsistentInstance,
             core_mul::CoreMulInstance,
             element_alloc::ElementAllocInstance,
             element_alloc_square::ElementAllocSquareInstance,
@@ -392,12 +393,13 @@ mod tests {
             },
             element_enforce_zero::ElementEnforceZeroInstance,
             element_fold::{
-                ElementFoldInstanceN0, ElementFoldInstanceN1, ElementFoldInstanceN2,
-                ElementFoldInstanceN3, ElementFoldInstanceN7, ElementFoldInstanceN19,
+                ElementFoldInstanceN2, ElementFoldInstanceN3, ElementFoldInstanceN7,
+                ElementFoldInstanceN19,
             },
             element_invert::ElementInvertInstance,
             element_invert_with::ElementInvertWithInstance,
             element_invertible::ElementInvertibleInstance,
+            element_invertible_consistent::ElementInvertibleConsistentInstance,
             element_is_equal::ElementIsEqualInstance,
             element_is_zero::ElementIsZeroInstance,
             element_mul::ElementMulInstance,
@@ -414,63 +416,84 @@ mod tests {
             point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
             point_conditional_endo::PointConditionalEndoInstance,
             point_conditional_negate::PointConditionalNegateInstance,
+            point_consistent::{PointConsistentInstanceFp, PointConsistentInstanceFq},
             point_double::PointDoubleInstance,
             point_double_and_add_incomplete::PointDoubleAndAddIncompleteInstance,
             poseidon_sponge::{
-                PoseidonBlocks2Squeeze3InstanceFp, PoseidonHash1InstanceFp,
-                PoseidonHash1InstanceFq, PoseidonHash4InstanceFp, PoseidonHash4InstanceFq,
+                PoseidonBlocks1Tail2InstanceFp, PoseidonBlocks2Squeeze3InstanceFp,
+                PoseidonHash1InstanceFp, PoseidonHash1InstanceFq, PoseidonHash4InstanceFp,
+                PoseidonInterleavedInstanceFp, PoseidonSaveResumeInstanceFp,
             },
         };
 
-        assert_roundtrip::<PointAllocInstanceFp>();
-        assert_roundtrip::<PointAllocInstanceFq>();
-        assert_roundtrip::<PointDoubleInstance>();
-        assert_roundtrip::<PointDoubleAndAddIncompleteInstance>();
-        assert_roundtrip::<PointAddIncompleteInstance>();
-        assert_roundtrip::<PointConditionalEndoInstance>();
-        assert_roundtrip::<PointConditionalNegateInstance>();
-        assert_roundtrip::<ElementMulInstance>();
-        assert_roundtrip::<ElementSquareInstance>();
-        assert_roundtrip::<ElementAllocInstance>();
-        assert_roundtrip::<ElementAllocSquareInstance>();
-        assert_roundtrip::<ElementDivNonzeroInstance>();
-        assert_roundtrip::<ElementFoldInstanceN0>();
-        assert_roundtrip::<ElementFoldInstanceN1>();
-        assert_roundtrip::<ElementFoldInstanceN2>();
-        assert_roundtrip::<ElementFoldInstanceN3>();
-        assert_roundtrip::<ElementFoldInstanceN7>();
-        assert_roundtrip::<ElementFoldInstanceN19>();
-        assert_roundtrip::<ElementEnforceRootOfUnityInstanceK2>();
-        assert_roundtrip::<ElementEnforceRootOfUnityInstanceK5>();
-        assert_roundtrip::<ElementEnforceZeroInstance>();
-        assert_roundtrip::<ElementEnforceInvertibleInstance>();
-        assert_roundtrip::<ElementInvertibleInstance>();
-        assert_roundtrip::<ElementInvertInstance>();
-        assert_roundtrip::<ElementInvertWithInstance>();
-        assert_roundtrip::<ElementEnforceNonzeroInstance>();
-        assert_roundtrip::<NonzeroBankScopeInstanceK0>();
-        assert_roundtrip::<NonzeroBankScopeInstanceK1>();
-        assert_roundtrip::<NonzeroBankScopeInstanceK2>();
-        assert_roundtrip::<ElementIsEqualInstance>();
-        assert_roundtrip::<ElementIsZeroInstance>();
-        assert_roundtrip::<CoreMulInstance>();
-        assert_roundtrip::<BooleanAllocInstance>();
-        assert_roundtrip::<BooleanAndInstance>();
-        assert_roundtrip::<BooleanConditionalSelectInstance>();
-        assert_roundtrip::<BooleanConditionalEnforceEqualInstance>();
-        assert_roundtrip::<EndoscalarAllocInstance>();
-        assert_roundtrip::<EndoscalarExtractInstance>();
-        assert_roundtrip::<EndoscalarGroupScaleInstance>();
-        assert_roundtrip::<EndoscalarLiftInstance>();
-        assert_roundtrip::<HornerInstanceN3>();
-        assert_roundtrip::<HornerInstanceN7>();
-        assert_roundtrip::<HornerInstanceN19>();
-        assert_roundtrip::<HornerKyInstanceN3>();
-        assert_roundtrip::<PoseidonHash1InstanceFp>();
-        assert_roundtrip::<PoseidonHash4InstanceFp>();
-        assert_roundtrip::<PoseidonHash1InstanceFq>();
-        assert_roundtrip::<PoseidonBlocks2Squeeze3InstanceFp>();
-        assert_roundtrip::<PoseidonHash4InstanceFq>();
+        macro_rules! assert_registered_roundtrips {
+            ($($name:literal => $instance:ty),+ $(,)?) => {{
+                $(assert_roundtrip::<$instance>();)+
+                [$($name),+]
+            }};
+        }
+
+        let tested_names = assert_registered_roundtrips! {
+            "Ragu.Instances.Point.AllocFp" => PointAllocInstanceFp,
+            "Ragu.Instances.Point.AllocFq" => PointAllocInstanceFq,
+            "Ragu.Instances.Point.Double" => PointDoubleInstance,
+            "Ragu.Instances.Point.DoubleAndAddIncomplete" => PointDoubleAndAddIncompleteInstance,
+            "Ragu.Instances.Point.AddIncomplete" => PointAddIncompleteInstance,
+            "Ragu.Instances.Point.ConditionalEndo" => PointConditionalEndoInstance,
+            "Ragu.Instances.Point.ConditionalNegate" => PointConditionalNegateInstance,
+            "Ragu.Instances.Point.ConsistentFp" => PointConsistentInstanceFp,
+            "Ragu.Instances.Point.ConsistentFq" => PointConsistentInstanceFq,
+            "Ragu.Instances.Element.Mul" => ElementMulInstance,
+            "Ragu.Instances.Element.Square" => ElementSquareInstance,
+            "Ragu.Instances.Element.Alloc" => ElementAllocInstance,
+            "Ragu.Instances.Element.AllocSquare" => ElementAllocSquareInstance,
+            "Ragu.Instances.Element.DivNonzero" => ElementDivNonzeroInstance,
+            "Ragu.Instances.Element.FoldN2" => ElementFoldInstanceN2,
+            "Ragu.Instances.Element.FoldN3" => ElementFoldInstanceN3,
+            "Ragu.Instances.Element.FoldN7" => ElementFoldInstanceN7,
+            "Ragu.Instances.Element.FoldN19" => ElementFoldInstanceN19,
+            "Ragu.Instances.Element.EnforceRootOfUnityK2" => ElementEnforceRootOfUnityInstanceK2,
+            "Ragu.Instances.Element.EnforceRootOfUnityK5" => ElementEnforceRootOfUnityInstanceK5,
+            "Ragu.Instances.Element.EnforceZero" => ElementEnforceZeroInstance,
+            "Ragu.Instances.Element.EnforceInvertible" => ElementEnforceInvertibleInstance,
+            "Ragu.Instances.Element.Invertible" => ElementInvertibleInstance,
+            "Ragu.Instances.Element.InvertibleConsistent" => ElementInvertibleConsistentInstance,
+            "Ragu.Instances.Element.Invert" => ElementInvertInstance,
+            "Ragu.Instances.Element.InvertWith" => ElementInvertWithInstance,
+            "Ragu.Instances.Element.EnforceNonzero" => ElementEnforceNonzeroInstance,
+            "Ragu.Instances.NonzeroBank.ScopeK0" => NonzeroBankScopeInstanceK0,
+            "Ragu.Instances.NonzeroBank.ScopeK1" => NonzeroBankScopeInstanceK1,
+            "Ragu.Instances.NonzeroBank.ScopeK2" => NonzeroBankScopeInstanceK2,
+            "Ragu.Instances.Element.IsEqual" => ElementIsEqualInstance,
+            "Ragu.Instances.Element.IsZero" => ElementIsZeroInstance,
+            "Ragu.Instances.Core.Mul" => CoreMulInstance,
+            "Ragu.Instances.Boolean.Alloc" => BooleanAllocInstance,
+            "Ragu.Instances.Boolean.And" => BooleanAndInstance,
+            "Ragu.Instances.Boolean.ConditionalSelect" => BooleanConditionalSelectInstance,
+            "Ragu.Instances.Boolean.Consistent" => BooleanConsistentInstance,
+            "Ragu.Instances.Boolean.ConditionalEnforceEqual" => BooleanConditionalEnforceEqualInstance,
+            "Ragu.Instances.Endoscalar.Alloc" => EndoscalarAllocInstance,
+            "Ragu.Instances.Endoscalar.Extract" => EndoscalarExtractInstance,
+            "Ragu.Instances.Endoscalar.GroupScale" => EndoscalarGroupScaleInstance,
+            "Ragu.Instances.Endoscalar.Lift" => EndoscalarLiftInstance,
+            "Ragu.Instances.Horner.N3" => HornerInstanceN3,
+            "Ragu.Instances.Horner.N7" => HornerInstanceN7,
+            "Ragu.Instances.Horner.N19" => HornerInstanceN19,
+            "Ragu.Instances.Horner.KyN3" => HornerKyInstanceN3,
+            "Ragu.Instances.Poseidon.Hash1Fp" => PoseidonHash1InstanceFp,
+            "Ragu.Instances.Poseidon.Hash4Fp" => PoseidonHash4InstanceFp,
+            "Ragu.Instances.Poseidon.Hash1Fq" => PoseidonHash1InstanceFq,
+            "Ragu.Instances.Poseidon.Blocks2Squeeze3Fp" => PoseidonBlocks2Squeeze3InstanceFp,
+            "Ragu.Instances.Poseidon.Hash1SaveResumeFp" => PoseidonSaveResumeInstanceFp,
+            "Ragu.Instances.Poseidon.InterleavedFp" => PoseidonInterleavedInstanceFp,
+            "Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp" => PoseidonBlocks1Tail2InstanceFp,
+        };
+        let registered_names = crate::EXPORT_TARGETS
+            .iter()
+            .map(|target| target.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(tested_names.as_slice(), registered_names.as_slice());
     }
 
     /// The modulus encoding must round-trip through the canonical field
