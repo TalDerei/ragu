@@ -31,14 +31,13 @@ def Assumptions (_input : F p) := True
 def Spec (input : F p) (out : F p) :=
   out = if input = 0 then 1 else 0
 
-instance elaborated : ElaboratedCircuit (F p) field field where
-  main
+instance elaborated : ElaboratedCircuit (F p) field field main where
   localLength _ := 6
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := field) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3, c4, c5, c6⟩ := h_holds
-  rw [add_neg_eq_zero] at c2 c5
+  rw [sub_eq_zero] at c2 c5
   -- c1 : x1 * iz = zp        c4 : x2 * inv = inz
   -- c2 : x1 = input           c5 : x2 = input
   -- c3 : zp = 0               c6 : inz - 1 + iz = 0
@@ -54,7 +53,7 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
     · exact absurd hinp hx
     · exact hiz
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := field) (Output := field) main Assumptions := by
   circuit_proof_start
   obtain ⟨⟨_, h0, h1, h2⟩, ⟨_, h3, h4, h5⟩⟩ := h_env
   refine ⟨?_, ?_, ?_, ?_⟩
@@ -70,6 +69,6 @@ theorem completeness : Completeness (F p) elaborated Assumptions := by
     · rw [mul_inv_cancel₀ hx]; ring
 
 def circuit : FormalCircuit (F p) field field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.IsZero

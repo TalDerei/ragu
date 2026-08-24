@@ -11,7 +11,7 @@ with `1 / y` used by the in-circuit `enforce_nonzero(y)` discharge. -/
 structure Input (F : Type) where
   x : F
   y : F
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- `Element::div_nonzero(&y)` is `y.enforce_nonzero(...)` followed by
@@ -42,13 +42,12 @@ def ProverAssumptions (input : ProverValue Input (F p))
   let inverse : F p := input.inverse
   yValue * inverse = 1
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   output _ offset := varFromOffset field (offset + 3)
   localLength _ := 6
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := Input) (Output := field) main (fun _ _ => True) Spec := by
   -- Compose: EnforceNonzero.Spec gives `y_nonzero = y ∧ y ≠ 0`; Divide.Spec
   -- gives `out = x / y_nonzero`; discharge Divide.Assumptions via `y ≠ 0`.
   circuit_proof_start [Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec,
@@ -58,7 +57,7 @@ theorem soundness :
   rw [h_div (Or.inl h_ne'), h_en]
 
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := Input) (Output := field) main ProverAssumptions
       (fun _ _ _ => True) := by
   -- ProverAssumptions `y * inverse = 1` discharges EnforceNonzero's prover
   -- assumption; the returned wire `= y ≠ 0` discharges Divide's.
@@ -69,7 +68,8 @@ theorem completeness :
   exact ⟨h_assumptions, h_eq ▸ h_ne⟩
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field where
-  elaborated
+  main
+  elaborated := elaborated
   Spec
   ProverAssumptions
   soundness

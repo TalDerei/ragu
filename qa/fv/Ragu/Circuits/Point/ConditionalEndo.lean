@@ -35,8 +35,7 @@ def Spec (curveParams : Spec.CurveParams p) (input : Input (F p))
   output.y = input.y
 
 instance elaborated (curveParams : Spec.CurveParams p)
-    : ElaboratedCircuit (F p) Input Spec.Point where
-  main := main curveParams
+    : ElaboratedCircuit (F p) Input Spec.Point (main curveParams) where
   localLength _ := 3
   -- `x` selected against `ζ·x`: the `ConditionalSelect` output is `x + (its Mul wire)`.
   output input offset := ⟨input.x + varFromOffset field (offset + 2), input.y⟩
@@ -44,19 +43,20 @@ instance elaborated (curveParams : Spec.CurveParams p)
     simp [main, circuit_norm, Boolean.ConditionalSelect.circuit]
 
 theorem soundness (curveParams : Spec.CurveParams p)
-    : Soundness (F p) (elaborated curveParams) (Assumptions curveParams) (Spec curveParams) := by
+    : Soundness (F p) (Input := Input) (Output := Spec.Point) (main curveParams) (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Boolean.ConditionalSelect.circuit,
     Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
 theorem completeness (curveParams : Spec.CurveParams p)
-    : Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
+    : Completeness (F p) (Input := Input) (Output := Spec.Point) (main curveParams) (Assumptions curveParams) := by
   circuit_proof_start [Boolean.ConditionalSelect.circuit,
     Boolean.ConditionalSelect.Assumptions]
   exact h_assumptions
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Input Spec.Point :=
-  { elaborated curveParams with
+  { main := main curveParams,
+    elaborated := elaborated curveParams,
     Assumptions := Assumptions curveParams,
     Spec := Spec curveParams,
     soundness := soundness curveParams,

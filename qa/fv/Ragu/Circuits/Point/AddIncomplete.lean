@@ -18,7 +18,7 @@ structure Inputs (F : Type) where
   P2 : Spec.Point F
   /-- Prover hint: inverse of `P2.x - P1.x` (the bank's running product
   after `K = 1` fold), used by the trailing discharge. -/
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- Body of the new `Point::add_incomplete` wrapped in
@@ -87,18 +87,18 @@ def Spec (curveParams : Spec.CurveParams p)
   output.isOnCurve curveParams
 
 instance elaborated :
-    ElaboratedCircuit (F p) Inputs Spec.Point where
-  main
+    ElaboratedCircuit (F p) Inputs Spec.Point main where
   -- bank_prod (3) + divide (3) + square (3) + mul_for_y (3) + discharge (3) = 15 wires
   localLength _ := 15
 
 theorem soundness (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := Inputs) (Output := Spec.Point) main
       (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec,
     Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec]
+  simp only [sub_eq_add_neg] at h_holds ⊢
   obtain ⟨h_P1_eq, h_P2_eq, _⟩ := h_input
   obtain ⟨h_curve1, h_curve2⟩ := h_assumptions
   obtain ⟨h_bank, h_div, h_sq, h_y_term, _, h_nz⟩ := h_holds
@@ -127,12 +127,13 @@ theorem soundness (curveParams : Spec.CurveParams p) :
       ⟨x1, y1⟩ ⟨x2, y2⟩ curveParams h_x_ne h_curve1 h_curve2
 
 theorem completeness (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := Inputs) (Output := Spec.Point) main
       (ProverAssumptions curveParams) (fun _ _ _ => True) := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec,
     Element.Divide.circuit, Element.Divide.ProverAssumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions,
     Element.EnforceNonzero.circuit, Element.EnforceNonzero.ProverAssumptions]
+  simp only [sub_eq_add_neg] at h_env ⊢
   obtain ⟨h_P1_eq, h_P2_eq, _⟩ := h_input
   obtain ⟨_, _, h_inv⟩ := h_assumptions
   have h_P1x : input_P1.x = Expression.eval env.toEnvironment input_var.1.x := by
@@ -150,7 +151,8 @@ theorem completeness (curveParams : Spec.CurveParams p) :
 
 def circuit (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint (F p) Inputs Spec.Point where
-  elaborated
+  main
+  elaborated := elaborated
   Assumptions := Assumptions curveParams
   Spec := Spec curveParams
   ProverAssumptions := ProverAssumptions curveParams

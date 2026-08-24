@@ -7,7 +7,7 @@ namespace Ragu.Instances.Core.Mul
 def p := Core.Primes.p
 
 def deserializeInput (_ : Vector (Expression (F p)) 0) :
-    Var (UnconstrainedDep Circuits.Row) (F p) :=
+    Var (UnconstrainedDepNative Circuits.Row) (F p) :=
   default
 
 def serializeOutput (output : Var Circuits.Row (F p)) : Vector (Expression (F p)) 3 :=

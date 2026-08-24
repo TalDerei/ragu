@@ -49,8 +49,7 @@ def Spec (n : ℕ) (input : F p) (out : Vector (F p) 128) (_data : ProverData (F
   input.val < 2 ^ n ∧ ∀ i : Fin 128, out[i] = if input.val.testBit i.val then 1 else 0
 
 instance elaborated (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n)
-    : ElaboratedCircuit (F p) field (fields 128) where
-  main := main n h_cap h_len
+    : ElaboratedCircuit (F p) field (fields 128) (main n h_cap h_len) where
   localLength _ := n * 3
   localLength_eq _ _ := by
     simp [main, circuit_norm, Boolean.Decompose.circuit]
@@ -58,7 +57,7 @@ instance elaborated (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n)
     simp [main, circuit_norm, Boolean.Decompose.circuit]
 
 theorem soundness (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated n h_cap h_len) (fun _ _ => True) (Spec n) := by
+    GeneralFormalCircuit.Soundness (F p) (Input := field) (Output := (fields 128)) (main n h_cap h_len) (fun _ _ => True) (Spec n) := by
   circuit_proof_start [Boolean.Decompose.circuit, Boolean.Decompose.Spec]
   obtain ⟨h_lt, h_bits⟩ := h_holds
   refine ⟨h_lt, fun i => ?_⟩
@@ -67,7 +66,7 @@ theorem soundness (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n) :
   simpa [Vector.getElem_ofFn] using h_i
 
 theorem completeness (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated n h_cap h_len) (ProverAssumptions n)
+    GeneralFormalCircuit.Completeness (F p) (Input := field) (Output := (fields 128)) (main n h_cap h_len) (ProverAssumptions n)
       (fun _ _ _ => True) := by
   circuit_proof_start [Boolean.Decompose.circuit, Boolean.Decompose.Spec,
     Boolean.Decompose.ProverAssumptions]
@@ -75,7 +74,8 @@ theorem completeness (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n) :
 
 def circuit (n : ℕ) (h_cap : 2 ^ n < p) (h_len : 128 ≤ n)
     : GeneralFormalCircuit (F p) field (fields 128) :=
-  { elaborated n h_cap h_len with
+  { main := main n h_cap h_len,
+    elaborated := elaborated n h_cap h_len,
     Spec := Spec n
     ProverAssumptions := ProverAssumptions n
     soundness := soundness n h_cap h_len

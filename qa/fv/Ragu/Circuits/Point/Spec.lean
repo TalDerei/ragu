@@ -152,11 +152,25 @@ theorem epAffineParams_noOrderTwoPoints : EpAffineParams.noOrderTwoPoints := by
   apply noOrderTwoPoints_of_neg_b_not_cube
   · decide
   · decide
-  · change (-5 : ZMod Core.Primes.p) ^ ((Core.Primes.p - 1) / 3) ≠ 1
-    unfold Core.Primes.p
-    norm_num
-    reduce_mod_char!
-    decide
+  · have hbase : (-5 :
+        ZMod 28948022309329048855892746252171976963363056481941560715954676764349967630337) =
+        28948022309329048855892746252171976963363056481941560715954676764349967630332 := by
+      change ((-5 : ℤ) :
+          ZMod 28948022309329048855892746252171976963363056481941560715954676764349967630337) =
+        ((28948022309329048855892746252171976963363056481941560715954676764349967630332 : ℤ) :
+          ZMod 28948022309329048855892746252171976963363056481941560715954676764349967630337)
+      rw [ZMod.intCast_eq_intCast_iff']
+      norm_num
+    have hpow :
+        (28948022309329048855892746252171976963363056481941560715954676764349967630332 :
+          ZMod 28948022309329048855892746252171976963363056481941560715954676764349967630337) ^
+          9649340769776349618630915417390658987787685493980520238651558921449989210112 ≠ 1 := by
+      reduce_mod_char
+      decide
+    intro h
+    apply hpow
+    rw [← hbase]
+    exact h
 
 /-- The Vesta parameters have no points of order two: `−5` is not a cube
 in `F_q`. -/
@@ -164,11 +178,25 @@ theorem eqAffineParams_noOrderTwoPoints : EqAffineParams.noOrderTwoPoints := by
   apply noOrderTwoPoints_of_neg_b_not_cube
   · decide
   · decide
-  · change (-5 : ZMod Core.Primes.q) ^ ((Core.Primes.q - 1) / 3) ≠ 1
-    unfold Core.Primes.q
-    norm_num
-    reduce_mod_char!
-    decide
+  · have hbase : (-5 :
+        ZMod 28948022309329048855892746252171976963363056481941647379679742748393362948097) =
+        28948022309329048855892746252171976963363056481941647379679742748393362948092 := by
+      change ((-5 : ℤ) :
+          ZMod 28948022309329048855892746252171976963363056481941647379679742748393362948097) =
+        ((28948022309329048855892746252171976963363056481941647379679742748393362948092 : ℤ) :
+          ZMod 28948022309329048855892746252171976963363056481941647379679742748393362948097)
+      rw [ZMod.intCast_eq_intCast_iff']
+      norm_num
+    have hpow :
+        (28948022309329048855892746252171976963363056481941647379679742748393362948092 :
+          ZMod 28948022309329048855892746252171976963363056481941647379679742748393362948097) ^
+          9649340769776349618630915417390658987787685493980549126559914249464454316032 ≠ 1 := by
+      reduce_mod_char
+      decide
+    intro h
+    apply hpow
+    rw [← hbase]
+    exact h
 
 /-- Pallas has no on-curve affine point with `x = 0`: `5` is not a square
 in `F_p`. -/
@@ -176,11 +204,12 @@ theorem epAffineParams_noZeroXPoints : EpAffineParams.noZeroXPoints := by
   apply noZeroXPoints_of_b_not_square
   · decide
   · decide
-  · change (5 : ZMod Core.Primes.p) ^ ((Core.Primes.p - 1) / 2) ≠ 1
-    unfold Core.Primes.p
-    norm_num
-    reduce_mod_char!
-    decide
+  · have hpow : (5 :
+        ZMod 28948022309329048855892746252171976963363056481941560715954676764349967630337) ^
+        14474011154664524427946373126085988481681528240970780357977338382174983815168 ≠ 1 := by
+      reduce_mod_char
+      decide
+    exact hpow
 
 /-- Vesta has no on-curve affine point with `x = 0`: `5` is not a square
 in `F_q`. -/
@@ -188,11 +217,12 @@ theorem eqAffineParams_noZeroXPoints : EqAffineParams.noZeroXPoints := by
   apply noZeroXPoints_of_b_not_square
   · decide
   · decide
-  · change (5 : ZMod Core.Primes.q) ^ ((Core.Primes.q - 1) / 2) ≠ 1
-    unfold Core.Primes.q
-    norm_num
-    reduce_mod_char!
-    decide
+  · have hpow : (5 :
+        ZMod 28948022309329048855892746252171976963363056481941647379679742748393362948097) ^
+        14474011154664524427946373126085988481681528240970823689839871374196681474048 ≠ 1 := by
+      reduce_mod_char
+      decide
+    exact hpow
 
 /-- Both coordinates of every affine Pallas point are nonzero. -/
 theorem epAffineParams_nonzeroCoordinates : EpAffineParams.nonzeroCoordinates :=

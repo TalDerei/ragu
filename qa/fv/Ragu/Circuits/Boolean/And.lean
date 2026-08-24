@@ -29,24 +29,23 @@ field-multiplication form via `IsBool.and_eq_val_and`. -/
 def Spec (input : Input (F p)) (out : F p) :=
   out.val = input.a.val &&& input.b.val ∧ IsBool out
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   localLength _ := 3
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_a, h_b⟩ := h_holds
-  rw [add_neg_eq_zero] at h_a h_b
+  rw [sub_eq_zero] at h_a h_b
   obtain ⟨ha, hb⟩ := h_assumptions
   refine ⟨?_, ?_⟩
   · rw [← h_mul, h_a, h_b]; exact IsBool.and_eq_val_and ha hb
   · rw [← h_mul, h_a, h_b]; exact IsBool.and_is_bool ha hb
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := Input) (Output := field) main Assumptions := by
   circuit_proof_start
   grind
 
 def circuit : FormalCircuit (F p) Input field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Boolean.And

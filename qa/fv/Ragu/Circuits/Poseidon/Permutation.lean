@@ -88,8 +88,7 @@ def Spec (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t)
 /-- Every field dispatches on the round kind; each case is the corresponding
 `Round` sub-gadget, so nothing is proved twice. -/
 instance elaborated (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
-    ElaboratedCircuit (F p) (fields t) (fields t) where
-  main := main mds r
+    ElaboratedCircuit (F p) (fields t) (fields t) (main mds r) where
   localLength _ := localLength r
   output := output mds r
   localLength_eq state offset := by
@@ -98,10 +97,12 @@ instance elaborated (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
     cases r <;> simp [main, output, circuit_norm]
   subcircuitsConsistent state offset := by
     cases r <;> simp [main, circuit_norm]
+  channelsLawful := by
+    cases r <;> simp [main, circuit_norm, Round.Full.circuit, Round.Partial.circuit]
 
 /-- Immediate from the underlying round's `Spec` in either case. -/
 theorem soundness (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
-    Soundness (F p) (elaborated mds r) Assumptions (Spec mds r) := by
+    Soundness (F p) (Input := (fields t)) (Output := (fields t)) (main mds r) Assumptions (Spec mds r) := by
   cases r with
   | full rc =>
     circuit_proof_start [Round.Full.circuit, Round.Full.Assumptions, Round.Full.Spec]
@@ -112,7 +113,7 @@ theorem soundness (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
 
 /-- Immediate from the underlying round's completeness in either case. -/
 theorem completeness (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
-    Completeness (F p) (elaborated mds r) Assumptions := by
+    Completeness (F p) (Input := (fields t)) (Output := (fields t)) (main mds r) Assumptions := by
   cases r with
   | full rc =>
     circuit_proof_start [Round.Full.circuit, Round.Full.Assumptions]
@@ -122,7 +123,10 @@ theorem completeness (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
 /-- One Poseidon round of either kind, as a single sub-gadget. -/
 def circuit (mds : Vector (Vector (F p) t) t) (r : RoundSpec (F p) t) :
     FormalCircuit (F p) (fields t) (fields t) :=
-  { elaborated mds r with
+  { main := main mds r,
+    elaborated := elaborated mds r,
+    requirementsChannelsLawful := by
+      cases r <;> simp [main, circuit_norm, Round.Full.circuit, Round.Partial.circuit]
     Assumptions
     Spec := Spec mds r
     soundness := soundness mds r
@@ -162,8 +166,7 @@ def Spec (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec (F p) t))
 /-- Length, output and subcircuit consistency all follow by induction on the
 schedule, since each round contributes a fixed number of wires. -/
 instance elaborated (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec (F p) t)) :
-    ElaboratedCircuit (F p) (fields t) (fields t) where
-  main := main mds rounds
+    ElaboratedCircuit (F p) (fields t) (fields t) (main mds rounds) where
   localLength _ := localLength rounds
   output := output mds rounds
   localLength_eq state offset := by
@@ -193,32 +196,49 @@ instance elaborated (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec 
         unfold Operations.SubcircuitsConsistent at h
         rw [add_comm]
         exact h
+  channelsLawful := by
+    induction rounds with
+    | nil => simp [main, circuit_norm]
+    | cons r rs ih =>
+      simp [main, circuit_norm, AnyRound.circuit]
+      intro input_var offset
+      have h := ih (AnyRound.output mds r input_var offset) (offset + AnyRound.localLength r)
+      obtain ⟨h_channels, h_guarantees, h_subcircuits⟩ := h
+      refine ⟨by simpa using h_channels, ?_, ?_⟩
+      · simpa [Operations.InChannelsOrGuarantees] using h_guarantees
+      · rwa [Operations.subcircuitChannelsLawful_iff_forAllNoOffset] at h_subcircuits
 
 /-- Each round's `Spec` gives one `roundVal` step; chaining them along the
 schedule gives `permuteVal`. -/
 theorem soundness (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec (F p) t)) :
-    Soundness (F p) (elaborated mds rounds) Assumptions (Spec mds rounds) := by
+    Soundness (F p) (Input := (fields t)) (Output := (fields t)) (main mds rounds) Assumptions (Spec mds rounds) := by
   induction rounds with
   | nil =>
     intro offset env input_var input h_input _ _
     simp only [Spec, permuteVal]
-    exact h_input
+    exact ⟨h_input, by simp [main, circuit_norm]⟩
   | cons r rs ih =>
     intro offset env input_var input h_input _ h_holds
-    change Circuit.ConstraintsHold.Soundness env ((main mds (r :: rs) input_var).operations offset) at h_holds
-    simp only [main, Circuit.ConstraintsHold.bind_soundness] at h_holds
+    change ConstraintsHold.Soundness env ((main mds (r :: rs) input_var).operations offset) at h_holds
+    simp only [main, ConstraintsHold.Soundness, Circuit.bind_forAllNoOffset] at h_holds
     obtain ⟨h_round, h_tail⟩ := h_holds
     simp only [circuit_norm, AnyRound.circuit, AnyRound.Assumptions, AnyRound.Spec] at h_round
     have h_ih := ih _ env _ _ rfl trivial h_tail
+    obtain ⟨h_ih, h_tail_requirements⟩ := h_ih
     simp only [Spec, permuteVal] at h_ih ⊢
     simp only [circuit_norm, AnyRound.circuit] at h_ih
     simp only [circuit_norm] at h_input
     simp only [circuit_norm, output]
-    rw [h_ih, h_round, h_input]
+    constructor
+    · rw [h_ih, h_round, h_input]
+    · simp only [main, Circuit.bind_forAllNoOffset]
+      constructor
+      · simp [circuit_norm, AnyRound.circuit]
+      · simpa [circuit_norm, AnyRound.circuit] using h_tail_requirements
 
 /-- Every round is total, so the honest witness exists at each step. -/
 theorem completeness (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec (F p) t)) :
-    Completeness (F p) (elaborated mds rounds) Assumptions := by
+    Completeness (F p) (Input := (fields t)) (Output := (fields t)) (main mds rounds) Assumptions := by
   induction rounds with
   | nil =>
     intro offset env input_var _ input _ _
@@ -228,8 +248,8 @@ theorem completeness (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec
     change env.UsesLocalWitnessesCompleteness offset ((main mds (r :: rs) input_var).operations offset) at h_env
     simp only [main, Circuit.ConstraintsHold.bind_usesLocalWitnesses] at h_env
     obtain ⟨h_env_round, h_env_tail⟩ := h_env
-    show Circuit.ConstraintsHold.Completeness env ((main mds (r :: rs) input_var).operations offset)
-    simp only [main, Circuit.ConstraintsHold.bind_completeness]
+    show ConstraintsHold.Completeness env ((main mds (r :: rs) input_var).operations offset)
+    simp only [main, ConstraintsHold.Completeness, Circuit.bind_forAllNoOffset]
     constructor
     · simp only [circuit_norm, AnyRound.circuit, AnyRound.Assumptions] at h_env_round ⊢
     · exact ih _ env _ h_env_tail _ rfl trivial
@@ -237,7 +257,23 @@ theorem completeness (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec
 /-- A Poseidon permutation: the rounds of `rounds`, applied in order. -/
 def circuit (mds : Vector (Vector (F p) t) t) (rounds : List (RoundSpec (F p) t)) :
     FormalCircuit (F p) (fields t) (fields t) :=
-  { elaborated mds rounds with
+  { main := main mds rounds,
+    elaborated := elaborated mds rounds,
+    requirementsChannelsLawful := by
+      induction rounds with
+      | nil => simp [main, circuit_norm]
+      | cons r rs ih =>
+        simp [main, circuit_norm, AnyRound.circuit]
+        intro input offset
+        have h := ih (AnyRound.output mds r input offset) (offset + AnyRound.localLength r)
+        obtain ⟨h_channels, h_covered, h_requirements⟩ := h
+        refine ⟨by simpa using h_channels, ?_, ?_⟩
+        · intro channel h_mem
+          have h := h_covered channel h_mem
+          have h_empty : ElaboratedCircuit.channelsWithGuarantees (main mds rs) = [] := rfl
+          rw [h_empty] at h
+          rcases h with h | h <;> simp at h
+        · simpa [ConstraintsHold.Shallow, Operations.InChannelsOrRequirements] using h_requirements
     Assumptions
     Spec := Spec mds rounds
     soundness := soundness mds rounds

@@ -138,8 +138,7 @@ def Spec (curveParams : Point.Spec.CurveParams p)
   output.isOnCurve curveParams
 
 instance elaborated (curveParams : Point.Spec.CurveParams p)
-    : ElaboratedCircuit (F p) Input Point.Spec.Point where
-  main := main curveParams
+    : ElaboratedCircuit (F p) Input Point.Spec.Point (main curveParams) where
   -- CondNegate (3) + CondEndo (3) + unchecked DAA (15) = 21
   localLength _ := 21
   -- The DAA's output on the layout: `s = (pt.x + endo-select wire, pt.y +
@@ -160,7 +159,6 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
     simp +arith [main, circuit_norm,
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
       Point.DoubleAndAddIncompleteUnchecked.circuit]
-    exact ⟨rfl, rfl⟩
   subcircuitsConsistent := by
     simp +arith [main, circuit_norm,
       Point.ConditionalNegate.circuit, Point.ConditionalEndo.circuit,
@@ -168,7 +166,7 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
 
 omit [NeZero (2 : F p)] in
 theorem soundness (curveParams : Point.Spec.CurveParams p) :
-    Soundness (F p) (elaborated curveParams)
+    Soundness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams)
       (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
     Point.ConditionalNegate.Spec,
@@ -211,7 +209,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
 
 omit [NeZero (2 : F p)] in
 theorem completeness (curveParams : Point.Spec.CurveParams p) :
-    Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
+    Completeness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams) (Assumptions curveParams) := by
   circuit_proof_start [Point.ConditionalNegate.circuit, Point.ConditionalNegate.Assumptions,
     Point.ConditionalNegate.Spec,
     Point.ConditionalEndo.circuit, Point.ConditionalEndo.Assumptions,
@@ -248,7 +246,8 @@ theorem completeness (curveParams : Point.Spec.CurveParams p) :
 
 def circuit (curveParams : Point.Spec.CurveParams p) :
     FormalCircuit (F p) Input Point.Spec.Point :=
-  { elaborated curveParams with
+  { main := main curveParams,
+    elaborated := elaborated curveParams,
     Assumptions := Assumptions curveParams
     Spec := Spec curveParams
     soundness := soundness curveParams
@@ -310,8 +309,7 @@ def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p))
   output.isOnCurve curveParams
 
 instance elaborated (curveParams : Point.Spec.CurveParams p)
-    : ElaboratedCircuit (F p) Input Point.Spec.Point where
-  main := main curveParams
+    : ElaboratedCircuit (F p) Input Point.Spec.Point (main curveParams) where
   -- 9 (unchecked AddIncomplete) + 12 (Double) + 64 × 21 (Step) = 1365
   localLength _ := 9 + 12 + 64 * 21
   localLength_eq := by
@@ -319,6 +317,10 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
       Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit,
       Step.elaborated]
   subcircuitsConsistent := by
+    simp +arith [main, circuit_norm,
+      Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit,
+      Step.elaborated]
+  channelsLawful := by
     simp +arith [main, circuit_norm,
       Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit,
       Step.elaborated]
@@ -413,9 +415,9 @@ evaluates it to: the unchecked DAA's `x_s` wires (`lambda_2_sq - lambda_1_sq +
 which stays symbolic. -/
 private abbrev stepOut (env : Environment (F p)) (pt_x acc_y : F p) (off : ℕ) :
     Point.Spec.Point (F p) :=
-  ⟨env.get (off + 3 + 3 + 3 + 3 + 3 + 2) + -env.get (off + 3 + 3 + 3 + 2) +
+  ⟨env.get (off + 3 + 3 + 3 + 3 + 3 + 2) - env.get (off + 3 + 3 + 3 + 2) +
       (pt_x + env.get (off + 3 + 2)),
-   env.get (off + 3 + 3 + 3 + 3 + 3 + 3 + 2) + -acc_y⟩
+   env.get (off + 3 + 3 + 3 + 3 + 3 + 3 + 2) - acc_y⟩
 
 omit [NeZero (2 : F p)] in
 -- Iteration `i + 1`'s accumulator is the body's output on iteration `i`'s.
@@ -547,7 +549,7 @@ private lemma fold_final (curveParams : Point.Spec.CurveParams p) (env : Environ
 /-! ## Soundness and completeness. -/
 
 theorem soundness (curveParams : Point.Spec.CurveParams p)
-    : Soundness (F p) (elaborated curveParams)
+    : Soundness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams)
         (Assumptions curveParams) (Spec curveParams) := by
   -- `main` is `@[irreducible]` (see its docstring), so `circuit_proof_start`
   -- cannot auto-unfold it and it must be named here. `Step.Assumptions` /
@@ -584,25 +586,31 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double ⟨h_pre_curve, h_no2⟩
   -- The native init chain lands on the circuit's acc₀ expressions.
   have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
-      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
-          -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
-            (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
-        env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩ := by
+      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) -
+          ((env.get (i₀ + 3 + 2) - curveParams.ζ * input_pt_x - input_pt_x) +
+            (env.get (i₀ + 3 + 2) - curveParams.ζ * input_pt_x - input_pt_x)),
+        env.get (i₀ + 9 + 3 + 3 + 3 + 2) - (env.get (i₀ + 3 + 3 + 2) - input_pt_y)⟩ := by
     simp only [accAfter, initAcc, Point.Spec.Point.endo]
     rw [h_add_eq]
     exact h_double_eq
   -- Chain the 64 `Step.Spec`s along the symbolic accumulator; the fold body,
   -- acc₀ and the loop's wire offset are picked up from `h_steps` by
   -- unification.
-  have h := fold_final curveParams env input_bits input_var_bits ⟨input_pt_x, input_pt_y⟩ _ _ _
+  have h := fold_final
+    (body := fun acc i => Step.circuit curveParams
+      ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
+       input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega),
+       ⟨input_var_pt_x, input_var_pt_y⟩, acc⟩)
+    (n := i₀ + 9 + 12)
+    curveParams env input_bits input_var_bits ⟨input_pt_x, input_pt_y⟩ _
     h_bit h_pt_curve h_bits h_native_ne h_steps (fun _ _ => rfl)
-    (fun acc i => by simp only [circuit_norm, Step.elaborated, evalPt, stepOut, h_px])
+    (fun acc i => by simp only [circuit_norm, Step.circuit, evalPt, stepOut, h_px])
     ⟨by simpa only [circuit_norm, evalPt, h_px, h_py] using h_acc0,
      by simpa only [circuit_norm, evalPt, h_px, h_py] using h_acc0_curve⟩
   exact h
 
 theorem completeness (curveParams : Point.Spec.CurveParams p)
-    : Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
+    : Completeness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams) (Assumptions curveParams) := by
   -- Prover side: discharge `Step.Assumptions` per iteration — curve
   -- membership (inductively from `Step.Spec`), bit booleanity (from
   -- `Assumptions`), and per-step `stepNative ≠ none` extracted from
@@ -640,18 +648,24 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   obtain ⟨h_double_eq, h_acc0_curve⟩ := h_double_env ⟨h_pre_curve, h_no2⟩
   -- The native init chain lands on the prover's acc₀ expressions.
   have h_acc0 : accAfter curveParams ⟨input_pt_x, input_pt_y⟩ input_bits 0 =
-      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) +
-          -(env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x +
-            (env.get (i₀ + 3 + 2) + -(curveParams.ζ * input_pt_x) + -input_pt_x)),
-        env.get (i₀ + 9 + 3 + 3 + 3 + 2) + -(env.get (i₀ + 3 + 3 + 2) + -input_pt_y)⟩ := by
+      some ⟨env.get (i₀ + 9 + 3 + 3 + 2) -
+          ((env.get (i₀ + 3 + 2) - curveParams.ζ * input_pt_x - input_pt_x) +
+            (env.get (i₀ + 3 + 2) - curveParams.ζ * input_pt_x - input_pt_x)),
+        env.get (i₀ + 9 + 3 + 3 + 3 + 2) - (env.get (i₀ + 3 + 3 + 2) - input_pt_y)⟩ := by
     simp only [accAfter, initAcc, Point.Spec.Point.endo]
     rw [h_add_eq]
     exact h_double_eq
   -- The symbolic accumulator entering each iteration is `accAfter` there.
-  have h_inv := fold_inv curveParams env.toEnvironment input_bits input_var_bits
-    ⟨input_pt_x, input_pt_y⟩ _ _ _ h_bit h_pt_curve h_bits h_native_ne h_steps_env
+  have h_inv := fold_inv
+    (body := fun acc i => Step.circuit curveParams
+      ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
+       input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega),
+       ⟨input_var_pt_x, input_var_pt_y⟩, acc⟩)
+    (n := i₀ + 9 + 12)
+    curveParams env.toEnvironment input_bits input_var_bits
+    ⟨input_pt_x, input_pt_y⟩ _ h_bit h_pt_curve h_bits h_native_ne h_steps_env
     (fun _ _ => rfl)
-    (fun acc i => by simp only [circuit_norm, Step.elaborated, evalPt, stepOut, h_px])
+    (fun acc i => by simp only [circuit_norm, Step.circuit, evalPt, stepOut, h_px])
     ⟨by simpa only [circuit_norm, evalPt, h_px, h_py] using h_acc0,
      by simpa only [circuit_norm, evalPt, h_px, h_py] using h_acc0_curve⟩
   -- Assemble: init add assumptions, Double assumptions, and per-iteration
@@ -669,7 +683,12 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
     h_bits ⟨2 * i.val + 1, by have := i.isLt; omega⟩, h_nei⟩
 
 def circuit (curveParams : Point.Spec.CurveParams p) : FormalCircuit (F p) Input Point.Spec.Point :=
-  { elaborated curveParams with
+  { main := main curveParams,
+    elaborated := elaborated curveParams,
+    requirementsChannelsLawful := by
+      simp +arith [main, circuit_norm,
+        Point.AddIncompleteUnchecked.circuit, Point.Double.circuit, Step.circuit,
+        Step.elaborated]
     Assumptions := Assumptions curveParams
     Spec := Spec curveParams
     soundness := soundness curveParams

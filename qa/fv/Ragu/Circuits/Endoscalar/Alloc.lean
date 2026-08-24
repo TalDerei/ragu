@@ -39,8 +39,7 @@ def ProverSpec (input : BitVec 128) (out : Vector (F p) 128) (_hint : ProverHint
   ∀ i : Fin 128, out[i] = if input[i.val] then 1 else 0
 
 instance elaborated
-    : ElaboratedCircuit (F p) (Unconstrained (BitVec 128)) (fields 128) where
-  main
+    : ElaboratedCircuit (F p) (UnconstrainedNative (BitVec 128)) (fields 128) main where
   localLength _ := 128 * 3
   localLength_eq _ _ := by
     simp [main, circuit_norm, Boolean.Alloc.circuit]
@@ -48,20 +47,21 @@ instance elaborated
     simp [main, circuit_norm, Boolean.Alloc.circuit]
 
 theorem soundness
-    : GeneralFormalCircuit.WithHint.Soundness (F p) elaborated Assumptions Spec := by
+    : GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedNative (BitVec 128))) (Output := (fields 128)) main Assumptions Spec := by
   circuit_proof_start [Boolean.Alloc.circuit, Boolean.Alloc.Assumptions, Boolean.Alloc.Spec]
   exact h_holds
 
 theorem completeness
-    : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
+    : GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedNative (BitVec 128))) (Output := (fields 128)) main
         ProverAssumptions ProverSpec := by
   circuit_proof_start [Boolean.Alloc.circuit, Boolean.Alloc.Assumptions, Boolean.Alloc.Spec,
     Boolean.Alloc.ProverAssumptions, Boolean.Alloc.ProverSpec]
   intro i
   exact (h_env i).2
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (BitVec 128)) (fields 128) :=
-  { elaborated with
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedNative (BitVec 128)) (fields 128) :=
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions,
     Spec := Spec,
     ProverAssumptions := ProverAssumptions,

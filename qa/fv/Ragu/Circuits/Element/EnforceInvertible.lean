@@ -11,7 +11,7 @@ structure Input (F : Type) where
   /-- The element the caller already holds a wire for. -/
   element : F
   /-- Prover hint: its multiplicative inverse. -/
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- `Element::enforce_invertible_with` (`element.rs`):
@@ -60,31 +60,32 @@ def ProverAssumptions (input : ProverValue Input (F p))
 
 /-- One mul gate from the sub-gadget; the link is a linear constraint and
 allocates nothing. -/
-instance elaborated : ElaboratedCircuit (F p) Input Invertible.Pair where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input Invertible.Pair main where
   output _ offset := varFromOffset Invertible.Pair offset
   localLength _ := 3
 
 /-- The sub-gadget gives `a · b = 1`; the link gives `a = x`. -/
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := Input) (Output := Invertible.Pair)
+      main (fun _ _ => True) Spec := by
   circuit_proof_start [Invertible.circuit, Invertible.Spec]
   obtain ⟨h_pair, h_link⟩ := h_holds
-  rw [add_neg_eq_zero] at h_link
+  rw [sub_eq_zero] at h_link
   exact ⟨h_link.symm, h_pair⟩
 
 /-- The sub-gadget is complete under the same hint condition, and the link
 holds by construction. -/
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions
-      (fun _ _ _ => True) := by
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := Input) (Output := Invertible.Pair)
+      main ProverAssumptions (fun _ _ _ => True) := by
   circuit_proof_start [Invertible.circuit, Invertible.ProverAssumptions, Invertible.ProverSpec]
   grind
 
 /-- `Element::enforce_invertible_with`, and by trace equality
 `Element::enforce_invertible`. -/
 def circuit : GeneralFormalCircuit.WithHint (F p) Input Invertible.Pair where
-  elaborated
+  main
+  elaborated := elaborated
   Spec
   ProverAssumptions
   soundness

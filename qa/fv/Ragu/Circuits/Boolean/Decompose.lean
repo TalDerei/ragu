@@ -70,14 +70,17 @@ the range restriction is enforced by the circuit, not assumed. -/
 def Spec (n : ℕ) (input : F p) (bits : Vector (F p) n) (_data : ProverData (F p)) :=
   input.val < 2 ^ n ∧ bits = fieldToBits n input
 
-instance elaborated (n : ℕ) : ElaboratedCircuit (F p) field (fields n) where
-  main := main n
+instance elaborated (n : ℕ) : ElaboratedCircuit (F p) field (fields n) (main n) where
   localLength _ := n * 3
   localLength_eq _ _ := by
     rcases n with _ | n
     · simp [main, circuit_norm]
     · simp [main, circuit_norm, Alloc.circuit]
   subcircuitsConsistent _ _ := by
+    rcases n with _ | n
+    · simp [main, circuit_norm]
+    · simp [main, circuit_norm, Alloc.circuit]
+  channelsLawful := by
     rcases n with _ | n
     · simp [main, circuit_norm]
     · simp [main, circuit_norm, Alloc.circuit]
@@ -108,9 +111,11 @@ private theorem eval_recomposeExpr_succ (env : Environment (F p)) (m : ℕ) :
     intro bits
     have h_pop := ih bits.pop
     simp only [recomposeExpr] at h_pop ⊢
-    rw [Fin.foldl_succ_last, fieldFromBits_succ (m + 1), ← Vector.map_pop, ← h_pop]
-    simp [Expression.eval, Vector.getElem_pop', Vector.getElem_map, Fin.val_castSucc,
-      Fin.val_last, mul_comm]
+    simp only [Vector.getElem_pop'] at h_pop
+    rw [Fin.foldl_succ_last, fieldFromBits_succ (m + 1), ← Vector.map_pop]
+    simp only [Expression.eval, Fin.val_castSucc, Fin.val_last]
+    rw [h_pop]
+    simp [Vector.getElem_map, mul_comm]
 
 /-- Evaluating the recomposition expression gives `fieldFromBits` of the
 evaluated bits. -/
@@ -128,7 +133,7 @@ bit expressions `e`: boolean bits whose recomposition equals `x` force
 private theorem decomposition_sound (env : Environment (F p)) {n : ℕ} (h_cap : 2 ^ n < p)
     (e : Fin n → Expression (F p)) (x : F p)
     (h_bool : ∀ i, IsBool (Expression.eval env (e i)))
-    (h_sum : fieldFromBits (Vector.map (Expression.eval env) (Vector.mapFinRange n e)) + -x = 0) :
+    (h_sum : fieldFromBits (Vector.map (Expression.eval env) (Vector.mapFinRange n e)) - x = 0) :
     x.val < 2 ^ n ∧
       Vector.map (Expression.eval env) (Vector.mapFinRange n e) = fieldToBits n x := by
   generalize h_bits : Vector.map (Expression.eval env) (Vector.mapFinRange n e) = bits at h_sum ⊢
@@ -147,7 +152,7 @@ holds the corresponding bit of an in-range `x`, the recomposition equals `x`. -/
 private theorem decomposition_complete (env : Environment (F p)) {n : ℕ}
     (e : Fin n → Expression (F p)) (x : F p) (hx : x.val < 2 ^ n)
     (h_bits : ∀ i : Fin n, Expression.eval env (e i) = if x.val.testBit i.val then 1 else 0) :
-    Expression.eval env (recomposeExpr (Vector.mapFinRange n e)) + -x = 0 := by
+    Expression.eval env (recomposeExpr (Vector.mapFinRange n e)) - x = 0 := by
   rw [eval_recomposeExpr]
   have h_vec : Vector.map (Expression.eval env) (Vector.mapFinRange n e) = fieldToBits n x := by
     ext i hi
@@ -158,7 +163,7 @@ private theorem decomposition_complete (env : Environment (F p)) {n : ℕ}
   ring
 
 theorem soundness (n : ℕ) (h_cap : 2 ^ n < p) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated n) (fun _ _ => True) (Spec n) := by
+    GeneralFormalCircuit.Soundness (F p) (Input := field) (Output := (fields n)) (main n) (fun _ _ => True) (Spec n) := by
   rcases n with _ | n
   · circuit_proof_start
     rw [eval_recomposeExpr] at h_holds
@@ -171,7 +176,7 @@ theorem soundness (n : ℕ) (h_cap : 2 ^ n < p) :
     exact decomposition_sound env h_cap _ input h_bool h_sum
 
 theorem completeness (n : ℕ) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated n) (ProverAssumptions n)
+    GeneralFormalCircuit.Completeness (F p) (Input := field) (Output := (fields n)) (main n) (ProverAssumptions n)
       (fun _ _ _ => True) := by
   rcases n with _ | n
   · circuit_proof_start
@@ -185,7 +190,12 @@ theorem completeness (n : ℕ) :
     exact decomposition_complete env.toEnvironment _ input h_assumptions (fun i => (h_env i).2)
 
 def circuit (n : ℕ) (h_cap : 2 ^ n < p) : GeneralFormalCircuit (F p) field (fields n) :=
-  { elaborated n with
+  { main := main n,
+    elaborated := elaborated n,
+    requirementsChannelsLawful := by
+      rcases n with _ | n
+      · simp [main, circuit_norm]
+      · simp [main, circuit_norm, Alloc.circuit]
     Spec := Spec n
     ProverAssumptions := ProverAssumptions n
     soundness := soundness n h_cap
