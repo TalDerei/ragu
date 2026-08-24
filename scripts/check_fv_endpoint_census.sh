@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Check that every Ragu FV endpoint has a direct trust-boundary pin.
 #
+# Ported and adapted from zcash/ironwood's scripts/check_endpoint_census.sh at commit
+# 3c056cbebf2880b54f801c348cb67ce7dc9f2a05. Ragu's marker-anywhere policy intentionally closes
+# that snapshot's qualified _prob_le_of_... endpoint-discovery escape.
+#
 # This source-tree pass sees a newly added module even before it enters `Ragu.Meta.TrustBoundary`'s
 # import closure. `Ragu.Meta.CensusCheck` performs the complementary elaborated-environment check,
 # which
@@ -75,14 +79,15 @@ while IFS= read -r file; do
     [[ $line =~ ^((protected|noncomputable|partial|unsafe)[[:space:]]+)*(theorem|lemma|def|abbrev|instance|axiom|opaque|inductive|structure|class)[[:space:]]+([A-Za-z0-9_.\']+) ]] || continue
 
     declared=${BASH_REMATCH[4]}
-    base=${declared##*.}
-    [[ $base =~ $ENDPOINT_RE ]] || continue
-
     if [[ $declared == *.* || -z $namespace_path ]]; then
       qualified=$declared
     else
       qualified="${namespace_path}.${declared}"
     fi
+
+    base=${declared##*.}
+    # `main` is exact: a generic namespace-local `main` is not the fingerprint executable boundary.
+    [[ $base =~ $ENDPOINT_RE || $qualified == main ]] || continue
 
     count=$((count + 1))
     if ! grep -qxF "$qualified" <<< "$pins"; then

@@ -1,5 +1,13 @@
 import Ragu.Meta.EndpointCensus
 
+/-!
+# Endpoint-census regression tests
+
+Ported and adapted from `Zcash/Meta/Tests/EndpointCensus.lean` at `zcash/ironwood` commit
+`3c056cbebf2880b54f801c348cb67ce7dc9f2a05`. The qualified-marker, exact-root endpoint, and
+`census_* +native(...)` cases are Ragu-specific extensions.
+-/
+
 namespace Ragu.Meta.Tests.EndpointCensus
 
 /-- Forged qualified soundness endpoint used to exercise the unpinned census path. -/
@@ -42,6 +50,38 @@ theorem pinned_completeness_of_case : True := by trivial
 
 census_axioms Ragu.Meta.Tests.EndpointCensus.pinned_completeness_of_case
 
+/-- A native theorem pin exercises forwarding of Ironwood's exact owner allowance. -/
+theorem pinned_native_soundness : (123456 : Nat) < 123457 := by native_decide
+
+census_axioms Ragu.Meta.Tests.EndpointCensus.pinned_native_soundness +native(
+  Ragu.Meta.Tests.EndpointCensus.pinned_native_soundness)
+
+/-- A computed test value with an owned native certificate and no choice allowance. -/
+structure NativeCertificate where
+  value : Nat
+  small : value < 123457
+
+def pinned_native_only_completeness : NativeCertificate where
+  value := 123456
+  small := pinned_native_soundness
+
+census_computable Ragu.Meta.Tests.EndpointCensus.pinned_native_only_completeness +native(
+  Ragu.Meta.Tests.EndpointCensus.pinned_native_soundness)
+
+/-- A computed test value with both erased choice and an owned native certificate. -/
+structure NativeChoiceCertificate where
+  value : Nat
+  small : value < 123457
+  erased : True
+
+def pinned_native_completeness : NativeChoiceCertificate where
+  value := 123456
+  small := pinned_native_soundness
+  erased := Classical.choice (show Nonempty True from ⟨True.intro⟩)
+
+census_computable Ragu.Meta.Tests.EndpointCensus.pinned_native_completeness +choice +native(
+  Ragu.Meta.Tests.EndpointCensus.pinned_native_soundness)
+
 #guard Ragu.Meta.isEndpointBaseName "soundness"
 #guard Ragu.Meta.isEndpointBaseName "soundness_of_qualified_result"
 #guard Ragu.Meta.isEndpointBaseName "circuit_completeness_at_instance"
@@ -52,6 +92,8 @@ census_axioms Ragu.Meta.Tests.EndpointCensus.pinned_completeness_of_case
 #guard !Ragu.Meta.isEndpointBaseName "unsoundness"
 #guard !Ragu.Meta.isEndpointBaseName "soundnessHelper"
 #guard !Ragu.Meta.isEndpointBaseName "binding_prob_lemma"
+#guard Ragu.Meta.isEndpointName `main
+#guard !Ragu.Meta.isEndpointName `Ragu.Meta.Tests.EndpointCensus.main
 
 run_cmd do
   let env ← Lean.getEnv
