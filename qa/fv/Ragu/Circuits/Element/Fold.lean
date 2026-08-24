@@ -112,32 +112,13 @@ theorem soundness (n : ℕ) :
     have := congrArg (fun v => v.xs[0]) h_input
     simpa [Vector.getElem_map] using this
   · -- 2 elements
-    circuit_proof_start_core
-    change Input 2 (Expression (F p)) at input_var
-    change Input 2 (F p) at input
-    simp +instances only [circuit_norm] at input_var input h_input
-    dsimp only [Assumptions, Spec, elaborated, main] at *
-    dsimp only [ElaboratedCircuit.withData, ElaboratedCircuit.output] at *
-    dsimp only [field, id_eq, CircuitType.var_of_provableType,
-      CircuitType.value_of_provableType, CircuitType.proverValue_of_provableType] at *
-    simp +instances only [circuit_norm, Mul.circuit, Mul.Assumptions, Mul.Spec] at h_holds
+    circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
     -- h_holds : env.get (i₀ + 2) = eval xs[0] * eval s
     -- Goal: env.get (i₀ + 2) + eval xs[1] = Fin.foldl 1 val_body input.xs[0]
-    have h_s : Expression.eval env input_var.s = input.s := congrArg Input.s h_input
-    have h_xs0 : Expression.eval env input_var.xs[0] = input.xs[0] := by
-      have heq : Vector.map (Expression.eval env) input_var.xs = input.xs :=
-        congrArg Input.xs h_input
-      have := congrArg (fun v => v[0]) heq
-      simpa [Vector.getElem_map] using this
-    have h_xs1 : Expression.eval env input_var.xs[1] = input.xs[1] := by
-      have heq : Vector.map (Expression.eval env) input_var.xs = input.xs :=
-        congrArg Input.xs h_input
-      have := congrArg (fun v => v[1]) heq
-      simpa [Vector.getElem_map] using this
-    simp +instances only [main, circuit_norm, Mul.circuit, Expression.eval]
-    rw [h_xs0, h_s] at h_holds
+    cases h_input
+    simp only [Vector.getElem_map] at h_holds ⊢
     -- Fin.foldl 1 val_body xs[0] = val_body xs[0] ⟨0,_⟩ = xs[0]*s + xs[1]
-    rw [Fin.foldl_succ_last, Fin.foldl_zero, h_holds, h_xs1]
+    rw [Fin.foldl_succ_last, Fin.foldl_zero, h_holds]
   · -- n+3 elements
     circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
     obtain ⟨h0, h_iter0, h_iterk⟩ := h_holds
