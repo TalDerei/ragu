@@ -431,7 +431,7 @@ theorem completeness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     Completeness (F p) (elaborated P n w s hs) Assumptions := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions]
 
-/-- `Sponge::new`, `n` full blocks absorbed, `s` squeezes.
+/-- `Sponge::new`, `n` blocks of `w + 1` elements, `s` squeezes.
 
 The unused hypotheses pin the family to the shapes the Rust sponge actually
 runs; `hs` is additionally what bounds the projection.
@@ -439,23 +439,30 @@ runs; `hs` is additionally what bounds the projection.
 - `_hn`: the Rust sponge refuses to squeeze before anything was absorbed
   (`squeeze` returns an initialization error), so `n = 0` models no Rust
   circuit.
-- `_hw`: a block boundary is crossed only when the buffer holds exactly
-  `RATE` values, so every block but the last is `RATE` wide, and for this
-  family `RATE = t - 1`. `w + 2 = t` is that width. Narrower blocks at
-  `n ≥ 2` model a packing Rust never produces; wider ones would write the
-  capacity word or drop inputs in `absorbBlock`.
+- `_hw`: a block never holds more than `RATE` values, and for this family
+  `RATE = t - 1`, so `w + 1 < t` is `w + 1 ≤ RATE`. A wider block would write
+  the capacity word, or drop inputs in `absorbBlock`.
 - `_hs0`: the final permutation is run by the first `squeeze`. With no
   squeeze the last block stays buffered and unpermuted, so `s = 0` would
   model one permutation fewer than this loop runs.
 - `hs`: `s < t` is `s ≤ RATE`; the `t`-th squeeze would exhaust the rate
   words and permute again, which this projection does not model.
 
-Not modeled: a ragged last block. Rust packs `k` elements as
-`⌊k / RATE⌋` full blocks plus a shorter final one, and the uniform
-`ProvableVector` here cannot express the short tail, so element counts that
-are not multiples of `RATE` — beyond the single-block shapes `Hash1`
-covers — have no instance. -/
-def circuit (P : Params (F p) t) (n w s : ℕ) (_hn : 0 < n) (_hw : w + 2 = t)
+Which Rust program a given width models depends on the width. At
+`w + 1 = RATE` it is a run of plain `absorb`s: Rust packs the buffer to
+`RATE` and permutes when the next element arrives, so `n` full blocks are
+`n · RATE` consecutive absorbs. At `w + 1 < RATE` it is the interleaved
+program `absorb^(w+1); squeeze; absorb^(w+1); squeeze; …` — a squeeze
+permutes whatever was absorbed since the last one, and a later `absorb`
+continues from that permuted state (`absorb` in squeeze mode re-enters
+absorb mode on the same state). Any number of squeezes between two batches,
+up to `RATE`, leaves the state alone. Only the final batch's squeezes are
+output here; each intermediate squeeze is word `0` of the state a shorter
+instance of this same circuit produces.
+
+Not modeled: a ragged last block under plain absorption — `k` consecutive
+absorbs with `k` not a multiple of `RATE`. That shape is `Ragged`. -/
+def circuit (P : Params (F p) t) (n w s : ℕ) (_hn : 0 < n) (_hw : w + 1 < t)
     (_hs0 : 0 < s) (hs : s < t) :
     FormalCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) :=
   { elaborated P n w s hs with
@@ -465,5 +472,107 @@ def circuit (P : Params (F p) t) (n w s : ℕ) (_hn : 0 < n) (_hw : w + 2 = t)
     completeness := completeness P n w s hs }
 
 end Squeeze
+
+
+/-!
+## A ragged last block
+
+`k` consecutive absorbs with `k` not a multiple of `RATE` leave Rust with
+`⌊k / RATE⌋` full blocks and a shorter final one. `Ragged` is that shape:
+the `Blocks` loop over the full blocks, then one more absorb-and-permute of
+the short tail, then the squeeze projection. Its input is a pair rather than
+a named structure because the `ProvableStruct` deriver does not accept a
+`Vector (fields (w + 1) F) n` field at a parameter `w`.
+-/
+namespace Ragged
+
+/-- The full blocks, then the tail. -/
+abbrev Input (n w k : ℕ) : TypeMap :=
+  ProvablePair (ProvableVector (fields (w + 1)) n) (fields (k + 1))
+
+/-- `Blocks` over the full blocks, one more permutation over the tail, then
+the leading words. -/
+def main (P : Params (F p) t) (n w k s : ℕ) (hs : s < t)
+    (input : Var (Input n w k) (F p)) : Circuit (F p) (Var (fields s) (F p)) := do
+  let state ← Blocks.circuit P n w input.1
+  let state ← Permutation.circuit P.mds P.rounds (absorbBlock state input.2)
+  pure (Vector.ofFn fun i => state[i.val]'(by omega))
+
+/-- No precondition on the absorbed values. -/
+def Assumptions {n w k : ℕ} (_input : Input n w k (F p)) := True
+
+/-- Value-level: the tail absorbed into the state the full blocks produce,
+permuted once more. -/
+def stateVal (P : Params (F p) t) {n w k : ℕ} (input : Input n w k (F p)) : Vector (F p) t :=
+  Permutation.permuteVal P.mds P.rounds
+    (absorbBlockVal (Blocks.loopVal P n input.1 (Vector.replicate t 0)) input.2)
+
+/-- The squeezed elements are the leading words of the final state. -/
+def Spec (P : Params (F p) t) {n w k s : ℕ} (hs : s < t)
+    (input : Input n w k (F p)) (out : Vector (F p) s) :=
+  out = Vector.ofFn fun i => (stateVal P input)[i.val]'(by omega)
+
+/-- The full-block loop plus one permutation. A `def` rather than an
+`instance`: neither `t` nor the bound `hs` is determined by the instance
+goal. -/
+def elaborated (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
+    ElaboratedCircuit (F p) (Input n w k) (fields s) where
+  main := main P n w k s hs
+  localLength _ := n * Permutation.localLength P.rounds + Permutation.localLength P.rounds
+  output input offset :=
+    Vector.ofFn fun i =>
+      (Permutation.output P.mds P.rounds
+        (absorbBlock (Blocks.loopOutput P n input.1 zeroState offset) input.2)
+        (offset + n * Permutation.localLength P.rounds))[i.val]'(by omega)
+  localLength_eq input offset := by
+    simp [main, circuit_norm, Blocks.circuit, Permutation.circuit]
+  output_eq input offset := by
+    simp [main, circuit_norm, Blocks.circuit, Permutation.circuit]
+  subcircuitsConsistent input offset := by
+    simp [main, circuit_norm]
+    omega
+
+/-- `Blocks`' spec pins the state after the full blocks, the permutation's
+spec pins it after the tail, and the projection reads the leading words. -/
+theorem soundness (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
+    Soundness (F p) (elaborated P n w k s hs) Assumptions (Spec P hs) := by
+  circuit_proof_start [Blocks.circuit, Blocks.Assumptions, Blocks.Spec,
+    Permutation.circuit, Permutation.Assumptions, Permutation.Spec]
+  obtain ⟨h_blocks, h_perm⟩ := h_holds
+  rw [← h_input]
+  ext i hi
+  simp only [Vector.getElem_map, Vector.getElem_ofFn]
+  have h := congrArg (fun v : Vector (F p) t => v[i]'(by omega)) h_perm
+  simp only [Vector.getElem_map] at h
+  rw [h, stateVal, eval_absorbBlock, h_blocks]
+
+/-- Both sub-gadgets are total, so the honest witness exists. -/
+theorem completeness (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
+    Completeness (F p) (elaborated P n w k s hs) Assumptions := by
+  circuit_proof_start [Blocks.circuit, Blocks.Assumptions,
+    Permutation.circuit, Permutation.Assumptions]
+
+/-- `Sponge::new`, `n · (w + 1) + (k + 1)` consecutive absorbs, `s` squeezes.
+
+The unused hypotheses pin the family to the shapes the Rust sponge actually
+runs; `hs` is additionally what bounds the projection.
+
+- `_hw`: under consecutive absorption a block boundary is crossed only when
+  the buffer holds exactly `RATE = t - 1` values, so every full block is
+  `RATE` wide: `w + 2 = t`.
+- `_hk`: the tail holds at most `RATE` values: `k + 1 < t`. (A tail of
+  exactly `RATE` is not ragged — that shape is `Squeeze`.)
+- `_hs0`, `hs`: as for `Squeeze.circuit` — the first squeeze runs the final
+  permutation, and the `t`-th would run another. -/
+def circuit (P : Params (F p) t) (n w k s : ℕ) (_hw : w + 2 = t) (_hk : k + 1 < t)
+    (_hs0 : 0 < s) (hs : s < t) :
+    FormalCircuit (F p) (Input n w k) (fields s) :=
+  { elaborated P n w k s hs with
+    Assumptions
+    Spec := Spec P hs
+    soundness := soundness P n w k s hs
+    completeness := completeness P n w k s hs }
+
+end Ragged
 
 end Ragu.Circuits.Poseidon.Sponge

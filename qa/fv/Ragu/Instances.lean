@@ -5,6 +5,8 @@ import Ragu.Instances.Point.DoubleAndAddIncomplete
 import Ragu.Instances.Point.AddIncomplete
 import Ragu.Instances.Point.ConditionalEndo
 import Ragu.Instances.Point.ConditionalNegate
+import Ragu.Instances.Point.ConsistentFp
+import Ragu.Instances.Point.ConsistentFq
 import Ragu.Instances.Element.Mul
 import Ragu.Instances.Element.Square
 import Ragu.Instances.Element.Alloc
@@ -21,6 +23,7 @@ import Ragu.Instances.Element.EnforceRootOfUnityK5
 import Ragu.Instances.Element.EnforceZero
 import Ragu.Instances.Element.EnforceInvertible
 import Ragu.Instances.Element.Invertible
+import Ragu.Instances.Element.InvertibleConsistent
 import Ragu.Instances.Element.Invert
 import Ragu.Instances.Element.InvertWith
 import Ragu.Instances.Element.EnforceNonzero
@@ -33,6 +36,7 @@ import Ragu.Instances.Core.Mul
 import Ragu.Instances.Boolean.Alloc
 import Ragu.Instances.Boolean.And
 import Ragu.Instances.Boolean.ConditionalSelect
+import Ragu.Instances.Boolean.Consistent
 import Ragu.Instances.Boolean.ConditionalEnforceEqual
 import Ragu.Instances.Endoscalar.Alloc
 import Ragu.Instances.Endoscalar.Extract
@@ -47,3 +51,6 @@ import Ragu.Instances.Poseidon.Hash4Fp
 import Ragu.Instances.Poseidon.Hash1Fq
 import Ragu.Instances.Poseidon.Blocks2Squeeze3Fp
 import Ragu.Instances.Poseidon.Hash4Fq
+import Ragu.Instances.Poseidon.Hash1SaveResumeFp
+import Ragu.Instances.Poseidon.InterleavedFp
+import Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp
