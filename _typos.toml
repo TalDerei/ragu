@@ -19,6 +19,7 @@ ND = "ND" # ND = NewDriver
 Bootle = "Bootle" # person name
 Groth= "Groth" # person name, not Growth
 ba = "ba" # variable name (b*a)
+thm = "thm" # Lean's ConstantInfo.thmInfo constructor
 
 [default]
 extend-ignore-words-re = [
