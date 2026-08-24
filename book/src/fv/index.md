@@ -37,20 +37,26 @@ this part.
 
 ## What is verified today
 
-Verification currently covers the gadget layer: 31 concrete circuit instances,
+Verification currently covers the gadget layer: 49 concrete circuit instances,
 each one a specific instantiation at a fixed prime field with all compile-time
 parameters made concrete.
 
 - **Field elements** — multiplication, squaring, allocation, inversion,
   division by a nonzero element, zero and equality tests, root-of-unity
-  enforcement, and folding at two arities.
+  enforcement, invertible allocation and enforcement, and folding at six
+  arities.
 - **Curve points** — allocation on both curves of the cycle, doubling,
   incomplete addition, incomplete double-and-add, and conditional
   endomorphism application and negation.
 - **Booleans** — allocation, conjunction, conditional selection, and
   conditional equality enforcement.
-- **Endoscalars** — allocation, lifting, and group scaling.
-- **Nonzero banks** and the core multiplication gate.
+- **Endoscalars** — allocation, extraction, lifting, and group scaling.
+- **Poseidon** — the permutation at the deployed Pasta parameters on both
+  fields, and the sponge: single-block hashing on each field, and a
+  two-block, three-squeeze shape that crosses a rate boundary.
+- **Horner evaluation** at three arities, plus the trailing-constant $k(Y)$
+  form.
+- **Nonzero banks** at three arities, and the core multiplication gate.
 
 Every one of these is proved without `sorry`, and the Lean build runs with
 `--wfail` so that an admitted goal fails CI rather than passing quietly. The
@@ -61,7 +67,21 @@ assumptions chapter records which ones appear and what trusting them costs.
 
 Everything above the gadget layer. The internal recursion circuits, the
 accumulation scheme, the staging system, and the protocol as a whole have no
-Lean theorems about them. Neither does any Rust code: the proofs are about
+Lean theorems about them.
+
+Some of the gadget layer has nothing to verify rather than something unproved,
+and the distinction matters when reading the list above as a coverage claim.
+Demotion (`promotion.rs`) strips witness data through a driver whose every
+method is unreachable, the serialization surface (`io.rs`) moves wires without
+emitting constraints, and the `Consistent` trait only delegates — the
+constraints its implementations re-emit belong to the gadgets themselves, and
+for `Nonzero` and `Invertible` those are the invertible-allocation instances
+above. A reimplementation of any of these would prove a theorem about no
+constraints. What they are not exempt from is *trust*: the extractor relies on
+this serialization to read wires in and out, so a bug there would change what
+every other theorem is about.
+
+Neither is any Rust code verified: the proofs are about
 circuits extracted from Rust, not about the Rust implementation that extracted
 them, and not about the prover and verifier that run the protocol. The
 cryptographic assumptions underlying the construction are out of scope by

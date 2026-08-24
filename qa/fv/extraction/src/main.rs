@@ -25,14 +25,19 @@ use crate::instances::{
     element_alloc::ElementAllocInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
+    element_enforce_invertible::ElementEnforceInvertibleInstance,
     element_enforce_nonzero::ElementEnforceNonzeroInstance,
     element_enforce_root_of_unity::{
         ElementEnforceRootOfUnityInstanceK2, ElementEnforceRootOfUnityInstanceK5,
     },
     element_enforce_zero::ElementEnforceZeroInstance,
-    element_fold::{ElementFoldInstanceN3, ElementFoldInstanceN7, ElementFoldInstanceN19},
+    element_fold::{
+        ElementFoldInstanceN0, ElementFoldInstanceN1, ElementFoldInstanceN2, ElementFoldInstanceN3,
+        ElementFoldInstanceN7, ElementFoldInstanceN19,
+    },
     element_invert::ElementInvertInstance,
     element_invert_with::ElementInvertWithInstance,
+    element_invertible::ElementInvertibleInstance,
     element_is_equal::ElementIsEqualInstance,
     element_is_zero::ElementIsZeroInstance,
     element_mul::ElementMulInstance,
@@ -42,14 +47,19 @@ use crate::instances::{
     endoscalar_group_scale::EndoscalarGroupScaleInstance,
     endoscalar_lift::EndoscalarLiftInstance,
     horner::{HornerInstanceN3, HornerInstanceN7, HornerInstanceN19, HornerKyInstanceN3},
-    nonzero_bank_scope::NonzeroBankScopeInstanceK2,
+    nonzero_bank_scope::{
+        NonzeroBankScopeInstanceK0, NonzeroBankScopeInstanceK1, NonzeroBankScopeInstanceK2,
+    },
     point_add_incomplete::PointAddIncompleteInstance,
     point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
     point_conditional_endo::PointConditionalEndoInstance,
     point_conditional_negate::PointConditionalNegateInstance,
     point_double::PointDoubleInstance,
     point_double_and_add_incomplete::PointDoubleAndAddIncompleteInstance,
-    poseidon_sponge::{PoseidonHash1InstanceFp, PoseidonHash1InstanceFq, PoseidonHash4InstanceFp},
+    poseidon_sponge::{
+        PoseidonBlocks2Squeeze3InstanceFp, PoseidonHash1InstanceFp, PoseidonHash1InstanceFq,
+        PoseidonHash4InstanceFp, PoseidonHash4InstanceFq,
+    },
 };
 
 struct ExportTarget {
@@ -111,6 +121,18 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         fingerprint: fingerprint_instance::<ElementDivNonzeroInstance>,
     },
     ExportTarget {
+        name: "Ragu.Instances.Element.FoldN0",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN0>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Element.FoldN1",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN1>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Element.FoldN2",
+        fingerprint: fingerprint_instance::<ElementFoldInstanceN2>,
+    },
+    ExportTarget {
         name: "Ragu.Instances.Element.FoldN3",
         fingerprint: fingerprint_instance::<ElementFoldInstanceN3>,
     },
@@ -135,6 +157,14 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         fingerprint: fingerprint_instance::<ElementEnforceZeroInstance>,
     },
     ExportTarget {
+        name: "Ragu.Instances.Element.EnforceInvertible",
+        fingerprint: fingerprint_instance::<ElementEnforceInvertibleInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Element.Invertible",
+        fingerprint: fingerprint_instance::<ElementInvertibleInstance>,
+    },
+    ExportTarget {
         name: "Ragu.Instances.Element.Invert",
         fingerprint: fingerprint_instance::<ElementInvertInstance>,
     },
@@ -145,6 +175,14 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Element.EnforceNonzero",
         fingerprint: fingerprint_instance::<ElementEnforceNonzeroInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.NonzeroBank.ScopeK0",
+        fingerprint: fingerprint_instance::<NonzeroBankScopeInstanceK0>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.NonzeroBank.ScopeK1",
+        fingerprint: fingerprint_instance::<NonzeroBankScopeInstanceK1>,
     },
     ExportTarget {
         name: "Ragu.Instances.NonzeroBank.ScopeK2",
@@ -221,6 +259,14 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     ExportTarget {
         name: "Ragu.Instances.Poseidon.Hash1Fq",
         fingerprint: fingerprint_instance::<PoseidonHash1InstanceFq>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Poseidon.Blocks2Squeeze3Fp",
+        fingerprint: fingerprint_instance::<PoseidonBlocks2Squeeze3InstanceFp>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Poseidon.Hash4Fq",
+        fingerprint: fingerprint_instance::<PoseidonHash4InstanceFq>,
     },
 ];
 
