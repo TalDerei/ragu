@@ -12,7 +12,7 @@ namespace Core.Mul
 variable {p : ℕ} [Fact p.Prime]
 
 def main (hint : ProverEnvironment (F p) → Row (F p)) : Circuit (F p) (Var Row (F p)) := do
-  let row : Var Row (F p) ← witness fun env =>
+  let row : Var Row (F p) ← witnessNative fun env =>
     let ⟨ x, y, _ ⟩ := hint env
     ⟨ x, y, x * y⟩
   assertZero (row.x * row.y - row.z)
@@ -31,31 +31,31 @@ def ProverSpec (input : Row (F p)) (out : Row (F p)) (_ : ProverHint (F p)) :=
   out.x = x ∧ out.y = y ∧ out.z = x * y
 
 @[circuit_norm]
-instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Row) Row where
-  main
+instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDepNative Row) Row main where
   output _ offset := varFromOffset Row offset
   localLength _ := 3
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedDepNative Row)) (Output := Row) main (fun _ _ => True) Spec := by
   circuit_proof_start
-  simp only [add_neg_eq_zero] at h_holds
-  exact h_holds
+  exact sub_eq_zero.mp h_holds
 
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated (fun _ _ _ => True) ProverSpec := by
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedDepNative Row)) (Output := Row) main (fun _ _ _ => True) ProverSpec := by
   circuit_proof_start
-  -- TODO this is annoying, we need simp for ProvableStruct.toElements
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
   have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm] at h0 h1 h2
-  simp at h0 h1 h2
+  change env.get i₀ = (input_var env).x at h0
+  change env.get (i₀ + 1) = (input_var env).y at h1
+  change env.get (i₀ + 2) = (input_var env).x * (input_var env).y at h2
+  simp [h_input] at h0 h1 h2
   simp [h0, h1, h2]
 
 @[circuit_norm]
-def mul : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Row) Row where
-  elaborated
+def mul : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDepNative Row) Row where
+  main
+  elaborated := elaborated
   Spec
   ProverSpec
   soundness

@@ -23,7 +23,7 @@ def p := Core.Primes.p
 /-- No input wires: this is an allocation, so both the value and its inverse
 are witness input rather than wires the caller supplies. -/
 def deserializeInput (_ : Vector (Expression (F p)) 0) :
-    Var (UnconstrainedDep Circuits.Element.Invertible.Pair) (F p) :=
+    Var (UnconstrainedDepNative Circuits.Element.Invertible.Pair) (F p) :=
   fun _ => ⟨0, 0⟩
 
 /-- Writes the element and inverse wires back to the extractor's flat output

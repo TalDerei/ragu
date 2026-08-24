@@ -31,14 +31,17 @@ def Assumptions (_ : F p) := True
 def Spec (k : ℕ) (input : F p) :=
   input ^ (2 ^ k) = 1
 
-instance elaborated (k : ℕ) : ElaboratedCircuit (F p) field unit where
-  main := main k
+instance elaborated (k : ℕ) : ElaboratedCircuit (F p) field unit (main k) where
   localLength _ := 3 * k
   localLength_eq := by
     rcases k with _ | k
     · simp [main, circuit_norm]
     · simp +arith [main, circuit_norm, Mul.circuit]
   subcircuitsConsistent := by
+    rcases k with _ | k
+    · simp [main, circuit_norm]
+    · simp +arith [main, circuit_norm, Mul.circuit]
+  channelsLawful := by
     rcases k with _ | k
     · simp [main, circuit_norm]
     · simp +arith [main, circuit_norm, Mul.circuit]
@@ -68,22 +71,22 @@ private lemma wire_value_eq_pow (k : ℕ) (env : Environment (F p))
     ring
 
 theorem soundness (k : ℕ) :
-    FormalAssertion.Soundness (F p) (elaborated k) Assumptions (Spec k) := by
+    FormalAssertion.Soundness (F p) (Input := field) (main k) Assumptions (Spec k) := by
   rcases k with _ | k
   · -- k=0: main = assertZero (input - 1); spec collapses to input = 1.
     circuit_proof_start
-    rw [add_neg_eq_zero] at h_holds
+    rw [sub_eq_zero] at h_holds
     simp [pow_zero, h_holds]
   · -- k+1: chain of squarings; apply wire_value_eq_pow at i = k.
     circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
     obtain ⟨⟨h0, hk⟩, h_final⟩ := h_holds
     have wire_k := wire_value_eq_pow k env input i₀ h0 hk k (le_refl k)
     simp only [Nat.add_sub_cancel] at h_final
-    rw [add_neg_eq_zero, wire_k] at h_final
+    rw [sub_eq_zero, wire_k] at h_final
     exact h_final
 
 theorem completeness (k : ℕ) :
-    FormalAssertion.Completeness (F p) (elaborated k) Assumptions (Spec k) := by
+    FormalAssertion.Completeness (F p) (Input := field) (main k) Assumptions (Spec k) := by
   rcases k with _ | k
   · -- k=0: spec is input^1=1; goal is input - 1 = 0.
     circuit_proof_start
@@ -96,11 +99,16 @@ theorem completeness (k : ℕ) :
     have wire_k :=
       wire_value_eq_pow k env.toEnvironment input i₀ h0 hk k (le_refl k)
     simp only [Nat.add_sub_cancel]
-    rw [add_neg_eq_zero, wire_k]
+    rw [sub_eq_zero, wire_k]
     exact h_spec
 
 def circuit (k : ℕ) : FormalAssertion (F p) field :=
-  { elaborated k with
+  { main := main k,
+    elaborated := elaborated k,
+    requirementsChannelsLawful := by
+      rcases k with _ | k
+      · simp [main, circuit_norm]
+      · simp +arith [main, circuit_norm, Mul.circuit]
     Assumptions
     Spec := Spec k
     soundness := soundness k

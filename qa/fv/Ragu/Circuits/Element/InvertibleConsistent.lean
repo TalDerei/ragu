@@ -36,22 +36,23 @@ def Spec (input : Invertible.Pair (F p)) :=
   input.element ≠ 0 ∧ input.inverse = input.element⁻¹
 
 /-- One `alloc_with_advice` gate; the two links allocate nothing. -/
-instance elaborated : ElaboratedCircuit (F p) Invertible.Pair unit where
-  main
+instance elaborated : ElaboratedCircuit (F p) Invertible.Pair unit main where
   localLength _ := 3
 
 /-- The fresh pair satisfies `Invertible`'s spec, and the links make it the
 existing pair. -/
-theorem soundness : FormalAssertion.Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness :
+    FormalAssertion.Soundness (F p) (Input := Invertible.Pair) main Assumptions Spec := by
   circuit_proof_start [Invertible.circuit, Invertible.Spec]
   obtain ⟨⟨h_ne, h_inv⟩, h_elem, h_inverse⟩ := h_holds
-  rw [add_neg_eq_zero] at h_elem h_inverse
+  rw [sub_eq_zero] at h_elem h_inverse
   rw [← h_elem, ← h_inverse]
   exact ⟨h_ne, h_inv⟩
 
 /-- Seeding the fresh pair from a pair that already inverts reproduces it, so
 both links hold; the advice condition `value · inverse = 1` is the spec. -/
-theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions Spec := by
+theorem completeness :
+    FormalAssertion.Completeness (F p) (Input := Invertible.Pair) main Assumptions Spec := by
   circuit_proof_start [Invertible.circuit, Invertible.ProverAssumptions, Invertible.ProverSpec]
   obtain ⟨h_ne, h_inv⟩ := h_spec
   have h_one : input_element * input_inverse = 1 := by
@@ -61,6 +62,6 @@ theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions
 
 /-- `Invertible::enforce_consistent`. -/
 def circuit : FormalAssertion (F p) Invertible.Pair :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.InvertibleConsistent

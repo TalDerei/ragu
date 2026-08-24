@@ -35,12 +35,11 @@ def ProverSpec (input : Bool) (out : F p) (_hint : ProverHint (F p)) :=
   out = if input then 1 else 0
 
 instance elaborated
-    : ElaboratedCircuit (F p) (Unconstrained Bool) field where
-  main
+    : ElaboratedCircuit (F p) (UnconstrainedNative Bool) field main where
   localLength _ := 3
 
 theorem soundness
-    : GeneralFormalCircuit.WithHint.Soundness (F p) elaborated Assumptions Spec := by
+    : GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedNative Bool)) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
   -- h_mul : a * b = c, h_c : c = 0, h_lin : 1 - a - b = 0
@@ -50,7 +49,7 @@ theorem soundness
   · exact Or.inr (by linear_combination -h_lin - hb)
 
 theorem completeness
-    : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
+    : GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedNative Bool)) (Output := field) main
         ProverAssumptions ProverSpec := by
   circuit_proof_start
   obtain ⟨_, hx, hy, hz⟩ := h_env
@@ -60,8 +59,9 @@ theorem completeness
   · rw [hx, hy]; ring
   · exact hx
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained Bool) field :=
-  { elaborated with
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedNative Bool) field :=
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions,
     Spec := Spec,
     ProverAssumptions := ProverAssumptions,

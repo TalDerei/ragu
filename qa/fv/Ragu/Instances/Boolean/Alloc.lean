@@ -8,7 +8,7 @@ def p := Core.Primes.p
 
 set_option linter.unusedVariables false in
 def deserializeInput (input : Vector (Expression (F p)) 0) :
-    Var (Unconstrained Bool) (F p) :=
+    Var (UnconstrainedNative Bool) (F p) :=
   fun _ => false
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=

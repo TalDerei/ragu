@@ -9,7 +9,7 @@ variable {p : ℕ} [Fact p.Prime]
 prover-side hint with its multiplicative inverse. -/
 structure Input (F : Type) where
   input : F
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- `Element::enforce_nonzero(input)` allocates an `Invertible::alloc`
@@ -41,17 +41,16 @@ def ProverAssumptions (input : ProverValue Input (F p))
   let inverse : F p := input.inverse
   inputValue * inverse = 1
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   output _ offset := varFromOffset field offset
   localLength _ := 3
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := Input) (Output := field) main (fun _ _ => True) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
   -- h_mul : a * b = c, h_c : c - 1 = 0, h_lin : input - a = 0
-  rw [add_neg_eq_zero] at h_c h_lin
+  rw [sub_eq_zero] at h_c h_lin
   -- h_c : c = 1, h_lin : input = a (and a is the returned wire)
   refine ⟨h_lin.symm, ?_⟩
   intro h0
@@ -61,13 +60,14 @@ theorem soundness :
   exact zero_ne_one h_mul
 
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := Input) (Output := field) main ProverAssumptions
       (fun _ _ _ => True) := by
   circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field where
-  elaborated
+  main
+  elaborated := elaborated
   Spec
   ProverAssumptions
   soundness

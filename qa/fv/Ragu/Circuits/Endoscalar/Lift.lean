@@ -95,8 +95,7 @@ def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) (out : F
   out = liftNative curveParams.ζ input.bits
 
 instance elaborated (curveParams : Point.Spec.CurveParams p)
-    : ElaboratedCircuit (F p) Input field where
-  main := main curveParams
+    : ElaboratedCircuit (F p) Input field (main curveParams) where
   localLength _ := 64 * 3
   localLength_eq input offset := by
     simp [main, circuit_norm, Boolean.And.circuit]
@@ -149,7 +148,7 @@ private lemma fin_foldl_succ_last_eq {α : Type*} (n : ℕ) (f : α → Fin (n +
   exact fin_foldl_congr n (fun acc i => f acc i.castSucc) g init hfg
 
 theorem soundness (curveParams : Point.Spec.CurveParams p)
-    : Soundness (F p) (elaborated curveParams) (Assumptions curveParams)
+    : Soundness (F p) (Input := Input) (Output := field) (main curveParams) (Assumptions curveParams)
         (Spec curveParams) := by
   circuit_proof_start [Boolean.And.circuit, Boolean.And.Assumptions, Boolean.And.Spec]
   -- h_input gives the field-level relationship; lift to per-bit equality.
@@ -286,10 +285,26 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
         (input_bits[2 * (Fin.last m).val + 1]'(by simp; omega))
     simp only [Fin.val_last, stepCircuit, stepNative, Expression.eval,
       h_bm_eq, h_bm1_eq, h_ne_m]
-    linear_combination 2 * ih' + hsi
+    have hsi' :
+        (-2 * input_bits[2 * m]'hi_m +
+          (curveParams.ζ - 1) * input_bits[2 * m + 1]'hi_m1 +
+          2 * (1 - curveParams.ζ) *
+            (input_bits[2 * m]'hi_m * input_bits[2 * m + 1]'hi_m1)) + 1 =
+          (if input_bits[2 * m]'hi_m = 1 then -1 else 1) *
+            if input_bits[2 * m + 1]'hi_m1 = 1 then curveParams.ζ else 1 := by
+      simpa only [add_comm, add_left_comm, add_assoc] using hsi
+    calc
+      _ = 2 * (Expression.eval env sym_inner + ctFinal curveParams.ζ m) +
+          ((-2 * input_bits[2 * m]'hi_m +
+            (curveParams.ζ - 1) * input_bits[2 * m + 1]'hi_m1 +
+            2 * (1 - curveParams.ζ) *
+              (input_bits[2 * m]'hi_m * input_bits[2 * m + 1]'hi_m1)) + 1) := by ring
+      _ = _ := by
+        rw [ih', hsi']
+        rfl
 
 theorem completeness (curveParams : Point.Spec.CurveParams p)
-    : Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
+    : Completeness (F p) (Input := Input) (Output := field) (main curveParams) (Assumptions curveParams) := by
   circuit_proof_start [Boolean.And.circuit, Boolean.And.Assumptions, Boolean.And.Spec]
   -- The goal is `∀ i : Fin 64, IsBool (eval ...input_var_bits[2*i]) ∧ IsBool (eval ...input_var_bits[2*i+1])`.
   -- Derive from h_assumptions (which states IsBool for every bit) + h_input (eval = input).
@@ -306,7 +321,8 @@ theorem completeness (curveParams : Point.Spec.CurveParams p)
   · rw [h_bits_eq _ hi1]; exact h_assumptions ⟨2 * i.val + 1, hi1⟩
 
 def circuit (curveParams : Point.Spec.CurveParams p) : FormalCircuit (F p) Input field :=
-  { elaborated curveParams with
+  { main := main curveParams,
+    elaborated := elaborated curveParams,
     Assumptions := Assumptions curveParams
     Spec := Spec curveParams
     soundness := soundness curveParams

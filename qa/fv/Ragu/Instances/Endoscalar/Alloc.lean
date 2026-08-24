@@ -7,7 +7,7 @@ namespace Ragu.Instances.Endoscalar.Alloc
 def p := Core.Primes.p
 
 def deserializeInput (_ : Vector (Expression (F p)) 0)
-    : Var (Unconstrained (BitVec 128)) (F p) :=
+    : Var (UnconstrainedNative (BitVec 128)) (F p) :=
   fun _ => 0#128
 
 def serializeOutput (output : Var (fields 128) (F p))

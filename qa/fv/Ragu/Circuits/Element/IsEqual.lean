@@ -21,20 +21,19 @@ def Assumptions (_input : Input (F p)) := True
 def Spec (input : Input (F p)) (out : F p) :=
   out = if input.a = input.b then 1 else 0
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   localLength _ := 6
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   simp [circuit_norm, IsZero.circuit, IsZero.Assumptions, IsZero.Spec] at h_holds ⊢
-  simp only [add_neg_eq_zero] at h_holds
+  simp only [sub_eq_zero] at h_holds
   exact h_holds
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := Input) (Output := field) main Assumptions := by
   circuit_proof_start [IsZero.circuit, IsZero.Assumptions]
 
 def circuit : FormalCircuit (F p) Input field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.IsEqual

@@ -68,10 +68,10 @@ def Assumptions {k : ℕ} (_xs : Vector (F p) k) := True
 def Spec (P : Params (F p) t) {k : ℕ} (xs : Vector (F p) k) (out : F p) :=
   out = (Permutation.permuteVal P.mds P.rounds (initialStateVal xs))[0]'(Nat.pos_of_neZero t)
 
-/-- A `def` rather than an `instance`: `t` is not determined by the instance
-goal `ElaboratedCircuit (F p) (fields k) field`. -/
-def elaborated (P : Params (F p) t) (k : ℕ) : ElaboratedCircuit (F p) (fields k) field where
-  main := main P k
+/-- The indexed `main P k` argument determines the Poseidon parameters for
+typeclass synthesis. -/
+instance elaborated (P : Params (F p) t) (k : ℕ) :
+    ElaboratedCircuit (F p) (fields k) field (main P k) where
   localLength _ := Permutation.localLength P.rounds
   output xs offset := (Permutation.output P.mds P.rounds (initialState xs) offset)[0]'(Nat.pos_of_neZero t)
   localLength_eq xs offset := by
@@ -84,14 +84,14 @@ def elaborated (P : Params (F p) t) (k : ℕ) : ElaboratedCircuit (F p) (fields 
 /-- The permutation's `Spec` pins the whole output state; the squeezed
 element is its first word. -/
 theorem soundness (P : Params (F p) t) (k : ℕ) :
-    Soundness (F p) (elaborated P k) Assumptions (Spec P) := by
+    Soundness (F p) (Input := (fields k)) (Output := field) (main P k) Assumptions (Spec P) := by
   circuit_proof_start [Permutation.circuit, Permutation.Assumptions, Permutation.Spec]
   rw [← h_input, ← eval_initialState, ← h_holds]
   simp [Vector.getElem_map]
 
 /-- The permutation is total, so the honest witness exists. -/
 theorem completeness (P : Params (F p) t) (k : ℕ) :
-    Completeness (F p) (elaborated P k) Assumptions := by
+    Completeness (F p) (Input := (fields k)) (Output := field) (main P k) Assumptions := by
   circuit_proof_start [Permutation.circuit, Permutation.Assumptions]
 
 /-- `Sponge::new`, `k` absorbs and one squeeze — a single-block hash.
@@ -114,7 +114,8 @@ one block size smaller. That is the Rust sponge's documented behavior, not a
 defect of the model; protocols must fix the element count. -/
 def circuit (P : Params (F p) t) (k : ℕ) (_hk0 : 0 < k) (_hkt : k < t) :
     FormalCircuit (F p) (fields k) field :=
-  { elaborated P k with
+  { main := main P k
+    elaborated := elaborated P k
     Assumptions
     Spec := Spec P
     soundness := soundness P k
@@ -250,13 +251,14 @@ theorem loop_consistent (P : Params (F p) t) (n : ℕ)
 
 /-- One boxed `Permutation` per block, threading the state through. -/
 instance elaborated (P : Params (F p) t) (n w : ℕ) :
-    ElaboratedCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields t) where
-  main := main P n w
+    ElaboratedCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields t) (main P n w) where
   localLength _ := n * Permutation.localLength P.rounds
   output blocks offset := loopOutput P n blocks zeroState offset
   localLength_eq blocks offset := loop_localLength P n blocks zeroState offset
   output_eq blocks offset := loop_output P n blocks zeroState offset
   subcircuitsConsistent blocks offset := loop_consistent P n blocks zeroState offset
+  channelsLawful := by
+    simp [main, loop, circuit_norm, Permutation.circuit]
 
 /-- The value-level state after the first `k` of `n` blocks. -/
 private def loopValPrefix (P : Params (F p) t) {n : ℕ}
@@ -314,13 +316,13 @@ private theorem loopValPrefix_succ (P : Params (F p) t) {n : ℕ}
 private theorem loop_prefix_soundness (P : Params (F p) t) (env : Environment (F p))
     {n : ℕ} (blocks : Vector (Vector (Expression (F p)) rate) n)
     (state : Var (fields t) (F p)) (offset : ℕ)
-    (h_holds : Circuit.ConstraintsHold.Soundness env
+    (h_holds : ConstraintsHold.Soundness env
       ((loop P n blocks state).operations offset)) :
     ∀ (k : ℕ) (hk : k ≤ n),
       (loopOutputPrefix P blocks state offset k hk).map (Expression.eval env) =
         loopValPrefix P (blocks.map fun b => b.map (Expression.eval env))
           (state.map (Expression.eval env)) k hk := by
-  simp only [loop, Circuit.foldlRange.soundness] at h_holds
+  simp only [loop, ConstraintsHold.Soundness, Circuit.foldlRange.forAllNoOffset] at h_holds
   intro k
   induction k with
   | zero =>
@@ -337,21 +339,33 @@ private theorem loop_prefix_soundness (P : Params (F p) t) (env : Environment (F
         Permutation.Spec] at h_perm
       rw [loopOutputPrefix_succ P blocks state offset k hk,
         loopValPrefix_succ P _ _ k hk]
-      rw [h_perm, eval_absorbBlock, ih hk0]
-      congr 2
-      all_goals simp [Vector.getElem_map]
+      calc
+        _ = Permutation.permuteVal P.mds P.rounds
+            ((absorbBlock (loopOutputPrefix P blocks state offset k (by omega))
+              blocks[k]).map (Expression.eval env)) := h_perm
+        _ = Permutation.permuteVal P.mds P.rounds
+            (absorbBlockVal
+              (loopValPrefix P (blocks.map fun b => b.map (Expression.eval env))
+                (state.map (Expression.eval env)) k (by omega))
+              (blocks.map fun b => b.map (Expression.eval env))[k]) := by
+          rw [eval_absorbBlock, ih hk0]
+          congr 2
+          all_goals simp [Vector.getElem_map]
 
 /-- Each block's `Permutation` spec composes along `foldlRange`. -/
 theorem loop_soundness (P : Params (F p) t) (env : Environment (F p))
     (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
     (state : Var (fields t) (F p)) (offset : ℕ)
-    (h_holds : Circuit.ConstraintsHold.Soundness env
+    (h_holds : ConstraintsHold.Soundness env
       ((loop P n blocks state).operations offset)) :
     (loopOutput P n blocks state offset).map (Expression.eval env) =
-      loopVal P n (blocks.map fun b => b.map (Expression.eval env))
-        (state.map (Expression.eval env)) := by
-  simpa [loopOutput, loopOutputPrefix, loopVal, loopValPrefix] using
-    loop_prefix_soundness P env blocks state offset h_holds n (le_refl n)
+        loopVal P n (blocks.map fun b => b.map (Expression.eval env))
+          (state.map (Expression.eval env)) ∧
+      Operations.Requirements env ((loop P n blocks state).operations offset) := by
+  constructor
+  · simpa [loopOutput, loopOutputPrefix, loopVal, loopValPrefix] using
+      loop_prefix_soundness P env blocks state offset h_holds n (le_refl n)
+  · simp [loop, circuit_norm, Permutation.circuit]
 
 /-- Every block permutation is total, so the folded circuit is complete. -/
 theorem loop_completeness (P : Params (F p) t) (env : ProverEnvironment (F p))
@@ -359,34 +373,42 @@ theorem loop_completeness (P : Params (F p) t) (env : ProverEnvironment (F p))
     (state : Var (fields t) (F p)) (offset : ℕ)
     (_h_env : env.UsesLocalWitnessesCompleteness offset
       ((loop P n blocks state).operations offset)) :
-    Circuit.ConstraintsHold.Completeness env ((loop P n blocks state).operations offset) := by
+    ConstraintsHold.Completeness env ((loop P n blocks state).operations offset) := by
   simp [loop, circuit_norm, Permutation.circuit, Permutation.Assumptions]
 
 /-- Chaining each block's `Permutation` spec along the loop gives `loopVal`,
 started at the zero state `Sponge::new` builds. -/
 theorem soundness (P : Params (F p) t) (n w : ℕ) :
-    Soundness (F p) (elaborated P n w) Assumptions (Spec P) := by
+    Soundness (F p) (Input := (ProvableVector (fields (w + 1)) n))
+      (Output := (fields t)) (main P n w) Assumptions (Spec P) := by
   circuit_proof_start
-  rw [loop_soundness P env n input_var zeroState i₀ h_holds]
-  congr 1
-  · rw [← h_input]
-    ext i hi j hj
-    rw [← getElem_eval_vector]
-    simp [CircuitType.eval_fields_dispatch, Vector.getElem_map]
-  · ext i hi
-    simp [zeroState, Expression.eval]
+  obtain ⟨h_loop, h_requirements⟩ := loop_soundness P env n input_var zeroState i₀ h_holds
+  constructor
+  · rw [h_loop]
+    congr 1
+    · rw [← h_input]
+      ext i hi j hj
+      rw [← getElem_eval_vector]
+      simp [CircuitType.eval_fields_dispatch, Vector.getElem_map]
+    · ext i hi
+      simp [zeroState, Expression.eval]
+  · exact h_requirements
 
 /-- Every block's permutation is total, so the honest witness exists at each
 step and the loop adds no constraints of its own. -/
 theorem completeness (P : Params (F p) t) (n w : ℕ) :
-    Completeness (F p) (elaborated P n w) Assumptions := by
+    Completeness (F p) (Input := (ProvableVector (fields (w + 1)) n))
+      (Output := (fields t)) (main P n w) Assumptions := by
   intro offset env blocks_var h_env blocks _ _
   exact loop_completeness P env n blocks_var zeroState offset h_env
 
 /-- The Poseidon sponge over `n` absorbed blocks, returning the full state. -/
 def circuit (P : Params (F p) t) (n w : ℕ) :
     FormalCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields t) :=
-  { elaborated P n w with
+  { main := main P n w
+    elaborated := elaborated P n w
+    requirementsChannelsLawful := by
+      simp [main, loop, circuit_norm, Permutation.circuit]
     Assumptions
     Spec := Spec P
     soundness := soundness P n w
@@ -427,12 +449,10 @@ def Spec (P : Params (F p) t) {n w s : ℕ} (hs : s < t)
   out = Vector.ofFn fun i =>
     (Blocks.loopVal P n blocks (Vector.replicate t 0))[i.val]'(by omega)
 
-/-- The projection allocates nothing beyond the block loop. A `def` rather
-than an `instance`: neither `t` nor the bound `hs` is determined by the
-instance goal. -/
-def elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
-    ElaboratedCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) where
-  main := main P n w s hs
+/-- The projection allocates nothing beyond the block loop. -/
+@[reducible] instance elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
+    ElaboratedCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s)
+      (main P n w s hs) where
   localLength _ := n * Permutation.localLength P.rounds
   output blocks offset :=
     Vector.ofFn fun i => (Blocks.loopOutput P n blocks zeroState offset)[i.val]'(by omega)
@@ -442,10 +462,13 @@ def elaborated (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     simp [main, circuit_norm, Blocks.circuit]
   subcircuitsConsistent blocks offset := by
     simp [main, circuit_norm]
+  channelsLawful := by
+    simp [main, circuit_norm, Blocks.circuit]
 
 /-- Immediate from `Blocks`' spec, read at the leading words. -/
 theorem soundness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
-    Soundness (F p) (elaborated P n w s hs) Assumptions (Spec P hs) := by
+    Soundness (F p) (Input := (ProvableVector (fields (w + 1)) n))
+      (Output := (fields s)) (main P n w s hs) Assumptions (Spec P hs) := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions, Blocks.Spec]
   ext i hi
   have h := congrArg (fun v : Vector (F p) t => v[i]'(by omega)) h_holds
@@ -453,7 +476,8 @@ theorem soundness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
 
 /-- `Blocks` is total, so the honest witness exists. -/
 theorem completeness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
-    Completeness (F p) (elaborated P n w s hs) Assumptions := by
+    Completeness (F p) (Input := (ProvableVector (fields (w + 1)) n))
+      (Output := (fields s)) (main P n w s hs) Assumptions := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions]
 
 /-- `Sponge::new`, `n` blocks of `w + 1` elements, `s` squeezes.
@@ -490,7 +514,10 @@ absorbs with `k` not a multiple of `RATE`. That shape is `Ragged`. -/
 def circuit (P : Params (F p) t) (n w s : ℕ) (_hn : 0 < n) (_hw : w + 1 < t)
     (_hs0 : 0 < s) (hs : s < t) :
     FormalCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) :=
-  { elaborated P n w s hs with
+  { main := main P n w s hs
+    elaborated := elaborated P n w s hs
+    requirementsChannelsLawful := by
+      simp [main, circuit_norm, Blocks.circuit]
     Assumptions
     Spec := Spec P hs
     soundness := soundness P n w s hs
@@ -537,12 +564,9 @@ def Spec (P : Params (F p) t) {n w k s : ℕ} (hs : s < t)
     (input : Input n w k (F p)) (out : Vector (F p) s) :=
   out = Vector.ofFn fun i => (stateVal P input)[i.val]'(by omega)
 
-/-- The full-block loop plus one permutation. A `def` rather than an
-`instance`: neither `t` nor the bound `hs` is determined by the instance
-goal. -/
-def elaborated (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
-    ElaboratedCircuit (F p) (Input n w k) (fields s) where
-  main := main P n w k s hs
+/-- The full-block loop plus one permutation. -/
+@[reducible] instance elaborated (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
+    ElaboratedCircuit (F p) (Input n w k) (fields s) (main P n w k s hs) where
   localLength _ := n * Permutation.localLength P.rounds + Permutation.localLength P.rounds
   output input offset :=
     Vector.ofFn fun i =>
@@ -556,11 +580,14 @@ def elaborated (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
   subcircuitsConsistent input offset := by
     simp [main, circuit_norm]
     omega
+  channelsLawful := by
+    simp [main, circuit_norm, Blocks.circuit, Permutation.circuit]
 
 /-- `Blocks`' spec pins the state after the full blocks, the permutation's
 spec pins it after the tail, and the projection reads the leading words. -/
 theorem soundness (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
-    Soundness (F p) (elaborated P n w k s hs) Assumptions (Spec P hs) := by
+    Soundness (F p) (Input := (Input n w k)) (Output := (fields s))
+      (main P n w k s hs) Assumptions (Spec P hs) := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions, Blocks.Spec,
     Permutation.circuit, Permutation.Assumptions, Permutation.Spec]
   obtain ⟨h_blocks, h_perm⟩ := h_holds
@@ -573,7 +600,8 @@ theorem soundness (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
 
 /-- Both sub-gadgets are total, so the honest witness exists. -/
 theorem completeness (P : Params (F p) t) (n w k s : ℕ) (hs : s < t) :
-    Completeness (F p) (elaborated P n w k s hs) Assumptions := by
+    Completeness (F p) (Input := (Input n w k)) (Output := (fields s))
+      (main P n w k s hs) Assumptions := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions,
     Permutation.circuit, Permutation.Assumptions]
 
@@ -592,7 +620,10 @@ runs; `hs` is additionally what bounds the projection.
 def circuit (P : Params (F p) t) (n w k s : ℕ) (_hw : w + 2 = t) (_hk : k + 1 < t)
     (_hs0 : 0 < s) (hs : s < t) :
     FormalCircuit (F p) (Input n w k) (fields s) :=
-  { elaborated P n w k s hs with
+  { main := main P n w k s hs
+    elaborated := elaborated P n w k s hs
+    requirementsChannelsLawful := by
+      simp [main, circuit_norm, Blocks.circuit, Permutation.circuit]
     Assumptions
     Spec := Spec P hs
     soundness := soundness P n w k s hs

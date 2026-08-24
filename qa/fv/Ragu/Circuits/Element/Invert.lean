@@ -18,23 +18,22 @@ def ProverAssumptions (input : F p) (_data : ProverData (F p)) (_hint : ProverHi
 def Spec (input : F p) (out : F p) (_data : ProverData (F p)) :=
   input * out = 1
 
-instance elaborated : ElaboratedCircuit (F p) field field where
-  main
+instance elaborated : ElaboratedCircuit (F p) field field main where
   output _ offset := varFromOffset field (offset + 1)
   localLength _ := 3
 
 theorem soundness
-    : GeneralFormalCircuit.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    : GeneralFormalCircuit.Soundness (F p) (Input := field) (Output := field) main (fun _ _ => True) Spec := by
   circuit_proof_start [InvertWith.circuit, InvertWith.Spec]
   exact h_holds
 
 theorem completeness
-    : GeneralFormalCircuit.Completeness (F p) elaborated
+    : GeneralFormalCircuit.Completeness (F p) (Input := field) (Output := field) main
         ProverAssumptions (fun _ _ _ => True) := by
   circuit_proof_start [InvertWith.circuit, InvertWith.ProverAssumptions]
   exact mul_inv_cancel₀ h_assumptions
 
 def circuit : GeneralFormalCircuit (F p) field field :=
-  { elaborated with Spec, ProverAssumptions, soundness, completeness }
+  { main := main, elaborated := elaborated, Spec, ProverAssumptions, soundness, completeness }
 
 end Ragu.Circuits.Element.Invert

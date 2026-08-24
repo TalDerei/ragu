@@ -29,12 +29,11 @@ def Assumptions (input : Input (F p)) :=
 def Spec (input : Input (F p)) (out : F p) :=
   out = if input.cond = 1 then input.b else input.a
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   output input offset := input.a + varFromOffset field (offset + 2)
   localLength _ := 3
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
   -- The output is `input_a + cond_times_diff`, where the subcircuit spec gives
   -- `cond_times_diff = input_cond * (input_b - input_a)`.
@@ -44,10 +43,10 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   · rw [hc1, if_pos rfl, h_holds, hc1]
     ring
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := Input) (Output := field) main Assumptions := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions]
 
 def circuit : FormalCircuit (F p) Input field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Boolean.ConditionalSelect

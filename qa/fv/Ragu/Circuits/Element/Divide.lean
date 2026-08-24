@@ -42,15 +42,14 @@ def Spec (input : Input (F p))
     (out : field (F p)) (_data : ProverData (F p)) :=
   out = input.x / input.y
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   output _ offset := varFromOffset field offset
   localLength _ := 3
 
-theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : GeneralFormalCircuit.Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
-  rw [add_neg_eq_zero] at c2 c3
+  rw [sub_eq_zero] at c2 c3
   rw [← c2, ← c3] at c1
   have hy : input_y ≠ 0 := by
     rcases h_assumptions with hy | hx
@@ -61,13 +60,14 @@ theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions 
   exact (eq_div_iff hy).mpr c1
 
 theorem completeness
-    : GeneralFormalCircuit.Completeness (F p) elaborated ProverAssumptions
+    : GeneralFormalCircuit.Completeness (F p) (Input := Input) (Output := field) main ProverAssumptions
         (fun _ _ _ => True) := by
   circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit (F p) Input field :=
-  { elaborated with
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions,
     Spec := Spec,
     ProverAssumptions := ProverAssumptions,

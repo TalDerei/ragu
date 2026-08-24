@@ -20,24 +20,23 @@ def Spec (x : F p) (out : F p) := out = x ^ 5
 
 /-- Three `Element.Mul` gates, nine wires; the result is the last gate's
 product wire. -/
-instance elaborated : ElaboratedCircuit (F p) field field where
-  main
+instance elaborated : ElaboratedCircuit (F p) field field main where
   output _ offset := varFromOffset field (offset + 8)
   localLength _ := 9
 
 /-- Chaining the three multiplications gives `x^5`. -/
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := field) (Output := field) main Assumptions Spec := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
   obtain ⟨h2, h4, h5⟩ := h_holds
   rw [h5, h4, h2]
   ring
 
 /-- Every `Element.Mul` is total, so the honest witness always exists. -/
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := field) (Output := field) main Assumptions := by
   circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions]
 
 /-- The Poseidon S-box `x ↦ x^5` for `ALPHA = 5`. -/
 def circuit : FormalCircuit (F p) field field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Poseidon.Sbox

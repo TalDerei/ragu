@@ -69,18 +69,18 @@ def ProverSpec (input : ProverValue Pair (F p)) (out : Pair (F p))
   out.element = value ∧ out.inverse = inverse
 
 /-- One mul gate: three wires, of which the first two are the output pair. -/
-instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Pair) Pair where
-  main
+instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDepNative Pair) Pair main where
   output _ offset := varFromOffset Pair offset
   localLength _ := 3
 
 /-- The gate gives `a · b = c` and the assertion gives `c = 1`; a product of
 one makes the first factor nonzero and the second its inverse. -/
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedDepNative Pair))
+      (Output := Pair) main (fun _ _ => True) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c⟩ := h_holds
-  rw [add_neg_eq_zero] at h_c
+  rw [sub_eq_zero] at h_c
   have h1 : env.get i₀ * env.get (i₀ + 1) = 1 := by rw [h_mul, h_c]
   refine ⟨?_, ?_⟩
   · intro h0
@@ -91,14 +91,15 @@ theorem soundness :
 /-- The honest witness exists whenever the advice inverts the value, and it
 puts the value and advice on the two returned wires. -/
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions
-      ProverSpec := by
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedDepNative Pair))
+      (Output := Pair) main ProverAssumptions ProverSpec := by
   circuit_proof_start
   grind
 
 /-- `Invertible::alloc_with_advice`, and by trace equality `Invertible::alloc`. -/
-def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Pair) Pair where
-  elaborated
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDepNative Pair) Pair where
+  main
+  elaborated := elaborated
   Spec
   ProverAssumptions
   ProverSpec

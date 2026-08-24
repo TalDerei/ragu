@@ -24,27 +24,26 @@ def ProverSpec (input : F p) (out : Square (F p)) (_hint : ProverHint (F p)) :=
   out.a = input ∧ out.a_sq = input^2
 
 instance elaborated :
-    ElaboratedCircuit (F p) (UnconstrainedDep field) Square where
-  main
+    ElaboratedCircuit (F p) (UnconstrainedDepNative field) Square main where
   output _ offset := { a := varFromOffset field offset, a_sq := varFromOffset field (offset + 2) }
   localLength _ := 3
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedDepNative field)) (Output := Square) main (fun _ _ => True) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_eq⟩ := h_holds
   -- h_mul : x * y = z, h_eq : x - y = 0
-  rw [add_neg_eq_zero] at h_eq
+  rw [sub_eq_zero] at h_eq
   -- Goal: z = x^2
   rw [← h_mul, h_eq]; ring
 
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedDepNative field)) (Output := Square) main
       (fun _ _ _ => True) ProverSpec := by
   circuit_proof_start
   grind
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) Square :=
-  { elaborated with Spec, ProverSpec, soundness, completeness }
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDepNative field) Square :=
+  { main := main, elaborated := elaborated, Spec, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.AllocSquare

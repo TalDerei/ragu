@@ -1,15 +1,19 @@
 import Clean.Circuit
+import CompElliptic.Fields.Pasta
 
 namespace Ragu.Core.Primes
 
 def p := 0x40000000000000000000000000000000224698fc094cf91b992d30ed00000001
 def q := 0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001
 
-axiom p_prime : Fact p.Prime
-axiom q_prime : Fact q.Prime
+theorem p_prime : p.Prime :=
+  CompElliptic.Fields.Pasta.PALLAS_BASE_is_prime
 
-instance : Fact p.Prime := p_prime
-instance : Fact q.Prime := q_prime
+theorem q_prime : q.Prime :=
+  CompElliptic.Fields.Pasta.PALLAS_SCALAR_is_prime
+
+instance : Fact p.Prime := ⟨p_prime⟩
+instance : Fact q.Prime := ⟨q_prime⟩
 
 @[reducible]
 def Fp := F p
@@ -64,10 +68,6 @@ end Statements
 -- this seems generally useful: whenever we allow `eval` to be rewritten to a concrete `CircuitType` instance,
 -- we can immediately unfold it with `circuit_norm`!
 attribute [circuit_norm] CircuitType.evalVerifier CircuitType.evalProver
-
-instance {Hint : TypeMap} {F : Type} [Inhabited (Hint F)] :
-    Inhabited (Var (UnconstrainedDep Hint) F) where
-  default := fun _ => default
 
 -- missing arithmetic instances
 

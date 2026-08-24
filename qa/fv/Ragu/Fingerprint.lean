@@ -113,7 +113,7 @@ def pushPoly (bound : ℕ) (buf : ByteArray) (poly : Poly p) : Except String Byt
   return buf
 
 /-- Append the canonical encoding of a flat operation. Witness computation
-functions are not encoded; lookups are unsupported. -/
+functions are not encoded; lookups and channel interactions are unsupported. -/
 def pushFlatOp [Fact p.Prime] (bound : ℕ) (buf : ByteArray)
     : FlatOperation (F p) → Except String ByteArray
   | .witness m _ =>
@@ -123,6 +123,7 @@ def pushFlatOp [Fact p.Prime] (bound : ℕ) (buf : ByteArray)
       throw s!"witness count {m} does not fit in 64 bits"
   | .assert e => pushPoly bound (buf.push 0x02) (normalize e)
   | .lookup _ => throw "lookup operations are not supported by the fingerprint encoding"
+  | .interact _ => throw "channel interactions are not supported by the fingerprint encoding"
 
 end Ragu.Fingerprint
 

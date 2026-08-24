@@ -36,15 +36,14 @@ when `cond = 0`, the circuit imposes no relation between `a` and `b`. -/
 def Spec (input : Input (F p)) :=
   input.cond ≠ 0 → input.a = input.b
 
-instance elaborated : ElaboratedCircuit (F p) Input unit where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input unit main where
   localLength _ := 3
 
-theorem soundness : FormalAssertion.Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : FormalAssertion.Soundness (F p) (Input := Input) main Assumptions Spec := by
   circuit_proof_start
   grind
 
-theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions Spec := by
+theorem completeness : FormalAssertion.Completeness (F p) (Input := Input) main Assumptions Spec := by
   circuit_proof_start [IsBool]
   and_intros
   · grind
@@ -53,7 +52,8 @@ theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions
     grind
 
 def circuit : FormalAssertion (F p) Input :=
-  { elaborated with
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions,
     Spec := Spec,
     soundness := soundness,

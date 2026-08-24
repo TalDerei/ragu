@@ -55,8 +55,7 @@ def Spec (curveParams : Spec.CurveParams p)
   input.P1.add_incomplete input.P2 = some output ∧
   output.isOnCurve curveParams
 
-instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
-  main
+instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point main where
   -- divide (3) + square (3) + mul_for_y (3) = 9 wires
   localLength _ := 9
   -- Offsets follow the sub-gadget layout: Divide (3), then Square's product
@@ -69,13 +68,13 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
     rcases input with ⟨⟨x1, y1⟩, ⟨x2, y2⟩⟩
     simp [main, circuit_norm, Element.Divide.circuit, Element.Square.circuit,
       Element.Mul.circuit]
-    exact ⟨rfl, rfl⟩
 
 theorem soundness (curveParams : Spec.CurveParams p) :
-    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+    Soundness (F p) (Input := Inputs) (Output := Spec.Point) main (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  simp only [sub_eq_add_neg] at h_holds ⊢
   obtain ⟨h_curve1, h_curve2, h_x_ne⟩ := h_assumptions
   obtain ⟨h_div, h_sq, h_y_term⟩ := h_holds
   have h_sub_ne : input_P2_x + -input_P1_x ≠ 0 := by
@@ -98,16 +97,16 @@ theorem soundness (curveParams : Spec.CurveParams p) :
       ⟨input_P1_x, input_P1_y⟩ ⟨input_P2_x, input_P2_y⟩ curveParams h_x_ne h_curve1 h_curve2
 
 theorem completeness (curveParams : Spec.CurveParams p) :
-    Completeness (F p) elaborated (Assumptions curveParams) := by
+    Completeness (F p) (Input := Inputs) (Output := Spec.Point) main (Assumptions curveParams) := by
   circuit_proof_start [Element.Divide.circuit, Element.Divide.ProverAssumptions,
     Element.Square.circuit, Element.Square.Assumptions,
     Element.Mul.circuit, Element.Mul.Assumptions]
   obtain ⟨_, _, h_x_ne⟩ := h_assumptions
-  rw [← sub_eq_add_neg]
   exact sub_ne_zero.mpr (Ne.symm h_x_ne)
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Inputs Spec.Point :=
-  { elaborated with
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions curveParams
     Spec := Spec curveParams
     soundness := soundness curveParams
