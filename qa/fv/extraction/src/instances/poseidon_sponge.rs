@@ -92,6 +92,11 @@ fn sponge_blocks<F: PrimeField, P: PoseidonPermutation<F>, const N: usize, const
     params: &'static P,
 ) -> ragu_core::Result<Vec<Expr<F>>> {
     assert!(
+        N > 0 && N.is_multiple_of(P::RATE),
+        "the Lean `Blocks` loop models full rate blocks only"
+    );
+    assert!(S > 0, "the final permutation is run by the first squeeze");
+    assert!(
         S <= P::RATE,
         "more squeezes than the rate would permute again"
     );

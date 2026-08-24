@@ -52,6 +52,6 @@ def formal_instance : Core.Statements.FormalInstance where
 
   reimplementation :=
     (Circuits.Poseidon.Sponge.Squeeze.circuit params 2 3 3
-      (by decide)).isGeneralFormalCircuit.toWithHint
+      (by decide) (by decide) (by decide) (by decide)).isGeneralFormalCircuit.toWithHint
 
 end Ragu.Instances.Poseidon.Blocks2Squeeze3Fp

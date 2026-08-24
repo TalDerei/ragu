@@ -219,7 +219,11 @@ zero state.
 The block width is written `w + 1` because Clean derives
 `NonEmptyProvableType` — which `ProvableVector` needs — only for
 `fields (_ + 1)`. That is no restriction here: a zero-width block would
-absorb nothing and Rust never buffers one. -/
+absorb nothing and Rust never buffers one.
+
+`Blocks` is a sub-gadget reached only through `Squeeze`, so the hypotheses
+that pin this family to the shapes the Rust sponge actually runs are carried
+by `Squeeze.circuit` rather than here. -/
 def main (P : Params (F p) t) (n w : ℕ)
     (blocks : Var (ProvableVector (fields (w + 1)) n) (F p)) :
     Circuit (F p) (Var (fields t) (F p)) :=
@@ -380,12 +384,8 @@ namespace Squeeze
 variable {rate : ℕ}
 
 /-- `s` squeezed elements: the first `s` words of the post-permutation state.
-
-`hs : s < t` is the rate bound, not a convenience. For this sponge family the
-capacity is the last state word and the rate is `t - 1`, so `s < t` is exactly
-`s ≤ RATE`. At `s = t` the Rust sponge would exhaust its rate words and
-permute again to refill them, so the `t`-th squeezed element comes from a
-*second* permutation — a shape this projection does not model. -/
+`hs` is what makes the projection well-typed; its meaning as the rate bound
+is explained on `circuit`. -/
 def main (P : Params (F p) t) (n w s : ℕ) (hs : s < t)
     (blocks : Var (ProvableVector (fields (w + 1)) n) (F p)) :
     Circuit (F p) (Var (fields s) (F p)) := do
@@ -431,8 +431,32 @@ theorem completeness (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
     Completeness (F p) (elaborated P n w s hs) Assumptions := by
   circuit_proof_start [Blocks.circuit, Blocks.Assumptions]
 
-/-- The Poseidon sponge over `n` blocks, squeezing `s` elements. -/
-def circuit (P : Params (F p) t) (n w s : ℕ) (hs : s < t) :
+/-- `Sponge::new`, `n` full blocks absorbed, `s` squeezes.
+
+The unused hypotheses pin the family to the shapes the Rust sponge actually
+runs; `hs` is additionally what bounds the projection.
+
+- `_hn`: the Rust sponge refuses to squeeze before anything was absorbed
+  (`squeeze` returns an initialization error), so `n = 0` models no Rust
+  circuit.
+- `_hw`: a block boundary is crossed only when the buffer holds exactly
+  `RATE` values, so every block but the last is `RATE` wide, and for this
+  family `RATE = t - 1`. `w + 2 = t` is that width. Narrower blocks at
+  `n ≥ 2` model a packing Rust never produces; wider ones would write the
+  capacity word or drop inputs in `absorbBlock`.
+- `_hs0`: the final permutation is run by the first `squeeze`. With no
+  squeeze the last block stays buffered and unpermuted, so `s = 0` would
+  model one permutation fewer than this loop runs.
+- `hs`: `s < t` is `s ≤ RATE`; the `t`-th squeeze would exhaust the rate
+  words and permute again, which this projection does not model.
+
+Not modeled: a ragged last block. Rust packs `k` elements as
+`⌊k / RATE⌋` full blocks plus a shorter final one, and the uniform
+`ProvableVector` here cannot express the short tail, so element counts that
+are not multiples of `RATE` — beyond the single-block shapes `Hash1`
+covers — have no instance. -/
+def circuit (P : Params (F p) t) (n w s : ℕ) (_hn : 0 < n) (_hw : w + 2 = t)
+    (_hs0 : 0 < s) (hs : s < t) :
     FormalCircuit (F p) (ProvableVector (fields (w + 1)) n) (fields s) :=
   { elaborated P n w s hs with
     Assumptions
