@@ -72,14 +72,18 @@ Lean theorems about them.
 Some of the gadget layer has nothing to verify rather than something unproved,
 and the distinction matters when reading the list above as a coverage claim.
 Demotion (`promotion.rs`) strips witness data through a driver whose every
-method is unreachable, the serialization surface (`io.rs`) moves wires without
-emitting constraints, and the `Consistent` trait only delegates — the
-constraints its implementations re-emit belong to the gadgets themselves, and
-for `Nonzero` and `Invertible` those are the invertible-allocation instances
-above. A reimplementation of any of these would prove a theorem about no
-constraints. What they are not exempt from is *trust*: the extractor relies on
-this serialization to read wires in and out, so a bug there would change what
-every other theorem is about.
+method is unreachable, and the serialization surface (`io.rs`) moves wires
+without emitting constraints; a reimplementation of either would prove a
+theorem about no constraints. What they are not exempt from is *trust*: the
+extractor relies on this serialization to read wires in and out, so a bug there
+would change what every other theorem is about.
+
+The `Consistent` implementations are a genuine gap, not an empty one. `Boolean`,
+`Point`, and `Invertible` each re-establish their wire contracts by allocating a
+fresh gadget and constraining it equal to the existing wires, and that equality
+link is circuit content — emitted where the staging machinery substitutes
+wires — that no instance covers today. `Nonzero`'s implementation is
+`Element::enforce_invertible`, which is covered.
 
 Neither is any Rust code verified: the proofs are about
 circuits extracted from Rust, not about the Rust implementation that extracted
