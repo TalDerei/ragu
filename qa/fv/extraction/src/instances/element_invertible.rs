@@ -16,9 +16,9 @@ use crate::{
 /// witness before delegating here, and `MaybeKind = Empty` means the closure
 /// is never called under extraction — so this instance covers both.
 ///
-/// No input wires (allocation). Output: the element wire; `Write for
-/// Invertible` omits the inverse, which stays pinned by the `c = 1`
-/// assertion inside the trace.
+/// No input wires (allocation). Outputs: the element and inverse wires.
+/// `WireCollector` traverses the `Gadget` representation rather than the
+/// one-wire `Write` encoding, so both fields are part of the fingerprint.
 pub struct ElementInvertibleInstance;
 
 impl CircuitInstance for ElementInvertibleInstance {
