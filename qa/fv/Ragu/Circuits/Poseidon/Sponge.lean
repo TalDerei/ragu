@@ -176,42 +176,28 @@ namespace Blocks
 variable {rate : ℕ}
 
 /-- Value-level absorb-and-permute loop. -/
-def loopVal (P : Params (F p) t) :
-    (n : ℕ) → Vector (Vector (F p) rate) n → Vector (F p) t → Vector (F p) t
-  | 0, _, state => state
-  | n + 1, blocks, state =>
-      loopVal P n blocks.tail
-        (Permutation.permuteVal P.mds P.rounds (absorbBlockVal state blocks[0]))
+def loopVal (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (F p) rate) n) (state : Vector (F p) t) :
+    Vector (F p) t :=
+  Fin.foldl n (fun acc i =>
+    Permutation.permuteVal P.mds P.rounds (absorbBlockVal acc blocks[i])) state
 
 /-- The absorb-and-permute loop: one boxed `Permutation` per block, threading
-the state through.
-
-Walked by explicit recursion rather than `Circuit.foldl`, for the same reason
-`Permutation.main` is: `Circuit.foldl` requires the body to be
-`ConstantOutput`, and this body's output is the permutation's output on a
-state built from the *previous* block's result, so it is a function of the
-accumulator rather than of the offset alone. `Circuit.foldlRange` drops that
-requirement but leaves `Circuit.FoldlM.foldlAcc` unexpanded, so the chaining
-is the same induction either way — which is what `loop_localLength`,
-`loop_output`, `loop_consistent`, `loop_soundness` and `loop_completeness`
-below carry out. -/
-def loop (P : Params (F p) t) :
-    (n : ℕ) → Vector (Vector (Expression (F p)) rate) n → Var (fields t) (F p) →
-      Circuit (F p) (Var (fields t) (F p))
-  | 0, _, state => pure state
-  | n + 1, blocks, state => do
-      let state ← Permutation.circuit P.mds P.rounds (absorbBlock state blocks[0])
-      loop P n blocks.tail state
+the state through. `foldlRange` is used because the symbolic output depends on
+the accumulated state and therefore is not `ConstantOutput`. -/
+def loop (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) : Circuit (F p) (Var (fields t) (F p)) :=
+  Circuit.foldlRange n state fun acc i =>
+    Permutation.circuit P.mds P.rounds (absorbBlock acc blocks[i])
 
 /-- The state wires after the whole loop, threaded block by block. -/
-def loopOutput (P : Params (F p) t) :
-    (n : ℕ) → Vector (Vector (Expression (F p)) rate) n → Var (fields t) (F p) → ℕ →
-      Var (fields t) (F p)
-  | 0, _, state, _ => state
-  | n + 1, blocks, state, offset =>
-      loopOutput P n blocks.tail
-        (Permutation.output P.mds P.rounds (absorbBlock state blocks[0]) offset)
-        (offset + Permutation.localLength P.rounds)
+def loopOutput (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ) : Var (fields t) (F p) :=
+  Fin.foldl n (fun acc i =>
+    Permutation.output P.mds P.rounds (absorbBlock acc blocks[i])
+      (offset + i * Permutation.localLength P.rounds)) state
 
 /-- `Sponge::new`, `n` blocks absorbed, then squeeze: the loop started at the
 zero state.
@@ -238,48 +224,29 @@ def Spec (P : Params (F p) t) {n w : ℕ}
     (blocks : Vector (Vector (F p) (w + 1)) n) (out : Vector (F p) t) :=
   out = loopVal P n blocks (Vector.replicate t 0)
 
--- The loop allocates one permutation's worth of wires per block. Generalized
--- over the threaded state, which is what the recursive call changes.
-theorem loop_localLength (P : Params (F p) t) :
-    ∀ (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
-      (state : Var (fields t) (F p)) (offset : ℕ),
-      (loop P n blocks state).localLength offset = n * Permutation.localLength P.rounds
-  | 0, _, _, _ => by simp [loop, circuit_norm]
-  | n + 1, blocks, state, offset => by
-      simp only [loop, Circuit.bind_localLength_eq,
-        loop_localLength P n blocks.tail _ _]
-      simp [circuit_norm, Permutation.circuit]
-      ring
+/-- The loop allocates one permutation's worth of wires per block. -/
+theorem loop_localLength (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ) :
+    (loop P n blocks state).localLength offset = n * Permutation.localLength P.rounds := by
+  by_cases hn : n = 0
+  · simp [loop, circuit_norm, Permutation.circuit, hn]
+  · have hn_pos : 0 < n := Nat.pos_of_ne_zero hn
+    simp [loop, circuit_norm, Permutation.circuit, hn_pos]
 
--- The loop's output wires are `loopOutput`'s, by the same induction.
-theorem loop_output (P : Params (F p) t) :
-    ∀ (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
-      (state : Var (fields t) (F p)) (offset : ℕ),
-      (loop P n blocks state).output offset = loopOutput P n blocks state offset
-  | 0, _, _, _ => rfl
-  | n + 1, blocks, state, offset => by
-      simp only [loop, loopOutput, Circuit.bind_output_eq,
-        loop_output P n blocks.tail _ _]
-      simp [circuit_norm, Permutation.circuit]
+/-- The loop's output wires are `loopOutput`'s. -/
+theorem loop_output (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ) :
+    (loop P n blocks state).output offset = loopOutput P n blocks state offset := by
+  simp [loop, loopOutput, circuit_norm, Permutation.circuit]
 
--- Every sub-permutation sits at the offset the threading gives it.
-theorem loop_consistent (P : Params (F p) t) :
-    ∀ (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
-      (state : Var (fields t) (F p)) (offset : ℕ),
-      ((loop P n blocks state).operations offset).SubcircuitsConsistent offset
-  | 0, _, _, _ => by simp [loop, circuit_norm]
-  | n + 1, blocks, state, offset => by
-      simp only [loop, Circuit.bind_operations_eq]
-      unfold Operations.SubcircuitsConsistent
-      rw [Operations.forAll_append]
-      refine ⟨by simp [circuit_norm], ?_⟩
-      have h := loop_consistent P n blocks.tail
-        ((subcircuit (Permutation.circuit P.mds P.rounds) (absorbBlock state blocks[0])).output offset)
-        (offset + (subcircuit (Permutation.circuit P.mds P.rounds)
-          (absorbBlock state blocks[0])).localLength offset)
-      unfold Operations.SubcircuitsConsistent at h
-      rw [add_comm]
-      exact h
+/-- Every sub-permutation sits at the offset assigned by `foldlRange`. -/
+theorem loop_consistent (P : Params (F p) t) (n : ℕ)
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ) :
+    ((loop P n blocks state).operations offset).SubcircuitsConsistent offset := by
+  simp [loop, circuit_norm, Permutation.circuit]
 
 /-- One boxed `Permutation` per block, threading the state through. -/
 instance elaborated (P : Params (F p) t) (n w : ℕ) :
@@ -291,51 +258,109 @@ instance elaborated (P : Params (F p) t) (n w : ℕ) :
   output_eq blocks offset := loop_output P n blocks zeroState offset
   subcircuitsConsistent blocks offset := loop_consistent P n blocks zeroState offset
 
--- Mapping a function over every block commutes with dropping the first block.
--- Needed because the loop recurses on `blocks.tail` while the value-level
--- side maps first and drops second.
-private theorem map_tail {α β : Type} {n : ℕ} (f : α → β) (v : Vector α (n + 1)) :
-    (v.tail).map f = (v.map f).tail := by
-  ext i hi
-  simp [Vector.tail, Vector.getElem_map]
+/-- The value-level state after the first `k` of `n` blocks. -/
+private def loopValPrefix (P : Params (F p) t) {n : ℕ}
+    (blocks : Vector (Vector (F p) rate) n) (state : Vector (F p) t)
+    (k : ℕ) (hk : k ≤ n) : Vector (F p) t :=
+  Fin.foldl k (fun acc i =>
+    Permutation.permuteVal P.mds P.rounds
+      (absorbBlockVal acc (blocks[i.val]'(by omega)))) state
 
--- Each block's `Permutation` gives one `permuteVal` step on the absorbed
--- state; chaining them along the block list gives `loopVal`. Generalized over
--- the threaded state and offset, as the length lemmas are.
-theorem loop_soundness (P : Params (F p) t) (env : Environment (F p)) :
-    ∀ (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
-      (state : Var (fields t) (F p)) (offset : ℕ),
-      Circuit.ConstraintsHold.Soundness env ((loop P n blocks state).operations offset) →
-      (loopOutput P n blocks state offset).map (Expression.eval env) =
-        loopVal P n (blocks.map fun b => b.map (Expression.eval env))
-          (state.map (Expression.eval env))
-  | 0, _, _, _, _ => by simp [loopOutput, loopVal]
-  | n + 1, blocks, state, offset, h_holds => by
-      simp only [loop, Circuit.ConstraintsHold.bind_soundness] at h_holds
-      obtain ⟨h_perm, h_tail⟩ := h_holds
+/-- The symbolic state after the first `k` of `n` blocks. -/
+private def loopOutputPrefix (P : Params (F p) t) {n : ℕ}
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset k : ℕ) (hk : k ≤ n) :
+    Var (fields t) (F p) :=
+  Fin.foldl k (fun acc i =>
+    Permutation.output P.mds P.rounds (absorbBlock acc (blocks[i.val]'(by omega)))
+      (offset + i * Permutation.localLength P.rounds)) state
+
+/-- Clean's internal accumulator equals the explicit symbolic prefix. -/
+private theorem foldlAcc_eq_loopOutputPrefix (P : Params (F p) t) {n : ℕ}
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ) (i : Fin n) :
+    Circuit.FoldlM.foldlAcc offset (Vector.finRange n)
+      (fun acc j =>
+        subcircuit (Permutation.circuit P.mds P.rounds) (absorbBlock acc blocks[j])) state i =
+      loopOutputPrefix P blocks state offset i (Nat.le_of_lt i.isLt) := by
+  unfold Circuit.FoldlM.foldlAcc loopOutputPrefix
+  congr 1
+  funext acc j
+  simp [circuit_norm, Permutation.circuit]
+
+/-- Extending a symbolic prefix by one applies the next permutation. -/
+private theorem loopOutputPrefix_succ (P : Params (F p) t) {n : ℕ}
+    (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset k : ℕ) (hk : k + 1 ≤ n) :
+    loopOutputPrefix P blocks state offset (k + 1) hk =
+      Permutation.output P.mds P.rounds
+        (absorbBlock (loopOutputPrefix P blocks state offset k (by omega)) blocks[k])
+        (offset + k * Permutation.localLength P.rounds) := by
+  rw [loopOutputPrefix, Fin.foldl_succ_last]
+  simp only [Fin.val_last]
+  congr
+
+/-- Extending a value-level prefix by one applies the next permutation. -/
+private theorem loopValPrefix_succ (P : Params (F p) t) {n : ℕ}
+    (blocks : Vector (Vector (F p) rate) n) (state : Vector (F p) t)
+    (k : ℕ) (hk : k + 1 ≤ n) :
+    loopValPrefix P blocks state (k + 1) hk =
+      Permutation.permuteVal P.mds P.rounds
+        (absorbBlockVal (loopValPrefix P blocks state k (by omega)) blocks[k]) := by
+  rw [loopValPrefix, Fin.foldl_succ_last]
+  congr
+
+/-- Every symbolic prefix evaluates to the corresponding value-level prefix. -/
+private theorem loop_prefix_soundness (P : Params (F p) t) (env : Environment (F p))
+    {n : ℕ} (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ)
+    (h_holds : Circuit.ConstraintsHold.Soundness env
+      ((loop P n blocks state).operations offset)) :
+    ∀ (k : ℕ) (hk : k ≤ n),
+      (loopOutputPrefix P blocks state offset k hk).map (Expression.eval env) =
+        loopValPrefix P (blocks.map fun b => b.map (Expression.eval env))
+          (state.map (Expression.eval env)) k hk := by
+  simp only [loop, Circuit.foldlRange.soundness] at h_holds
+  intro k
+  induction k with
+  | zero =>
+      intro hk
+      simp [loopOutputPrefix, loopValPrefix]
+  | succ k ih =>
+      intro hk
+      have hk0 : k ≤ n := by omega
+      have hkn : k < n := by omega
+      have h_perm := h_holds ⟨k, hkn⟩
+      have h_acc := foldlAcc_eq_loopOutputPrefix P blocks state offset ⟨k, hkn⟩
+      rw [h_acc] at h_perm
       simp only [circuit_norm, Permutation.circuit, Permutation.Assumptions,
         Permutation.Spec] at h_perm
-      have ih := loop_soundness P env n blocks.tail
-        (Permutation.output P.mds P.rounds (absorbBlock state blocks[0]) offset)
-        (offset + Permutation.localLength P.rounds) h_tail
-      simp only [loopOutput, loopVal, ih, h_perm, eval_absorbBlock, map_tail]
+      rw [loopOutputPrefix_succ P blocks state offset k hk,
+        loopValPrefix_succ P _ _ k hk]
+      rw [h_perm, eval_absorbBlock, ih hk0]
       congr 2
-      simp [Vector.getElem_map]
+      all_goals simp [Vector.getElem_map]
 
--- Every block's permutation is total, so the honest witness exists at each
--- step; the loop adds no constraints of its own.
-theorem loop_completeness (P : Params (F p) t) (env : ProverEnvironment (F p)) :
-    ∀ (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
-      (state : Var (fields t) (F p)) (offset : ℕ),
-      env.UsesLocalWitnessesCompleteness offset ((loop P n blocks state).operations offset) →
-      Circuit.ConstraintsHold.Completeness env ((loop P n blocks state).operations offset)
-  | 0, _, _, _, _ => by simp [loop, circuit_norm]
-  | n + 1, blocks, state, offset, h_env => by
-      simp only [loop, Circuit.ConstraintsHold.bind_usesLocalWitnesses] at h_env
-      obtain ⟨h_env_perm, h_env_tail⟩ := h_env
-      simp only [loop, Circuit.ConstraintsHold.bind_completeness]
-      refine ⟨?_, loop_completeness P env n blocks.tail _ _ h_env_tail⟩
-      simp [circuit_norm, Permutation.circuit, Permutation.Assumptions]
+/-- Each block's `Permutation` spec composes along `foldlRange`. -/
+theorem loop_soundness (P : Params (F p) t) (env : Environment (F p))
+    (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ)
+    (h_holds : Circuit.ConstraintsHold.Soundness env
+      ((loop P n blocks state).operations offset)) :
+    (loopOutput P n blocks state offset).map (Expression.eval env) =
+      loopVal P n (blocks.map fun b => b.map (Expression.eval env))
+        (state.map (Expression.eval env)) := by
+  simpa [loopOutput, loopOutputPrefix, loopVal, loopValPrefix] using
+    loop_prefix_soundness P env blocks state offset h_holds n (le_refl n)
+
+/-- Every block permutation is total, so the folded circuit is complete. -/
+theorem loop_completeness (P : Params (F p) t) (env : ProverEnvironment (F p))
+    (n : ℕ) (blocks : Vector (Vector (Expression (F p)) rate) n)
+    (state : Var (fields t) (F p)) (offset : ℕ)
+    (_h_env : env.UsesLocalWitnessesCompleteness offset
+      ((loop P n blocks state).operations offset)) :
+    Circuit.ConstraintsHold.Completeness env ((loop P n blocks state).operations offset) := by
+  simp [loop, circuit_norm, Permutation.circuit, Permutation.Assumptions]
 
 /-- Chaining each block's `Permutation` spec along the loop gives `loopVal`,
 started at the zero state `Sponge::new` builds. -/

@@ -28,6 +28,14 @@ def Point.isOnCurve (point : Point (F p)) (curveParams : CurveParams p) : Prop :
 def CurveParams.noOrderTwoPoints (curveParams : CurveParams p) : Prop :=
   (∀ point : Spec.Point (F p), (point.isOnCurve curveParams) → point.y ≠ 0)
 
+/-- An on-curve affine point never has a zero `x` coordinate. -/
+def CurveParams.noZeroXPoints (curveParams : CurveParams p) : Prop :=
+  ∀ point : Spec.Point (F p), point.isOnCurve curveParams → point.x ≠ 0
+
+/-- The coordinate assumptions carried by Rust's `Point` type. -/
+def CurveParams.nonzeroCoordinates (curveParams : CurveParams p) : Prop :=
+  curveParams.noZeroXPoints ∧ curveParams.noOrderTwoPoints
+
 def Point.negate (point : Point (F p)) : Point (F p) :=
   {
     x := point.x,
@@ -82,11 +90,13 @@ def EqAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.q :=
   h_small_order := by native_decide
 }
 
-/-! ### `noOrderTwoPoints` for the concrete Pasta parameters
+/-! ### Nonzero coordinates for the concrete Pasta parameters
 
 A point of order two is an affine point with `y = 0`, i.e. a root of
 `x³ + b`. For both Pasta curves `b = 5` and `−5` is not a cube (checked by
-Euler's cube criterion `(-5)^((p-1)/3) ≠ 1`), so no such point exists. -/
+Euler's cube criterion `(-5)^((p-1)/3) ≠ 1`), so no such point exists.
+Likewise, `x = 0` would require `y² = 5`, while `5` is not a square in either
+base field. -/
 
 /-- Binary (square-and-multiply) exponentiation. `Monoid.npow` is linear in
 the exponent, so `native_decide` cannot evaluate `a ^ k` at
@@ -141,6 +151,29 @@ theorem noOrderTwoPoints_of_neg_b_not_cube {q : ℕ} [Fact q.Prime]
     _ = pt.x ^ (q - 1) := by rw [h3]
     _ = 1 := ZMod.pow_card_sub_one_eq_one hx0
 
+/-- Euler-style square criterion: if `b` fails the square test
+`b^((q−1)/2) = 1`, then an on-curve point cannot have `x = 0`. -/
+theorem noZeroXPoints_of_b_not_square {q : ℕ} [Fact q.Prime]
+    (cp : CurveParams q)
+    (h2 : 2 * ((q - 1) / 2) = q - 1)
+    (hb0 : cp.b ≠ 0)
+    (hsquare : cp.b ^ ((q - 1) / 2) ≠ 1) :
+    cp.noZeroXPoints := by
+  intro pt h_curve hx0
+  rw [Point.isOnCurve, hx0] at h_curve
+  have h_y2 : pt.y ^ 2 = cp.b := by simpa using h_curve
+  have hy0 : pt.y ≠ 0 := by
+    intro hy0
+    apply hb0
+    rw [← h_y2, hy0]
+    simp
+  apply hsquare
+  calc cp.b ^ ((q - 1) / 2)
+      = (pt.y ^ 2) ^ ((q - 1) / 2) := by rw [h_y2]
+    _ = pt.y ^ (2 * ((q - 1) / 2)) := by rw [← pow_mul]
+    _ = pt.y ^ (q - 1) := by rw [h2]
+    _ = 1 := ZMod.pow_card_sub_one_eq_one hy0
+
 /-- The Pallas parameters have no points of order two: `−5` is not a cube
 in `F_p`. Discharges the `noOrderTwoPoints` caller obligation of
 `Point.Double` / `Endoscalar.GroupScale` at the concrete instantiation. -/
@@ -159,6 +192,32 @@ theorem eqAffineParams_noOrderTwoPoints : EqAffineParams.noOrderTwoPoints := by
   · native_decide
   · rw [← fastPow_eq]
     native_decide
+
+/-- Pallas has no on-curve affine point with `x = 0`: `5` is not a square
+in `F_p`. -/
+theorem epAffineParams_noZeroXPoints : EpAffineParams.noZeroXPoints := by
+  apply noZeroXPoints_of_b_not_square
+  · native_decide
+  · native_decide
+  · rw [← fastPow_eq]
+    native_decide
+
+/-- Vesta has no on-curve affine point with `x = 0`: `5` is not a square
+in `F_q`. -/
+theorem eqAffineParams_noZeroXPoints : EqAffineParams.noZeroXPoints := by
+  apply noZeroXPoints_of_b_not_square
+  · native_decide
+  · native_decide
+  · rw [← fastPow_eq]
+    native_decide
+
+/-- Both coordinates of every affine Pallas point are nonzero. -/
+theorem epAffineParams_nonzeroCoordinates : EpAffineParams.nonzeroCoordinates :=
+  ⟨epAffineParams_noZeroXPoints, epAffineParams_noOrderTwoPoints⟩
+
+/-- Both coordinates of every affine Vesta point are nonzero. -/
+theorem eqAffineParams_nonzeroCoordinates : EqAffineParams.nonzeroCoordinates :=
+  ⟨eqAffineParams_noZeroXPoints, eqAffineParams_noOrderTwoPoints⟩
 
 end Ragu.Circuits.Point.Spec
 
