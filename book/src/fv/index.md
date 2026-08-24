@@ -37,23 +37,25 @@ this part.
 
 ## What is verified today
 
-Verification currently covers the gadget layer: 49 concrete circuit instances,
+Verification currently covers the gadget layer: 56 concrete circuit instances,
 each one a specific instantiation at a fixed prime field with all compile-time
 parameters made concrete.
 
 - **Field elements** — multiplication, squaring, allocation, inversion,
   division by a nonzero element, zero and equality tests, root-of-unity
-  enforcement, invertible allocation and enforcement, and folding at six
-  arities.
-- **Curve points** — allocation on both curves of the cycle, doubling,
-  incomplete addition, incomplete double-and-add, and conditional
-  endomorphism application and negation.
-- **Booleans** — allocation, conjunction, conditional selection, and
-  conditional equality enforcement.
+  enforcement, invertible allocation, enforcement, and re-establishment, and
+  folding at six arities.
+- **Curve points** — allocation and contract re-establishment on both curves
+  of the cycle, doubling, incomplete addition, incomplete double-and-add, and
+  conditional endomorphism application and negation.
+- **Booleans** — allocation, conjunction, conditional selection, conditional
+  equality enforcement, and contract re-establishment.
 - **Endoscalars** — allocation, extraction, lifting, and group scaling.
 - **Poseidon** — the permutation at the deployed Pasta parameters on both
-  fields, and the sponge: single-block hashing on each field, and a
-  two-block, three-squeeze shape that crosses a rate boundary.
+  fields, and the sponge in every control-flow shape the Rust API exposes:
+  single-block hashing on each field, uniform blocks across a rate boundary,
+  a ragged final block, absorption after a squeeze, repeated squeezes, and
+  the save/resume path.
 - **Horner evaluation** at three arities, plus the trailing-constant $k(Y)$
   form.
 - **Nonzero banks** at three arities, and the core multiplication gate.
@@ -78,12 +80,13 @@ theorem about no constraints. What they are not exempt from is *trust*: the
 extractor relies on this serialization to read wires in and out, so a bug there
 would change what every other theorem is about.
 
-The `Consistent` implementations are a genuine gap, not an empty one. `Boolean`,
-`Point`, and `Invertible` each re-establish their wire contracts by allocating a
-fresh gadget and constraining it equal to the existing wires, and that equality
-link is circuit content — emitted where the staging machinery substitutes
-wires — that no instance covers today. `Nonzero`'s implementation is
-`Element::enforce_invertible`, which is covered.
+The `Consistent` implementations are the one place this boundary is easy to
+misread. `Boolean`, `Point`, and `Invertible` each re-establish their wire
+contracts by allocating a fresh gadget and constraining it equal to the
+existing wires — real constraints, emitted where the staging machinery
+substitutes wires — and the re-establishment instances above cover exactly
+that trace. `Nonzero`'s implementation is `Element::enforce_invertible`, which
+is covered under that name.
 
 Neither is any Rust code verified: the proofs are about
 circuits extracted from Rust, not about the Rust implementation that extracted

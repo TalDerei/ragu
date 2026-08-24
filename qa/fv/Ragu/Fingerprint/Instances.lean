@@ -16,6 +16,8 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Point.AddIncomplete", Ragu.Instances.Point.AddIncomplete.formal_instance),
   ("Ragu.Instances.Point.ConditionalEndo", Ragu.Instances.Point.ConditionalEndo.formal_instance),
   ("Ragu.Instances.Point.ConditionalNegate", Ragu.Instances.Point.ConditionalNegate.formal_instance),
+  ("Ragu.Instances.Point.ConsistentFp", Ragu.Instances.Point.ConsistentFp.formal_instance),
+  ("Ragu.Instances.Point.ConsistentFq", Ragu.Instances.Point.ConsistentFq.formal_instance),
   ("Ragu.Instances.Element.Mul", Ragu.Instances.Element.Mul.formal_instance),
   ("Ragu.Instances.Element.Square", Ragu.Instances.Element.Square.formal_instance),
   ("Ragu.Instances.Element.Alloc", Ragu.Instances.Element.Alloc.formal_instance),
@@ -32,6 +34,7 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Element.EnforceZero", Ragu.Instances.Element.EnforceZero.formal_instance),
   ("Ragu.Instances.Element.EnforceInvertible", Ragu.Instances.Element.EnforceInvertible.formal_instance),
   ("Ragu.Instances.Element.Invertible", Ragu.Instances.Element.Invertible.formal_instance),
+  ("Ragu.Instances.Element.InvertibleConsistent", Ragu.Instances.Element.InvertibleConsistent.formal_instance),
   ("Ragu.Instances.Element.Invert", Ragu.Instances.Element.Invert.formal_instance),
   ("Ragu.Instances.Element.InvertWith", Ragu.Instances.Element.InvertWith.formal_instance),
   ("Ragu.Instances.Element.EnforceNonzero", Ragu.Instances.Element.EnforceNonzero.formal_instance),
@@ -44,6 +47,7 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Boolean.Alloc", Ragu.Instances.Boolean.Alloc.formal_instance),
   ("Ragu.Instances.Boolean.And", Ragu.Instances.Boolean.And.formal_instance),
   ("Ragu.Instances.Boolean.ConditionalSelect", Ragu.Instances.Boolean.ConditionalSelect.formal_instance),
+  ("Ragu.Instances.Boolean.Consistent", Ragu.Instances.Boolean.Consistent.formal_instance),
   ("Ragu.Instances.Boolean.ConditionalEnforceEqual", Ragu.Instances.Boolean.ConditionalEnforceEqual.formal_instance),
   ("Ragu.Instances.Endoscalar.Alloc", Ragu.Instances.Endoscalar.Alloc.formal_instance),
   ("Ragu.Instances.Endoscalar.Extract", Ragu.Instances.Endoscalar.Extract.formal_instance),
@@ -57,7 +61,10 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Poseidon.Hash4Fp", Ragu.Instances.Poseidon.Hash4Fp.formal_instance),
   ("Ragu.Instances.Poseidon.Hash1Fq", Ragu.Instances.Poseidon.Hash1Fq.formal_instance),
   ("Ragu.Instances.Poseidon.Blocks2Squeeze3Fp", Ragu.Instances.Poseidon.Blocks2Squeeze3Fp.formal_instance),
-  ("Ragu.Instances.Poseidon.Hash4Fq", Ragu.Instances.Poseidon.Hash4Fq.formal_instance)
+  ("Ragu.Instances.Poseidon.Hash4Fq", Ragu.Instances.Poseidon.Hash4Fq.formal_instance),
+  ("Ragu.Instances.Poseidon.Hash1SaveResumeFp", Ragu.Instances.Poseidon.Hash1SaveResumeFp.formal_instance),
+  ("Ragu.Instances.Poseidon.InterleavedFp", Ragu.Instances.Poseidon.InterleavedFp.formal_instance),
+  ("Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp", Ragu.Instances.Poseidon.Blocks1Tail2Squeeze2Fp.formal_instance)
 ]
 
 end Ragu.Fingerprint
