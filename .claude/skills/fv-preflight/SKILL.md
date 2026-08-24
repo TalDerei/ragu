@@ -14,13 +14,13 @@ owned by the `fv-review` skill; the book's FV part is the spec for every concept
 
 ## 0. What CI checks — and what it leaves to this audit
 
-The FV workflow runs three gates, in order: `cargo run --locked -p lean_extraction -- check`
-(the generated Lean files match the exporter), `lake build --wfail` in `qa/fv` (every module
-under `Ragu/` elaborates, warnings fatal), and the fingerprint equivalence check (the Rust
-extractor's trace digests equal the ones Lean computes from the reimplementations). It does
-**not** check that a new instance is registered at all, what axioms a theorem depends on,
-whether `Assumptions` or `Spec` mean anything, whether the Lean interface mirrors the Rust one,
-or whether the prose is true. Those are the sections below.
+The FV workflow runs four gates, in order: `cargo run --locked -p lean_extraction -- check`
+(the generated Lean files match the exporter), the source-tree trust-boundary census,
+`lake build --wfail` in `qa/fv` (every module under `Ragu/` elaborates, warnings fatal, and the
+elaborated endpoint census passes), and the fingerprint equivalence check (the Rust extractor's
+trace digests equal the ones Lean computes from the reimplementations). It does **not** check that
+a new instance is registered at all, whether `Assumptions` or `Spec` mean anything, whether the
+Lean interface mirrors the Rust one, or whether the prose is true. Those are the sections below.
 
 ## 1. Coverage — every new proof elaborates in CI, and every new instance is fingerprinted
 
@@ -45,12 +45,14 @@ stays green over a reimplementation of nothing. Check all five failure modes.
    `git diff main...HEAD` for `EXPORT_TARGETS`, `Ragu.lean`, `Ragu/Lemmas.lean`, and the two
    generated files, and account for every *deleted* line by name. A consolidation that loses
    another PR's instance passes CI and loses the guarantee. Re-run `export` and `check`.
-5. **Axioms are not checked automatically.** Run `#print axioms` on each new endpoint
-   (`soundness`, `completeness`, and any lemma the book or a docstring cites as a result). The
-   expected set is `propext`, `Classical.choice`, `Quot.sound`, and the primality facts
-   `Ragu.Core.Primes.p_prime` / `q_prime`; `Lean.ofReduceBool` and `Lean.trustCompiler` appear
-   only where `native_decide` is involved. Anything else is a trust-surface change (§2) that
-   the PR argues for explicitly.
+5. **Endpoint axioms are checked automatically, but only for discovered endpoints.**
+   `Ragu.Meta.TrustBoundary` directly pins every declaration carrying a `soundness`,
+   `completeness`, error/security-bound, probability-bound, or capstone name component, both Pasta
+   primality theorems, and the executable fingerprint boundary. The source and elaborated censuses
+   reject a missing direct pin. Run `#print axioms`
+   (or add an explicit census entry) for any differently named lemma that the book or a docstring
+   cites as a result. The expected theorem tier is `propext`, `Classical.choice`, and
+   `Quot.sound`; any broader set is a trust-surface change (§2) that the PR argues for explicitly.
 
 Run the exporter `check` and the fingerprint comparison (recipe in the final sweep) before
 handing over.
@@ -92,11 +94,12 @@ For each `native_decide` the diff adds, in order:
 A survivor has to earn the trust it adds: a justification in the PR that says which rungs above
 were tried and why each failed — "it was easier" and "it is only a constant" are not that.
 
-The same logic bans bespoke axioms outright. The only `axiom`s in the tree are the primality
-facts in `Ragu.Core.Primes`; when a fact is proven upstream (Mathlib, Clean), use it rather than
-assume it, and anything else is a theorem or a named hypothesis in `Assumptions`. There should
-be no uses of `@[extern]`, `@[implemented_by]`, `unsafe`, `partial`, or `opaque`, and no new
-uses of `@[csimp]` — none exist today, so any appearance is a review item by itself.
+The same logic bans bespoke axioms outright. The Pasta primality facts are theorems imported from
+the direct, commit-pinned CompElliptic dependency; when a fact is proven upstream, use it rather
+than assume it, and anything else is a theorem or a named hypothesis in `Assumptions`. There should
+be no production uses of `@[extern]`, `@[implemented_by]`, `unsafe`, `partial`, or `opaque`, and
+no new uses of `@[csimp]` — none exist today outside the deliberately forged declarations in
+`Ragu.Meta.Tests`, so any other appearance is a review item by itself.
 
 ## 3. `noncomputable` — proofs may be, the fingerprinted path may not
 
@@ -255,6 +258,7 @@ Before handing over, from the repo root:
 
 ```sh
 cargo run --locked -p lean_extraction -- check
+scripts/check_fv_endpoint_census.sh
 (cd qa/fv && lake build --wfail)
 cargo run --locked -p lean_extraction -- fingerprint | sort > /tmp/fp-rust.txt
 (cd qa/fv && lake env lean --run Ragu/Fingerprint/Main.lean) | sort > /tmp/fp-lean.txt
