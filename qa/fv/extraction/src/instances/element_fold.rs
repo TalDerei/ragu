@@ -7,6 +7,45 @@ use crate::{
     instance::{CircuitInstance, WireCollector, WireDeserializer},
 };
 
+pub struct ElementFoldInstanceN0;
+
+impl CircuitInstance for ElementFoldInstanceN0 {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        // n = 0: `Element::fold` over no elements is `Element::zero()`, so this
+        // trace carries no operations at all — the instance pins the output
+        // expression and nothing else. Its value is that the Lean reimpl's
+        // dedicated `n = 0` branch is compared against Rust, not only proved.
+        fold_at_length::<0>(dr)
+    }
+}
+
+pub struct ElementFoldInstanceN1;
+
+impl CircuitInstance for ElementFoldInstanceN1 {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        // n = 1: the fold returns the single element unchanged. Like n = 0 this
+        // trace has no operations; it pins that the element is passed through
+        // rather than gated, which is the Lean reimpl's second branch.
+        fold_at_length::<1>(dr)
+    }
+}
+
+pub struct ElementFoldInstanceN2;
+
+impl CircuitInstance for ElementFoldInstanceN2 {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        // n = 2: exactly one Mul gate — the last of the Lean reimpl's small-n
+        // branches before the uniform `n >= 3` case that N3/N7/N19 pin.
+        fold_at_length::<2>(dr)
+    }
+}
+
 pub struct ElementFoldInstanceN3;
 
 impl CircuitInstance for ElementFoldInstanceN3 {

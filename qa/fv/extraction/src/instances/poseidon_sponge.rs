@@ -51,6 +51,68 @@ impl CircuitInstance for PoseidonHash1InstanceFq {
     }
 }
 
+/// As [`PoseidonHash4InstanceFp`] over `PoseidonFq`: a full rate block on the
+/// other field of the cycle. Pairs with [`PoseidonHash1InstanceFq`] so both
+/// fields are covered at both block shapes rather than Fq at `k = 1` alone.
+pub struct PoseidonHash4InstanceFq;
+
+impl CircuitInstance for PoseidonHash4InstanceFq {
+    type Field = Fq;
+
+    fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
+        sponge_absorb_n::<Fq, PoseidonFq, 4>(dr, &PoseidonFq)
+    }
+}
+
+/// Two full rate blocks absorbed, then three squeezes.
+///
+/// This is the shape `PoseidonHash{1,4}Instance*` cannot reach. Absorbing a
+/// 5th element makes Rust permute the buffered block and start a new one, so
+/// eight elements run *two* permutations over the same state — which is where
+/// a bug that contaminated the capacity word across a block boundary would
+/// show up. The three squeezes then come out of one permutation without
+/// triggering another (`get_rate` reverses the rate words and `squeeze` pops
+/// the last), pinning that the i-th squeezed element is state word i.
+///
+/// Input wires: `x₀ … x₇` (8 wires). Outputs: three squeezed elements.
+pub struct PoseidonBlocks2Squeeze3InstanceFp;
+
+impl CircuitInstance for PoseidonBlocks2Squeeze3InstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        sponge_blocks::<Fp, PoseidonFp, 8, 3>(dr, &PoseidonFp)
+    }
+}
+
+/// Absorbs `N` elements — `N` may exceed `P::RATE`, in which case the sponge
+/// permutes at each block boundary — and squeezes `S` elements.
+fn sponge_blocks<F: PrimeField, P: PoseidonPermutation<F>, const N: usize, const S: usize>(
+    dr: &mut ExtractionDriver<F>,
+    params: &'static P,
+) -> ragu_core::Result<Vec<Expr<F>>> {
+    assert!(
+        S <= P::RATE,
+        "more squeezes than the rate would permute again"
+    );
+    let element_template = Element::constant(dr, F::ZERO);
+
+    let mut sponge = Sponge::<'_, _, P>::new(dr, params);
+    for _ in 0..N {
+        let input_wires = dr.alloc_input_wires(1);
+        let x = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
+        sponge.absorb(dr, &x)?;
+    }
+
+    let mut outputs = Vec::new();
+    for _ in 0..S {
+        let out = sponge.squeeze(dr)?;
+        outputs.extend(WireCollector::collect_from(&out)?);
+    }
+
+    Ok(outputs)
+}
+
 /// Absorbs `N` input wires (at most `P::RATE`, so one permutation) into a
 /// fresh sponge and squeezes one element.
 fn sponge_absorb_n<F: PrimeField, P: PoseidonPermutation<F>, const N: usize>(

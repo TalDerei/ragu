@@ -21,15 +21,22 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Element.Alloc", Ragu.Instances.Element.Alloc.formal_instance),
   ("Ragu.Instances.Element.AllocSquare", Ragu.Instances.Element.AllocSquare.formal_instance),
   ("Ragu.Instances.Element.DivNonzero", Ragu.Instances.Element.DivNonzero.formal_instance),
+  ("Ragu.Instances.Element.FoldN0", Ragu.Instances.Element.FoldN0.formal_instance),
+  ("Ragu.Instances.Element.FoldN1", Ragu.Instances.Element.FoldN1.formal_instance),
+  ("Ragu.Instances.Element.FoldN2", Ragu.Instances.Element.FoldN2.formal_instance),
   ("Ragu.Instances.Element.FoldN3", Ragu.Instances.Element.FoldN3.formal_instance),
   ("Ragu.Instances.Element.FoldN7", Ragu.Instances.Element.FoldN7.formal_instance),
   ("Ragu.Instances.Element.FoldN19", Ragu.Instances.Element.FoldN19.formal_instance),
   ("Ragu.Instances.Element.EnforceRootOfUnityK2", Ragu.Instances.Element.EnforceRootOfUnityK2.formal_instance),
   ("Ragu.Instances.Element.EnforceRootOfUnityK5", Ragu.Instances.Element.EnforceRootOfUnityK5.formal_instance),
   ("Ragu.Instances.Element.EnforceZero", Ragu.Instances.Element.EnforceZero.formal_instance),
+  ("Ragu.Instances.Element.EnforceInvertible", Ragu.Instances.Element.EnforceInvertible.formal_instance),
+  ("Ragu.Instances.Element.Invertible", Ragu.Instances.Element.Invertible.formal_instance),
   ("Ragu.Instances.Element.Invert", Ragu.Instances.Element.Invert.formal_instance),
   ("Ragu.Instances.Element.InvertWith", Ragu.Instances.Element.InvertWith.formal_instance),
   ("Ragu.Instances.Element.EnforceNonzero", Ragu.Instances.Element.EnforceNonzero.formal_instance),
+  ("Ragu.Instances.NonzeroBank.ScopeK0", Ragu.Instances.NonzeroBank.ScopeK0.formal_instance),
+  ("Ragu.Instances.NonzeroBank.ScopeK1", Ragu.Instances.NonzeroBank.ScopeK1.formal_instance),
   ("Ragu.Instances.NonzeroBank.ScopeK2", Ragu.Instances.NonzeroBank.ScopeK2.formal_instance),
   ("Ragu.Instances.Element.IsEqual", Ragu.Instances.Element.IsEqual.formal_instance),
   ("Ragu.Instances.Element.IsZero", Ragu.Instances.Element.IsZero.formal_instance),
@@ -48,7 +55,9 @@ def instances : List (String × Ragu.Core.Statements.FormalInstance) := [
   ("Ragu.Instances.Horner.KyN3", Ragu.Instances.Horner.KyN3.formal_instance),
   ("Ragu.Instances.Poseidon.Hash1Fp", Ragu.Instances.Poseidon.Hash1Fp.formal_instance),
   ("Ragu.Instances.Poseidon.Hash4Fp", Ragu.Instances.Poseidon.Hash4Fp.formal_instance),
-  ("Ragu.Instances.Poseidon.Hash1Fq", Ragu.Instances.Poseidon.Hash1Fq.formal_instance)
+  ("Ragu.Instances.Poseidon.Hash1Fq", Ragu.Instances.Poseidon.Hash1Fq.formal_instance),
+  ("Ragu.Instances.Poseidon.Blocks2Squeeze3Fp", Ragu.Instances.Poseidon.Blocks2Squeeze3Fp.formal_instance),
+  ("Ragu.Instances.Poseidon.Hash4Fq", Ragu.Instances.Poseidon.Hash4Fq.formal_instance)
 ]
 
 end Ragu.Fingerprint
