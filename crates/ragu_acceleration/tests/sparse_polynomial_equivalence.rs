@@ -1,104 +1,14 @@
-use proptest::{prelude::*, test_runner::TestCaseResult};
+mod common;
+
+use common::{arb_sparse_poly, check_sparse_commitment, check_sparse_operations};
+use proptest::prelude::*;
 use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::{
-    CurveAffine, Cycle, DeferredField, FixedGenerators,
-    ff::PrimeField,
-    group::Curve,
+    Cycle,
     pasta_curves::{pallas, vesta},
 };
-use ragu_backend::{Backend, ReferenceBackend};
-use ragu_circuits::polynomials::{Rank, TestRank, sparse::Polynomial};
 use ragu_pasta::Pasta;
-use ragu_testing::strategies::{bounded_edge_usize, prime_field_element};
-
-fn arb_sparse_poly<F>() -> BoxedStrategy<Polynomial<F, TestRank>>
-where
-    F: PrimeField + From<u64> + 'static,
-{
-    let size = bounded_edge_usize(TestRank::num_coeffs());
-
-    size.prop_flat_map(|size| {
-        proptest::collection::vec(
-            prop_oneof![
-                6 => Just(F::ZERO),
-                1 => Just(F::ONE),
-                8 => prime_field_element(),
-            ],
-            size,
-        )
-    })
-    .prop_map(Polynomial::from_coeffs)
-    .boxed()
-}
-
-fn check_sparse_operations<F>(
-    lhs: Polynomial<F, TestRank>,
-    rhs: Polynomial<F, TestRank>,
-    point: F,
-) -> TestCaseResult
-where
-    F: DeferredField,
-{
-    let canonical_lhs_eval = lhs.eval(point);
-    let canonical_rhs_eval = rhs.eval(point);
-
-    prop_assert_eq!(
-        ReferenceBackend::sparse_eval(&lhs, point),
-        canonical_lhs_eval
-    );
-    prop_assert_eq!(
-        AcceleratedBackend::sparse_eval(&lhs, point),
-        canonical_lhs_eval,
-    );
-    prop_assert_eq!(
-        ReferenceBackend::sparse_eval(&rhs, point),
-        canonical_rhs_eval
-    );
-    prop_assert_eq!(
-        AcceleratedBackend::sparse_eval(&rhs, point),
-        canonical_rhs_eval,
-    );
-
-    let canonical_revdot = lhs.revdot(&rhs);
-    prop_assert_eq!(
-        ReferenceBackend::sparse_revdot(&lhs, &rhs),
-        canonical_revdot,
-    );
-    prop_assert_eq!(
-        AcceleratedBackend::sparse_revdot(&lhs, &rhs),
-        canonical_revdot,
-    );
-
-    Ok(())
-}
-
-fn check_sparse_commitment<F, C, G>(poly: Polynomial<F, TestRank>, generators: &G) -> TestCaseResult
-where
-    F: PrimeField,
-    C: CurveAffine<ScalarExt = F>,
-    G: FixedGenerators<C>,
-{
-    let canonical = poly.commit(generators);
-
-    prop_assert_eq!(
-        ReferenceBackend::sparse_commit(&poly, generators),
-        canonical
-    );
-    prop_assert_eq!(
-        AcceleratedBackend::sparse_commit(&poly, generators),
-        canonical
-    );
-    prop_assert_eq!(
-        ReferenceBackend::sparse_commit_to_affine(&poly, generators),
-        canonical.to_affine(),
-    );
-    prop_assert_eq!(
-        AcceleratedBackend::sparse_commit_to_affine(&poly, generators),
-        canonical.to_affine(),
-    );
-
-    Ok(())
-}
+use ragu_testing::strategies::prime_field_element;
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
@@ -109,7 +19,7 @@ proptest! {
         rhs in arb_sparse_poly::<pallas::Scalar>(),
         point in prime_field_element(),
     ) {
-        check_sparse_operations(lhs, rhs, point)?;
+        check_sparse_operations::<_, AcceleratedBackend>(lhs, rhs, point)?;
     }
 
     #[test]
@@ -118,7 +28,7 @@ proptest! {
         rhs in arb_sparse_poly::<vesta::Scalar>(),
         point in prime_field_element(),
     ) {
-        check_sparse_operations(lhs, rhs, point)?;
+        check_sparse_operations::<_, AcceleratedBackend>(lhs, rhs, point)?;
     }
 }
 
@@ -129,7 +39,7 @@ proptest! {
     fn accelerated_pallas_sparse_commitment_matches_reference_and_canonical(
         poly in arb_sparse_poly::<pallas::Scalar>(),
     ) {
-        check_sparse_commitment::<_, pallas::Affine, _>(
+        check_sparse_commitment::<_, pallas::Affine, _, AcceleratedBackend>(
             poly,
             Pasta::nested_generators(Pasta::baked()),
         )?;
@@ -139,7 +49,7 @@ proptest! {
     fn accelerated_vesta_sparse_commitment_matches_reference_and_canonical(
         poly in arb_sparse_poly::<vesta::Scalar>(),
     ) {
-        check_sparse_commitment::<_, vesta::Affine, _>(
+        check_sparse_commitment::<_, vesta::Affine, _, AcceleratedBackend>(
             poly,
             Pasta::host_generators(Pasta::baked()),
         )?;

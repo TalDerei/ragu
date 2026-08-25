@@ -1,0 +1,12 @@
+# MSM sizes at which Zakura's `best_multiexp` changes its Booth-window width:
+# c = 1 below 4 terms, c = 3 below 32, then c = ceil(ln n), so the width steps
+# at floor(e^k) + 1. The equivalence test checks both sides of each boundary;
+# a power-of-two-biased proptest strategy cannot generate these sizes.
+4
+32
+55
+149
+404
+1097
+2981
+8104
