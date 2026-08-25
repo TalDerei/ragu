@@ -24,6 +24,7 @@ extern crate alloc;
 #[cfg(any(feature = "std", test))]
 extern crate std;
 
+mod backend;
 mod fuse;
 #[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;
@@ -39,7 +40,7 @@ use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 use header::Header;
 pub use proof::{Pcd, Proof};
 use ragu_arithmetic::{Cycle, rand::CryptoRng};
-use ragu_backend::{Backend, ReferenceBackend};
+use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{Registry, RegistryBuilder},
@@ -51,26 +52,7 @@ use step::{Step, internal::adapter::Adapter};
 // FIXME: choose a permanent domain separation tag before release.
 pub(crate) const RAGU_TAG: &[u8] = b"FIXME";
 
-mod selectable_backend {
-    use super::Backend;
-
-    mod sealed {
-        pub trait Sealed {}
-
-        impl Sealed for ragu_backend::ReferenceBackend {}
-        impl Sealed for ragu_acceleration::AcceleratedBackend {}
-    }
-
-    /// A Ragu-owned computational backend.
-    ///
-    /// This trait is sealed: applications may select one of Ragu's supported
-    /// implementations, but cannot provide their own backend implementation.
-    pub trait SelectableBackend: Backend + sealed::Sealed {}
-
-    impl<T: Backend + sealed::Sealed> SelectableBackend for T {}
-}
-
-pub use selectable_backend::SelectableBackend;
+pub use backend::SelectableBackend;
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<
@@ -111,9 +93,11 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
     /// Selects a Ragu-owned computational backend.
     ///
-    /// The selected backend is used for proving, native witness computation,
-    /// and verifier kernels. Applications may select a Ragu implementation but
-    /// cannot provide one.
+    /// The selected backend is used for proving and native witness
+    /// computation; [`Application::verify`] consults the kernels of its
+    /// [`SelectableBackend::Verifier`], which the selection fixes (for
+    /// example `AcceleratedProver` accelerates proving only). Applications may
+    /// select a Ragu implementation but cannot provide one.
     pub fn with_backend<SelectedBackend: SelectableBackend>(
         self,
     ) -> ApplicationBuilder<'params, C, R, HEADER_SIZE, SelectedBackend> {

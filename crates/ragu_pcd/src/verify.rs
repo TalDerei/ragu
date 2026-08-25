@@ -3,6 +3,7 @@
 use core::iter::once;
 
 use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
+use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
@@ -11,7 +12,7 @@ use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::Element;
 
 use crate::{
-    Application, Pcd, Proof,
+    Application, Pcd, Proof, SelectableBackend,
     header::Header,
     internal::{
         claims,
@@ -20,7 +21,13 @@ use crate::{
     },
 };
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+/// The backend whose kernels [`Application::verify`] consults for the selected
+/// backend `B`. Every computational call in this module goes through this
+/// alias, never through `B` directly, so which code path decides acceptance is
+/// fixed by the sealed [`SelectableBackend::Verifier`] mapping.
+type Verifier<B> = <B as SelectableBackend>::Verifier;
+
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Verifies some [`Pcd`] for the provided [`Header`].
@@ -30,9 +37,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// corrupted commitments or evaluations), or `Err` if an internal
     /// computation error occurs.
     ///
-    /// Verification uses the selected sealed, Ragu-owned backend. Applications
-    /// may select reference or accelerated verification, but cannot provide
-    /// the implementation that controls the final acceptance decision.
+    /// The computational kernels used here are those of the sealed
+    /// [`SelectableBackend::Verifier`] of the selected backend: the reference
+    /// kernels for `ReferenceBackend` and `AcceleratedProver`, the accelerated
+    /// ones for `AcceleratedBackend`. Applications choose between them but
+    /// cannot supply the implementation that controls the acceptance decision.
     pub fn verify<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: &Pcd<C, R, H>,
@@ -89,7 +98,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         // Build a and b polynomials for each revdot claim.
         let source = native::SingleProofSource { proof: pcd.proof() };
         let mut builder =
-            claims::Builder::<_, C::CircuitField, R, B>::new(&self.native_registry, y, z);
+            claims::Builder::<_, C::CircuitField, R, Verifier<B>>::new(&self.native_registry, y, z);
         native_claims::build(&source, &mut builder)?;
 
         // Check all native revdot claims.
@@ -99,7 +108,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 // than stored in the proof, so this claim is tautological
                 // in the verifier. It remains meaningful inside the circuit
                 // where `c` is an independently allocated witness element.
-                raw_c: B::sparse_revdot(
+                raw_c: Verifier::<B>::sparse_revdot(
                     &pcd.proof()[RxComponent::AbA],
                     &pcd.proof()[RxComponent::AbB],
                 ),
@@ -110,7 +119,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
             native::ky_values(&ky_source)
                 .zip(builder.a.iter().zip(builder.b.iter()))
-                .all(|(ky, (a, b))| B::sparse_revdot(a, b) == ky)
+                .all(|(ky, (a, b))| Verifier::<B>::sparse_revdot(a, b) == ky)
         };
 
         // Check all nested revdot claims.
@@ -118,7 +127,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             let nested_source = nested::SingleProofSource { proof: pcd.proof() };
             let y_nested = C::ScalarField::random(&mut rng);
             let z_nested = C::ScalarField::random(&mut rng);
-            let mut nested_builder = claims::Builder::<_, C::ScalarField, R, B>::new(
+            let mut nested_builder = claims::Builder::<_, C::ScalarField, R, Verifier<B>>::new(
                 &self.nested_registry,
                 y_nested,
                 z_nested,
@@ -128,7 +137,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             let ky_source = nested::SingleProofKySource::<C::ScalarField>::new();
             nested::ky_values(&ky_source)
                 .zip(nested_builder.a.iter().zip(nested_builder.b.iter()))
-                .all(|(ky, (a, b))| B::sparse_revdot(a, b) == ky)
+                .all(|(ky, (a, b))| Verifier::<B>::sparse_revdot(a, b) == ky)
         };
 
         // Check registry_xy polynomial evaluation at the sampled w.
@@ -136,8 +145,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let registry_xy_claim = {
             let x = pcd.proof().x();
             let y = pcd.proof().y();
-            let poly_eval = B::sparse_eval(pcd.proof().native_registry_xy_poly(), w);
-            let expected = B::registry_wxy(&self.native_registry, w, x, y);
+            let poly_eval = Verifier::<B>::sparse_eval(pcd.proof().native_registry_xy_poly(), w);
+            let expected = Verifier::<B>::registry_wxy(&self.native_registry, w, x, y);
             poly_eval == expected
         };
 
