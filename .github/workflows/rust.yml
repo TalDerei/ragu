@@ -119,7 +119,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: >-
           cargo test --release -p ragu_pcd --locked --features native-msm
-          --lib tests::backend_equivalence:: -- --test-threads=1
+          --lib backend_equivalence:: -- --test-threads=1
 
   # The `mock` feature is off by default and is the root crate's only API. It
   # gets its own job to exercise the no-default-features configuration used by
