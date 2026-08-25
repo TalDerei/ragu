@@ -20,6 +20,8 @@ Bootle = "Bootle" # person name
 Groth= "Groth" # person name, not Growth
 ba = "ba" # variable name (b*a)
 thm = "thm" # Lean's ConstantInfo.thmInfo constructor
+hom = "hom" # mathematical homomorphism abbreviation
+Hom = "Hom" # Lean declaration suffix for bundled homomorphisms
 
 [default]
 extend-ignore-words-re = [

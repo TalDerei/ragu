@@ -2,6 +2,7 @@ import Ragu.Meta.EndpointCensus
 import Ragu.Core
 import Ragu.Foundation.AlgebraicRelation
 import Ragu.Foundation.Pasta.Basic
+import Ragu.Foundation.Polynomial
 import Ragu.Foundation.Oracle
 import Ragu.Foundation.Probability
 import Ragu.Foundation.RelationWitness
@@ -196,6 +197,18 @@ census_axioms Ragu.Foundation.AlgebraicRelation.relationFinderCallTail
 census_axioms Ragu.Foundation.AlgebraicRelation.relSetWithCoins_subset_truncate_union_tail
 census_axioms Ragu.Foundation.AlgebraicRelation.relationFinderCallTail_prob_le
 census_axioms Ragu.Foundation.AlgebraicRelation.relationWithCoins_prob_le_of_truncated_textbookDL
+
+/-! ## Polynomial foundation -/
+
+census_computable CompPoly.CPolynomial.map +choice
+census_computable CompPoly.CPolynomial.mapRingHom +choice
+census_computable CompPoly.CPolynomial.comp +choice
+census_computable CompPoly.CPolynomial.rootsBy +choice
+census_axioms CompPoly.CPolynomial.eq_zero_of_natDegree_lt_card_of_eval_eq_zero
+census_axioms CompPoly.CPolynomial.rootsBy_eq_toFinset
+census_axioms CompPoly.CPolynomial.card_rootsBy_le
+census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_fin
+census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_index
 
 /-! ## Boolean circuits -/
 

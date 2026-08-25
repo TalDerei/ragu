@@ -191,7 +191,16 @@ def exactTrustEndpoints : List Name :=
     `Ragu.Foundation.AlgebraicRelation.relationFinderCallTail,
     `Ragu.Foundation.AlgebraicRelation.relSetWithCoins_subset_truncate_union_tail,
     `Ragu.Foundation.AlgebraicRelation.relationFinderCallTail_prob_le,
-    `Ragu.Foundation.AlgebraicRelation.relationWithCoins_prob_le_of_truncated_textbookDL]
+    `Ragu.Foundation.AlgebraicRelation.relationWithCoins_prob_le_of_truncated_textbookDL,
+    `CompPoly.CPolynomial.map,
+    `CompPoly.CPolynomial.mapRingHom,
+    `CompPoly.CPolynomial.comp,
+    `CompPoly.CPolynomial.rootsBy,
+    `CompPoly.CPolynomial.eq_zero_of_natDegree_lt_card_of_eval_eq_zero,
+    `CompPoly.CPolynomial.rootsBy_eq_toFinset,
+    `CompPoly.CPolynomial.card_rootsBy_le,
+    `Ragu.Foundation.Polynomial.schwartz_zippel_fin,
+    `Ragu.Foundation.Polynomial.schwartz_zippel_index]
 
 /-- The base-name half of the endpoint predicate shared with
 `scripts/check_fv_endpoint_census.sh`. -/
