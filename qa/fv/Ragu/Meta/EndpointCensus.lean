@@ -90,7 +90,13 @@ def namedTrustEndpoints : List String :=
 
 /-- Fully qualified boundary names that are too generic to recognize by base name. -/
 def exactTrustEndpoints : List Name :=
-  [`main]
+  [`main,
+    `Ragu.Foundation.bindOrRelationWitness,
+    `Ragu.Foundation.finForallOrRelationWitness,
+    `Ragu.Foundation.finForallOption,
+    `Ragu.Foundation.finForallOption_isSome_of,
+    `Ragu.Foundation.boundedForallOrRelationWitness,
+    `Ragu.Foundation.listForallOrRelationWitness]
 
 /-- The base-name half of the endpoint predicate shared with
 `scripts/check_fv_endpoint_census.sh`. -/

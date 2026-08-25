@@ -15,6 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENDPOINT_RE='(^|_)(soundness|completeness|error_bound|finite_security|measure_le|probability_bound|prob_le|capstone)([^A-Za-z0-9]|$)|^(p_prime|q_prime|fingerprint|instances)$'
+EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness))$'
 
 source_root='qa/fv/Ragu'
 census='qa/fv/Ragu/Meta/TrustBoundary.lean'
@@ -86,8 +87,8 @@ while IFS= read -r file; do
     fi
 
     base=${declared##*.}
-    # `main` is exact: a generic namespace-local `main` is not the fingerprint executable boundary.
-    [[ $base =~ $ENDPOINT_RE || $qualified == main ]] || continue
+    # Generic names such as `main` and foundation exports are qualified explicitly above.
+    [[ $base =~ $ENDPOINT_RE || $qualified =~ $EXACT_ENDPOINT_RE ]] || continue
 
     count=$((count + 1))
     if ! grep -qxF "$qualified" <<< "$pins"; then

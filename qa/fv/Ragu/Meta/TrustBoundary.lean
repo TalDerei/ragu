@@ -1,5 +1,6 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
+import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
 import Ragu.Fingerprint.Main
 import Ragu.Circuits.Boolean.Alloc
@@ -65,9 +66,22 @@ computable axiom budget. These checks do not prove that the trusted fingerprint 
 serialization assign the intended semantics, and they do not connect this gadget layer to an
 unfinished Ragu verifier. Those remain separate manual and future refinement obligations.
 
+The relation-witness traversal combinators are also pinned as computed data. They preserve explicit
+break branches while composing future reductions; their companion theorem is pinned at the standard
+theorem tier.
+
 The entries below are intentionally fully qualified and direct. Transitive coverage disappears
 when a consumer is refactored and therefore does not satisfy the endpoint census.
 -/
+
+/-! ## Computed-break foundation -/
+
+census_computable Ragu.Foundation.bindOrRelationWitness
+census_computable Ragu.Foundation.finForallOrRelationWitness
+census_computable Ragu.Foundation.finForallOption
+census_axioms Ragu.Foundation.finForallOption_isSome_of
+census_computable Ragu.Foundation.boundedForallOrRelationWitness
+census_computable Ragu.Foundation.listForallOrRelationWitness
 
 /-! ## Boolean circuits -/
 
