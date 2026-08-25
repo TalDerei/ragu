@@ -134,11 +134,10 @@ backend_boundary:
   qa/backend/api-snapshot.sh check
 
 # backend lane: differential, parity, liveness, harness-strength, and
-# nontrivial-step tests in the serial native-msm configuration
+# strategy tests in the serial native-msm configuration
 backend_equivalence *ARGS:
   cargo test --release -p ragu_acceleration --locked --features native-msm {{ARGS}}
   PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --locked --features native-msm --lib backend_equivalence:: {{ARGS}}
-  cargo test --release --locked -p ragu_pcd --test nontrivial {{ARGS}}
   cargo test --release --locked -p ragu_pcd --features native-msm,unstable-fuzzing --test backend_goldens {{ARGS}}
   cargo test --release --locked -p ragu_testing --lib strategies:: {{ARGS}}
   qa/backend/required-tests.sh

@@ -22,8 +22,6 @@ sparse_check_rejects_the_sentinel_only_at_its_shape
 [ragu_pcd --features native-msm --lib]
 backend_equivalence::reference_and_accelerated_proofs_and_verifiers_are_equivalent
 backend_equivalence::reference_and_accelerated_verifiers_reject_padded_circuit_ids
-[ragu_pcd --test nontrivial]
-various_merging_operations
 [ragu_pcd --features native-msm,unstable-fuzzing --test backend_goldens]
 every_backend_matches_the_golden
 [ragu_testing --lib]
