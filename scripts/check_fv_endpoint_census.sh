@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENDPOINT_RE='(^|_)(soundness|completeness|error_bound|finite_security|measure_le|probability_bound|prob_le|capstone)([^A-Za-z0-9]|$)|^(p_prime|q_prime|fingerprint|instances)$'
-EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness))$'
+EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion))$'
 
 source_root='qa/fv/Ragu'
 census='qa/fv/Ragu/Meta/TrustBoundary.lean'

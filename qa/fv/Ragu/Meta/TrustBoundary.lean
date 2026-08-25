@@ -1,5 +1,6 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
+import Ragu.Foundation.Pasta.Basic
 import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
 import Ragu.Fingerprint.Main
@@ -82,6 +83,19 @@ census_computable Ragu.Foundation.finForallOption
 census_axioms Ragu.Foundation.finForallOption_isSome_of
 census_computable Ragu.Foundation.boundedForallOrRelationWitness
 census_computable Ragu.Foundation.listForallOrRelationWitness
+
+/-! ## Pasta cycle foundation -/
+
+census_axioms Ragu.Foundation.Pasta.p_eq_pallasBaseCard
+census_axioms Ragu.Foundation.Pasta.q_eq_pallasScalarCard
+census_axioms Ragu.Foundation.Pasta.pallas_base_prime
+census_axioms Ragu.Foundation.Pasta.pallas_scalar_prime
+census_axioms Ragu.Foundation.Pasta.pallas_group_order +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt)
+census_axioms Ragu.Foundation.Pasta.vesta_group_order +native(
+  CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt)
+census_axioms Ragu.Foundation.Pasta.pallas_no_two_torsion
+census_axioms Ragu.Foundation.Pasta.vesta_no_two_torsion
 
 /-! ## Boolean circuits -/
 

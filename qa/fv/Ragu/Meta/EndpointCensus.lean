@@ -96,7 +96,15 @@ def exactTrustEndpoints : List Name :=
     `Ragu.Foundation.finForallOption,
     `Ragu.Foundation.finForallOption_isSome_of,
     `Ragu.Foundation.boundedForallOrRelationWitness,
-    `Ragu.Foundation.listForallOrRelationWitness]
+    `Ragu.Foundation.listForallOrRelationWitness,
+    `Ragu.Foundation.Pasta.p_eq_pallasBaseCard,
+    `Ragu.Foundation.Pasta.q_eq_pallasScalarCard,
+    `Ragu.Foundation.Pasta.pallas_base_prime,
+    `Ragu.Foundation.Pasta.pallas_scalar_prime,
+    `Ragu.Foundation.Pasta.pallas_group_order,
+    `Ragu.Foundation.Pasta.vesta_group_order,
+    `Ragu.Foundation.Pasta.pallas_no_two_torsion,
+    `Ragu.Foundation.Pasta.vesta_no_two_torsion]
 
 /-- The base-name half of the endpoint predicate shared with
 `scripts/check_fv_endpoint_census.sh`. -/

@@ -95,6 +95,7 @@ census_computable Ragu.Meta.Tests.EndpointCensus.pinned_native_completeness +cho
 #guard Ragu.Meta.isEndpointName `main
 #guard !Ragu.Meta.isEndpointName `Ragu.Meta.Tests.EndpointCensus.main
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.bindOrRelationWitness
+#guard Ragu.Meta.isEndpointName `Ragu.Foundation.Pasta.pallas_group_order
 
 run_cmd do
   let env ← Lean.getEnv
