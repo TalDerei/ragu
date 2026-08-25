@@ -19,6 +19,7 @@ superset is what we want to pin.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -71,10 +72,17 @@ def error(msg, file=None):
     print(f"::error{where}::{msg}")
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
 def cargo(*args):
-    return subprocess.run(
-        ["cargo", *args], cwd=ROOT, check=True, capture_output=True, text=True
+    # CI exports CARGO_TERM_COLOR=always, which colours `cargo tree` output
+    # even when piped; force it off and strip any escape that gets through.
+    env = dict(os.environ, CARGO_TERM_COLOR="never", NO_COLOR="1")
+    out = subprocess.run(
+        ["cargo", *args], cwd=ROOT, check=True, capture_output=True, text=True, env=env
     ).stdout
+    return ANSI.sub("", out)
 
 
 def metadata(*args):

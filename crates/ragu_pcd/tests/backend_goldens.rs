@@ -217,8 +217,11 @@ fn every_backend_matches_the_golden() {
         return;
     }
 
+    // Checkouts with `core.autocrlf=true` (GitHub's Windows runners) deliver
+    // the golden with CRLF line endings; the trace is defined with LF.
     let golden = std::fs::read_to_string(GOLDEN)
-        .expect("golden file missing; generate it with `just goldens_update`");
+        .expect("golden file missing; generate it with `just goldens_update`")
+        .replace("\r\n", "\n");
     assert!(
         golden == reference,
         "trace differs from the committed golden (qa/backend/goldens/pasta-r13-h4.txt) at {}\n\
