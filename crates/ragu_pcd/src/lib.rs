@@ -25,6 +25,9 @@ extern crate alloc;
 extern crate std;
 
 mod backend;
+#[cfg(test)]
+#[path = "../tests/backend_equivalence/mod.rs"]
+mod backend_equivalence;
 mod fuse;
 #[cfg(any(feature = "unstable-fuzzing", test))]
 pub mod fuzz_utils;
@@ -32,8 +35,6 @@ pub mod header;
 mod internal;
 mod proof;
 pub mod step;
-#[cfg(test)]
-mod tests;
 mod verify;
 
 use alloc::collections::BTreeMap;
