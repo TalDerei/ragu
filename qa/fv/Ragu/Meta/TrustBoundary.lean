@@ -1,6 +1,7 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
 import Ragu.Foundation.AlgebraicRelation
+import Ragu.Foundation.IPA
 import Ragu.Foundation.Pasta.Basic
 import Ragu.Foundation.Polynomial
 import Ragu.Foundation.Oracle
@@ -209,6 +210,29 @@ census_axioms CompPoly.CPolynomial.rootsBy_eq_toFinset
 census_axioms CompPoly.CPolynomial.card_rootsBy_le
 census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_fin
 census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_index
+
+/-! ## IPA algebra foundation -/
+
+census_computable Ragu.Foundation.IPA.commit +choice
+census_computable Ragu.Foundation.IPA.evalVector
+census_computable Ragu.Foundation.IPA.innerProduct +choice
+census_axioms Ragu.Foundation.IPA.IpaRelation
+census_computable Ragu.Foundation.IPA.foldVec
+census_computable Ragu.Foundation.IPA.loHalf
+census_computable Ragu.Foundation.IPA.hiHalf
+census_computable Ragu.Foundation.IPA.append
+census_axioms Ragu.Foundation.IPA.append_loHalf_hiHalf
+census_axioms Ragu.Foundation.IPA.ipaRelation_unshift
+census_axioms Ragu.Foundation.IPA.ipaRelation_unblind
+census_axioms Ragu.Foundation.IPA.commit_eq_commitGen
+census_axioms Ragu.Foundation.IPA.commitGen_round
+census_axioms Ragu.Foundation.IPA.accepting_fold_eq_foldVec
+census_computable Ragu.Foundation.IPA.NontrivialDLRelation.ofCollision +choice
+census_computable Ragu.Foundation.IPA.NontrivialDLRelation.ofIpaOpenings +choice
+census_computable Ragu.Foundation.IPA.foldGens +choice
+census_axioms Ragu.Foundation.IPA.commitGen_split
+census_axioms Ragu.Foundation.IPA.commitGen_append
+census_axioms Ragu.Foundation.IPA.commitGen_sum
 
 /-! ## Boolean circuits -/
 

@@ -100,6 +100,7 @@ census_computable Ragu.Meta.Tests.EndpointCensus.pinned_native_completeness +cho
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF_eventBiasLE
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.AlgebraicRelation.programmedExtractOrMiss
 #guard Ragu.Meta.isEndpointName `CompPoly.CPolynomial.card_rootsBy_le
+#guard Ragu.Meta.isEndpointName `Ragu.Foundation.IPA.NontrivialDLRelation.ofIpaOpenings
 
 run_cmd do
   let env ← Lean.getEnv

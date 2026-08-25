@@ -200,7 +200,27 @@ def exactTrustEndpoints : List Name :=
     `CompPoly.CPolynomial.rootsBy_eq_toFinset,
     `CompPoly.CPolynomial.card_rootsBy_le,
     `Ragu.Foundation.Polynomial.schwartz_zippel_fin,
-    `Ragu.Foundation.Polynomial.schwartz_zippel_index]
+    `Ragu.Foundation.Polynomial.schwartz_zippel_index,
+    `Ragu.Foundation.IPA.commit,
+    `Ragu.Foundation.IPA.evalVector,
+    `Ragu.Foundation.IPA.innerProduct,
+    `Ragu.Foundation.IPA.IpaRelation,
+    `Ragu.Foundation.IPA.foldVec,
+    `Ragu.Foundation.IPA.loHalf,
+    `Ragu.Foundation.IPA.hiHalf,
+    `Ragu.Foundation.IPA.append,
+    `Ragu.Foundation.IPA.append_loHalf_hiHalf,
+    `Ragu.Foundation.IPA.ipaRelation_unshift,
+    `Ragu.Foundation.IPA.ipaRelation_unblind,
+    `Ragu.Foundation.IPA.commit_eq_commitGen,
+    `Ragu.Foundation.IPA.commitGen_round,
+    `Ragu.Foundation.IPA.accepting_fold_eq_foldVec,
+    `Ragu.Foundation.IPA.NontrivialDLRelation.ofCollision,
+    `Ragu.Foundation.IPA.NontrivialDLRelation.ofIpaOpenings,
+    `Ragu.Foundation.IPA.foldGens,
+    `Ragu.Foundation.IPA.commitGen_split,
+    `Ragu.Foundation.IPA.commitGen_append,
+    `Ragu.Foundation.IPA.commitGen_sum]
 
 /-- The base-name half of the endpoint predicate shared with
 `scripts/check_fv_endpoint_census.sh`. -/
