@@ -48,10 +48,13 @@ ACCELERATION_WORKSPACE_DEPS = {"ragu_backend", "ragu_arithmetic", "ragu_circuits
 # True once that dependency is optional (feature `accelerated`).
 SEALING_CRATE = "ragu_pcd"
 SEALING_EDGE_OPTIONAL = False
-# `ragu_pcd` features that forward to `ragu_acceleration` features and are
-# therefore acceleration switches. `multicore` is excluded: it is a
-# workspace-wide feature that reaches `ragu_acceleration` among others.
-ACCELERATION_FEATURES = ["native-msm"]
+# Acceleration switches are every feature `ragu_acceleration` declares except
+# these: `default` is the passthrough, `multicore` is a workspace-wide feature
+# that reaches every crate by design, and `std` is empty. They are enabled
+# directly on the crate (`ragu_acceleration/<feature>`), which is what
+# `--all-features` and downstream builds do, not only through `ragu_pcd`'s
+# forwarding features.
+EXCLUDED_ACCELERATION_FEATURES = {"default", "multicore", "std"}
 LEAKAGE_ROOT = "ragu_pcd"
 LEAKAGE_BASES = {"default": [], "multicore": ["--features", "multicore"]}
 TRIPLES = [
@@ -126,22 +129,26 @@ def check_direction(pkgs):
                 )
 
 
+def acceleration_features(pkgs):
+    """The acceleration switches `leakage` exercises, from the crate's manifest."""
+    return sorted(set(pkgs[ACCELERATION]["features"]) - EXCLUDED_ACCELERATION_FEATURES)
+
+
 def check_acceleration_features(pkgs):
-    """Every `ragu_pcd` feature forwarding to `ragu_acceleration` is an
-    acceleration switch and must be exercised by `leakage`."""
-    forwarding = set()
+    """Every `ragu_pcd` feature forwarding to `ragu_acceleration` must map to
+    an exercised switch (or an explicitly excluded one)."""
+    exercised = set(acceleration_features(pkgs)) | EXCLUDED_ACCELERATION_FEATURES
     for feature, spec in pkgs[LEAKAGE_ROOT]["features"].items():
-        if feature == "multicore":
-            continue
-        if any(s.startswith(f"{ACCELERATION}/") or s.startswith(f"{ACCELERATION}?/") for s in spec):
-            forwarding.add(feature)
-    missing = forwarding - set(ACCELERATION_FEATURES)
-    if missing:
-        error(
-            f"`{LEAKAGE_ROOT}` features {sorted(missing)} forward to `{ACCELERATION}` "
-            "but are not listed in ACCELERATION_FEATURES in qa/backend/deps.py",
-            "qa/backend/deps.py",
-        )
+        for s in spec:
+            if s.startswith(f"{ACCELERATION}/") or s.startswith(f"{ACCELERATION}?/"):
+                target = s.split("/", 1)[1]
+                if target not in exercised:
+                    error(
+                        f"`{LEAKAGE_ROOT}` feature `{feature}` forwards to `{s}`, which "
+                        "`leakage` does not exercise; declare it in ragu_acceleration's "
+                        "manifest or exclude it deliberately in qa/backend/deps.py",
+                        "qa/backend/deps.py",
+                    )
 
 
 # --- build-graph checks (cargo tree) ---------------------------------------
@@ -212,12 +219,14 @@ def leakage_allowlist():
 def check_leakage():
     allowed = leakage_allowlist()
     used = set()
+    features = acceleration_features(manifests())
+    print(f"acceleration switches under test: {features}")
     for triple in TRIPLES:
         for base_name, base_args in LEAKAGE_BASES.items():
             base_feats = [a for a in base_args if a != "--features"]
             base = tree(LEAKAGE_ROOT, triple, base_feats)
-            for feature in ACCELERATION_FEATURES:
-                with_feature = tree(LEAKAGE_ROOT, triple, base_feats + [feature])
+            for feature in features:
+                with_feature = tree(LEAKAGE_ROOT, triple, base_feats + [f"{ACCELERATION}/{feature}"])
                 for package in sorted(base):
                     name = package.split(" v", 1)[0]
                     if name in (LEAKAGE_ROOT, ACCELERATION):

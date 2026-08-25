@@ -30,6 +30,16 @@ override_body() {
   '
 }
 
+# The censuses below parse the two impl blocks; if either header is not found
+# on one line (rustfmt keeps `impl Trait for Type {` on one line at these
+# lengths) every per-override check would pass vacuously, so fail loudly.
+for ty in AcceleratedBackend AcceleratedProver; do
+  grep -qE "^impl ragu_backend::Backend for $ty \{" "$LIB" \
+    || fail "$LIB" "could not find \`impl ragu_backend::Backend for $ty {\` on one line; the census parses that header"
+done
+[ -n "$(override_names AcceleratedBackend)" ] \
+  || fail "$LIB" "no overrides found in \`impl ragu_backend::Backend for AcceleratedBackend\`; the census expects at least one (msm)"
+
 # --- E7: every override is feature-gated with a reference fallback ----------
 for name in $(override_names AcceleratedBackend); do
   body=$(override_body AcceleratedBackend "$name")
@@ -70,9 +80,17 @@ done
 if grep -nE '\bB::' "$VERIFY" >/dev/null; then
   fail "$VERIFY" "verify.rs calls the selected backend directly; use \`Verifier::<B>::\` so acceptance kernels follow the sealed Verifier selection"
 fi
+# Every backend method the verifier can reach — directly in verify.rs, or
+# through `claims::Builder` (internal/claims.rs), which verify.rs instantiates
+# with the Verifier type — must be in the documented verifier-consulted set.
+CLAIMS=crates/ragu_pcd/src/internal/claims.rs
 for name in $({ grep -oE 'Verifier::<B>::[a-z_]+' "$VERIFY" || true; } | sed 's/.*:://' | sort -u); do
   grep -qE "^($VERIFIER_KERNELS)$" <<< "$name" \
     || fail "$VERIFY" "verify.rs uses backend method \`$name\`, which is not in the documented verifier-consulted set ($VERIFIER_KERNELS); update ragu_backend's docs, this script, and src/verifier/"
+done
+for name in $({ grep -oE '\bB::[a-z_]+' "$CLAIMS" || true; } | sed 's/.*:://' | sort -u); do
+  grep -qE "^($VERIFIER_KERNELS)$" <<< "$name" \
+    || fail "$CLAIMS" "claims::Builder uses backend method \`$name\`; the verifier reaches Builder, so it joins the verifier-consulted set ($VERIFIER_KERNELS): update ragu_backend's docs, this script, and src/verifier/"
 done
 # Verifier kernels must not branch on field or point values (best effort:
 # comparisons and matches inside src/verifier/).
@@ -123,7 +141,7 @@ for name in ragu_arithmetic ragu_backend ragu_circuits ragu_core ragu_macros rag
       crates/ragu_pcd/src/backend.rs|crates/ragu_pcd/src/backend_tests.rs) continue ;;
     esac
     fail "$file" "frozen crate source names \`ragu_acceleration\`; only crates/ragu_pcd/src/backend.rs (the sealed selection) may"
-  done < <(grep -rl 'ragu_acceleration' "crates/$name/src" 2>/dev/null || true)
+  done < <(grep -rlE 'ragu_acceleration::|use ragu_acceleration|extern crate ragu_acceleration' "crates/$name/src" 2>/dev/null || true)
 done
 
 [ "$status" = 0 ] && echo "census.sh: ok"

@@ -9,7 +9,8 @@
 # gated job must report `success`; an ungated job may be skipped but must not
 # have failed or been cancelled. Emits one line per offending job, so empty
 # output means the gate passes. A job listed here but absent from `needs` is
-# reported as `missing`, so the two lists cannot drift apart silently.
+# reported as `missing`, and a job present in `needs` but absent here as
+# `unlisted`, so the two lists cannot drift apart in either direction.
 . as $needs
 | ($needs.changes.outputs // {}) as $c
 | ($event == "push") as $push
@@ -37,9 +38,16 @@
     {name: "vet",            gated: $supply},
     {name: "audit",          gated: $supply}
   ]
-| map(. + {result: ($needs[.name].result // "missing")})
+| . as $rows
+| ($rows | map(.name)) as $listed
+# A job in `needs:` without a row here would otherwise be invisible to the
+# gate, so an unlisted job is an error regardless of its result.
+| (($needs | keys) - $listed
+   | map({name: ., result: $needs[.].result, gated: "unlisted"})) as $unlisted
+| ($rows | map(. + {result: ($needs[.name].result // "missing")}))
 | map(select(
-    (.gated and .result != "success")
+    (.gated == true and .result != "success")
     or .result == "failure" or .result == "cancelled" or .result == "missing"))
+| . + $unlisted
 | .[]
 | "\(.name): \(.result) (gated: \(.gated))"

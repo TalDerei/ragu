@@ -185,11 +185,13 @@ fn first_difference(expected: &str, actual: &str) -> String {
             return format!("line {}:\n  golden: {e}\n  actual: {a}", index + 1);
         }
     }
-    format!(
-        "line counts differ: golden {} vs actual {}",
-        expected.lines().count(),
-        actual.lines().count()
-    )
+    let (e, a) = (expected.lines().count(), actual.lines().count());
+    if e == a {
+        "every line matches but the files differ byte-for-byte (line endings or trailing whitespace?)"
+            .to_string()
+    } else {
+        format!("line counts differ: golden {e} vs actual {a}")
+    }
 }
 
 #[test]
