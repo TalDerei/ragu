@@ -7,7 +7,7 @@ These checks pin left-value mapping, right-value preservation, left-to-right fir
 the exact certificates returned by finite `Option` traversal.
 -/
 
-namespace Ragu.Foundation.Tests.RelationWitness
+namespace Ragu.Foundation.RelationWitness.Tests
 
 open Ragu.Foundation
 
@@ -63,4 +63,4 @@ def listOutcomes (x : Nat) (_hx : x ∈ [0, 1, 2]) : True ⊕' String :=
   | .inl _ => false
   | .inr gap => gap == "first"
 
-end Ragu.Foundation.Tests.RelationWitness
+end Ragu.Foundation.RelationWitness.Tests
