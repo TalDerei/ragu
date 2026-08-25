@@ -526,7 +526,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_instance_matches_the_legacy_trace_at_fixed_points() {
+    fn every_instance_matches_the_exact_trace_at_fixed_points() {
         let seed = polynomial::parse_seed(
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
         )

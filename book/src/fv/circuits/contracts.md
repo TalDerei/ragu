@@ -35,9 +35,9 @@ that packaged boundary so the parent can use it. Mentioning `Child.circuit`
 there exposes the record interface; it does not ask the parent to prove the
 child's operation trace again.
 
-## Audited surface
+## Contract surface
 
-The August 2026 audit covers every circuit builder under
+The composition checks cover every circuit builder under
 `qa/fv/Ragu/Circuits`, including recursive and loop helpers rather than only
 simple functions named `main`.
 
@@ -63,16 +63,17 @@ Those contracts are distributed as follows:
   `Blocks`, `Squeeze`, and `Ragged`.
 
 There are 49 `soundness` and 49 `completeness` endpoints. Poseidon's internal
-`Blocks.loop_soundness` and `Blocks.loop_completeness` bring the audited theorem
+`Blocks.loop_soundness` and `Blocks.loop_completeness` bring the pinned theorem
 total to 100. Every one is directly pinned in `Ragu.Meta.TrustBoundary`.
 
 The builders contain 49 packaged `main` definitions and one additional
 proof-carrying helper, `Poseidon.Sponge.Blocks.loop`. The composition check
-pins those counts so adding or removing a builder requires a fresh audit.
+pins those counts so adding or removing a builder requires an explicit review
+and count update.
 
 ## Direct composition edges
 
-The audited parent-to-child edges are:
+The parent-to-child edges are:
 
 - Boolean: `Alloc`, `And`, and `ConditionalEnforceEqual` use `Core.mul`;
   `ConditionalSelect` uses `Element.Mul`; `Consistent` and `Decompose` use
@@ -95,16 +96,15 @@ The audited parent-to-child edges are:
   `AnyRound`; `Blocks.loop` chains `Permutation`; and the sponge entry points
   compose `Blocks` and/or `Permutation`.
 
-No parent circuit builder calls a child's qualified `main`. No parent
-soundness proof names a child's qualified `main` either. The one former case,
-`Endoscalar.Lift.soundness`, now names `Boolean.And.output`, the child's stable
+No parent circuit builder or soundness proof calls a child's qualified `main`.
+`Endoscalar.Lift.soundness` names `Boolean.And.output`, the child's stable
 output/layout accessor, while deriving its meaning from `Boolean.And.Spec`.
 
 ## Assumption discharge
 
 Most child verifier assumptions are `True`. The nontrivial paths are:
 
-| Child obligation | How the audited callers discharge it |
+| Child obligation | How callers discharge it |
 | --- | --- |
 | Boolean inputs are `IsBool` | Passed from the parent contract (`ConditionalSelect`, conditional point operations, `Lift`, and group-scale steps). |
 | `Element.Divide`: `y != 0` or `x != 0` | `DivNonzero` obtains `y != 0` from `EnforceNonzero`; checked point gadgets obtain it from the bank discharge; unchecked point gadgets require the relevant non-degeneracy in their own assumptions. |
@@ -117,9 +117,11 @@ Two caller-visible residual assumptions remain deliberate:
 
 - `Point.Consistent` receives `curveParams.nonzeroCoordinates` externally.
 - `Endoscalar.GroupScale` receives `groupScaleNative != none`, representing the
-  Appendix C no-collision/non-degeneracy argument. A future deployed recursion
-  model must establish that premise from its own context; this gadget proof
-  does not manufacture it.
+  no-collision/non-degeneracy argument in
+  (Bowe–Grigg–Hopwood, <a href="https://eprint.iacr.org/2019/1021">Recursive
+  Proof Composition without a Trusted Setup</a>, Appendix C). The deployed
+  recursion model must establish that premise from its own context; this gadget
+  proof does not manufacture it.
 
 Verifier and prover contracts remain distinct. For example,
 `Element.Alloc.Spec` is intentionally `True` because an arbitrary fresh
@@ -129,18 +131,14 @@ belong only to completeness.
 
 ## Robustness and enforcement
 
-The audit made two checks concrete:
+Three checks enforce this boundary:
 
-1. Reordering `Boolean.Alloc`'s two internal assertions and updating only
-   `Boolean.Alloc.soundness`/`completeness` still builds
-   `Boolean.Consistent` and `Endoscalar.Alloc` unchanged. Their proofs depend on
-   `Boolean.Alloc.Spec`, not the order of its constraints.
-2. `Ragu.Meta.Tests.ContractComposition` checks that a child postcondition
+1. `Ragu.Meta.Tests.ContractComposition` checks that a child postcondition
    cannot be consumed before its assumptions are supplied.
-3. `scripts/check_fv_contract_composition.sh` strips Lean comments and rejects
+2. `scripts/check_fv_contract_composition.sh` strips Lean comments and rejects
    qualified `.main` references anywhere in the circuit modules. CI runs this
    before the Lean build.
-4. `Ragu.Meta.ContractCompositionCheck` scans the elaborated environment for
+3. `Ragu.Meta.ContractCompositionCheck` scans the elaborated environment for
    every definition whose final result is `Circuit`, pins all 50 builders, and
    rejects direct semantic references to a different circuit's `main` or to
    the raw `FormalCircuitBase.main` projection.
@@ -154,7 +152,8 @@ Composable contracts prove the meaning of the Lean circuit hierarchy. They do
 not by themselves show that a Rust implementation has the same trace, or that
 an isolated gadget has the deployed composed circuit's system gates, allocator
 context, routine placement, final layout, wiring, or verifier acceptance
-behavior. Those are separate Rust-to-Lean binding and deployment-layer checks.
+behavior. Those are separate Rust-to-Lean binding and deployment-layer checks,
+tracked in [#865](https://github.com/tachyon-zcash/ragu/issues/865).
 
 Layout proofs such as `localLength_eq`, `output_eq`, and
 `subcircuitsConsistent` are also expected to depend on child layout metadata.

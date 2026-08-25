@@ -1,7 +1,7 @@
 //! Direct randomized evaluation of the gadget-level polynomial relation.
 //!
-//! Unlike [`crate::driver::ExtractionDriver`], this driver never constructs an
-//! expression DAG. It assigns distinct geometric powers of domain-separated
+//! This driver evaluates immediately and never constructs an expression DAG.
+//! It assigns distinct geometric powers of domain-separated
 //! field challenges to verifier inputs and to every `A`, `B`, `C`, and `D`
 //! gate slot, then evaluates linear combinations immediately. Ordered gate
 //! relations, linear constraints, `assign_extra` uses, and outputs are folded
@@ -412,9 +412,9 @@ fn evaluate_shared<F: PrimeField>(
     Ok(value)
 }
 
-/// Evaluate the legacy symbolic trace under the new polynomial schedule.
+/// Evaluate the exact symbolic trace under the polynomial schedule.
 ///
-/// This is a migration oracle and diagnostic, not the primary evaluator. It
+/// This is a differential oracle and diagnostic, not the primary evaluator. It
 /// decodes every `Witness(3), Assert(...)` pair as one gate, synthesizes the
 /// production `D` slot and `C * D` relation, and treats later assertions as
 /// linear constraints exactly as the Lean evaluator does.

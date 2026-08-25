@@ -132,9 +132,11 @@ current instance is `Ragu.Instances.Poseidon.Blocks2Squeeze3Fp`, with
 `d = 1728`.
 
 For a nonzero polynomial of degree at most `d`, Schwartz--Zippel bounds an
-accidental zero by `d` times the maximum mass of one challenge value. The Lean
-accounting includes the slight nonuniformity from reducing 512 random bits
-modulo the field: one field element has at most
+accidental zero by `d` times the maximum mass of one challenge value
+(Schwartz, <a href="https://pages.cs.wisc.edu/~cs787-1/Schwartz1980.pdf">Fast
+Probabilistic Algorithms for Verification of Polynomial Identities</a>, JACM
+1980). The Lean accounting includes the slight nonuniformity from reducing 512
+random bits modulo the field: one field element has at most
 
 ```text
 ceil(2^512 / |F|) / 2^512
@@ -191,9 +193,10 @@ It does not cover witness values or witness-generation closures. It also does
 not establish the backend's floor plan, backend-specific system gates outside
 the `Driver` contract, routine boundaries, shared allocator state and wiring in
 the deployed composed circuit, or verifier acceptance behavior. Those require
-a separate composed-circuit deployment check. Gadget contracts establish Lean
-proof composition; this randomized check establishes the gadget-level
-Rust-to-Lean binding.
+a separate composed-circuit deployment check, tracked in
+[#865](https://github.com/tachyon-zcash/ragu/issues/865). Gadget contracts
+establish Lean proof composition; this randomized check establishes the
+gadget-level Rust-to-Lean binding.
 
 ## Running it
 

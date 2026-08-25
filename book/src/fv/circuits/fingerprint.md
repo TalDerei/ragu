@@ -3,7 +3,7 @@
 The deterministic connection between the Rust extractor trace and the Lean
 reimplementations is established by a *fingerprint equivalence check*, in the
 style of comparing verification keys. CI retains this exact check as a stable
-diagnostic and migration oracle alongside the stronger
+diagnostic alongside the complementary
 [direct randomized polynomial check](./polynomial-fingerprint.md).
 
 A fingerprint is the SHA-256 digest of a canonical byte encoding of a

@@ -7,7 +7,7 @@ import Ragu.Meta.TrustBoundary
 The source lint catches qualified `.main` references as written. This check
 complements it against Lean's elaborated environment: it finds every
 project-owned definition whose final result is `Circuit`, independent of the
-definition's name, pins the audited count, and rejects direct references to a
+definition's name, pins the registered count, and rejects direct references to a
 different Ragu circuit's `main` or to the raw `FormalCircuitBase.main`
 projection.
 -/
@@ -17,7 +17,7 @@ namespace Ragu.Meta
 open Lean Elab Command
 
 /-- The head constant of a declaration's final result type. -/
-partial def finalResultHead? : Expr → Option Name
+def finalResultHead? : Expr → Option Name
   | .forallE _ _ body _ => finalResultHead? body
   | .letE _ _ _ body _ => finalResultHead? body
   | type => type.consumeMData.getAppFn.constName?
@@ -68,7 +68,7 @@ elab "assert_contract_composition " expected:num : command => do
   let env ← getEnv
   let builders := circuitBuilders env
   unless builders.size == expected.getNat do
-    throwError "expected {expected.getNat} audited Ragu circuit builders, found \
+    throwError "expected {expected.getNat} registered Ragu circuit builders, found \
       {builders.size}: {builders.toList}"
   let bypasses := contractCompositionBypasses env
   unless bypasses.isEmpty do

@@ -105,16 +105,18 @@ Rust circuits and Lean proofs are joined without either side being translated
 into the other. Separately from the real Rust gadget, the circuit is
 reimplemented in Clean, compositionally and in idiomatic Lean, and the
 soundness and completeness theorems are proved about that reimplementation.
-CI ties them together in two ways: an exact digest compares the legacy symbolic
+CI ties them together in two ways: an exact digest compares the symbolic
 extraction trace, and a fresh randomized polynomial check directly runs the
 production gadget and independently evaluates the Lean model. Both comparisons
 must agree for every enrolled instance.
 
 The exported artifact never has to be rendered into Lean source, the proofs get
-the full compositional structure of Clean to work with, and drift in either
-direction is caught mechanically. The direct path shares only a versioned
-writes-as-polynomials evaluation specification rather than a complete symbolic
-Rust trace. The
+the full compositional structure of Clean to work with, and disagreements in
+the enrolled driver-level constraints or outputs are detected subject to the
+documented exact-hash and randomized-evaluation assumptions. Witness generation
+and the deployed backend remain separate obligations. The direct path shares
+only a versioned writes-as-polynomials evaluation specification rather than a
+complete symbolic Rust trace. The
 [Clean](clean/index.md) chapter covers the framework; the
 [verified circuits](circuits/index.md) chapter covers extraction, the digest
 and randomized checks, and the CI wiring.

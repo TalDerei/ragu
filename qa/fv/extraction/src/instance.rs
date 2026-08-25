@@ -178,7 +178,7 @@ pub trait CircuitInstance {
         })
     }
 
-    /// Migration/differential oracle: evaluate the legacy symbolic trace under
+    /// Differential oracle: evaluate the exact symbolic trace under
     /// the same schedule and reconstruct its implicit production `D` slots.
     #[cfg(test)]
     fn polynomial_trace_record(

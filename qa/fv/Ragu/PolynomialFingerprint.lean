@@ -109,9 +109,6 @@ def ChallengeBases.new {p : ℕ} [Fact p.Prime] (ctx : ChallengeContext p) : Cha
   extraWeight := challengeBase ctx "extra-weight"
   outputWeight := challengeBase ctx "output-weight" }
 
-/-- The `i`th member of a geometric challenge sequence, starting at `base`. -/
-def sequence {p : ℕ} [Fact p.Prime] (base : F p) (i : ℕ) : F p := base ^ (i + 1)
-
 def powers {p : ℕ} [Fact p.Prime] (base : F p) (count : ℕ) : Array (F p) := Id.run do
   let mut out := #[]
   let mut current := base
@@ -329,6 +326,8 @@ the evaluator's semantic correspondence or model SHA-256 as a random oracle. -/
 theorem pastaFp_two_point_prob_le :
     schwartzZippelBound Ragu.Core.Primes.p maxDegreeBound defaultPoints ≤
       (1 : ℚ) / 2 ^ 480 := by
+  -- `norm_num` expands closed 512-bit arithmetic; keep the required recursion
+  -- depth and power-normalization threshold local to this certificate.
   set_option maxRecDepth 8192 in
     set_option exponentiation.threshold 1024 in
       norm_num [schwartzZippelBound, reductionPreimageBound, Ragu.Core.Primes.p,
@@ -339,6 +338,8 @@ the evaluator's semantic correspondence or model SHA-256 as a random oracle. -/
 theorem pastaFq_two_point_prob_le :
     schwartzZippelBound Ragu.Core.Primes.q maxDegreeBound defaultPoints ≤
       (1 : ℚ) / 2 ^ 480 := by
+  -- `norm_num` expands closed 512-bit arithmetic; keep the required recursion
+  -- depth and power-normalization threshold local to this certificate.
   set_option maxRecDepth 8192 in
     set_option exponentiation.threshold 1024 in
       norm_num [schwartzZippelBound, reductionPreimageBound, Ragu.Core.Primes.q,
