@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 /// `Element::enforce_invertible`: allocate an `Invertible` pair for this
 /// element's value and link the pair's element wire to the input wire.
@@ -25,7 +25,7 @@ impl CircuitInstance for ElementEnforceInvertibleInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(1);
         let element_template = Element::constant(dr, Fp::zero());

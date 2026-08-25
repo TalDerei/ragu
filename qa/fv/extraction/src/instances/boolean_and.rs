@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 
 use crate::{
-    instance::{CircuitInstance, FvDriver, WireCollector},
+    instance::{CircuitInstance, InstanceDriver, WireCollector},
     wire_remap::boolean_from_wire,
 };
 
@@ -15,7 +15,7 @@ impl CircuitInstance for BooleanAndInstance {
     /// returning the gate's product wire.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let a_wires = dr.alloc_input_wires(1);
         let b_wires = dr.alloc_input_wires(1);

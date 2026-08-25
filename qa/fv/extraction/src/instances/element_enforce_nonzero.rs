@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct ElementEnforceNonzeroInstance;
 
@@ -10,7 +10,7 @@ impl CircuitInstance for ElementEnforceNonzeroInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // Extracts `Element::enforce_nonzero` as a standalone lemma circuit:
         // the discharge that every `NonzeroBank::scope` and every

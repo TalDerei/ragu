@@ -2,7 +2,7 @@ use group::CurveAffine;
 use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct PointDoubleInstance;
 
@@ -11,7 +11,7 @@ impl CircuitInstance for PointDoubleInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(2);
 

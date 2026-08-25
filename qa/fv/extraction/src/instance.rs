@@ -19,12 +19,12 @@ use crate::{
 /// extension only supplies the symbolic public inputs that the FV harness adds
 /// around a gadget. Both the exact trace extractor and the direct randomized
 /// evaluator implement it.
-pub trait FvDriver<'dr>: Driver<'dr> {
+pub trait InstanceDriver<'dr>: Driver<'dr> {
     /// Allocate `n` verifier-visible input coordinates.
     fn alloc_input_wires(&mut self, n: usize) -> Vec<Self::Wire>;
 }
 
-impl<'dr, F: PrimeField> FvDriver<'dr> for ExtractionDriver<F> {
+impl<'dr, F: PrimeField> InstanceDriver<'dr> for ExtractionDriver<F> {
     fn alloc_input_wires(&mut self, n: usize) -> Vec<Self::Wire> {
         ExtractionDriver::alloc_input_wires(self, n)
     }
@@ -116,7 +116,7 @@ pub trait CircuitInstance {
     /// Run the real gadget code on any FV driver and serialize its outputs.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Self::Field>;
+        D: InstanceDriver<'dr, F = Self::Field>;
 
     /// Run the circuit on the exact symbolic extractor.
     fn extracted_trace() -> ExtractedTrace<Self::Field> {

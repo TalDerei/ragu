@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
 pub struct ElementEnforceRootOfUnityInstanceK2;
 
@@ -10,7 +10,7 @@ impl CircuitInstance for ElementEnforceRootOfUnityInstanceK2 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(1);
 
@@ -36,7 +36,7 @@ impl CircuitInstance for ElementEnforceRootOfUnityInstanceK5 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(1);
 

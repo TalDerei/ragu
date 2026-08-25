@@ -2,7 +2,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::consistent::Consistent;
 
 use crate::{
-    instance::{CircuitInstance, FvDriver},
+    instance::{CircuitInstance, InstanceDriver},
     wire_remap::invertible_from_wires,
 };
 
@@ -23,7 +23,7 @@ impl CircuitInstance for ElementInvertibleConsistentInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let pair_wires = dr.alloc_input_wires(2);
         let invertible = invertible_from_wires::<D>(pair_wires)?;

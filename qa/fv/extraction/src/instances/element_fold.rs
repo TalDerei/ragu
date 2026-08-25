@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct ElementFoldInstanceN2;
 
@@ -10,7 +10,7 @@ impl CircuitInstance for ElementFoldInstanceN2 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 2: exactly one Mul gate — the last of the Lean reimpl's small-n
         // branches before the uniform `n >= 3` case that N3/N7/N19 pin.
@@ -25,7 +25,7 @@ impl CircuitInstance for ElementFoldInstanceN3 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 3: smallest non-trivial Horner shape (one element gives a no-op,
         // two elements is one Mul). The polymorphic Lean reimpl is universal
@@ -42,7 +42,7 @@ impl CircuitInstance for ElementFoldInstanceN7 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 7: matches `RevdotParameters::GroupSize` in
         // `crates/ragu_pcd/src/internal/native/mod.rs`. This is the inner-fold
@@ -59,7 +59,7 @@ impl CircuitInstance for ElementFoldInstanceN19 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 19: matches `RevdotParameters::NumGroups` in
         // `crates/ragu_pcd/src/internal/native/mod.rs`. This is the outer-fold
@@ -68,7 +68,7 @@ impl CircuitInstance for ElementFoldInstanceN19 {
     }
 }
 
-fn fold_at_length<'dr, D: FvDriver<'dr, F = Fp>, const N: usize>(
+fn fold_at_length<'dr, D: InstanceDriver<'dr, F = Fp>, const N: usize>(
     dr: &mut D,
 ) -> ragu_core::Result<Vec<D::Wire>> {
     let element_template = Element::constant(dr, Fp::zero());

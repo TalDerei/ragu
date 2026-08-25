@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct ElementDivNonzeroInstance;
 
@@ -10,7 +10,7 @@ impl CircuitInstance for ElementDivNonzeroInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires_x = dr.alloc_input_wires(1);
         let input_wires_y = dr.alloc_input_wires(1);

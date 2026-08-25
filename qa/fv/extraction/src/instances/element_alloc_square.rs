@@ -2,7 +2,7 @@ use ff::Field;
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector};
 
 pub struct ElementAllocSquareInstance;
 
@@ -11,7 +11,7 @@ impl CircuitInstance for ElementAllocSquareInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // MaybeKind = Empty: the closure is never called.
         let assignment = D::just(|| Fp::ZERO);

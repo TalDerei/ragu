@@ -3,7 +3,7 @@ use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
 
 use crate::{
-    instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer},
+    instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer},
     wire_remap::{boolean_from_wire, endoscalar_from_bits},
 };
 
@@ -24,7 +24,7 @@ impl CircuitInstance for EndoscalarGroupScaleInstance {
     /// the point's `(x, y)`. Output: the scaled point's `(x, y)`.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let bits: Vec<_> = dr
             .alloc_input_wires(128)

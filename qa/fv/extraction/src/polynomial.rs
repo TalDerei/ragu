@@ -20,7 +20,7 @@ use ragu_core::{
 
 #[cfg(test)]
 use crate::expr::{Expr, Op};
-use crate::{instance::FvDriver, sha256::sha256};
+use crate::{instance::InstanceDriver, sha256::sha256};
 
 /// Version/domain tag shared with `Ragu.PolynomialFingerprint`.
 pub const FORMAT_TAG: &str = "ragu-fv-polynomial-v1";
@@ -347,7 +347,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for EvaluationDriver
     }
 }
 
-impl<'dr, F: PrimeField + FromUniformBytes<64>> FvDriver<'dr> for EvaluationDriver<F> {
+impl<'dr, F: PrimeField + FromUniformBytes<64>> InstanceDriver<'dr> for EvaluationDriver<F> {
     fn alloc_input_wires(&mut self, n: usize) -> Vec<F> {
         let start = self.next_input;
         self.next_input += n;
@@ -538,7 +538,7 @@ mod tests {
     use ragu_pasta::{Fp, Fq};
 
     use super::*;
-    use crate::instance::{CircuitInstance, FvDriver};
+    use crate::instance::{CircuitInstance, InstanceDriver};
 
     const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
@@ -689,7 +689,7 @@ mod tests {
 
         fn circuit<'dr, D>(_: &mut D) -> ragu_core::Result<Vec<D::Wire>>
         where
-            D: FvDriver<'dr, F = Self::Field>,
+            D: InstanceDriver<'dr, F = Self::Field>,
         {
             Ok(Vec::new())
         }
@@ -702,7 +702,7 @@ mod tests {
 
         fn circuit<'dr, D>(driver: &mut D) -> ragu_core::Result<Vec<D::Wire>>
         where
-            D: FvDriver<'dr, F = Self::Field>,
+            D: InstanceDriver<'dr, F = Self::Field>,
         {
             for _ in 0..683 {
                 driver.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;

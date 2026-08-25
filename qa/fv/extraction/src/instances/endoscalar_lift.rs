@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 
 use crate::{
-    instance::{CircuitInstance, FvDriver, WireCollector},
+    instance::{CircuitInstance, InstanceDriver, WireCollector},
     wire_remap::{boolean_from_wire, endoscalar_from_bits},
 };
 
@@ -17,7 +17,7 @@ impl CircuitInstance for EndoscalarLiftInstance {
     /// element.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let bits: Vec<_> = dr
             .alloc_input_wires(128)

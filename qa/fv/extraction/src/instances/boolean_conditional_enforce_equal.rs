@@ -3,7 +3,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
 use crate::{
-    instance::{CircuitInstance, FvDriver, WireDeserializer},
+    instance::{CircuitInstance, InstanceDriver, WireDeserializer},
     wire_remap::boolean_from_wire,
 };
 
@@ -21,7 +21,7 @@ impl CircuitInstance for BooleanConditionalEnforceEqualInstance {
     /// assertion, not a value.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let cond_wires = dr.alloc_input_wires(1);
         let a_wires = dr.alloc_input_wires(1);

@@ -2,7 +2,7 @@ use group::CurveAffine;
 use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
 use ragu_primitives::Point;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector};
 
 pub struct PointAllocInstanceFp;
 
@@ -11,7 +11,7 @@ impl CircuitInstance for PointAllocInstanceFp {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // MaybeKind = Empty: the closure is never called.
         let assignment = D::just(EpAffine::identity);
@@ -32,7 +32,7 @@ impl CircuitInstance for PointAllocInstanceFq {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fq>,
+        D: InstanceDriver<'dr, F = Fq>,
     {
         // MaybeKind = Empty: the closure is never called.
         let assignment = D::just(EqAffine::identity);

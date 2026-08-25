@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, NonzeroBank};
 
-use crate::instance::{CircuitInstance, FvDriver, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
 pub struct NonzeroBankScopeInstance<const K: usize>;
 
@@ -20,7 +20,7 @@ impl<const K: usize> CircuitInstance for NonzeroBankScopeInstance<K> {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // Packages a full `NonzeroBank::scope` over `K` factors as a standalone
         // lemma circuit: every fold mul gate + the final discharge. The Lean

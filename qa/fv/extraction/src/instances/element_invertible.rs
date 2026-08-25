@@ -2,7 +2,7 @@ use ff::Field;
 use ragu_pasta::Fp;
 use ragu_primitives::Invertible;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector};
 
 /// `Invertible::alloc_with_advice`: one mul gate `(a, b, c)` carrying the
 /// value and its inverse as witness input, followed by `enforce_equal(c, ONE)`.
@@ -21,7 +21,7 @@ impl CircuitInstance for ElementInvertibleInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // MaybeKind = Empty: neither assignment closure is ever called.
         let value = D::just(|| Fp::ZERO);

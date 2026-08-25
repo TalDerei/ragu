@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Boolean;
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector};
 
 pub struct BooleanAllocInstance;
 
@@ -10,7 +10,7 @@ impl CircuitInstance for BooleanAllocInstance {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // MaybeKind = Empty: the bool-value closure is never called.
         let value = D::just(|| false);

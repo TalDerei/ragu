@@ -2,7 +2,7 @@ use ragu_circuits::horner::Horner;
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, io::Buffer};
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 /// `Horner::write` is `acc.mul(point).add(value)` for every element after
 /// the first, which is the exact operation trace of `Element::fold` over the
@@ -16,7 +16,7 @@ impl CircuitInstance for HornerInstanceN3 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 3: smallest shape with two `Mul` gates, matching `FoldN3`.
         horner_at_length::<D, 3, false>(dr)
@@ -30,7 +30,7 @@ impl CircuitInstance for HornerInstanceN7 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 7: matches `FoldN7` (`RevdotParameters::GroupSize`), so the
         // Horner and fold shapes used by `fold_revdot.rs` share one digest.
@@ -45,7 +45,7 @@ impl CircuitInstance for HornerInstanceN19 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         // n = 19: matches `FoldN19` (`RevdotParameters::NumGroups`).
         horner_at_length::<D, 19, false>(dr)
@@ -63,7 +63,7 @@ impl CircuitInstance for HornerKyInstanceN3 {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         horner_at_length::<D, 3, true>(dr)
     }
@@ -73,7 +73,7 @@ impl CircuitInstance for HornerKyInstanceN3 {
 /// mirroring `element_fold.rs` (elements first, scale factor last), writes
 /// the coefficients into a fresh `Horner` in order (highest degree first),
 /// and finishes with `finish_ky` when `KY` is set, `finish` otherwise.
-fn horner_at_length<'dr, D: FvDriver<'dr, F = Fp>, const N: usize, const KY: bool>(
+fn horner_at_length<'dr, D: InstanceDriver<'dr, F = Fp>, const N: usize, const KY: bool>(
     dr: &mut D,
 ) -> ragu_core::Result<Vec<D::Wire>> {
     let element_template = Element::constant(dr, Fp::zero());

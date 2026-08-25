@@ -2,7 +2,7 @@ use group::CurveAffine;
 use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
 use ragu_primitives::{Point, consistent::Consistent};
 
-use crate::instance::{CircuitInstance, FvDriver, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
 /// `Point::enforce_consistent` on a point assembled from two input wires: a
 /// fresh `Point::alloc` — the on-curve check — seeded from the point's own
@@ -18,7 +18,7 @@ impl CircuitInstance for PointConsistentInstanceFp {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let point_wires = dr.alloc_input_wires(2);
         let point_template = Point::constant(dr, EpAffine::generator())?;
@@ -38,7 +38,7 @@ impl CircuitInstance for PointConsistentInstanceFq {
 
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fq>,
+        D: InstanceDriver<'dr, F = Fq>,
     {
         let point_wires = dr.alloc_input_wires(2);
         let point_template = Point::constant(dr, EqAffine::generator())?;

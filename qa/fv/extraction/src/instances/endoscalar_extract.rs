@@ -1,7 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, Endoscalar, EndoscalarChallenge};
 
-use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct EndoscalarExtractInstance;
 
@@ -28,7 +28,7 @@ impl CircuitInstance for EndoscalarExtractInstance {
     /// least significant first.
     fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
     where
-        D: FvDriver<'dr, F = Fp>,
+        D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(1);
         let element_template = Element::constant(dr, Fp::zero());
