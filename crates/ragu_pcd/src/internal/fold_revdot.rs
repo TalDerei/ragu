@@ -322,10 +322,6 @@ pub fn fold_two_layer<'dr, D: Driver<'dr>, P: Parameters>(
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "canonical calls are the oracle these tests compare against"
-)]
 mod tests {
     use alloc::{vec, vec::Vec};
 

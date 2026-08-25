@@ -131,6 +131,7 @@ backend_boundary:
   python3 qa/backend/deps.py check
   python3 qa/backend/deps.py leakage
   qa/backend/census.sh
+  CLIPPY_CONF_DIR=qa/backend cargo clippy -p ragu_pcd --lib --no-deps --locked --features native-msm -- -D clippy::disallowed-methods -D warnings
 
 # backend lane: differential, parity, and liveness tests in the serial
 # native-msm configuration

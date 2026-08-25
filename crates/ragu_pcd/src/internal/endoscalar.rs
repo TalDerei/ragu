@@ -325,10 +325,6 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "canonical calls are the oracle these tests compare against"
-)]
 mod tests {
     use alloc::vec::Vec;
 
