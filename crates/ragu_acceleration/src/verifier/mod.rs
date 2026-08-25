@@ -12,7 +12,7 @@
 //! acceptance decision is confined to one place. Code here is held to a
 //! stricter bar than prover-only overrides: deterministic in its arguments,
 //! no control flow that depends on field or point values, mutation-tested,
-//! and differentially fuzzed.
+//! and differentially fuzzed (see `qa/backend/README.md`).
 //!
 //! Nothing is overridden here yet; [`AcceleratedBackend`](crate::AcceleratedBackend)
 //! verifies with the reference kernels until the first override lands.

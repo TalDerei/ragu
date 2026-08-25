@@ -158,3 +158,58 @@ where
     ]
     .boxed()
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::{
+        strategy::{Strategy, ValueTree},
+        test_runner::{Config, TestRunner},
+    };
+    use ragu_arithmetic::ff::Field;
+    use ragu_pasta::Fp;
+
+    use super::*;
+
+    fn sample<T, S: Strategy<Value = T>>(strategy: S, n: usize) -> Vec<T> {
+        let mut runner = TestRunner::new_with_rng(
+            Config::default(),
+            proptest::test_runner::TestRng::deterministic_rng(
+                proptest::test_runner::RngAlgorithm::ChaCha,
+            ),
+        );
+        (0..n)
+            .map(|_| strategy.new_tree(&mut runner).expect("value").current())
+            .collect()
+    }
+
+    /// The backend equivalence tests rely on this strategy reaching every
+    /// power-of-two boundary and its neighbours; weakening it would silently
+    /// shrink their coverage.
+    #[test]
+    fn bounded_edge_usize_reaches_every_boundary() {
+        let max = 300;
+        let samples = sample(bounded_edge_usize(max), 4000);
+        for boundary in [
+            0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256,
+            257, max,
+        ] {
+            assert!(
+                samples.contains(&boundary),
+                "bounded_edge_usize never produced {boundary}"
+            );
+        }
+        assert!(samples.iter().all(|&v| v <= max));
+    }
+
+    /// Likewise for the field-element edge table.
+    #[test]
+    fn prime_field_element_reaches_the_edge_values() {
+        let samples = sample(prime_field_element::<Fp>(), 4000);
+        for value in [Fp::ZERO, Fp::ONE, -Fp::ONE, Fp::ONE.double()] {
+            assert!(
+                samples.contains(&value),
+                "prime_field_element never produced {value:?}"
+            );
+        }
+    }
+}

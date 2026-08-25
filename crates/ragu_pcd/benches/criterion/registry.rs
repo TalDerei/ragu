@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_methods,
+    reason = "benchmarks the canonical registry evaluation itself"
+)]
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use ff::Field;
 use ragu_arithmetic::Cycle;

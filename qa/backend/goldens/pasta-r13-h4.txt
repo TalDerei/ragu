@@ -1,0 +1,37 @@
+format: 1
+cycle: pasta; rank: 13; header_size: 4; steps: WitnessLeaf, Hash2; verifier_seed: 7
+registry.native: 8f379eddad8b7a30bed435b50087b73b70351d1520ac2e854cdc077dd098eb0d
+proof[0].seed(1): digest=25aa13f26cf332190c7834214fb41bbe089195227d0a8020fe9a8566a6c01633 rng=cceb9cfaa3a3d5f6,b12436600314a052,d4d24b8c9ebe996d,4939d4759e61393a
+proof[0].seed(2): digest=c4eda0ec683a1f6fd28a010dd1dc5e4b9501d43b5ff94e01cae9a5872a6cf3ce rng=b2751ccedc00f4fd,ede330754f16d7b0,d8739031229f75ef,98c399a314ad29fc
+proof[0].fuse: digest=9faed1e0077687e95fd35eb0fd7fd8223ebd0e4301be00add34f8f4d3a310f8f rng=0ee9154a6b5d8259,dfa259b4cfbfea68,4f1a89716ecdb134,b73e6cab8e997a2b
+proof[0].rerandomize: digest=06e3b28c2548112a9423130569aadeb8b497e142ce6b94fecaae9b0fe5b39140 rng=d15595f46f128e65,0d0915d56c935a7f,6446e8d281e3f206,e4936f75d8c04999
+data[0].fuse: 7f8d7f23df93d2c9b3155faf8f64805d014dda715947d6cb290971b7749c8f38
+verify[0].seed(1): accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse: accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].rerandomize: accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+p_blind: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+p_eval: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+ab_c: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+circuit_id: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af
+verify[0].fuse+challenge_u: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+challenge_x: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+challenge_y: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[0].fuse+left_header_len: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af
+verify[0].fuse+right_header_len: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af
+proof[1].seed(1): digest=9d65f70836a7a6ebeece2fb1a4f174fba93c8ed7a2de6e716ba6eb8ea949fc23 rng=39642cd9d588c21d,8f7f993f70e2f955,3f3f136e4de7f882,f1541de3235a5779
+proof[1].seed(2): digest=2b8d0d15d965f93bb6c79413ce2f3852e78f09c1ec3cad8ad1dbfae4decdca07 rng=003c6ce0a96bd81c,f8a7433a3d2f4e0c,9c7275425a46ab4e,521ffbd86f170fa0
+proof[1].fuse: digest=5ecd621e7123b460111a25c300bd42de44e38fa640c008446e2bdfde159858ed rng=8b204ffd64bf57c8,733b4c40aafe1268,5e931d78c6134e99,b3832579c846079c
+proof[1].rerandomize: digest=fb4665c7229c39b4074f604982764e799a81363609437dc43d217b17b9527e28 rng=4b820980c5aaf40c,8ea7a00e781cd9b9,5829909153744d6c,127d80fe266d6cdd
+data[1].fuse: 7f8d7f23df93d2c9b3155faf8f64805d014dda715947d6cb290971b7749c8f38
+verify[1].seed(1): accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse: accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].rerandomize: accept rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+p_blind: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+p_eval: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+ab_c: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+circuit_id: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af
+verify[1].fuse+challenge_u: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+challenge_x: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+challenge_y: reject rng=36b722a4bd81c80f,aabcfb88e5a17ea0,22009d73517cca63,f7b7ce285b698eaf
+verify[1].fuse+left_header_len: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af
+verify[1].fuse+right_header_len: reject rng=3bfa5f891f29814a,44bffd8ad93a9fbc,e8a16823e38d9d80,e634874bd8c528af

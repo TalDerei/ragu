@@ -15,7 +15,6 @@
 mod fallback;
 #[cfg(feature = "native-msm")]
 mod msm;
-
 pub mod verifier;
 
 /// Ragu's accelerated computational backend, for proving and verification.
@@ -41,8 +40,9 @@ pub struct AcceleratedBackend;
 pub struct AcceleratedProver;
 
 // `AcceleratedProver` must forward every override to `AcceleratedBackend`,
-// one method per override, so the two impl blocks stay comparable and a new
-// override cannot be selected for proving while silently missing here.
+// one method per override, so the two impl blocks can be compared mechanically
+// (`qa/backend/census.sh`) and a new override cannot be selected for proving
+// while silently missing here.
 impl ragu_backend::Backend for AcceleratedProver {
     fn msm<
         'a,

@@ -1,0 +1,22 @@
+# Feature changes that enabling an acceleration feature on `ragu_pcd` is
+# allowed to cause on packages the frozen build already contains
+# (qa/backend/deps.py leakage). Format: `<target-triple or *>:<package>:<feature>`.
+#
+# Every entry is a frozen-tier decision: it means code the canonical crates
+# compile with changes when the accelerated backend is enabled. All of the
+# entries below come from `zakura-halo2-proofs` declaring its own
+# `ff`/`group`/`pasta_curves` dependencies with more features than Ragu does.
+*:blake2b_simd:default
+*:blake2b_simd:std
+*:constant_time_eq:std
+*:ff:alloc
+*:ff:default
+*:ff:std
+*:group:default
+*:syn:extra-traits
+*:syn:full
+*:syn:visit-mut
+# GLV scalar-multiplication decomposition in the curve library, on every target.
+*:zakura-pasta-curves:glv
+# Hand-written AArch64 field multiplication, built by `cc`, on Apple Silicon.
+aarch64-apple-darwin:zakura-pasta-curves:aarch64-asm

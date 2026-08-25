@@ -1,0 +1,22 @@
+# Routing census (qa/backend/README.md): prover and verifier computation in
+# `ragu_pcd` goes through the selected `Backend`, never directly to the
+# canonical implementations, so an accelerated backend can never be silently
+# dormant on a code path. Canonical-by-design sites carry an
+# `#[expect(clippy::disallowed_methods, reason = "...")]` in source. Clippy
+# resolves these paths, so UFCS, re-exports, and macro-generated calls cannot
+# evade the census.
+disallowed-methods = [
+  { path = "ragu_circuits::polynomials::sparse::Polynomial::eval", reason = "route through Backend::sparse_eval" },
+  { path = "ragu_circuits::polynomials::sparse::Polynomial::revdot", reason = "route through Backend::sparse_revdot" },
+  { path = "ragu_circuits::polynomials::sparse::Polynomial::commit", reason = "route through Backend::sparse_commit" },
+  { path = "ragu_circuits::polynomials::sparse::Polynomial::commit_to_affine", reason = "route through Backend::sparse_commit_to_affine" },
+  { path = "ragu_circuits::registry::Registry::xy", reason = "route through Backend::registry_xy" },
+  { path = "ragu_circuits::registry::Registry::circuit_y", reason = "route through Backend::registry_circuit_y" },
+  { path = "ragu_circuits::registry::Registry::wxy", reason = "route through Backend::registry_wxy" },
+  { path = "ragu_circuits::registry::Registry::wx", reason = "no seam exists; add one to Backend before using this" },
+  { path = "ragu_circuits::registry::Registry::wy", reason = "no seam exists; add one to Backend before using this" },
+  { path = "ragu_circuits::registry::RegistryAt::x", reason = "route through Backend::registry_at_x" },
+  { path = "ragu_circuits::registry::RegistryAt::y", reason = "route through Backend::registry_at_y" },
+  { path = "ragu_circuits::registry::RegistryAt::xy", reason = "route through Backend::registry_wxy" },
+  { path = "ragu_arithmetic::msm", reason = "route through Backend::msm" },
+]

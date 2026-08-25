@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added correctness-first sparse polynomial evaluation, reverse-dot,
   commitment, and registry evaluation backend methods.
 
+### Changed
+
+- Documented the backend contract: result equality per type, schedule
+  freedom and constraints, caller-validated preconditions, what a backend
+  never decides, and which kernels the verifier consults.
+
 ## [0.0.0] - 2026-08-16
 
 ### Added

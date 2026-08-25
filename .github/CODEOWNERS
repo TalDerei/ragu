@@ -1,2 +1,9 @@
 # Default code owner for all files
 * @ebfull
+
+# Backend fast lane (see qa/backend/README.md): override code in
+# `ragu_acceleration` needs an acceleration owner. Patterns are last-match-wins,
+# so the manifest rule below hands the crate's dependencies and features back to
+# the default owner: those are frozen-tier decisions, not optimisations.
+/crates/ragu_acceleration/ @TalDerei @ebfull
+/crates/ragu_acceleration/Cargo.toml @ebfull

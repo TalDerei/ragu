@@ -932,6 +932,7 @@ dependencies = [
 name = "ragu_pcd"
 version = "0.0.0"
 dependencies = [
+ "blake2b_simd",
  "criterion",
  "ff",
  "gungraun",
