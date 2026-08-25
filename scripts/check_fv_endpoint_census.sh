@@ -15,7 +15,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENDPOINT_RE='(^|_)(soundness|completeness|error_bound|finite_security|measure_le|probability_bound|prob_le|capstone)([^A-Za-z0-9]|$)|^(p_prime|q_prime|fingerprint|instances)$'
-EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion)|Ragu\.Foundation\.Probability\.(uniformOfFintype_toOuterMeasure_finset|map_uniformOfFintype_equiv|uniformOfFintype_prod_fiber_bound|uniformOfFintype_prod_fiber_bound_right|uniformOfFintype_fresh_read_bound|uniformOfFintype_point_mem_blind_le|PMFEventBiasLE|PMFWeightedBiasLE|PMFWeightedBiasLE\.eventBiasLE|PMFEventBiasLE\.(weightedBiasLE|trans|bind_same|bind_average)|event_measure_le_of_bias|tendsto_toOuterMeasure_of_eventBiasLE))$'
+EXACT_ENDPOINT_RE='^(main'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Probability\.(uniformOfFintype_toOuterMeasure_finset|map_uniformOfFintype_equiv|uniformOfFintype_prod_fiber_bound|uniformOfFintype_prod_fiber_bound_right|uniformOfFintype_fresh_read_bound|uniformOfFintype_point_mem_blind_le|PMFEventBiasLE|PMFWeightedBiasLE|PMFWeightedBiasLE\.eventBiasLE|PMFEventBiasLE\.(weightedBiasLE|trans|bind_same|bind_average)|event_measure_le_of_bias|tendsto_toOuterMeasure_of_eventBiasLE)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.OracleComp\.(queries_queryList|queries_bind|mem_queries_completing|restrictSum|reachSet|run_congr_reachSet|restrictTo|splitDomain|run_congr_of_agree|runFreshPMF|runFreshPMF_eventBiasLE|readFin|withReads|run_withReads|queryBound_withReads)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.(queryCharge|queryCharge_sum_mul_le|queryCharge_sum_mul_le_table_budget|le_queryCharge_of_mem_queries|mem_queries_dedup|applyUpdates_apply_mem_nodup|steeredCharge_context_sum_mul_le|steeredCharge_context_sum_mul_le_table_budget|steeredCharge_sum_mul_le)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.LabeledOracleComp\.(erase|runWithAnnotations|findLabel|finalBadWithoutRelation_measure_le|firstLabelOrFallbackBad_measure_le)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.MultiOracleComp\.(runTables|mapQuery|runTables_mapQuery|queryBound_mapQuery|runFreshPMF|runFreshPMF_eventBiasLE))$'
 
 source_root='qa/fv/Ragu'
 census='qa/fv/Ragu/Meta/TrustBoundary.lean'

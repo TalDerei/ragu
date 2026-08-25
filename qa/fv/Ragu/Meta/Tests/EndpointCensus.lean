@@ -97,6 +97,7 @@ census_computable Ragu.Meta.Tests.EndpointCensus.pinned_native_completeness +cho
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.bindOrRelationWitness
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.Pasta.pallas_group_order
 #guard Ragu.Meta.isEndpointName `Ragu.Foundation.Probability.PMFEventBiasLE.bind_average
+#guard Ragu.Meta.isEndpointName `Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF_eventBiasLE
 
 run_cmd do
   let env ← Lean.getEnv

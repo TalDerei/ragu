@@ -1,6 +1,7 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
 import Ragu.Foundation.Pasta.Basic
+import Ragu.Foundation.Oracle
 import Ragu.Foundation.Probability
 import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
@@ -116,6 +117,46 @@ census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_same
 census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_average
 census_axioms Ragu.Foundation.Probability.event_measure_le_of_bias
 census_axioms Ragu.Foundation.Probability.tendsto_toOuterMeasure_of_eventBiasLE
+
+/-! ## Oracle foundation -/
+
+census_axioms Ragu.Foundation.Oracle.OracleComp.queries_queryList
+census_axioms Ragu.Foundation.Oracle.OracleComp.queries_bind
+census_axioms Ragu.Foundation.Oracle.OracleComp.mem_queries_completing
+census_computable Ragu.Foundation.Oracle.OracleComp.restrictSum
+census_computable Ragu.Foundation.Oracle.OracleComp.reachSet +choice
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_congr_reachSet
+census_computable Ragu.Foundation.Oracle.OracleComp.restrictTo +choice
+census_computable Ragu.Foundation.Oracle.OracleComp.splitDomain +choice
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_congr_of_agree
+census_computable Ragu.Foundation.Oracle.queryCharge
+census_axioms Ragu.Foundation.Oracle.queryCharge_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.queryCharge_sum_mul_le_table_budget
+census_axioms Ragu.Foundation.Oracle.le_queryCharge_of_mem_queries
+census_axioms Ragu.Foundation.Oracle.mem_queries_dedup
+census_axioms Ragu.Foundation.Oracle.applyUpdates_apply_mem_nodup
+census_axioms Ragu.Foundation.Oracle.steeredCharge_context_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.steeredCharge_context_sum_mul_le_table_budget
+census_axioms Ragu.Foundation.Oracle.steeredCharge_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.escapesDuringC_measure_le
+census_axioms Ragu.Foundation.Oracle.escapesDuringC_measure_le'
+census_axioms Ragu.Foundation.Oracle.OracleComp.runFreshPMF
+census_axioms Ragu.Foundation.Oracle.OracleComp.runFreshPMF_eventBiasLE
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.erase
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.runWithAnnotations
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.findLabel
+census_axioms Ragu.Foundation.Oracle.LabeledOracleComp.finalBadWithoutRelation_measure_le
+census_axioms Ragu.Foundation.Oracle.LabeledOracleComp.firstLabelOrFallbackBad_measure_le
+census_computable Ragu.Foundation.Oracle.MultiOracleComp.runTables
+census_computable Ragu.Foundation.Oracle.MultiOracleComp.mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runTables_mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.queryBound_mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF_eventBiasLE
+census_computable Ragu.Foundation.Oracle.OracleComp.readFin
+census_computable Ragu.Foundation.Oracle.OracleComp.withReads
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_withReads
+census_axioms Ragu.Foundation.Oracle.OracleComp.queryBound_withReads
 
 /-! ## Boolean circuits -/
 
