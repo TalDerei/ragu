@@ -1,12 +1,12 @@
 name: Supply chain
-# Pull-request and push runs of `cargo vet` / `cargo audit` live in rust.yml so
-# they are part of the required `ci-required` aggregate. This workflow only
-# re-audits on a weekly cadence so new RustSec advisories published against
-# already-pinned deps surface even without a lockfile change.
 on:
+  push:
+    branches: [main]
+  pull_request:
+  # Audit on a weekly cadence so new RustSec advisories published against
+  # already-pinned deps surface even without a lockfile change.
   schedule:
     - cron: '0 6 * * 1'
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
