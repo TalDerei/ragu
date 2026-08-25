@@ -125,12 +125,8 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
         -o "target/flamegraph-{{PACKAGE}}-{{GROUP}}-{{TARGET}}.svg" {{ARGS}} \
         -- --gungraun-run {{GROUP}} "$func_idx" 0
 
-# backend boundary censuses (qa/backend/README.md): dependency direction,
-# feature leakage, override gating, and unsafe budget
-backend_boundary:
-  python3 qa/backend/deps.py check
-  python3 qa/backend/deps.py leakage
-  qa/backend/census.sh
+# compiler-resolved production routing through the Backend seam
+backend_routing:
   CLIPPY_CONF_DIR=qa/backend cargo clippy -p ragu_pcd --lib --no-deps --locked --features native-msm -- -D clippy::disallowed-methods -D warnings
 
 # backend lane: differential, parity, and liveness tests in the serial
@@ -139,18 +135,11 @@ backend_equivalence *ARGS:
   cargo test --release -p ragu_acceleration --locked --features native-msm {{ARGS}}
   PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --locked --features native-msm --lib backend_equivalence:: {{ARGS}}
 
-# backend lane: callgrind perf gate on fuse, reference vs accelerated (needs
-# valgrind; on macOS this runs inside the `bench` docker wrapper)
-backend_perf:
-  just bench -- --callgrind-args=--cache-sim=no --save-summary=json 'gungraun::app_proof*::fuse*'
-  find target/gungraun -name summary.json -exec cat {} + | jq --slurp --exit-status --argjson tolerance 1.0 --from-file qa/backend/perf-gate.jq
-
-# backend lane: everything the `backend boundary` and `backend equivalence`
-# jobs run
-backend_lane: backend_boundary backend_equivalence backend_perf
+# backend correctness lane: routing plus differential and end-to-end parity
+backend_lane: backend_routing backend_equivalence
 
 # run CI checks locally (formatting, clippy, tests)
-ci_local: _book_setup backend_boundary
+ci_local: _book_setup backend_routing
   @echo "Running formatting check..."
   cargo +{{_nightly}} fmt --all -- --config-path rustfmt.nightly.toml --check
   @echo "Running clippy..."

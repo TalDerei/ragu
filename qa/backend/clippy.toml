@@ -1,6 +1,6 @@
-# Routing census (qa/backend/README.md): production computation in `ragu_pcd`
-# goes through a `Backend`, never directly to the canonical implementations,
-# so an accelerated backend cannot be silently dormant on a code path. CI
+# Production computation in `ragu_pcd` goes through a `Backend`, never directly
+# to the canonical implementations, so an accelerated backend cannot be
+# silently dormant on a code path. CI
 # selects this configuration explicitly with `CLIPPY_CONF_DIR`; ordinary
 # workspace Clippy and intentional canonical calls in tests and benchmarks are
 # outside this production-only policy. Clippy resolves these paths, so UFCS,

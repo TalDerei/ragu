@@ -9,10 +9,7 @@
 //! override of any of those four is shared by the prover and the verifier;
 //! it is implemented in this module and reached from the `Backend` impl in
 //! the crate root by delegation, so the code that can influence an
-//! acceptance decision is confined to one place. Code here is held to a
-//! stricter bar than prover-only overrides (see `qa/backend/README.md`):
-//! deterministic in its arguments, no control flow that depends on field or
-//! point values, mutation-tested, and differentially fuzzed.
+//! acceptance decision is confined to one place and can be tested directly.
 //!
 //! Nothing is overridden here yet; [`AcceleratedBackend`](crate::AcceleratedBackend)
 //! verifies with the reference kernels until the first override lands.

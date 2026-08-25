@@ -1,9 +1,8 @@
 //! Sealed selection of the computational backend.
 //!
-//! This is the only file in `ragu_pcd` that names `ragu_acceleration`
-//! (qa/backend/census.sh enforces it): the sealed mapping below decides which
-//! backends an application may select and which kernels the verifier consults
-//! for each of them.
+//! This is the only file in `ragu_pcd` that names `ragu_acceleration`: the
+//! sealed mapping below decides which backends an application may select and
+//! which kernels the verifier consults for each of them.
 
 use ragu_backend::Backend;
 

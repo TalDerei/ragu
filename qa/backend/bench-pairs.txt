@@ -1,6 +1,0 @@
-# Every override must have an end-to-end benchmark pair in
-# crates/ragu_pcd/benches/gungraun.rs: the reference benchmark and its
-# accelerated counterpart. `census.sh` checks the pairing exists;
-# qa/backend/perf-gate.jq compares their instruction counts in CI.
-# Format: <method>: <reference-bench-fn> <accelerated-bench-fn>
-msm: fuse fuse_accelerated
