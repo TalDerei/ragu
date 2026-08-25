@@ -74,6 +74,7 @@
   - [Verified Circuits](fv/circuits/index.md)
     - [Extraction](fv/circuits/extraction.md)
     - [Inputs, Outputs, and Serialization](fv/circuits/serialization.md)
+    - [Composable Gadget Contracts](fv/circuits/contracts.md)
     - [Fingerprint Equivalence Check](fv/circuits/fingerprint.md)
     - [Assumptions](fv/circuits/assumptions.md)
     - [CI Integration](fv/circuits/ci.md)

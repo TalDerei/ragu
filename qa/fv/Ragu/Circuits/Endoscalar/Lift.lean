@@ -164,10 +164,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
   -- `&&&` spec + IsBool for the wire; promote to wire = bits[2i] * bits[2i+1].
   have h_ne : ∀ i : Fin 64,
       Expression.eval env
-        (Boolean.And.main
-            ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
-             input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega)⟩
-            (i₀ + i.val * 3)).1 =
+        (Boolean.And.output (i₀ + i.val * 3)) =
         (input_bits[2 * i.val]'(by have := i.isLt; omega)) *
         (input_bits[2 * i.val + 1]'(by have := i.isLt; omega)) := by
     intro i
@@ -194,10 +191,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
             stepCircuit curveParams.ζ
               (input_var_bits[2 * i.val]'(by have := i.isLt; omega))
               (input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega))
-              (Boolean.And.main
-                ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
-                 input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega)⟩
-                (i₀ + i.val * 3)).1
+              (Boolean.And.output (i₀ + i.val * 3))
               acc)
           (Expression.const 0)) +
       ctFinal curveParams.ζ m =
@@ -219,10 +213,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
     have hi_m1 : 2 * m + 1 < 128 := by omega
     have ih' := ih hm'
     have h_ne_m : Expression.eval env
-        (Boolean.And.main
-            ⟨input_var_bits[2 * m]'hi_m,
-             input_var_bits[2 * m + 1]'hi_m1⟩
-            (i₀ + m * 3)).1 =
+        (Boolean.And.output (i₀ + m * 3)) =
         (input_bits[2 * m]'hi_m) * (input_bits[2 * m + 1]'hi_m1) := by
       have := h_ne ⟨m, by omega⟩
       simpa using this
@@ -241,10 +232,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
         stepCircuit curveParams.ζ
           (input_var_bits[2 * i.val]'(by have := i.isLt; omega))
           (input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega))
-          (Boolean.And.main
-            ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
-             input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega)⟩
-            (i₀ + i.val * 3)).1
+          (Boolean.And.output (i₀ + i.val * 3))
           acc) _ (fun _ _ => by simp [Fin.val_castSucc])]
     rw [fin_foldl_succ_last_eq m _ (fun (acc : F p) (i : Fin m) =>
         stepNative curveParams.ζ acc
@@ -257,10 +245,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
           stepCircuit curveParams.ζ
             (input_var_bits[2 * i.val]'(by have := i.isLt; omega))
             (input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega))
-            (Boolean.And.main
-              ⟨input_var_bits[2 * i.val]'(by have := i.isLt; omega),
-               input_var_bits[2 * i.val + 1]'(by have := i.isLt; omega)⟩
-              (i₀ + i.val * 3)).1
+            (Boolean.And.output (i₀ + i.val * 3))
             acc) (Expression.const 0)
     set nat_inner := Fin.foldl m
         (fun (acc : F p) (i : Fin m) =>
@@ -279,7 +264,7 @@ theorem soundness (curveParams : Point.Spec.CurveParams p)
     show Expression.eval env (stepCircuit curveParams.ζ
         (input_var_bits[2 * (Fin.last m).val]'(by simp; omega))
         (input_var_bits[2 * (Fin.last m).val + 1]'(by simp; omega))
-        (Boolean.And.main _ _).1 sym_inner) + (2 * ctFinal curveParams.ζ m + 1) =
+        (Boolean.And.output _) sym_inner) + (2 * ctFinal curveParams.ζ m + 1) =
       stepNative curveParams.ζ nat_inner
         (input_bits[2 * (Fin.last m).val]'(by simp; omega))
         (input_bits[2 * (Fin.last m).val + 1]'(by simp; omega))

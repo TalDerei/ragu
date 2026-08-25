@@ -29,8 +29,18 @@ field-multiplication form via `IsBool.and_eq_val_and`. -/
 def Spec (input : Input (F p)) (out : F p) :=
   out.val = input.a.val &&& input.b.val ∧ IsBool out
 
+/-- The output expression exported to parent layout proofs. Keeping this
+separate from `main` lets callers name the child output without unfolding the
+child's operation trace. -/
+@[circuit_norm]
+def output (offset : ℕ) : Expression (F p) :=
+  varFromOffset field (offset + 2)
+
 instance elaborated : ElaboratedCircuit (F p) Input field main where
   localLength _ := 3
+  output _ offset := output offset
+  output_eq input offset := by
+    simp [main, output, circuit_norm, Core.mul]
 
 theorem soundness : Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start

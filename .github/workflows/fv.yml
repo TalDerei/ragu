@@ -38,6 +38,7 @@ jobs:
               - 'rust-toolchain.toml'
               - 'qa/fv/**'
               - 'scripts/check_fv_endpoint_census.sh'
+              - 'scripts/check_fv_contract_composition.sh'
               - '.github/workflows/fv.yml'
               - '.github/actions/**'
 
@@ -61,6 +62,9 @@ jobs:
 
       - name: Check FV trust-boundary census coverage
         run: scripts/check_fv_endpoint_census.sh
+
+      - name: Check FV contract composition boundary
+        run: scripts/check_fv_contract_composition.sh
 
       # We install elan + invoke `lake` directly instead of using
       # `leanprover/lean-action`: that composite transitively references
