@@ -3,9 +3,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
 use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer},
+    instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer},
     wire_remap::boolean_from_wire,
 };
 
@@ -18,7 +16,10 @@ impl CircuitInstance for BooleanConditionalSelectInstance {
     /// input wire wrapped as a `Boolean` (see [`boolean_from_wire`]).
     ///
     /// Input wires: `cond`, `a`, `b`. Output: the selected element.
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         let cond_wires = dr.alloc_input_wires(1);
         let a_wires = dr.alloc_input_wires(1);
         let b_wires = dr.alloc_input_wires(1);

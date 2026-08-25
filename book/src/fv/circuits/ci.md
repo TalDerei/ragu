@@ -3,9 +3,9 @@
 The CI formal verification workflow helps developers check whether the formal
 verification pipeline runs successfully.
 
-At its core, the workflow runs the extraction exporter, builds the Lean
-development in `qa/fv`, and compares the circuit fingerprints computed on both
-sides.
+At its core, the workflow tests the extraction evaluators, checks generated and
+trust-boundary artifacts, builds the Lean development in `qa/fv`, and runs both
+the deterministic and randomized Rust-to-Lean comparisons.
 
 Concretely, it first runs `cargo run --locked -p lean_extraction -- check`,
 which enforces that the checked-in generated Lean files — the
@@ -24,13 +24,22 @@ library uses a glob), so a file that no aggregator imports cannot silently
 escape CI.
 ```
 
-Finally, CI runs the [fingerprint equivalence check](./fingerprint.md): it
+CI then runs the [fingerprint equivalence check](./fingerprint.md): it
 compares the canonical trace digests printed by
 `cargo run --locked -p lean_extraction -- fingerprint` against the ones computed
 in Lean from the `Clean` reimplementations
 (`lake env lean --run Ragu/Fingerprint/Main.lean`), and fails on any mismatch.
 If the Rust circuit code changes the extracted operations or outputs, CI fails
 until the Lean reimplementation is updated to match (and its proofs repaired).
+
+Finally, CI generates and prints a fresh 32-byte seed and runs the
+[direct randomized polynomial check](./polynomial-fingerprint.md) at two
+domain-separated points. The Rust side runs each real gadget with the
+four-slot `EvaluationDriver`; Lean evaluates the corresponding handwritten
+model without consuming the Rust trace. Their exact headers and four field
+accumulators must match for all 53 enrolled instances. The explicit printed
+seed makes failures reproducible, while generating it after checkout prevents
+source changes from targeting a permanently fixed public point.
 
 Independent, hand-written Lean checks should be imported through `Ragu.Lemmas`,
 not through the Rust extraction exporter.

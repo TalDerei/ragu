@@ -82,3 +82,10 @@ extractor encodes the trace and output expressions into a canonical byte string
 and hashes it; the Lean side computes the same digest from the operations
 emitted by the `Clean` reimplementation, and CI compares the two. This is
 described in the [fingerprint equivalence check](./fingerprint.md) section.
+
+The exact trace remains useful, but it is no longer the only Rust-to-Lean
+binding. The [direct randomized polynomial check](./polynomial-fingerprint.md)
+runs the same `CircuitInstance::circuit` through an `EvaluationDriver` that
+models all four production gate slots and never builds this symbolic expression
+DAG. Lean independently evaluates its reimplementation at the same
+domain-separated challenges, and CI compares the resulting records.

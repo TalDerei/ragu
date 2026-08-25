@@ -1,22 +1,20 @@
-use ff::Field;
-use ragu_core::drivers::Driver;
+use group::CurveAffine;
 use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
 use ragu_primitives::Point;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector},
-};
+use crate::instance::{CircuitInstance, FvDriver, WireCollector};
 
 pub struct PointAllocInstanceFp;
 
 impl CircuitInstance for PointAllocInstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         // MaybeKind = Empty: the closure is never called.
-        let assignment = ExtractionDriver::<Fp>::just(|| Fp::ZERO);
+        let assignment = D::just(EpAffine::identity);
         let point = Point::<_, EpAffine>::alloc(dr, assignment)?;
 
         // NOTE: assumes that the serialization is [x, y].
@@ -32,9 +30,12 @@ pub struct PointAllocInstanceFq;
 impl CircuitInstance for PointAllocInstanceFq {
     type Field = Fq;
 
-    fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fq>,
+    {
         // MaybeKind = Empty: the closure is never called.
-        let assignment = ExtractionDriver::<Fq>::just(|| Fq::ZERO);
+        let assignment = D::just(EqAffine::identity);
         let point = Point::<_, EqAffine>::alloc(dr, assignment)?;
 
         // NOTE: assumes that the serialization is [x, y].

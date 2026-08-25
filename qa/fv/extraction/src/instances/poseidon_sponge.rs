@@ -3,11 +3,7 @@ use ragu_arithmetic::PoseidonPermutation;
 use ragu_pasta::{Fp, Fq, PoseidonFp, PoseidonFq};
 use ragu_primitives::{Element, poseidon::Sponge};
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer},
-};
+use crate::instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer};
 
 /// `Sponge::new` → `absorb(x)` → `squeeze()` over `PoseidonFp` (`T = 5`,
 /// `RATE = 4`, `α = 5`, 8 full + 56 partial rounds): one permutation of the
@@ -19,8 +15,11 @@ pub struct PoseidonHash1InstanceFp;
 impl CircuitInstance for PoseidonHash1InstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        sponge_absorb_n::<Fp, PoseidonFp, 1>(dr, &PoseidonFp)
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
+        sponge_absorb_n::<Fp, D, PoseidonFp, 1>(dr, &PoseidonFp)
     }
 }
 
@@ -34,8 +33,11 @@ pub struct PoseidonHash4InstanceFp;
 impl CircuitInstance for PoseidonHash4InstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        sponge_absorb_n::<Fp, PoseidonFp, 4>(dr, &PoseidonFp)
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
+        sponge_absorb_n::<Fp, D, PoseidonFp, 4>(dr, &PoseidonFp)
     }
 }
 
@@ -46,8 +48,11 @@ pub struct PoseidonHash1InstanceFq;
 impl CircuitInstance for PoseidonHash1InstanceFq {
     type Field = Fq;
 
-    fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
-        sponge_absorb_n::<Fq, PoseidonFq, 1>(dr, &PoseidonFq)
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fq>,
+    {
+        sponge_absorb_n::<Fq, D, PoseidonFq, 1>(dr, &PoseidonFq)
     }
 }
 
@@ -67,8 +72,11 @@ pub struct PoseidonBlocks2Squeeze3InstanceFp;
 impl CircuitInstance for PoseidonBlocks2Squeeze3InstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        sponge_blocks::<Fp, PoseidonFp, 8, 3>(dr, &PoseidonFp)
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
+        sponge_blocks::<Fp, D, PoseidonFp, 8, 3>(dr, &PoseidonFp)
     }
 }
 
@@ -83,8 +91,11 @@ pub struct PoseidonBlocks1Tail2InstanceFp;
 impl CircuitInstance for PoseidonBlocks1Tail2InstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        sponge_blocks::<Fp, PoseidonFp, 6, 2>(dr, &PoseidonFp)
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
+        sponge_blocks::<Fp, D, PoseidonFp, 6, 2>(dr, &PoseidonFp)
     }
 }
 
@@ -99,7 +110,10 @@ pub struct PoseidonSaveResumeInstanceFp;
 impl CircuitInstance for PoseidonSaveResumeInstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         let element_template = Element::constant(dr, Fp::ZERO);
         let input_wires = dr.alloc_input_wires(1);
         let x = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
@@ -129,7 +143,10 @@ pub struct PoseidonInterleavedInstanceFp;
 impl CircuitInstance for PoseidonInterleavedInstanceFp {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         let element_template = Element::constant(dr, Fp::ZERO);
         let x_wires = dr.alloc_input_wires(1);
         let x = WireDeserializer::new(x_wires).into_gadget(&element_template)?;
@@ -151,10 +168,17 @@ impl CircuitInstance for PoseidonInterleavedInstanceFp {
 /// elements. On the Lean side a multiple of `RATE` is `Sponge.Blocks`
 /// (uniform full blocks); anything else is `Sponge.Ragged` (full blocks plus
 /// a short tail).
-fn sponge_blocks<F: PrimeField, P: PoseidonPermutation<F>, const N: usize, const S: usize>(
-    dr: &mut ExtractionDriver<F>,
+fn sponge_blocks<
+    'dr,
+    F: PrimeField,
+    D: FvDriver<'dr, F = F>,
+    P: PoseidonPermutation<F>,
+    const N: usize,
+    const S: usize,
+>(
+    dr: &mut D,
     params: &'static P,
-) -> ragu_core::Result<Vec<Expr<F>>> {
+) -> ragu_core::Result<Vec<D::Wire>> {
     assert!(N > 0, "the Rust sponge refuses to squeeze before an absorb");
     assert!(S > 0, "the final permutation is run by the first squeeze");
     assert!(
@@ -181,10 +205,16 @@ fn sponge_blocks<F: PrimeField, P: PoseidonPermutation<F>, const N: usize, const
 
 /// Absorbs `N` input wires (at most `P::RATE`, so one permutation) into a
 /// fresh sponge and squeezes one element.
-fn sponge_absorb_n<F: PrimeField, P: PoseidonPermutation<F>, const N: usize>(
-    dr: &mut ExtractionDriver<F>,
+fn sponge_absorb_n<
+    'dr,
+    F: PrimeField,
+    D: FvDriver<'dr, F = F>,
+    P: PoseidonPermutation<F>,
+    const N: usize,
+>(
+    dr: &mut D,
     params: &'static P,
-) -> ragu_core::Result<Vec<Expr<F>>> {
+) -> ragu_core::Result<Vec<D::Wire>> {
     assert!(
         N <= P::RATE,
         "more than one block would need a second permutation"

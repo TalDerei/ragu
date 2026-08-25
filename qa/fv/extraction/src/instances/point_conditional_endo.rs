@@ -3,9 +3,7 @@ use ragu_pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
 
 use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer},
+    instance::{CircuitInstance, FvDriver, WireCollector, WireDeserializer},
     wire_remap::boolean_from_wire,
 };
 
@@ -19,7 +17,10 @@ impl CircuitInstance for PointConditionalEndoInstance {
     ///
     /// Input wires: `cond`, then the point's `(x, y)`. Output: the resulting
     /// point's `(x, y)`.
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         let cond_wires = dr.alloc_input_wires(1);
         let point_wires = dr.alloc_input_wires(2);
 

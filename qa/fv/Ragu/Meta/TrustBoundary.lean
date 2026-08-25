@@ -9,6 +9,7 @@ import Ragu.Foundation.Probability
 import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
 import Ragu.Fingerprint.Main
+import Ragu.PolynomialFingerprint
 import Ragu.Circuits.Boolean.Alloc
 import Ragu.Circuits.Boolean.And
 import Ragu.Circuits.Boolean.ConditionalEnforceEqual
@@ -62,15 +63,17 @@ import Ragu.Circuits.Poseidon.Sponge
 
 Every deliverable `soundness` and `completeness` theorem is pinned directly with
 `census_axioms`, which bounds its transitive kernel axioms to Lean's standard theorem tier and
-rejects undisclosed compiler trust. The census also reserves protocol-level markers such as
-`_error_bound`, `_finite_security`, `_prob_le`, and `_capstone` for the verifier and soundness
-layers that will be added later. The two Pasta primality theorems are pinned at the same tier.
+rejects undisclosed compiler trust. The two randomized-fingerprint `_prob_le` arithmetic
+endpoints and the two Pasta primality theorems are pinned at the same tier. Other protocol-level
+markers such as `_error_bound`, `_finite_security`, and `_capstone` remain reserved for verifier
+and soundness layers added later.
 
-The fingerprint function and generated instance registry are executable boundary artifacts, so
-they use `census_computable`: each must remain a safe, computable definition with the tighter
-computable axiom budget. These checks do not prove that the trusted fingerprint encoders or
-serialization assign the intended semantics, and they do not connect this gadget layer to an
-unfinished Ragu verifier. Those remain separate manual and future refinement obligations.
+The exact and randomized fingerprint functions and generated instance registry are executable
+boundary artifacts, so they use `census_computable`: each must remain a safe, computable
+definition with the tighter computable axiom budget. These checks do not prove that the trusted
+fingerprint encoders or serialization assign the intended semantics, and they do not connect this
+gadget layer to an unfinished Ragu verifier. Those remain separate manual and future refinement
+obligations.
 
 The relation-witness traversal combinators are also pinned as computed data. They preserve explicit
 break branches while composing future reductions; their companion theorem is pinned at the standard
@@ -353,6 +356,9 @@ census_axioms Ragu.Circuits.Poseidon.Sponge.Ragged.completeness
 
 census_axioms Ragu.Core.Primes.p_prime
 census_axioms Ragu.Core.Primes.q_prime
+census_axioms Ragu.PolynomialFingerprint.pastaFp_two_point_prob_le
+census_axioms Ragu.PolynomialFingerprint.pastaFq_two_point_prob_le
 census_computable Ragu.Core.Statements.FormalInstance.fingerprint +choice
+census_computable Ragu.Core.Statements.FormalInstance.polynomialFingerprint +choice
 census_computable Ragu.Fingerprint.instances +choice
 census_computable _root_.main +choice

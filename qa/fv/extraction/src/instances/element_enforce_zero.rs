@@ -1,18 +1,17 @@
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireDeserializer},
-};
+use crate::instance::{CircuitInstance, FvDriver, WireDeserializer};
 
 pub struct ElementEnforceZeroInstance;
 
 impl CircuitInstance for ElementEnforceZeroInstance {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         let input_wires = dr.alloc_input_wires(1);
 
         let element_template = Element::constant(dr, Fp::zero());

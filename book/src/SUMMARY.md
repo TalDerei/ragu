@@ -76,6 +76,7 @@
     - [Inputs, Outputs, and Serialization](fv/circuits/serialization.md)
     - [Composable Gadget Contracts](fv/circuits/contracts.md)
     - [Fingerprint Equivalence Check](fv/circuits/fingerprint.md)
+    - [Direct Randomized Polynomial Check](fv/circuits/polynomial-fingerprint.md)
     - [Assumptions](fv/circuits/assumptions.md)
     - [CI Integration](fv/circuits/ci.md)
 - [Part V: Fuzzing]()

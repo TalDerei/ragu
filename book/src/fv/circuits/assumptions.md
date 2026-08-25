@@ -23,6 +23,16 @@ The Ragu Formal Verification relies on some assumptions.
     - Agreement of the traces at the canonical input vector implies agreement at
       all inputs (the reimplementations do not special-case the canonical input)
 
+- The direct randomized polynomial check is meaningful
+    - The Rust and Lean implementations realize the documented versioned
+      challenge derivation, slot mapping, ordering, and accumulator equations
+    - SHA-256 behaves as independent random-oracle outputs on the
+      domain-separated challenge inputs
+    - A Rust/Lean disagreement gives a nonzero polynomial whose degree is no
+      greater than the checked structural bound
+    - The fresh CI seed is generated after the compared revision is fixed and
+      is supplied unchanged to both evaluators
+
 - The assumptions and specification properties suffice to fully characterize the
   circuit within the scope of the FV (e.g., we could prove a Spec that does not
   imply some real-world broader property we care about)

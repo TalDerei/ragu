@@ -1,22 +1,20 @@
 use ff::Field;
-use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector},
-};
+use crate::instance::{CircuitInstance, FvDriver, WireCollector};
 
 pub struct ElementAllocSquareInstance;
 
 impl CircuitInstance for ElementAllocSquareInstance {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: FvDriver<'dr, F = Fp>,
+    {
         // MaybeKind = Empty: the closure is never called.
-        let assignment = ExtractionDriver::<Fp>::just(|| Fp::ZERO);
+        let assignment = D::just(|| Fp::ZERO);
         let (a, a_sq) = Element::alloc_square(dr, assignment)?;
 
         let mut wires = WireCollector::collect_from(&a)?;
