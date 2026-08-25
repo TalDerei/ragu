@@ -1,5 +1,6 @@
 use proptest::{prelude::*, test_runner::TestCaseResult};
-use ragu_acceleration::AcceleratedBackend;
+use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
+use ragu_backend::ReferenceBackend;
 use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
 use ragu_pasta::{Fp, Pasta};
 use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field_element};
@@ -25,6 +26,88 @@ const MAX_CORRUPTED_HEADER_LEN: usize = TEST_HEADER_SIZE * 2;
 type TestApplication<'params, B> = Application<'params, Pasta, ProductionRank, TEST_HEADER_SIZE, B>;
 type TestPcd = Pcd<Pasta, ProductionRank, ()>;
 type RngFingerprint = [u64; RNG_FINGERPRINT_WORDS];
+type Outcome = (VerifierDecision, RngFingerprint);
+
+/// Every selectable backend, over the same registered circuits: the reference,
+/// the accelerated backend verifying with its own kernels, and the accelerated
+/// prover verifying with the reference kernels.
+struct Apps {
+    reference: TestApplication<'static, ReferenceBackend>,
+    accelerated: TestApplication<'static, AcceleratedBackend>,
+    prover: TestApplication<'static, AcceleratedProver>,
+}
+
+impl Apps {
+    fn build(dummy_circuits: usize) -> Self {
+        let pasta = Pasta::baked();
+        let reference = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+            .register_dummy_circuits(dummy_circuits)
+            .unwrap()
+            .finalize(pasta)
+            .unwrap();
+        let accelerated = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+            .with_backend::<AcceleratedBackend>()
+            .register_dummy_circuits(dummy_circuits)
+            .unwrap()
+            .finalize(pasta)
+            .unwrap();
+        let prover = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+            .with_backend::<AcceleratedProver>()
+            .register_dummy_circuits(dummy_circuits)
+            .unwrap()
+            .finalize(pasta)
+            .unwrap();
+        Self {
+            reference,
+            accelerated,
+            prover,
+        }
+    }
+
+    fn check_registries(&self) -> TestCaseResult {
+        let native = self.reference.native_registry.digest();
+        let nested = self.reference.nested_registry.digest();
+        prop_assert_eq!(native, self.accelerated.native_registry.digest());
+        prop_assert_eq!(nested, self.accelerated.nested_registry.digest());
+        prop_assert_eq!(native, self.prover.native_registry.digest());
+        prop_assert_eq!(nested, self.prover.nested_registry.digest());
+        Ok(())
+    }
+
+    /// Verifies `pcd` with every backend, reseeding the verifier RNG from
+    /// `seed` each time, so the outcomes are comparable.
+    fn verify_all(&self, pcd: &TestPcd, seed: u64) -> [(&'static str, Outcome); 3] {
+        [
+            ("reference", verifier_outcome(&self.reference, pcd, seed)),
+            (
+                "accelerated",
+                verifier_outcome(&self.accelerated, pcd, seed),
+            ),
+            (
+                "accelerated prover",
+                verifier_outcome(&self.prover, pcd, seed),
+            ),
+        ]
+    }
+}
+
+/// One proof per backend, produced by identical driving of identically seeded
+/// RNGs.
+struct Proofs {
+    reference: TestPcd,
+    accelerated: TestPcd,
+    prover: TestPcd,
+}
+
+impl Proofs {
+    fn proofs(&self) -> [(&TestPcd, &'static str); 3] {
+        [
+            (&self.reference, "reference"),
+            (&self.accelerated, "accelerated"),
+            (&self.prover, "accelerated prover"),
+        ]
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 struct CorruptionInputs {
@@ -87,6 +170,19 @@ fn arb_corruption_inputs() -> impl Strategy<Value = CorruptionInputs> {
         )
 }
 
+/// Two cases by default: each case builds three applications and runs the
+/// protocol end to end. `PROPTEST_CASES` raises it (CI sets a floor).
+fn config() -> ProptestConfig {
+    let mut config = ProptestConfig::with_cases(2);
+    if let Some(cases) = std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        config.cases = cases;
+    }
+    config
+}
+
 fn rng_fingerprint(rng: &mut StdRng) -> RngFingerprint {
     core::array::from_fn(|_| rng.random())
 }
@@ -95,7 +191,7 @@ fn verifier_outcome<B: SelectableBackend>(
     app: &TestApplication<'_, B>,
     pcd: &TestPcd,
     seed: u64,
-) -> (VerifierDecision, RngFingerprint) {
+) -> Outcome {
     let mut rng = StdRng::seed_from_u64(seed);
     let decision = match app.verify(pcd, &mut rng) {
         Ok(true) => VerifierDecision::Accept,
@@ -137,63 +233,70 @@ fn corruptions(
     ]
 }
 
-fn check_valid_pcd_equivalence<Reference, Accelerated>(
-    reference_app: &TestApplication<'_, Reference>,
-    accelerated_app: &TestApplication<'_, Accelerated>,
-    reference_pcd: &TestPcd,
-    accelerated_pcd: &TestPcd,
+/// Every backend must agree with the reference verifier on `pcd`: same
+/// decision and same randomness consumption.
+fn check_verifiers_agree(
+    apps: &Apps,
+    pcd: &TestPcd,
+    verifier_seed: u64,
+    context: &str,
+) -> TestCaseResult {
+    let outcomes = apps.verify_all(pcd, verifier_seed);
+    let (_, reference_outcome) = outcomes[0];
+    for (backend, outcome) in &outcomes[1..] {
+        prop_assert_eq!(
+            *outcome,
+            reference_outcome,
+            "verifier result or RNG consumption mismatch between reference and {} for {}",
+            backend,
+            context,
+        );
+    }
+    Ok(())
+}
+
+fn check_valid_pcd_equivalence(
+    apps: &Apps,
+    proofs: &Proofs,
     verifier_seed: u64,
     proof_kind: &str,
-) -> TestCaseResult
-where
-    Reference: SelectableBackend,
-    Accelerated: SelectableBackend,
-{
-    let mismatch = reference_pcd.proof().test_mismatch(accelerated_pcd.proof());
-    prop_assert!(
-        mismatch.is_none(),
-        "reference and accelerated {} proofs differ in {}",
-        proof_kind,
-        mismatch.unwrap(),
-    );
+) -> TestCaseResult {
+    for (pcd, backend) in &proofs.proofs()[1..] {
+        let mismatch = proofs.reference.proof().test_mismatch(pcd.proof());
+        prop_assert!(
+            mismatch.is_none(),
+            "{} {} proof differs from the reference proof in {}",
+            backend,
+            proof_kind,
+            mismatch.unwrap(),
+        );
+    }
 
     for (proof_name, pcd) in [
-        ("reference", reference_pcd),
-        ("accelerated", accelerated_pcd),
+        ("reference", &proofs.reference),
+        ("accelerated", &proofs.accelerated),
+        ("accelerated prover", &proofs.prover),
     ] {
-        let reference_outcome = verifier_outcome(reference_app, pcd, verifier_seed);
-        let accelerated_outcome = verifier_outcome(accelerated_app, pcd, verifier_seed);
+        let context = alloc::format!("{proof_name} {proof_kind} proof");
+        check_verifiers_agree(apps, pcd, verifier_seed, &context)?;
         prop_assert_eq!(
-            reference_outcome,
-            accelerated_outcome,
-            "verifier result or RNG consumption mismatch for {} {} proof",
-            proof_name,
-            proof_kind,
-        );
-        prop_assert_eq!(
-            reference_outcome.0,
+            verifier_outcome(&apps.reference, pcd, verifier_seed).0,
             VerifierDecision::Accept,
-            "valid {} {} proof was rejected",
-            proof_name,
-            proof_kind,
+            "valid {} was rejected",
+            context,
         );
     }
 
     Ok(())
 }
 
-fn check_corrupted_pcd_equivalence<Reference, Accelerated>(
-    reference_app: &TestApplication<'_, Reference>,
-    accelerated_app: &TestApplication<'_, Accelerated>,
+fn check_corrupted_pcd_equivalence(
+    apps: &Apps,
     pcd: &TestPcd,
     verifier_seed: u64,
     proof_kind: &str,
     corruption_inputs: CorruptionInputs,
-) -> TestCaseResult
-where
-    Reference: SelectableBackend,
-    Accelerated: SelectableBackend,
-{
+) -> TestCaseResult {
     for (corruption_name, corruption) in corruptions(pcd.proof(), corruption_inputs) {
         let mut corrupted = pcd.proof().clone();
         corrupted.corrupt(corruption);
@@ -204,21 +307,13 @@ where
             proof_kind,
         );
         let corrupted_pcd = corrupted.carry::<()>(());
-        let reference_outcome = verifier_outcome(reference_app, &corrupted_pcd, verifier_seed);
-        let accelerated_outcome = verifier_outcome(accelerated_app, &corrupted_pcd, verifier_seed);
-        prop_assert_eq!(
-            reference_outcome,
-            accelerated_outcome,
-            "verifier result or RNG consumption mismatch after {} corruption in {} proof",
-            corruption_name,
-            proof_kind,
-        );
+        let context = alloc::format!("{corruption_name} corruption in {proof_kind} proof");
+        check_verifiers_agree(apps, &corrupted_pcd, verifier_seed, &context)?;
         prop_assert_ne!(
-            reference_outcome.0,
+            verifier_outcome(&apps.reference, &corrupted_pcd, verifier_seed).0,
             VerifierDecision::Accept,
-            "verifier accepted {} corruption in {} proof",
-            corruption_name,
-            proof_kind,
+            "verifier accepted {}",
+            context,
         );
     }
 
@@ -226,7 +321,7 @@ where
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(2))]
+    #![proptest_config(config())]
 
     #[test]
     fn reference_and_accelerated_verifiers_reject_padded_circuit_ids(
@@ -235,41 +330,29 @@ proptest! {
         dummy_circuits in arb_dummy_circuit_count(),
         padded_slot_selector in any::<usize>(),
     ) {
-        let pasta = Pasta::baked();
-        let reference_app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
-            .register_dummy_circuits(dummy_circuits)
-            .unwrap()
-            .finalize(pasta)
-            .unwrap();
-        let accelerated_app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
-            .with_backend::<AcceleratedBackend>()
-            .register_dummy_circuits(dummy_circuits)
-            .unwrap()
-            .finalize(pasta)
-            .unwrap();
+        let apps = Apps::build(dummy_circuits);
+        apps.check_registries()?;
 
-        prop_assert_eq!(
-            reference_app.native_registry.digest(),
-            accelerated_app.native_registry.digest(),
-        );
-
-        let num_circuits = reference_app.native_registry.num_circuits();
+        let num_circuits = apps.reference.native_registry.num_circuits();
         prop_assume!(!num_circuits.is_power_of_two());
         let domain_size = num_circuits.next_power_of_two();
         let padded_index =
             num_circuits + padded_slot_selector % (domain_size - num_circuits);
         let padded = CircuitIndex::new(padded_index);
-        prop_assert!(reference_app.native_registry.circuit_in_domain(padded));
-        prop_assert!(accelerated_app.native_registry.circuit_in_domain(padded));
+        prop_assert!(apps.reference.native_registry.circuit_in_domain(padded));
+        prop_assert!(apps.accelerated.native_registry.circuit_in_domain(padded));
+        prop_assert!(apps.prover.native_registry.circuit_in_domain(padded));
 
         let mut proof_rng = StdRng::seed_from_u64(proof_seed);
-        let (valid_pcd, _) = reference_app
+        let (valid_pcd, _) = apps
+            .reference
             .seed(&mut proof_rng, Trivial::new(), ())
             .unwrap();
-        let valid_reference = verifier_outcome(&reference_app, &valid_pcd, verifier_seed);
-        let valid_accelerated = verifier_outcome(&accelerated_app, &valid_pcd, verifier_seed);
-        prop_assert_eq!(valid_reference, valid_accelerated);
-        prop_assert_eq!(valid_reference.0, VerifierDecision::Accept);
+        check_verifiers_agree(&apps, &valid_pcd, verifier_seed, "valid leaf proof")?;
+        prop_assert_eq!(
+            verifier_outcome(&apps.reference, &valid_pcd, verifier_seed).0,
+            VerifierDecision::Accept,
+        );
 
         let mut corrupted = valid_pcd.proof().clone();
         corrupted.corrupt(Corruption::CircuitId(
@@ -278,17 +361,18 @@ proptest! {
         prop_assert!(valid_pcd.proof().test_mismatch(&corrupted).is_some());
         let corrupted_pcd = corrupted.carry::<()>(());
 
-        let reference_outcome = verifier_outcome(&reference_app, &corrupted_pcd, verifier_seed);
-        let accelerated_outcome = verifier_outcome(&accelerated_app, &corrupted_pcd, verifier_seed);
-        prop_assert_eq!(reference_outcome, accelerated_outcome);
-        prop_assert_eq!(reference_outcome.0, VerifierDecision::Reject);
+        check_verifiers_agree(&apps, &corrupted_pcd, verifier_seed, "padded circuit id")?;
+        prop_assert_eq!(
+            verifier_outcome(&apps.reference, &corrupted_pcd, verifier_seed).0,
+            VerifierDecision::Reject,
+        );
     }
 }
 
 // TODO: Add this end-to-end backend-equivalence property for a generated
 // nontrivial Step; Trivial exercises the protocol flow but not application circuitry.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(2))]
+    #![proptest_config(config())]
 
     #[test]
     fn reference_and_accelerated_proofs_and_verifiers_are_equivalent(
@@ -297,96 +381,101 @@ proptest! {
         dummy_circuits in arb_dummy_circuit_count(),
         corruption_inputs in arb_corruption_inputs(),
     ) {
-        let pasta = Pasta::baked();
-        let reference_app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
-            .register_dummy_circuits(dummy_circuits)
-            .unwrap()
-            .finalize(pasta)
-            .unwrap();
-        let accelerated_app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
-            .with_backend::<AcceleratedBackend>()
-            .register_dummy_circuits(dummy_circuits)
-            .unwrap()
-            .finalize(pasta)
-            .unwrap();
-
-        prop_assert_eq!(
-            reference_app.native_registry.digest(),
-            accelerated_app.native_registry.digest(),
-        );
-        prop_assert_eq!(
-            reference_app.nested_registry.digest(),
-            accelerated_app.nested_registry.digest(),
-        );
+        let apps = Apps::build(dummy_circuits);
+        apps.check_registries()?;
 
         let corrupted_circuit = CircuitIndex::from_u32(corruption_inputs.circuit_id);
-        prop_assume!(!reference_app
+        prop_assume!(!apps
+            .reference
             .native_registry
             .circuit_in_domain(corrupted_circuit));
-        prop_assert!(!accelerated_app
+        prop_assert!(!apps
+            .accelerated
             .native_registry
             .circuit_in_domain(corrupted_circuit));
 
         let mut reference_rng = StdRng::seed_from_u64(proof_seed);
         let mut accelerated_rng = StdRng::seed_from_u64(proof_seed);
-        let (reference_leaf1, _) = reference_app
+        let mut prover_rng = StdRng::seed_from_u64(proof_seed);
+
+        let check_rngs = |reference_rng: &mut StdRng,
+                              accelerated_rng: &mut StdRng,
+                              prover_rng: &mut StdRng|
+         -> TestCaseResult {
+            let reference_rng_state = rng_fingerprint(reference_rng);
+            prop_assert_eq!(reference_rng_state, rng_fingerprint(accelerated_rng));
+            prop_assert_eq!(reference_rng_state, rng_fingerprint(prover_rng));
+            Ok(())
+        };
+
+        let (reference_leaf1, _) = apps
+            .reference
             .seed(&mut reference_rng, Trivial::new(), ())
             .unwrap();
-        let (accelerated_leaf1, _) = accelerated_app
+        let (accelerated_leaf1, _) = apps
+            .accelerated
             .seed(&mut accelerated_rng, Trivial::new(), ())
             .unwrap();
-        let reference_rng_state = rng_fingerprint(&mut reference_rng);
-        prop_assert_eq!(reference_rng_state, rng_fingerprint(&mut accelerated_rng));
-        check_valid_pcd_equivalence(
-            &reference_app,
-            &accelerated_app,
-            &reference_leaf1,
-            &accelerated_leaf1,
-            verifier_seed,
-            "leaf",
-        )?;
+        let (prover_leaf1, _) = apps
+            .prover
+            .seed(&mut prover_rng, Trivial::new(), ())
+            .unwrap();
+        check_rngs(&mut reference_rng, &mut accelerated_rng, &mut prover_rng)?;
+        let leaf1 = Proofs {
+            reference: reference_leaf1,
+            accelerated: accelerated_leaf1,
+            prover: prover_leaf1,
+        };
+        check_valid_pcd_equivalence(&apps, &leaf1, verifier_seed, "leaf")?;
 
-        let (reference_leaf2, _) = reference_app
+        let (reference_leaf2, _) = apps
+            .reference
             .seed(&mut reference_rng, Trivial::new(), ())
             .unwrap();
-        let (accelerated_leaf2, _) = accelerated_app
+        let (accelerated_leaf2, _) = apps
+            .accelerated
             .seed(&mut accelerated_rng, Trivial::new(), ())
             .unwrap();
-        let reference_rng_state = rng_fingerprint(&mut reference_rng);
-        prop_assert_eq!(reference_rng_state, rng_fingerprint(&mut accelerated_rng));
+        let (prover_leaf2, _) = apps
+            .prover
+            .seed(&mut prover_rng, Trivial::new(), ())
+            .unwrap();
+        check_rngs(&mut reference_rng, &mut accelerated_rng, &mut prover_rng)?;
 
-        let (reference_node, _) = reference_app
+        let (reference_node, _) = apps
+            .reference
             .fuse(
                 &mut reference_rng,
                 Trivial::new(),
                 (),
-                reference_leaf1,
+                leaf1.reference,
                 reference_leaf2,
             )
             .unwrap();
-        let (accelerated_node, _) = accelerated_app
+        let (accelerated_node, _) = apps
+            .accelerated
             .fuse(
                 &mut accelerated_rng,
                 Trivial::new(),
                 (),
-                accelerated_leaf1,
+                leaf1.accelerated,
                 accelerated_leaf2,
             )
             .unwrap();
-        let reference_rng_state = rng_fingerprint(&mut reference_rng);
-        prop_assert_eq!(reference_rng_state, rng_fingerprint(&mut accelerated_rng));
-        check_valid_pcd_equivalence(
-            &reference_app,
-            &accelerated_app,
-            &reference_node,
-            &accelerated_node,
-            verifier_seed,
-            "fused",
-        )?;
+        let (prover_node, _) = apps
+            .prover
+            .fuse(&mut prover_rng, Trivial::new(), (), leaf1.prover, prover_leaf2)
+            .unwrap();
+        check_rngs(&mut reference_rng, &mut accelerated_rng, &mut prover_rng)?;
+        let node = Proofs {
+            reference: reference_node,
+            accelerated: accelerated_node,
+            prover: prover_node,
+        };
+        check_valid_pcd_equivalence(&apps, &node, verifier_seed, "fused")?;
         check_corrupted_pcd_equivalence(
-            &reference_app,
-            &accelerated_app,
-            &reference_node,
+            &apps,
+            &node.reference,
             verifier_seed,
             "fused",
             corruption_inputs,
