@@ -11,13 +11,10 @@ use ragu_arithmetic::CurveAffine;
 /// feature) and beneficial.
 ///
 /// Unequal input lengths violate [`Backend::msm`](ragu_backend::Backend::msm)'s
-/// contract; this panics where the reference implementation truncates.
+/// contract. The reference implementation zips its inputs and so truncates the
+/// longer one; this does the same, so the two backends agree even on inputs
+/// the contract excludes rather than diverging between a panic and a result.
 pub(crate) fn accelerated_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-    assert_eq!(
-        coeffs.len(),
-        bases.len(),
-        "MSM coefficients and bases must have equal length"
-    );
-
-    halo2_proofs::arithmetic::best_multiexp(coeffs, bases)
+    let len = coeffs.len().min(bases.len());
+    halo2_proofs::arithmetic::best_multiexp(&coeffs[..len], &bases[..len])
 }
