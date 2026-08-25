@@ -20,8 +20,8 @@ msm_check_rejects_the_sentinel_only_at_its_size
 transition_sweep_rejects_the_sentinel
 sparse_check_rejects_the_sentinel_only_at_its_shape
 [ragu_pcd --features native-msm --lib]
-backend_tests::reference_and_accelerated_proofs_and_verifiers_are_equivalent
-backend_tests::reference_and_accelerated_verifiers_reject_padded_circuit_ids
+backend_equivalence::reference_and_accelerated_proofs_and_verifiers_are_equivalent
+backend_equivalence::reference_and_accelerated_verifiers_reject_padded_circuit_ids
 [ragu_pcd --test nontrivial]
 various_merging_operations
 [ragu_pcd --features native-msm,unstable-fuzzing --test backend_goldens]
@@ -31,5 +31,5 @@ strategies::tests::bounded_edge_usize_reaches_every_boundary
 strategies::tests::prime_field_element_reaches_the_edge_values
 # Number of `prop_assume!` / `prop_filter` uses allowed in the end-to-end
 # harness: each one narrows the sampled space, so growth is a review event.
-[assume-budget crates/ragu_pcd/src/backend_tests.rs]
+[assume-budget crates/ragu_pcd/tests/backend_equivalence/mod.rs]
 3

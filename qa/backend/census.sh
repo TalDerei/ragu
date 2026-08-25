@@ -124,10 +124,15 @@ if grep -rnE 'rand::|getrandom|thread_rng|OsRng|SystemTime|Instant::now|std::tim
   fail "$LIB" "acceleration code must be deterministic in its arguments: no randomness, time, or thread identity"
 fi
 
-# --- E9: no cross-tier source inclusion ---------------------------------------
-if grep -rn '#\[path' crates/*/src >/dev/null; then
-  grep -rn '#\[path' crates/*/src
-  fail "crates" "\`#[path]\` module attributes are not allowed"
+# --- E9: no unreviewed cross-tier source inclusion ----------------------------
+# The backend-equivalence test sources live in their canonical `tests/`
+# folder, but compile as crate-internal modules so they can inspect private
+# proof state. Those two exact paths are the only allowed indirection.
+path_uses="$({ grep -rn '#\[path' crates/*/src || true; })"
+unexpected_paths="$({ grep -vE '^(crates/ragu_pcd/src/lib.rs:[0-9]+:#\[path = "\.\./tests/backend_equivalence/mod.rs"\]|crates/ragu_pcd/src/proof/mod.rs:[0-9]+:#\[path = "\.\./\.\./tests/backend_equivalence/proof.rs"\])$' <<< "$path_uses" || true; })"
+if [ -n "$unexpected_paths" ]; then
+  echo "$unexpected_paths"
+  fail "crates" "only the canonical ragu_pcd backend-equivalence test modules may use \`#[path]\`"
 fi
 if grep -rnE 'include(_str|_bytes)?!\(' crates/*/src | grep -E '\.\./|ragu_acceleration' >/dev/null; then
   grep -rnE 'include(_str|_bytes)?!\(' crates/*/src | grep -E '\.\./|ragu_acceleration'
@@ -138,7 +143,7 @@ fi
 for name in ragu_arithmetic ragu_backend ragu_circuits ragu_core ragu_macros ragu_pasta ragu_pcd ragu_primitives ragu_testing; do
   while IFS= read -r file; do
     case "$file" in
-      crates/ragu_pcd/src/backend.rs|crates/ragu_pcd/src/backend_tests.rs) continue ;;
+      crates/ragu_pcd/src/backend.rs) continue ;;
     esac
     fail "$file" "frozen crate source names \`ragu_acceleration\`; only crates/ragu_pcd/src/backend.rs (the sealed selection) may"
   done < <(grep -rlE 'ragu_acceleration::|use ragu_acceleration|extern crate ragu_acceleration' "crates/$name/src" 2>/dev/null || true)
