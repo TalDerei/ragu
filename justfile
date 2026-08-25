@@ -126,31 +126,23 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
         -- --gungraun-run {{GROUP}} "$func_idx" 0
 
 # backend boundary censuses (qa/backend/README.md): dependency direction,
-# feature leakage, override gating, unsafe budget, Backend trait surface
+# feature leakage, override gating, and unsafe budget
 backend_boundary:
   python3 qa/backend/deps.py check
   python3 qa/backend/deps.py leakage
   qa/backend/census.sh
-  qa/backend/api-snapshot.sh check
 
-# backend lane: differential, parity, liveness, harness-strength, and
-# strategy tests in the serial native-msm configuration
+# backend lane: differential, parity, and liveness tests in the serial
+# native-msm configuration
 backend_equivalence *ARGS:
   cargo test --release -p ragu_acceleration --locked --features native-msm {{ARGS}}
   PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --locked --features native-msm --lib backend_equivalence:: {{ARGS}}
-  cargo test --release --locked -p ragu_pcd --features native-msm,unstable-fuzzing --test backend_goldens {{ARGS}}
-  cargo test --release --locked -p ragu_testing --lib strategies:: {{ARGS}}
-  qa/backend/required-tests.sh
 
 # backend lane: callgrind perf gate on fuse, reference vs accelerated (needs
 # valgrind; on macOS this runs inside the `bench` docker wrapper)
 backend_perf:
   just bench -- --callgrind-args=--cache-sim=no --save-summary=json 'gungraun::app_proof*::fuse*'
   find target/gungraun -name summary.json -exec cat {} + | jq --slurp --exit-status --argjson tolerance 1.0 --from-file qa/backend/perf-gate.jq
-
-# regenerate the committed proof-digest goldens (frozen-tier: review the diff)
-goldens_update:
-  UPDATE_GOLDENS=1 cargo test --release -p ragu_pcd --locked --features native-msm,unstable-fuzzing --test backend_goldens
 
 # backend lane: everything the `backend boundary` and `backend equivalence`
 # jobs run

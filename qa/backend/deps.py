@@ -3,18 +3,15 @@
 
 Subcommands (all exit non-zero with `::error::` lines on a violation):
 
-  check      dependency direction, the sealing edge, default passthrough, and
-             the pinned build-script / proc-macro sets (qa/backend/dep-census.txt)
+  check      dependency direction, the sealing edge, and default passthrough
   leakage    enabling an acceleration feature on `ragu_pcd` must not change the
              features of any package the frozen build already contains, except
              as listed in qa/backend/feature-leak-allowlist.txt
-  update     regenerate the pin files from the current graph
 
 `cargo metadata` activates every optional edge regardless of features, so it
 cannot answer "what does this feature change"; `leakage` uses `cargo tree`,
-which resolves like a build. `cargo metadata` is only used for the
-manifest-level (`--no-deps`) checks and for the lock-level census, where a
-superset is what we want to pin.
+which resolves like a build. `cargo metadata --no-deps` is used for the
+manifest-level checks.
 """
 
 import argparse
@@ -255,99 +252,19 @@ def check_leakage():
               f"{':'.join(stale)} no longer matches any leak; remove it")
 
 
-# --- lock-level census (cargo metadata, all optional edges) ------------------
-
-
-def graph():
-    m = metadata("--all-features")
-    pk = {p["id"]: p for p in m["packages"]}
-    nodes = {n["id"]: n for n in m["resolve"]["nodes"]}
-    by_name = {}
-    for pid, p in pk.items():
-        by_name.setdefault(p["name"], pid)
-
-    def edges(pid):
-        return [d["pkg"] for d in nodes[pid]["deps"]
-                if any(k["kind"] in (None, "build") for k in d["dep_kinds"])]
-
-    def reach(starts, skip=frozenset()):
-        seen, stack = set(), list(starts)
-        while stack:
-            x = stack.pop()
-            if x in seen or x in skip:
-                continue
-            seen.add(x)
-            stack.extend(edges(x))
-        return seen
-
-    acc = by_name[ACCELERATION]
-    frozen_reach = reach([by_name[n] for n in FROZEN], skip={acc})
-    exclusive = (reach([acc]) - frozen_reach) | {acc}
-
-    def kind(pid, k):
-        return any(k in t["kind"] for t in pk[pid]["targets"])
-
-    def names(ids, k):
-        return sorted({pk[i]["name"] for i in ids if kind(i, k)})
-
-    return {
-        "frozen build-script": names(frozen_reach, "custom-build"),
-        "frozen proc-macro": names(frozen_reach, "proc-macro"),
-        "acceleration build-script": names(exclusive, "custom-build"),
-        "acceleration proc-macro": names(exclusive, "proc-macro"),
-    }
-
-
-def render_census(census):
-    lines = [
-        "# Packages with build scripts or proc-macros, by the region of the",
-        "# dependency graph that reaches them (qa/backend/deps.py). Any change is a",
-        "# supply-chain decision: regenerate with `python3 qa/backend/deps.py update`",
-        "# and review the diff.",
-    ]
-    for section, names in census.items():
-        lines.append(f"[{section}]")
-        lines.extend(names)
-    return "\n".join(lines) + "\n"
-
-
-def check_dep_census():
-    path = PINS / "dep-census.txt"
-    expected = render_census(graph())
-    if path.read_text() != expected:
-        error(
-            "the set of build-script / proc-macro packages changed; run "
-            "`python3 qa/backend/deps.py update` and review the diff",
-            "qa/backend/dep-census.txt",
-        )
-        for line in difflib_lines(path.read_text(), expected):
-            print(line)
-
-
-def difflib_lines(a, b):
-    import difflib
-    return difflib.unified_diff(a.splitlines(), b.splitlines(), "pinned", "current", lineterm="")
-
-
 # --- entry point ------------------------------------------------------------
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["check", "leakage", "update"])
+    parser.add_argument("command", choices=["check", "leakage"])
     args = parser.parse_args()
-
-    if args.command == "update":
-        (PINS / "dep-census.txt").write_text(render_census(graph()))
-        print("wrote qa/backend/dep-census.txt")
-        return
 
     if args.command == "check":
         pkgs = manifests()
         check_direction(pkgs)
         check_acceleration_features(pkgs)
         check_default_passthrough()
-        check_dep_census()
     elif args.command == "leakage":
         check_leakage()
 

@@ -1,2 +1,2 @@
-# Backend lane pins and goldens are compared byte-for-byte on every OS.
+# Backend lane pins are compared byte-for-byte on every OS.
 qa/backend/** text eol=lf

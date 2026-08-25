@@ -31,15 +31,13 @@ multicore = ["maybe-rayon/threads", "ragu_acceleration/multicore", "ragu_arithme
 native-msm = ["ragu_acceleration/native-msm", "std"]
 std = []
 # Exposes the `fuzz_utils` module, which provides proof-corruption helpers
-# used by external fuzz harnesses, and `Proof::test_digest` for the backend
-# goldens. Not part of the stable public API.
-unstable-fuzzing = ["dep:blake2b_simd"]
+# used by external fuzz harnesses. Not part of the stable public API.
+unstable-fuzzing = []
 
 [lib]
 bench = false
 
 [dependencies]
-blake2b_simd = { workspace = true, optional = true }
 ragu_acceleration = { path = "../ragu_acceleration", version = "0.0.0", default-features = false }
 ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_backend = { path = "../ragu_backend", version = "0.0.0", default-features = false }
