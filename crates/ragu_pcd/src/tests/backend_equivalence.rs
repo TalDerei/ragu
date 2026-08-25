@@ -149,8 +149,13 @@ where
     Reference: SelectableBackend,
     Accelerated: SelectableBackend,
 {
-    let reference_digest = reference_pcd.proof().test_digest();
-    prop_assert_eq!(reference_digest, accelerated_pcd.proof().test_digest());
+    let mismatch = reference_pcd.proof().test_mismatch(accelerated_pcd.proof());
+    prop_assert!(
+        mismatch.is_none(),
+        "reference and accelerated {} proofs differ in {}",
+        proof_kind,
+        mismatch.unwrap(),
+    );
 
     for (proof_name, pcd) in [
         ("reference", reference_pcd),
@@ -189,14 +194,12 @@ where
     Reference: SelectableBackend,
     Accelerated: SelectableBackend,
 {
-    let reference_digest = pcd.proof().test_digest();
     for (corruption_name, corruption) in corruptions(pcd.proof(), corruption_inputs) {
         let mut corrupted = pcd.proof().clone();
         corrupted.corrupt(corruption);
-        prop_assert_ne!(
-            reference_digest,
-            corrupted.test_digest(),
-            "proof digest ignored {} corruption in {} proof",
+        prop_assert!(
+            pcd.proof().test_mismatch(&corrupted).is_some(),
+            "proof comparison ignored {} corruption in {} proof",
             corruption_name,
             proof_kind,
         );
@@ -268,12 +271,11 @@ proptest! {
         prop_assert_eq!(valid_reference, valid_accelerated);
         prop_assert_eq!(valid_reference.0, VerifierDecision::Accept);
 
-        let valid_digest = valid_pcd.proof().test_digest();
-        let mut corrupted = valid_pcd.into_parts().0;
+        let mut corrupted = valid_pcd.proof().clone();
         corrupted.corrupt(Corruption::CircuitId(
             usize::from(padded).try_into().unwrap(),
         ));
-        prop_assert_ne!(valid_digest, corrupted.test_digest());
+        prop_assert!(valid_pcd.proof().test_mismatch(&corrupted).is_some());
         let corrupted_pcd = corrupted.carry::<()>(());
 
         let reference_outcome = verifier_outcome(&reference_app, &corrupted_pcd, verifier_seed);

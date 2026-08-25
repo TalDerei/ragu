@@ -25,7 +25,6 @@ mod sealed {
     impl Sealed for AcceleratedProver {
         type Verifier = ReferenceBackend;
     }
-
 }
 
 /// A Ragu-owned computational backend.

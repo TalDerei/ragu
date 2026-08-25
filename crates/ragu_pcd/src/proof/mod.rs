@@ -11,7 +11,8 @@
 
 pub(crate) mod builder;
 #[cfg(test)]
-mod digest;
+#[path = "../tests/proof_equivalence.rs"]
+mod proof_equivalence;
 
 use alloc::{sync::Arc, vec, vec::Vec};
 
