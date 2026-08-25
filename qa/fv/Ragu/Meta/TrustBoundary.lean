@@ -8,7 +8,6 @@ import Ragu.Foundation.Oracle
 import Ragu.Foundation.Probability
 import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
-import Ragu.Fingerprint.Main
 import Ragu.PolynomialFingerprint
 import Ragu.Circuits.Boolean.Alloc
 import Ragu.Circuits.Boolean.And
@@ -361,4 +360,3 @@ census_axioms Ragu.PolynomialFingerprint.pastaFq_two_point_prob_le
 census_computable Ragu.Core.Statements.FormalInstance.fingerprint +choice
 census_computable Ragu.Core.Statements.FormalInstance.polynomialFingerprint +choice
 census_computable Ragu.Fingerprint.instances +choice
-census_computable _root_.main +choice
