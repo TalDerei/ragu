@@ -104,7 +104,22 @@ def exactTrustEndpoints : List Name :=
     `Ragu.Foundation.Pasta.pallas_group_order,
     `Ragu.Foundation.Pasta.vesta_group_order,
     `Ragu.Foundation.Pasta.pallas_no_two_torsion,
-    `Ragu.Foundation.Pasta.vesta_no_two_torsion]
+    `Ragu.Foundation.Pasta.vesta_no_two_torsion,
+    `Ragu.Foundation.Probability.uniformOfFintype_toOuterMeasure_finset,
+    `Ragu.Foundation.Probability.map_uniformOfFintype_equiv,
+    `Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound,
+    `Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound_right,
+    `Ragu.Foundation.Probability.uniformOfFintype_fresh_read_bound,
+    `Ragu.Foundation.Probability.uniformOfFintype_point_mem_blind_le,
+    `Ragu.Foundation.Probability.PMFEventBiasLE,
+    `Ragu.Foundation.Probability.PMFWeightedBiasLE,
+    `Ragu.Foundation.Probability.PMFWeightedBiasLE.eventBiasLE,
+    `Ragu.Foundation.Probability.PMFEventBiasLE.weightedBiasLE,
+    `Ragu.Foundation.Probability.PMFEventBiasLE.trans,
+    `Ragu.Foundation.Probability.PMFEventBiasLE.bind_same,
+    `Ragu.Foundation.Probability.PMFEventBiasLE.bind_average,
+    `Ragu.Foundation.Probability.event_measure_le_of_bias,
+    `Ragu.Foundation.Probability.tendsto_toOuterMeasure_of_eventBiasLE]
 
 /-- The base-name half of the endpoint predicate shared with
 `scripts/check_fv_endpoint_census.sh`. -/

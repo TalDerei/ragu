@@ -1,6 +1,7 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
 import Ragu.Foundation.Pasta.Basic
+import Ragu.Foundation.Probability
 import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
 import Ragu.Fingerprint.Main
@@ -96,6 +97,25 @@ census_axioms Ragu.Foundation.Pasta.vesta_group_order +native(
   CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt)
 census_axioms Ragu.Foundation.Pasta.pallas_no_two_torsion
 census_axioms Ragu.Foundation.Pasta.vesta_no_two_torsion
+
+/-! ## Probability foundation -/
+
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_toOuterMeasure_finset
+census_axioms Ragu.Foundation.Probability.map_uniformOfFintype_equiv
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound_right
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_fresh_read_bound
+census_axioms Ragu.Foundation.Probability.sum_point_mem_measure_le
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_point_mem_blind_le
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE
+census_axioms Ragu.Foundation.Probability.PMFWeightedBiasLE
+census_axioms Ragu.Foundation.Probability.PMFWeightedBiasLE.eventBiasLE
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.weightedBiasLE
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.trans
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_same
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_average
+census_axioms Ragu.Foundation.Probability.event_measure_le_of_bias
+census_axioms Ragu.Foundation.Probability.tendsto_toOuterMeasure_of_eventBiasLE
 
 /-! ## Boolean circuits -/
 

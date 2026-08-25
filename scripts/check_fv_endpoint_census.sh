@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENDPOINT_RE='(^|_)(soundness|completeness|error_bound|finite_security|measure_le|probability_bound|prob_le|capstone)([^A-Za-z0-9]|$)|^(p_prime|q_prime|fingerprint|instances)$'
-EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion))$'
+EXACT_ENDPOINT_RE='^(main|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion)|Ragu\.Foundation\.Probability\.(uniformOfFintype_toOuterMeasure_finset|map_uniformOfFintype_equiv|uniformOfFintype_prod_fiber_bound|uniformOfFintype_prod_fiber_bound_right|uniformOfFintype_fresh_read_bound|uniformOfFintype_point_mem_blind_le|PMFEventBiasLE|PMFWeightedBiasLE|PMFWeightedBiasLE\.eventBiasLE|PMFEventBiasLE\.(weightedBiasLE|trans|bind_same|bind_average)|event_measure_le_of_bias|tendsto_toOuterMeasure_of_eventBiasLE))$'
 
 source_root='qa/fv/Ragu'
 census='qa/fv/Ragu/Meta/TrustBoundary.lean'
