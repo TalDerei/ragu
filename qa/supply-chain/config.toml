@@ -140,6 +140,10 @@ criteria = "safe-to-run"
 version = "0.9.8"
 criteria = "safe-to-deploy"
 
+[[exemptions.tachyon-maybe-rayon]]
+version = "0.1.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.tempfile]]
 version = "3.24.0"
 criteria = "safe-to-run"
