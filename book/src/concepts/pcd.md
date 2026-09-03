@@ -127,11 +127,11 @@ the decompression needed to prepare a compressed proof for future fusion) should
 be avoided except at the necessary boundaries of application logic, such as when
 succinct proofs must be communicated to third parties.
 
-In its uncompressed form, it is possible to [`rerandomize`] PCD. This process
-produces a proof string that reveals nothing about the initial PCD beyond the
-certified data. Without rerandomization, a proof string (whether compressed or
-not) may leak information such as witness data; proofs are not zero-knowledge by
-default.
+In its uncompressed form, a PCD can be passed through [`rerandomize`] to produce
+a fresh proof of the same certified data. The current construction does not yet
+establish zero knowledge or unlinkability: it still exposes child data and lacks
+a fold-level accumulator randomizer. Those properties require additional
+protocol work.
 
 [`Header`]: ragu_pcd::header::Header
 [`Data`]: ragu_pcd::header::Header::Data

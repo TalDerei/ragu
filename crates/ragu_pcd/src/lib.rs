@@ -40,7 +40,7 @@ pub mod step;
 mod verify;
 
 use alloc::collections::BTreeMap;
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
 use header::Header;
 pub use proof::{Pcd, Proof};
@@ -229,6 +229,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             params,
             num_application_steps: self.num_application_steps,
             bootstrap: None,
+            seeded_trivial: OnceCell::new(),
             _marker: PhantomData,
         };
 
@@ -321,6 +322,9 @@ pub struct Application<
     /// only while `finalize` is building it, since doing so runs
     /// [`fuse`](Self::fuse) on the otherwise complete `Application`.
     bootstrap: Option<Proof<C, R>>,
+    /// A valid `Pcd<()>` used as the right child during rerandomization.
+    /// Lazily derived from the bootstrap proof and then reused.
+    seeded_trivial: OnceCell<Proof<C, R>>,
     _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
@@ -370,36 +374,63 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             .carry(())
     }
 
+    /// Returns the cached valid `Pcd<()>` used as the neutral right child of
+    /// rerandomization.
+    ///
+    /// The proof is lazily created by folding the bootstrap proof with itself
+    /// through the unit instantiation of the rerandomization step. Subsequent
+    /// calls reuse the same proof.
+    fn seeded_trivial_pcd<RNG: CryptoRng>(&self, rng: &mut RNG) -> Pcd<C, R, ()> {
+        self.seeded_trivial
+            .get_or_init(|| {
+                self.fuse(
+                    rng,
+                    step::internal::rerandomize::Rerandomize::new(),
+                    (),
+                    self.bootstrap_pcd(),
+                    self.bootstrap_pcd(),
+                )
+                .expect("seeded trivial fuse should not fail")
+                .0
+                .into_parts()
+                .0
+            })
+            .clone()
+            .carry(())
+    }
+
     /// Rerandomize proof-carrying data.
     ///
-    /// This will internally fold the [`Pcd`] with itself using an internal
-    /// rerandomization step, producing a fresh proof that is valid for the
-    /// same [`Header`] and carries the same data. [`Application::verify`]
-    /// produces the same result on the provided `pcd` as it would on the
-    /// output of this method.
+    /// This will internally fold the [`Pcd`] with a cached seeded `Pcd<()>`
+    /// using an internal rerandomization step, producing a
+    /// fresh proof that is valid for the same [`Header`] and carries the same
+    /// data. [`Application::verify`] produces the same result on the provided
+    /// `pcd` as it would on the output of this method.
     ///
     /// The intent is that the output be unlinkable to the input. Today that is
     /// not achieved at all: the output embeds the input's commitments and stage
-    /// polynomials in the clear (as its child data), and its folded accumulator
-    /// is a deterministic function of the input proof and public challenges.
-    /// Achieving witness-hiding of the accumulator needs a fold-level
-    /// randomizer; unlinkability of an uncompressed proof additionally needs
-    /// the child data hidden (compression, or a second randomized pass). Both
-    /// are future work, tracked separately.
+    /// polynomials in the clear (as its left-child data), and its folded
+    /// accumulator is a deterministic function of the input proof, cached
+    /// seeded proof, and public challenges. Achieving witness-hiding of the
+    /// accumulator needs a fold-level randomizer; unlinkability of an
+    /// uncompressed proof additionally needs the child data hidden (compression,
+    /// or a second randomized pass). Both are future work, tracked separately.
     pub fn rerandomize<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: Pcd<C, R, H>,
         rng: &mut RNG,
     ) -> Result<Pcd<C, R, H>> {
+        let seeded_trivial = self.seeded_trivial_pcd(rng);
+
         // The Rerandomize step's witness() returns the left input's data as
-        // output data, preserving it through rerandomization. Both children
-        // are the proof itself, so the bootstrap proof is not involved.
+        // output data, preserving it through rerandomization. Its right child
+        // is the valid, cached seeded unit proof.
         self.fuse(
             rng,
             step::internal::rerandomize::Rerandomize::new(),
             (),
-            pcd.clone(),
             pcd,
+            seeded_trivial,
         )
         .map(|(pcd, ())| pcd)
     }

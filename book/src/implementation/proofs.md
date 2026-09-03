@@ -175,18 +175,17 @@ all accumulated claims from previous steps.
 
 ## Rerandomization
 
-The `rerandomize` method produces a new proof that
-verifies identically but reveals nothing about the original proof's randomness:
+The `rerandomize` method produces a fresh proof that verifies identically:
 
 ```rust
 let fresh_pcd = app.rerandomize(pcd, &mut rng)?;
 ```
 
-This is useful for privacy-preserving applications where proof linkability
-must be prevented.
+It is intended to support privacy-preserving applications, but the current
+construction does not yet establish zero knowledge or unlinkability.
 
-Internally, rerandomization folds the input proof with itself using a dedicated
-rerandomization step.
+Internally, rerandomization folds the input proof with a cached seeded `Pcd<()>`
+using a dedicated rerandomization step.
 
 ## Unified Accumulator Structure
 
