@@ -15,6 +15,9 @@ mod _09_eval;
 mod _10_p;
 mod _11_circuits;
 pub(crate) mod claims;
+// Gates itself behind `unstable-fuzzing` with an inner `#![cfg]`, so the
+// pipeline carries no feature attribute; reached through `crate::unstable`.
+pub(crate) mod patcher;
 
 use claims::FuseProofSource;
 use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};

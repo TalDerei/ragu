@@ -36,9 +36,20 @@
 //! * [`Playback`] — the independent cross-check: re-runs the same synthesis
 //!   and verifies an injected witness live, so a recorder capture bug cannot
 //!   silently corrupt a verdict.
-//! * [`capture`] / [`playback`] — the [`Circuit`](ragu_circuits::Circuit)
-//!   entry points: run a circuit's `witness` (and its output serialization)
-//!   through the drivers, exposing the wires of its public instance.
+//! * [`capture`] / [`capture_with_stage_values`] / [`playback`] — the
+//!   [`Circuit`](ragu_circuits::Circuit) entry points: run a circuit's
+//!   `witness` (and its output serialization) through the drivers, exposing
+//!   the wires of its public instance. [`capture_with_stage_values`] takes
+//!   the honest stage values from a harness that has the stage witnesses, so
+//!   even a staged [`MultiStage`](ragu_circuits::staging::MultiStage)
+//!   circuit — every internal recursion circuit is one — yields a
+//!   self-consistent capture that names its reserved stage wires.
+//! * [`forced_by`] — the static half of the pinned-input oracle: the wires
+//!   a declared input set determines, so a declared output that is not
+//!   among them is flagged before any cheat is tried.
+//! * [`Prepared`] — the pinned-input oracle with the input-forced part of
+//!   the witness solved once, for harnesses that probe the same capture
+//!   thousands of times.
 //! * [`selftest`] — a planted under-constrained circuit whose signal must
 //!   fire, so the soundness direction is never vacuous.
 //!
@@ -50,9 +61,11 @@ mod discover;
 mod oracle;
 mod recorder;
 
-pub use circuit::{Capture, capture, playback};
-pub use discover::{allocation_waste, discover_free_advice};
-pub use oracle::{ProbeOutcome, SweepReport, Violation, determinism_probe, determinism_sweep};
+pub use circuit::{Capture, capture, capture_with_stage_values, playback};
+pub use discover::{allocation_waste, discover_free_advice, forced_by};
+pub use oracle::{
+    Prepared, ProbeOutcome, SweepReport, Violation, determinism_probe, determinism_sweep,
+};
 pub use recorder::{
     Event, Playback, Recorder, TrackingAllocator, constraints_hold, repair, selftest,
     underconstrained_derived,

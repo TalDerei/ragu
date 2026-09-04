@@ -40,11 +40,14 @@
 //!   richer harness on top of [`determinism_probe`] (the fuzz target's
 //!   mutation vocabulary is the model).
 
-use ragu_arithmetic::ff::Field;
+use ragu_arithmetic::ff::{Field, PrimeFieldBits};
 
 use super::{
     discover::discover_free_advice,
-    recorder::{Event, constraints_hold, repair},
+    recorder::{
+        Event, Recorder, constraints_hold, constraints_hold_over, deduce_by_cases, repair,
+        repair_over,
+    },
 };
 
 /// The outcome of one [`determinism_probe`].
@@ -147,6 +150,184 @@ pub fn determinism_probe<F: Field>(
     }
 }
 
+/// A circuit prepared for many probes of the pinned-input oracle.
+///
+/// [`determinism_probe`] re-derives the whole witness from the inputs on
+/// every call. Most of that work never changes: a wire the inputs alone
+/// force (see [`forced_by`](super::forced_by)) takes the same value in every
+/// witness that agrees with the honest one on the inputs — the solver's
+/// deductions are unique consequences, so a cheat that disagrees with such a
+/// wire shows up as a violated constraint, never as a different value. The
+/// preparation therefore solves that part once, from the honest capture. A
+/// probe then starts from `known = inputs ∪ forced ∪ cheats` and solves only
+/// the *residual* wires — hints the inputs do not determine, and whatever
+/// reads them — over only the events that mention a residual or cheated
+/// wire. Every other event sees nothing but honest values and holds, so the
+/// acceptance check is exact over that subset too.
+///
+/// The verdict is [`determinism_probe`]'s, with one difference in the
+/// prover's favour: with far fewer unknowns the linear-cluster solver is
+/// within its cap more often, so a probe the full repair would have left
+/// `Rejected` can come back conclusive. Rejections are never signals, so
+/// this only adds coverage, and the evidence of a violation is still a
+/// complete witness that [`constraints_hold`] accepts.
+pub struct Prepared<F> {
+    events: Vec<Event<F>>,
+    honest: Vec<F>,
+    inputs: Vec<usize>,
+    outputs: Vec<usize>,
+    /// Known before any cheat: the ONE wire, the inputs, and what they force.
+    base_known: Vec<bool>,
+    /// The events that mention a wire outside `base_known`, ascending.
+    residual: Vec<usize>,
+    /// Whether each event is in `residual`.
+    is_residual: Vec<bool>,
+    /// For each wire, the events that mention it.
+    events_of: Vec<Vec<usize>>,
+}
+
+impl<F: PrimeFieldBits> Prepared<F> {
+    /// Prepares `events` at the satisfying witness `honest` for probes that
+    /// pin `inputs` and watch `outputs`.
+    pub fn new(
+        events: Vec<Event<F>>,
+        honest: Vec<F>,
+        inputs: Vec<usize>,
+        outputs: Vec<usize>,
+    ) -> Self {
+        debug_assert!(
+            constraints_hold(&events, &honest),
+            "the pinned-input oracle needs an honest, satisfying capture",
+        );
+        let n = honest.len();
+        let mut base_known = vec![false; n];
+        base_known[Recorder::<F>::ONE] = true;
+        for &w in &inputs {
+            base_known[w] = true;
+        }
+        let mut forced = honest.clone();
+        deduce_by_cases(&events, &mut forced, &mut base_known);
+        debug_assert!(
+            forced == honest,
+            "what the inputs force is the honest value at a satisfying witness",
+        );
+
+        let mut events_of = vec![Vec::new(); n];
+        let mut residual = Vec::new();
+        let mut is_residual = vec![false; events.len()];
+        for (i, ev) in events.iter().enumerate() {
+            let mut touches_residual = false;
+            for w in wires_of(ev) {
+                events_of[w].push(i);
+                touches_residual |= !base_known[w];
+            }
+            if touches_residual {
+                residual.push(i);
+                is_residual[i] = true;
+            }
+        }
+
+        Prepared {
+            events,
+            honest,
+            inputs,
+            outputs,
+            base_known,
+            residual,
+            is_residual,
+            events_of,
+        }
+    }
+
+    /// The honest witness, indexed by wire.
+    pub fn honest(&self) -> &[F] {
+        &self.honest
+    }
+
+    /// The pinned inputs.
+    pub fn inputs(&self) -> &[usize] {
+        &self.inputs
+    }
+
+    /// The watched outputs.
+    pub fn outputs(&self) -> &[usize] {
+        &self.outputs
+    }
+
+    /// How many events a probe solves and checks, out of how many the
+    /// capture has.
+    pub fn residual_events(&self) -> (usize, usize) {
+        (self.residual.len(), self.events.len())
+    }
+
+    /// [`determinism_sweep`] through this prepared capture: every cheatable
+    /// wire nudged, one at a time, at a fraction of the cost.
+    pub fn sweep(&self) -> SweepReport<F> {
+        sweep_with(&self.events, &self.honest, &self.inputs, |cheats| {
+            self.probe(cheats)
+        })
+    }
+
+    /// One probe: [`determinism_probe`] from the prepared state.
+    pub fn probe(&self, cheats: &[(usize, F)]) -> ProbeOutcome<F> {
+        let mut values = self.honest.clone();
+        let mut known = self.base_known.clone();
+        // A cheat on a wire the inputs force is allowed — it asks whether a
+        // different value passes — but the events that would contradict it
+        // lie outside the residual, so they are pulled in.
+        let mut extra: Vec<usize> = Vec::new();
+        for &(wire, value) in cheats {
+            debug_assert!(!self.inputs.contains(&wire), "cheating a pinned input");
+            values[wire] = value;
+            known[wire] = true;
+            for &e in &self.events_of[wire] {
+                if !self.is_residual[e] && !extra.contains(&e) {
+                    extra.push(e);
+                }
+            }
+        }
+        let active = || {
+            self.residual
+                .iter()
+                .chain(extra.iter())
+                .map(|&i| &self.events[i])
+        };
+
+        repair_over(active(), &mut values, &mut known);
+        if !constraints_hold_over(active(), &values) {
+            return ProbeOutcome::Rejected;
+        }
+
+        let moved: Vec<(usize, F, F)> = self
+            .outputs
+            .iter()
+            .copied()
+            .filter(|&o| values[o] != self.honest[o])
+            .map(|o| (o, self.honest[o], values[o]))
+            .collect();
+        if moved.is_empty() {
+            ProbeOutcome::OutputsPinned
+        } else {
+            ProbeOutcome::OutputsMoved {
+                witness: values,
+                moved,
+            }
+        }
+    }
+}
+
+/// The wires an event mentions.
+fn wires_of<F>(ev: &Event<F>) -> Vec<usize> {
+    match ev {
+        Event::Lin { out, terms } => core::iter::once(*out)
+            .chain(terms.iter().map(|(w, _)| *w))
+            .collect(),
+        Event::Gate { a, b, c } => vec![*a, *b, *c],
+        Event::Enforce { terms } => terms.iter().map(|(w, _)| *w).collect(),
+        Event::Extra { c, d } => vec![*c, *d],
+    }
+}
+
 /// Sweeps the pinned-input oracle over every cheatable wire: each wire
 /// [`discover_free_advice`] reports outside `inputs` is nudged to
 /// `honest + 1` and (when distinct from both) to `0`, one wire at a time.
@@ -170,7 +351,19 @@ pub fn determinism_sweep<F: Field>(
         constraints_hold(events, honest),
         "the pinned-input oracle needs an honest, satisfying capture",
     );
+    sweep_with(events, honest, inputs, |cheats| {
+        determinism_probe(events, honest, inputs, outputs, cheats)
+    })
+}
 
+/// The sweep's loop over any probe: [`determinism_sweep`]'s policy of which
+/// wires to nudge and to what, tallied into a [`SweepReport`].
+fn sweep_with<F: Field>(
+    events: &[Event<F>],
+    honest: &[F],
+    inputs: &[usize],
+    probe: impl Fn(&[(usize, F)]) -> ProbeOutcome<F>,
+) -> SweepReport<F> {
     let mut report = SweepReport {
         violations: Vec::new(),
         pinned: 0,
@@ -188,7 +381,7 @@ pub fn determinism_sweep<F: Field>(
         let mut violation = None;
         let mut any_pinned = false;
         for value in tries {
-            match determinism_probe(events, honest, inputs, outputs, &[(wire, value)]) {
+            match probe(&[(wire, value)]) {
                 ProbeOutcome::OutputsMoved { witness, moved } => {
                     violation = Some(Violation {
                         advice: wire,
@@ -358,5 +551,76 @@ mod tests {
              and neutralized",
         );
         Ok(())
+    }
+
+    /// The prepared probe gives the full probe's verdict: the planted square
+    /// moves, an accomplice-absorbed cheat is pinned, and a cheat on a wire
+    /// the inputs force is rejected — while solving only the events that can
+    /// change.
+    #[test]
+    fn prepared_probe_matches_full_probe() {
+        // Planted bug: `square` is free, so cheating it moves the output.
+        let root_honest = Fp::from(7u64);
+        let mut rec = Recorder::<Fp>::new();
+        let root = rec.push_wire(root_honest);
+        let square = rec.push_wire(root_honest.square());
+        let prepared = Prepared::new(
+            rec.events.clone(),
+            rec.values.clone(),
+            vec![root],
+            vec![square],
+        );
+        let cheat = [(square, root_honest.square() + Fp::ONE)];
+        match (
+            determinism_probe(&rec.events, &rec.values, &[root], &[square], &cheat),
+            prepared.probe(&cheat),
+        ) {
+            (
+                ProbeOutcome::OutputsMoved { moved: full, .. },
+                ProbeOutcome::OutputsMoved { moved: fast, .. },
+            ) => assert_eq!(full, fast),
+            other => panic!("both must report the move: {other:?}"),
+        }
+
+        // Accomplices: h1 + h2 = input, output reads input − (h1 + h2) + input.
+        let mut rec = Recorder::<Fp>::new();
+        let input = rec.push_wire(Fp::from(9u64));
+        let h1 = rec.push_wire(Fp::from(2u64));
+        let h2 = rec.push_wire(Fp::from(7u64));
+        let sum = rec.add(|lc| lc.add(&h1).add(&h2));
+        rec.enforce_zero(|lc| lc.add(&sum).add_term(&input, Coeff::NegativeOne))
+            .unwrap();
+        let output = rec.add(|lc| {
+            lc.add(&input)
+                .add(&input)
+                .add_term(&sum, Coeff::NegativeOne)
+        });
+        let prepared = Prepared::new(
+            rec.events.clone(),
+            rec.values.clone(),
+            vec![input],
+            vec![output],
+        );
+        // `sum` and `output` are forced by `input`; only the hints' sum
+        // definition is residual.
+        assert_eq!(prepared.residual_events(), (1, 3));
+        let cheat = [(h1, Fp::from(3u64))];
+        assert!(matches!(
+            determinism_probe(&rec.events, &rec.values, &[input], &[output], &cheat),
+            ProbeOutcome::OutputsPinned
+        ));
+        assert!(matches!(
+            prepared.probe(&cheat),
+            ProbeOutcome::OutputsPinned
+        ));
+
+        // A cheat on the forced `sum` pulls its events back in and is
+        // rejected by the enforce, in both.
+        let cheat = [(sum, Fp::from(99u64))];
+        assert!(matches!(
+            determinism_probe(&rec.events, &rec.values, &[input], &[output], &cheat),
+            ProbeOutcome::Rejected
+        ));
+        assert!(matches!(prepared.probe(&cheat), ProbeOutcome::Rejected));
     }
 }

@@ -22,9 +22,11 @@
 //! `ragu_pcd`'s own tests — an internal recursion circuit. See the
 //! [parent module](super) for the `Circuit`-level entry points.
 
+use std::collections::BTreeSet;
+
 use ragu_arithmetic::{
     Coeff,
-    ff::{Field, PrimeField},
+    ff::{Field, PrimeField, PrimeFieldBits},
 };
 use ragu_core::{
     Result,
@@ -631,12 +633,23 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
     for &w in free {
         known[w] = true;
     }
+    repair_over(events.iter(), values, &mut known);
+}
 
+/// [`repair`] over any view of the events, from a caller-seeded known set:
+/// the wires flagged in `known` hold (they are never assigned), and
+/// everything else is solved from the events the view yields. This is what
+/// lets a prepared probe solve only the events that can still change.
+pub(super) fn repair_over<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>> + Clone,
+    values: &mut [F],
+    known: &mut [bool],
+) {
     loop {
-        propagate(events, values, &mut known);
+        propagate(events.clone(), values, known);
         // Propagation has stalled; try to crack a coupled linear cluster.
         // If that solves nothing new, the fixpoint is reached.
-        if !cluster_solve(events, values, &mut known, true) {
+        if !cluster_solve(events.clone(), values, known, true) {
             break;
         }
     }
@@ -661,18 +674,289 @@ pub fn repair<F: Field>(events: &[Event<F>], values: &mut [F], free: &[usize]) {
 /// there, and says so.
 pub(super) fn deduce<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
     loop {
-        propagate(events, values, known);
-        if !cluster_solve(events, values, known, false) {
+        propagate(events.iter(), values, known);
+        if !cluster_solve(events.iter(), values, known, false) {
             break;
         }
     }
 }
 
-/// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]).
-fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
+/// A recomposition of a boolean decomposition: the virtual wire `out`, the
+/// bit wires in ascending weight order, and the weight `base` carried by the
+/// lowest bit.
+struct Decomposition<F> {
+    out: usize,
+    bits: Vec<usize>,
+    base: F,
+}
+
+/// The [`Event::Lin`] combinations that recompose a boolean decomposition:
+/// every term is a [`Boolean::alloc`](ragu_primitives::Boolean::alloc) wire
+/// and the weights are a doubling chain `c, 2c, 4c, …` of at most
+/// [`PrimeField::CAPACITY`] terms.
+///
+/// Such a combination admits exactly one boolean assignment per value of
+/// `out`: the weighted sums cover `c · [0, 2^n)`, injective because
+/// `n <= CAPACITY` keeps `2^n` inside the field, and scaling by a nonzero `c`
+/// is a bijection. So `out` forces every bit.
+///
+/// Neither [`deduce`] nor a bounded case split can reach that on its own. The
+/// bits are coupled through this one constraint and nothing else, so no
+/// single-unknown rule applies, `cluster_solve` sees a cluster far wider than
+/// [`CLUSTER_SOLVE_CAP`], and flipping one bit while its `n - 1` neighbours
+/// are still unknown leaves the constraint satisfiable, so neither branch
+/// dies. Recognising the shape is what closes that gap.
+fn decompositions<F: PrimeFieldBits>(
+    events: &[Event<F>],
+    booleans: &[usize],
+) -> Vec<Decomposition<F>> {
+    // Wires above the highest boolean are not booleans, so a lookup past the
+    // end reads as `false` rather than needing the full wire count here.
+    let mut is_boolean = vec![false; booleans.iter().copied().max().map_or(0, |w| w + 1)];
+    for &w in booleans {
+        is_boolean[w] = true;
+    }
+
+    events
+        .iter()
+        .filter_map(|ev| {
+            let Event::Lin { out, terms } = ev else {
+                return None;
+            };
+            if terms.len() < 2 || terms.len() > F::CAPACITY as usize {
+                return None;
+            }
+            let base = terms[0].1;
+            if bool::from(base.is_zero()) {
+                return None;
+            }
+            let mut weight = base;
+            let mut bits = Vec::with_capacity(terms.len());
+            let mut seen = BTreeSet::new();
+            for (i, &(wire, coeff)) in terms.iter().enumerate() {
+                if i > 0 {
+                    weight = weight.double();
+                }
+                // A repeated wire carries the *sum* of its weights, which is
+                // not a power of two, so the assignment is no longer unique
+                // and reading bit `i` off the output would be wrong.
+                if coeff != weight
+                    || !is_boolean.get(wire).copied().unwrap_or(false)
+                    || !seen.insert(wire)
+                {
+                    return None;
+                }
+                bits.push(wire);
+            }
+            Some(Decomposition {
+                out: *out,
+                bits,
+                base,
+            })
+        })
+        .collect()
+}
+
+/// Assigns the bits of every decomposition whose `out` is known, reporting
+/// whether anything was newly assigned.
+///
+/// A known `out` is divided through by the base weight and read off in
+/// little-endian order. An `out` outside `c · [0, 2^n)` has no boolean
+/// decomposition at all; the low `n` bits are still written, leaving the
+/// recomposition visibly violated so that
+/// [`branch_consistent`] retires the branch that produced it.
+fn deduce_decompositions<F: PrimeFieldBits>(
+    decompositions: &[Decomposition<F>],
+    values: &mut [F],
+    known: &mut [bool],
+) -> bool {
+    let mut progress = false;
+    for decomposition in decompositions {
+        if !known[decomposition.out] || decomposition.bits.iter().all(|&w| known[w]) {
+            continue;
+        }
+        let Some(inverse) = Option::<F>::from(decomposition.base.invert()) else {
+            continue;
+        };
+        let le_bits = (values[decomposition.out] * inverse).to_le_bits();
+        for (i, &wire) in decomposition.bits.iter().enumerate() {
+            if known[wire] {
+                continue;
+            }
+            values[wire] = if le_bits[i] { F::ONE } else { F::ZERO };
+            known[wire] = true;
+            progress = true;
+        }
+    }
+    progress
+}
+
+/// [`deduce`] extended with case analysis on booleans, for the static
+/// checks.
+///
+/// A [`Boolean::alloc`](ragu_primitives::Boolean::alloc) wire is pinned to
+/// `{0, 1}` by `a·b = 0` and `a + b = 1`, which no single-unknown rule can
+/// split — yet one of its two values may be impossible given what else is
+/// known. So when deduction stalls, each unknown boolean is tried both ways,
+/// each branch is deduced to its own fixpoint, and the value is committed
+/// when exactly one branch survives. A branch dies on a fully-known
+/// constraint it violates, or on a square it cannot take: an `alloc_square`
+/// gate `r·r = s` (its operands tied by a copy constraint) whose `s` is known
+/// and is not a square. That root test is the one place the case split needs
+/// field arithmetic beyond linear algebra. The root itself is never assigned:
+/// its sign is genuine freedom.
+///
+/// Boolean decompositions are handled separately, by [`decompositions`]:
+/// their bits are coupled through a single wide constraint that no case split
+/// on one bit can break, so the shape is recognised and read off directly.
+///
+/// Everything committed is still a unique consequence of the known set
+/// (the other branch is unsatisfiable), so this is sound for
+/// [`forced_by`](super::forced_by) and for seeding a prepared probe. It is
+/// not run inside `repair`, where the cost per probe would matter and the
+/// guessing tier already picks a branch, nor inside discovery, which calls
+/// the solver once per free wire.
+pub(super) fn deduce_by_cases<F: PrimeFieldBits>(
+    events: &[Event<F>],
+    values: &mut [F],
+    known: &mut [bool],
+) {
+    let booleans = boolean_wires(events);
+    let squares = square_gates(events);
+    let decompositions = decompositions(events, &booleans);
+    loop {
+        deduce(events, values, known);
+        let mut committed = deduce_decompositions(&decompositions, values, known);
+        for &bit in &booleans {
+            if known[bit] {
+                continue;
+            }
+            let mut survivors = Vec::with_capacity(2);
+            for value in [F::ZERO, F::ONE] {
+                let mut branch_values = values.to_vec();
+                let mut branch_known = known.to_vec();
+                branch_values[bit] = value;
+                branch_known[bit] = true;
+                deduce(events, &mut branch_values, &mut branch_known);
+                if branch_consistent(events, &branch_values, &branch_known, &squares) {
+                    survivors.push((branch_values, branch_known));
+                }
+            }
+            if survivors.len() == 1 {
+                let (branch_values, branch_known) = survivors.pop().unwrap();
+                values.copy_from_slice(&branch_values);
+                known.copy_from_slice(&branch_known);
+                committed = true;
+            }
+        }
+        if !committed {
+            break;
+        }
+    }
+}
+
+/// The wires `Boolean::alloc` pins to `{0, 1}`: the `a` operand of a gate
+/// `a·b = c` whose `c` is enforced to zero and whose operands are enforced
+/// to sum to one.
+fn boolean_wires<F: Field>(events: &[Event<F>]) -> Vec<usize> {
+    let mut zeroed = std::collections::HashSet::new();
+    let mut sum_to_one = std::collections::HashSet::new();
+    for ev in events {
+        if let Event::Enforce { terms } = ev {
+            match terms.as_slice() {
+                [(w, _)] => {
+                    zeroed.insert(*w);
+                }
+                [_, _, _] => {
+                    if let Some(&(_, k)) = terms.iter().find(|(w, _)| *w == Recorder::<F>::ONE) {
+                        let others: Vec<usize> = terms
+                            .iter()
+                            .filter(|(w, c)| *w != Recorder::<F>::ONE && *c == -k)
+                            .map(|(w, _)| *w)
+                            .collect();
+                        if let [x, y] = others[..] {
+                            sum_to_one.insert((x.min(y), x.max(y)));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Gate { a, b, c }
+                if zeroed.contains(c) && sum_to_one.contains(&(*a.min(b), *a.max(b))) =>
+            {
+                Some(*a)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `alloc_square` gates `r·r = s` — a gate whose operands are tied by a
+/// copy constraint — as `(root, square)`.
+fn square_gates<F: Field>(events: &[Event<F>]) -> Vec<(usize, usize)> {
+    let tied: std::collections::HashSet<(usize, usize)> = events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Enforce { terms } => match terms.as_slice() {
+                [(x, cx), (y, cy)] if *cx == -*cy => Some((*x.min(y), *x.max(y))),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            Event::Gate { a, b, c } if tied.contains(&(*a.min(b), *a.max(b))) => Some((*a, *c)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a branch of the case analysis can still be satisfied: no
+/// fully-known constraint is violated, and every square gate whose square
+/// is known but whose root is not has a root to take.
+fn branch_consistent<F: Field>(
+    events: &[Event<F>],
+    values: &[F],
+    known: &[bool],
+    squares: &[(usize, usize)],
+) -> bool {
+    let holds = events.iter().all(|ev| match ev {
+        Event::Lin { out, terms } => {
+            !(known[*out] && terms.iter().all(|(w, _)| known[*w]))
+                || values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum()
+        }
+        Event::Gate { a, b, c } => {
+            !(known[*a] && known[*b] && known[*c]) || values[*a] * values[*b] == values[*c]
+        }
+        Event::Enforce { terms } => {
+            !terms.iter().all(|(w, _)| known[*w])
+                || terms.iter().map(|(w, c)| values[*w] * c).sum::<F>() == F::ZERO
+        }
+        Event::Extra { c, d } => !(known[*c] && known[*d]) || values[*c] * values[*d] == F::ZERO,
+    });
+    holds
+        && squares.iter().all(|&(root, square)| {
+            known[root] || !known[square] || bool::from(values[square].sqrt().is_some())
+        })
+}
+
+/// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]), over any
+/// view of the events.
+fn propagate<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>> + Clone,
+    values: &mut [F],
+    known: &mut [bool],
+) {
     loop {
         let mut changed = false;
-        for ev in events {
+        for ev in events.clone() {
             match ev {
                 Event::Lin { out, terms } => {
                     if !known[*out] {
@@ -815,8 +1099,8 @@ fn propagate<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]
 /// by then every deduction available has already been made. With `guess`
 /// false the guessing tier is skipped altogether, which is what [`deduce`]
 /// needs: a wire left unknown is then genuinely undetermined.
-fn cluster_solve<F: Field>(
-    events: &[Event<F>],
+fn cluster_solve<'a, F: Field + 'a>(
+    events: impl Iterator<Item = &'a Event<F>>,
     values: &mut [F],
     known: &mut [bool],
     guess: bool,
@@ -973,7 +1257,15 @@ fn cluster_solve<F: Field>(
 
 /// After repair, do all captured constraints hold?
 pub fn constraints_hold<F: Field>(events: &[Event<F>], values: &[F]) -> bool {
-    events.iter().all(|ev| match ev {
+    constraints_hold_over(events.iter(), values)
+}
+
+/// [`constraints_hold`] over any view of the events.
+pub(super) fn constraints_hold_over<'a, F: Field + 'a>(
+    mut events: impl Iterator<Item = &'a Event<F>>,
+    values: &[F],
+) -> bool {
+    events.all(|ev| match ev {
         Event::Lin { out, terms } => {
             values[*out] == terms.iter().map(|(w, c)| values[*w] * c).sum()
         }

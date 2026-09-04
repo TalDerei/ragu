@@ -63,6 +63,16 @@ macro_rules! unified_instance_type {
     };
 }
 
+/// Maps a field type to the number of $k(Y)$ wires it writes.
+macro_rules! unified_wires {
+    (Point) => {
+        2
+    };
+    (Element) => {
+        1
+    };
+}
+
 /// Creates a `Slot` initializer for a field (works for both Point and Element).
 macro_rules! unified_slot_new {
     (Point, $field:ident, $instance:expr) => {
@@ -241,8 +251,20 @@ macro_rules! define_unified_instance {
                 assert!(flag, "slot `{name}` not covered by any circuit");
             }
 
+            /// Asserts that every slot has been covered, in declaration order.
             fn assert_complete(self) {
-                $( Self::assert_covered(self.$field, stringify!($field)); )+
+                self.for_each_slot(|name, covered, _| Self::assert_covered(covered, name));
+            }
+
+            /// Walks the slots in the output's $k(Y)$ order, handing `f` each
+            /// slot's name, whether a circuit has covered it, and the number
+            /// of $k(Y)$ wires it writes: two for a point, one for an element.
+            ///
+            /// `assert_complete` walks it to check every slot; the patcher
+            /// harness (see `fuse::patcher`) walks it to read a circuit's
+            /// output declaration off its coverage.
+            pub fn for_each_slot(&self, mut f: impl FnMut(&'static str, bool, usize)) {
+                $( f(stringify!($field), self.$field, unified_wires!($field_type)); )+
             }
         }
     };

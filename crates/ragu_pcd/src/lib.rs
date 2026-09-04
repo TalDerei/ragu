@@ -35,6 +35,9 @@ pub mod header;
 mod internal;
 mod proof;
 pub mod step;
+// Gates itself behind `unstable-fuzzing` with an inner `#![cfg]` and hides
+// itself from the docs, so no feature attribute appears here.
+pub mod unstable;
 mod verify;
 
 use alloc::collections::BTreeMap;
