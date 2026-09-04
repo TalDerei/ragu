@@ -6,6 +6,7 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+use core::fmt::Debug;
 use ragu_arithmetic::{
     CurveAffine, DeferredField, FixedGenerators,
     ff::{Field, PrimeField},
@@ -28,7 +29,7 @@ use ragu_circuits::{
 /// Backends are currently selected by type and cannot carry per-application
 /// state. If implementations need device handles or caches, Ragu can store the
 /// selected backend as a value while retaining static dispatch.
-pub trait Backend: Send + Sync + 'static {
+pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// Evaluates a sparse polynomial at `point`.
     ///
     /// # Correctness
