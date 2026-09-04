@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 use core::fmt::Debug;
+
 use ragu_arithmetic::{
     CurveAffine, DeferredField, FixedGenerators,
     ff::{Field, PrimeField},
