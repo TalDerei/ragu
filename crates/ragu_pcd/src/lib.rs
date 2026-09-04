@@ -25,6 +25,9 @@ extern crate alloc;
 extern crate std;
 
 mod backend;
+#[cfg(test)]
+#[path = "../tests/backend_equivalence/mod.rs"]
+mod backend_equivalence;
 mod fuse;
 #[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;

@@ -10,6 +10,13 @@
 #![allow(dead_code)]
 
 pub(crate) mod builder;
+// Keep this beneath `proof` so the equivalence helper can inspect private
+// `Proof` fields while the backend-equivalence suite remains consolidated.
+// TODO: Revisit this temporary layout; for now, it keeps all
+// backend-equivalence tests consolidated in a single subdirectory.
+#[cfg(test)]
+#[path = "../../tests/backend_equivalence/proof.rs"]
+mod proof_equivalence;
 
 use alloc::{sync::Arc, vec, vec::Vec};
 
