@@ -49,48 +49,6 @@ impl<T: Backend + sealed::Sealed> SelectableBackend for T {
 }
 
 #[cfg(test)]
-pub(crate) mod tracking {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-
-    use ragu_backend::Backend;
-
-    use super::sealed;
-
-    static MSM_CALLS: AtomicUsize = AtomicUsize::new(0);
-
-    /// Test backend that records whether PCD dispatch reaches `Backend::msm`.
-    #[derive(Clone, Copy, Debug, Default)]
-    pub(crate) struct TrackingBackend;
-
-    impl TrackingBackend {
-        pub(crate) fn reset_msm_calls() {
-            MSM_CALLS.store(0, Ordering::Relaxed);
-        }
-
-        pub(crate) fn msm_calls() -> usize {
-            MSM_CALLS.load(Ordering::Relaxed)
-        }
-    }
-
-    impl Backend for TrackingBackend {
-        fn msm<
-            'a,
-            C: ragu_arithmetic::CurveAffine,
-            A: IntoIterator<Item = &'a C::Scalar>,
-            Bases: IntoIterator<Item = &'a C>,
-        >(
-            coeffs: A,
-            bases: Bases,
-        ) -> C::Curve
-        where
-            Bases::IntoIter: Clone + Sync,
-        {
-            MSM_CALLS.fetch_add(1, Ordering::Relaxed);
-            ragu_backend::ReferenceBackend::msm(coeffs, bases)
-        }
-    }
-
-    impl sealed::Sealed for TrackingBackend {
-        type Verifier = Self;
-    }
+impl sealed::Sealed for crate::backend_equivalence::TrackingBackend {
+    type Verifier = Self;
 }

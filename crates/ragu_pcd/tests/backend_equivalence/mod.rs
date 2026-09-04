@@ -1,7 +1,9 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use proptest::{prelude::*, test_runner::TestCaseResult};
 use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
 use ragu_arithmetic::{Cycle, ff::Field};
-use ragu_backend::ReferenceBackend;
+use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     polynomials::{ProductionRank, Rank, sparse},
     registry::CircuitIndex,
@@ -12,8 +14,42 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
     Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
-    backend::tracking::TrackingBackend, step::internal::trivial::Trivial,
+    step::internal::trivial::Trivial,
 };
+
+static TRACKING_MSM_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+/// Test backend that records whether PCD dispatch reaches `Backend::msm`.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TrackingBackend;
+
+impl TrackingBackend {
+    fn reset_msm_calls() {
+        TRACKING_MSM_CALLS.store(0, Ordering::Relaxed);
+    }
+
+    fn msm_calls() -> usize {
+        TRACKING_MSM_CALLS.load(Ordering::Relaxed)
+    }
+}
+
+impl Backend for TrackingBackend {
+    fn msm<
+        'a,
+        C: ragu_arithmetic::CurveAffine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+    >(
+        coeffs: A,
+        bases: Bases,
+    ) -> C::Curve
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        TRACKING_MSM_CALLS.fetch_add(1, Ordering::Relaxed);
+        ReferenceBackend::msm(coeffs, bases)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VerifierDecision {
