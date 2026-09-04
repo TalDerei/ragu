@@ -9,7 +9,7 @@
 //! The internal circuits' honest witnesses exist only mid-fuse — they depend
 //! on every interstitial witness and on the shared instance. A finished
 //! [`Proof`](crate::Proof) does not carry them, so there is no post-hoc seam
-//! the way there is for proof corruption in [`fuzz_utils`](crate::fuzz_utils).
+//! the way there is for proof corruption in [`corrupt`](crate::fuzzing::corrupt).
 //!
 //! And the *specification* the pinned-input oracle judges against — which
 //! wires each circuit is responsible for — is knowledge of the circuits, not
@@ -18,14 +18,14 @@
 //! the second is exactly the bug the oracle hunts. So the declaration has to
 //! come from the side that knows what each circuit promises.
 //!
-//! [`capture_internal_circuits`](Application::capture_internal_circuits) is
+//! [`capture_internal_circuits`] is
 //! that seam: it reproduces the fuse witness-generation (calling the same
 //! private helpers `fuse` does) and, instead of tracing each internal
 //! circuit into a proof, hands it, its honest witness and its
 //! [`CircuitSpec`] to an [`InternalCircuitVisitor`]. A patcher harness
 //! supplies a visitor that captures each circuit and hunts
 //! under-constraints; this module itself depends on nothing in
-//! `ragu_testing`, exactly like `fuzz_utils`.
+//! `ragu_testing`, exactly like `fuzzing::corrupt`.
 //!
 //! # What a circuit is responsible for
 //!
@@ -58,9 +58,11 @@
 //!
 //! Like the rest of the fuzzing surface it is gated behind `unstable-fuzzing`
 //! — by the inner attribute at the top of this file, so the pipeline modules
-//! carry none — and is **not** part of the stable API: harnesses reach it
-//! through [`unstable`](crate::unstable), which re-exports the vocabulary and
-//! wraps the entry points as free functions. It deliberately mirrors
+//! carry none — and is **not** part of the stable API. The source lives in
+//! `src/fuzzing/` with the rest of that surface, but the module is mounted
+//! under `fuse` (see `fuse/mod.rs`) because it calls the pipeline's
+//! `pub(super)` steps; harnesses reach it through
+//! [`fuzzing::patcher`](crate::fuzzing::patcher). It deliberately mirrors
 //! [`fuse`](Application::fuse) rather than hooking into it, so the production
 //! proving path is untouched; a change to `fuse` that this mirror does not
 //! track will surface as a failing patcher test.
@@ -220,7 +222,7 @@ impl CircuitSpec {
 
 /// Receives each native internal recursion circuit, its specification and
 /// its honest witness during
-/// [`capture_internal_circuits`](crate::unstable::capture_internal_circuits).
+/// [`capture_internal_circuits`].
 ///
 /// `make_witness` builds the circuit's honest witness on demand; it is a
 /// builder rather than a value so the visitor can run the circuit through
@@ -418,79 +420,84 @@ fn stage_wire_indices<F: Field, R: Rank, S: Stage<F, R> + Default>(
     select(rebound)
 }
 
+/// Runs the fuse witness-generation for `step` over `left` and `right` and
+/// hands each native internal recursion circuit, its [`CircuitSpec`] and its
+/// honest witness to `visitor`, in place of tracing them into a proof.
+///
+/// This mirrors [`fuse`](Application::fuse) up to the internal-circuit step;
+/// the challenges, interstitial witnesses, and shared instance are computed
+/// exactly as the prover computes them. The `unified` instance is rebuilt
+/// fresh for each circuit from the finished builder (its coverage
+/// bookkeeping does not affect the emitted constraints), so no proof is
+/// produced and the children's proofs are not consumed for one. That fresh
+/// coverage is also what makes each circuit's reported `Coverage` *its own*
+/// contribution, which the spec reads as the unified slots it is responsible
+/// for.
+///
+/// # Errors
+///
+/// Propagates any error from witness generation, from laying out a stage, or
+/// from the visitor.
+pub fn capture_internal_circuits<'source, C, R, const HEADER_SIZE: usize, B, RNG, S, V>(
+    app: &Application<'_, C, R, HEADER_SIZE, B>,
+    rng: &mut RNG,
+    step: S,
+    witness: S::Witness<'source>,
+    left: Pcd<C, R, S::Left>,
+    right: Pcd<C, R, S::Right>,
+    visitor: &mut V,
+) -> Result<()>
+where
+    C: Cycle,
+    R: Rank,
+    B: crate::SelectableBackend,
+    RNG: CryptoRng,
+    S: Step<C>,
+    V: InternalCircuitVisitor<C>,
+{
+    app.capture_internal_circuits_at(rng, step, witness, left, right, false, visitor)
+}
+
+/// [`capture_internal_circuits`] at the base case — the fuse
+/// [`seed`](Application::seed) performs, over two trivial children.
+///
+/// `outer_collapse` deliberately leaves the final claim `c` unconstrained
+/// there (the prover may witness any `c` to start the recursion), so its
+/// spec drops `c` at this point; its checks on the children's $k(y)$ values
+/// stay.
+///
+/// # Errors
+///
+/// As [`capture_internal_circuits`].
+pub fn capture_internal_circuits_seeded<'source, C, R, const HEADER_SIZE: usize, B, RNG, S, V>(
+    app: &Application<'_, C, R, HEADER_SIZE, B>,
+    rng: &mut RNG,
+    step: S,
+    witness: S::Witness<'source>,
+    visitor: &mut V,
+) -> Result<()>
+where
+    C: Cycle,
+    R: Rank,
+    B: crate::SelectableBackend,
+    RNG: CryptoRng,
+    S: Step<C, Left = (), Right = ()>,
+    V: InternalCircuitVisitor<C>,
+{
+    app.capture_internal_circuits_at(
+        rng,
+        step,
+        witness,
+        app.trivial_pcd(),
+        app.trivial_pcd(),
+        true,
+        visitor,
+    )
+}
+
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
-    /// Runs the fuse witness-generation and hands each native internal
-    /// recursion circuit, its [`CircuitSpec`] and its honest witness to
-    /// `visitor`, in place of tracing them into a proof.
-    ///
-    /// This mirrors [`fuse`](Self::fuse) up to the internal-circuit step; the
-    /// challenges, interstitial witnesses, and shared instance are computed
-    /// exactly as the prover computes them. The `unified` instance is rebuilt
-    /// fresh for each circuit from the finished builder (its coverage
-    /// bookkeeping does not affect the emitted constraints), so no proof is
-    /// produced and the children's proofs are not consumed for one. That
-    /// fresh coverage is also what makes each circuit's reported `Coverage`
-    /// *its own* contribution, which the spec reads as the unified slots it is
-    /// responsible for.
-    ///
-    /// # Errors
-    ///
-    /// Propagates any error from witness generation, from laying out a
-    /// stage, or from the visitor.
-    pub(crate) fn capture_internal_circuits<'source, RNG, S, V>(
-        &self,
-        rng: &mut RNG,
-        step: S,
-        witness: S::Witness<'source>,
-        left: Pcd<C, R, S::Left>,
-        right: Pcd<C, R, S::Right>,
-        visitor: &mut V,
-    ) -> Result<()>
-    where
-        RNG: CryptoRng,
-        S: Step<C>,
-        V: InternalCircuitVisitor<C>,
-    {
-        self.capture_internal_circuits_at(rng, step, witness, left, right, false, visitor)
-    }
-
-    /// [`capture_internal_circuits`](Self::capture_internal_circuits) at the
-    /// base case — the fuse [`seed`](Self::seed) performs, over two trivial
-    /// children.
-    ///
-    /// `outer_collapse` deliberately leaves the final claim `c` unconstrained
-    /// there (the prover may witness any `c` to start the recursion), so its
-    /// spec drops `c` at this point; its checks on the children's $k(y)$
-    /// values stay.
-    ///
-    /// # Errors
-    ///
-    /// As [`capture_internal_circuits`](Self::capture_internal_circuits).
-    pub(crate) fn capture_internal_circuits_seeded<'source, RNG, S, V>(
-        &self,
-        rng: &mut RNG,
-        step: S,
-        witness: S::Witness<'source>,
-        visitor: &mut V,
-    ) -> Result<()>
-    where
-        RNG: CryptoRng,
-        S: Step<C, Left = (), Right = ()>,
-        V: InternalCircuitVisitor<C>,
-    {
-        self.capture_internal_circuits_at(
-            rng,
-            step,
-            witness,
-            self.trivial_pcd(),
-            self.trivial_pcd(),
-            true,
-            visitor,
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn capture_internal_circuits_at<'source, RNG, S, V>(
         &self,

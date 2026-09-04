@@ -1,125 +1,80 @@
 //! Fuzz the verifier with corrupted proofs.
 //!
-//! Applies fuzzer-chosen [`Corruption`] variants to a valid trivial proof.
+//! Applies fuzzer-chosen corruptions to a valid leaf proof, one or several at
+//! a time. A leaf is the cheapest proof `verify` actually accepts, so the
+//! per-input cost is a clone, a corruption and a verify — this is the target
+//! that explores the corruption vocabulary at speed.
+//! `fuzz_verify_reject_full` runs the same vocabulary against fused proofs,
+//! whose accumulators are not degenerate.
 //!
-//! Invariant: `verify()` never panics. Corrupted proofs are rejected
-//! (`Ok(false)`) or produce `Err`.
+//! Invariant: `verify()` never panics, and never accepts a corruption that
+//! bound it (`Ok(false)` or `Err` are both rejections). A corruption the
+//! verifier is *not* obliged to notice — a blinding coefficient no claim
+//! binds — is still exercised, but its verdict is not asserted; see
+//! [`ragu_pcd::fuzzing::corrupt`] for how the two are told apart.
+//!
+//! This target used to corrupt `Application::trivial_proof`. That fixture is
+//! the all-zero placeholder a base case fuses against, and `verify` rejects it
+//! outright — so "the verifier did not accept the corrupted proof" held before
+//! the corruption too, and every assertion passed vacuously.
+//! [`ragu_testing_fuzz::pcd`] now checks each fixture verifies before handing
+//! it over.
 
 #![no_main]
 
-use arbitrary::Arbitrary;
-use ff::Field;
-use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::Pasta;
-use ragu_pcd::{ApplicationBuilder, Proof, fuzz_utils::Corruption};
-use rand::{SeedableRng, rngs::StdRng};
-
 use std::sync::LazyLock;
 
-type C = Pasta;
-type R = ProductionRank;
-const HEADER_SIZE: usize = 4;
+use arbitrary::Arbitrary;
+use libfuzzer_sys::fuzz_target;
+use ragu_testing_fuzz::pcd::{self, Fixture, SyncApp};
+use rand::{SeedableRng, rngs::StdRng};
 
-/// Wrapper to satisfy `Sync` for `Application` (which contains a
-/// `OnceCell` field — `seeded_trivial` — for memoizing the trivial-proof
-/// fixture, breaking auto-`Sync`).
-struct SyncApp(ragu_pcd::Application<'static, C, R, HEADER_SIZE>);
-// SAFETY: this fuzz body invokes `Application` exclusively through
-// `app.test_trivial_proof()` (which only reads from the application,
-// initializing `seeded_trivial` on the first call and reading it
-// thereafter) and `verify(&proof)` (which takes `&Application` and never
-// touches `seeded_trivial`). libfuzzer drives `fuzz_target!` on a single
-// thread, so even the `OnceCell` initialization on the very first call
-// is uncontended. If this target ever grows to spawn worker threads or
-// to mutate `Application` state, the assumption must be revisited.
-unsafe impl Sync for SyncApp {}
+/// At most this many corruptions per input. Enough for the coordinated
+/// mutations that need a second edit to reach a check, bounded so one input
+/// cannot rewrite the whole proof into noise.
+const MAX_CORRUPTIONS: usize = 4;
 
-static APP: LazyLock<SyncApp> = LazyLock::new(|| {
-    let pasta = Pasta::baked();
-    SyncApp(
-        ApplicationBuilder::<C, R, HEADER_SIZE>::new()
-            .finalize(pasta)
-            .expect("failed to create application"),
-    )
-});
+/// One registered step is all a leaf needs.
+static APP: LazyLock<SyncApp> = LazyLock::new(|| pcd::nontrivial_app(1));
 
-/// Cached trivial proof. Building one runs the full endoscaling pipeline
-/// (hundreds of ms per call), but the result is deterministic from
-/// `&APP.0`. Cloning the cached value is ~10000x faster than rebuilding,
-/// so per-input work clones, corrupts, and verifies — turning the
-/// fuzz_verify_reject hot path into clone + corrupt + verify rather than
-/// build + corrupt + verify.
-static TRIVIAL_PROOF: LazyLock<Proof<C, R>> = LazyLock::new(|| APP.0.test_trivial_proof());
-
-#[derive(Arbitrary, Debug)]
-enum FuzzCorruption {
-    PBlind(u64),
-    PEval(u64),
-    AbC(u64),
-    CircuitId,
-    ChallengeU(u64),
-    ChallengeX(u64),
-    ChallengeY(u64),
-    LeftHeaderLen(u8),
-    RightHeaderLen(u8),
-}
+/// The cached honest leaf. Seeding one runs the full endoscaling pipeline
+/// (over a second per call), but the result is deterministic from `&APP.0`.
+/// Cloning the cached value is orders of magnitude faster than rebuilding, so
+/// the hot path is clone + corrupt + verify rather than build + corrupt +
+/// verify.
+static LEAF: LazyLock<Fixture> = LazyLock::new(|| pcd::leaf_fixture(&APP.0));
 
 #[derive(Arbitrary, Debug)]
 struct Input {
-    corruption: FuzzCorruption,
+    corruptions: Vec<pcd::FuzzCorruption>,
     rng_seed: u64,
 }
 
-fuzz_target!(|input: Input| {
-    // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful for
-    // triaging crash artifacts. See README.md "DEBUG_INPUT env var" section.
-    if std::env::var("DEBUG_INPUT").is_ok() {
-        eprintln!("{:#?}", input);
-        return;
+// The fixture is paid for in `init`, before libFuzzer starts timing units, so
+// the first input is not reported as a slow unit and written to `artifacts/`.
+fuzz_target!(
+    init: {
+        if std::env::var("DEBUG_INPUT").is_err() {
+            LazyLock::force(&LEAF);
+        }
+    },
+    |input: Input| {
+        // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful
+        // for triaging crash artifacts. See README.md "DEBUG_INPUT env var".
+        if std::env::var("DEBUG_INPUT").is_ok() {
+            eprintln!("{input:#?}");
+            return;
+        }
+        let app = &APP.0;
+
+        let mut fixture = LEAF.clone();
+        let (applied, binding) =
+            pcd::apply(&mut fixture.proof, &input.corruptions, MAX_CORRUPTIONS);
+        if applied.is_empty() {
+            return;
+        }
+
+        let rng = StdRng::seed_from_u64(input.rng_seed);
+        pcd::assert_rejected(app, &fixture, &applied, binding, rng);
     }
-    let app = &APP.0;
-
-    let mut proof = TRIVIAL_PROOF.clone();
-
-    // The fixture has challenges equal to one, circuit id zero, and four
-    // header elements. Nudge every fuzzer choice away from those values so
-    // each variant performs a real corruption before rejection is asserted.
-    let nonzero_delta = |v: u64| {
-        let v = Fp::from(v);
-        if v == Fp::ZERO { Fp::ONE } else { v }
-    };
-    let changed_challenge = |v: u64| {
-        let v = Fp::from(v);
-        if v == Fp::ONE { Fp::from(2u64) } else { v }
-    };
-    let wrong_header_len = |v: u8| {
-        let v = v as usize;
-        if v == HEADER_SIZE { HEADER_SIZE + 1 } else { v }
-    };
-    let corruption = match input.corruption {
-        FuzzCorruption::PBlind(v) => Corruption::PBlind(nonzero_delta(v)),
-        FuzzCorruption::PEval(v) => Corruption::PEval(nonzero_delta(v)),
-        FuzzCorruption::AbC(v) => Corruption::AbC(nonzero_delta(v)),
-        FuzzCorruption::CircuitId => Corruption::CircuitId(u32::MAX),
-        FuzzCorruption::ChallengeU(v) => Corruption::ChallengeU(changed_challenge(v)),
-        FuzzCorruption::ChallengeX(v) => Corruption::ChallengeX(changed_challenge(v)),
-        FuzzCorruption::ChallengeY(v) => Corruption::ChallengeY(changed_challenge(v)),
-        FuzzCorruption::LeftHeaderLen(v) => Corruption::LeftHeaderLen(wrong_header_len(v)),
-        FuzzCorruption::RightHeaderLen(v) => Corruption::RightHeaderLen(wrong_header_len(v)),
-    };
-
-    proof.corrupt(corruption);
-
-    let pcd = proof.carry::<()>(());
-    let rng = StdRng::seed_from_u64(input.rng_seed);
-
-    // Must never panic or accept. Internal computation errors are rejection.
-    let result = app.verify(&pcd, rng);
-    assert!(
-        !matches!(result, Ok(true)),
-        "verifier accepted a deliberately corrupted proof: {:?}",
-        input.corruption,
-    );
-});
+);

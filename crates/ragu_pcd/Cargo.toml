@@ -30,8 +30,9 @@ default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_acceleration/multicore", "ragu_arithmetic/multicore", "ragu_backend/multicore", "ragu_circuits/multicore", "std"]
 native-msm = ["ragu_acceleration/native-msm", "std"]
 std = ["alloc"]
-# Exposes the `fuzz_utils` module, which provides proof-corruption helpers
-# used by external fuzz harnesses. Not part of the stable public API.
+# Exposes the hidden `fuzzing` module — proof corruption and the patcher seam
+# over the internal recursion circuits — used by the fuzz harness and the
+# crate's own tests. Not part of the stable public API.
 unstable-fuzzing = []
 
 [lib]
@@ -73,4 +74,8 @@ harness = false
 
 [[test]]
 name = "patcher_internal"
+required-features = ["unstable-fuzzing"]
+
+[[test]]
+name = "corruption"
 required-features = ["unstable-fuzzing"]

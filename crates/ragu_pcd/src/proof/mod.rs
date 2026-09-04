@@ -17,6 +17,17 @@ pub(crate) mod builder;
 #[cfg(test)]
 #[path = "../../tests/backend_equivalence/proof.rs"]
 mod proof_equivalence;
+// Mutable component access for the corruption vocabulary (see
+// `crate::fuzzing`). Its source lives with the rest of the fuzzing surface in
+// `src/fuzzing/`, but it is mounted here, as a child of `proof`, so it can
+// reach the private `Cached` fields without loosening them. The file gates
+// itself behind `unstable-fuzzing` with an inner `#![cfg]`, so no feature
+// attribute appears here.
+// TODO: Revisit this layout; for now, it keeps the fuzzing surface in one
+// directory without loosening `Proof`'s privacy or adding a feature
+// attribute here.
+#[path = "../fuzzing/access.rs"]
+mod access;
 
 use alloc::{sync::Arc, vec, vec::Vec};
 

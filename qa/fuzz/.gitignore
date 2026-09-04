@@ -1,3 +1,13 @@
+# Build output, and the corpora, seeds and crash artifacts a local run
+# accumulates.
+#
+# `seeds/` is local-only on purpose. `./fuzz.sh seeds` generates a scratch set
+# to warm up a laptop run, but nothing is committed: this substrate's decoder
+# is total — every byte slice is a valid program — so libFuzzer bootstraps
+# these targets from nothing, and committed seeds would only be 200 blobs that
+# silently change meaning whenever a target's `Input` gains a field. Inputs
+# genuinely worth keeping in git go in `regressions/<target>/`, which the cron
+# replays before every campaign.
 target
 corpus
 artifacts

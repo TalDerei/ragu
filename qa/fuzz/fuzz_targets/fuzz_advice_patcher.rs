@@ -27,18 +27,42 @@
 //!
 //! # Vocabulary
 //!
-//! The vocabulary is `OpSet::ALL` minus [`Op::ConditionalSelect`] (it routes
-//! a boolean back into an element, which needs field-valued select semantics
-//! to compare soundly) and [`Op::AllocRaw`] (its skip depends on fuzzer
-//! bytes, not a mutatable value). Everything else participates: the
-//! arithmetic and allocation gadgets, the value-fallible `invert`/`divide`
-//! (whose freshly-allocated inverse/quotient the single-unknown solver
-//! back-solves), `is_zero`, and the boolean allocator/combinators
-//! `BoolAlloc`/`BoolNot`/`BoolAnd` (whose booleanity and result constraints
-//! are plain gates and enforces the solver already models). The free advice
-//! the patcher mutates is the element-stack advice (witness inputs,
-//! `AllocSpecial`, `AllocSquare` roots) plus, via a dedicated boolean cheat,
-//! the `BoolAlloc` wires.
+//! The vocabulary is `OpSet::ALL`. Everything participates: the arithmetic
+//! and allocation gadgets, the value-fallible `invert`/`divide` (whose
+//! freshly-allocated inverse/quotient the single-unknown solver back-solves),
+//! `is_zero`, the boolean allocator/combinators `BoolAlloc`/`BoolNot`/
+//! `BoolAnd` (whose booleanity and result constraints are plain gates and
+//! enforces the solver already models), [`Op::AllocRaw`], and
+//! [`Op::ConditionalSelect`]. The free advice the patcher mutates is the
+//! element-stack advice (witness inputs, `AllocSpecial`, `AllocSquare`
+//! roots) plus, via a dedicated boolean cheat, the `BoolAlloc` wires.
+//!
+//! The last two used to be excluded, on grounds that turned out to be
+//! stricter than the harness needs:
+//!
+//! - [`Op::AllocRaw`] was held out because its skip depends on fuzzer bytes
+//!   rather than a mutatable value, so the zero-crossing classification
+//!   could not neutralize it. But that is the reason it is *safe*, not the
+//!   reason it is dangerous: the skip is decided by
+//!   `F::from_repr(bytes)` over bytes fixed in the program, so it resolves
+//!   identically in the honest and the cheated run. No classification is
+//!   needed, because stack progression cannot move. Contrast
+//!   `invert`/`divide`, whose skip is decided by a value a cheat *can*
+//!   push across zero.
+//! - [`Op::ConditionalSelect`] was held out because it routes a boolean
+//!   back into an element, which would need field-valued select semantics
+//!   to compare soundly. That is true of a cheat channel that can push a
+//!   boolean off `{0, 1}` — and this one cannot. The shadow's boolean stack
+//!   is `Vec<bool>` and its override channel is `&[(usize, bool)]`, so a
+//!   boolean cheat is a flip, never an arbitrary field value. On `{0, 1}`
+//!   ragu's algebraic `a + cond·(b − a)` and the shadow's branch agree
+//!   pointwise, so the comparison is exact. A prover trying to leave
+//!   `{0, 1}` is a different attack, and the booleanity constraints — which
+//!   the dedicated boolean cheat already exercises — are what answer it.
+//!
+//! If the shadow's booleans ever become field-valued (so a cheat can set
+//! `cond = 7`), `ConditionalSelect` has to be re-examined: at that point the
+//! branch model really does stop matching the algebraic one.
 //!
 //! [`Op::ConditionalSelect`]: ragu_testing_fuzz::substrate::Op::ConditionalSelect
 //! [`Op::AllocRaw`]: ragu_testing_fuzz::substrate::Op::AllocRaw
@@ -271,8 +295,7 @@ fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, 
     out
 }
 
-/// The patcher vocabulary: `OpSet::ALL` minus `ConditionalSelect` and
-/// `AllocRaw`.
+/// The patcher vocabulary: `OpSet::ALL`.
 ///
 /// The single-unknown solver (issue #796 item 1) handles any constraint
 /// with one unknown, so the value-fallible arithmetic gadgets `invert` and
@@ -284,11 +307,12 @@ fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, 
 /// constraints are plain gates and enforces the solver already models, and
 /// a dedicated boolean cheat exercises booleanity directly.
 ///
-/// Excluded: `ConditionalSelect` (it routes a boolean back into an element,
-/// which needs field-valued select semantics to compare soundly) and
-/// `AllocRaw` (a non-canonical 32-byte chunk skips its push, and unlike
-/// `invert`/`divide` that skip depends on fuzzer bytes, not a mutatable
-/// value, so the zero-crossing classification cannot neutralize it).
+/// `AllocRaw` participates: a non-canonical 32-byte chunk skips its push,
+/// but the chunk is fixed in the program, so the skip resolves the same way
+/// in the honest and the cheated run and stack progression cannot move.
+/// `ConditionalSelect` participates because the shadow's boolean cheat is a
+/// flip, not an arbitrary field value — see the vocabulary section of the
+/// module docs for both arguments in full.
 ///
 /// # Value-dependent solvability (classified in the harness)
 ///
@@ -302,16 +326,7 @@ fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, 
 /// anchored element); only an honestly-skipped op that a cheat *un-skips*
 /// (stack grew) remains out of model and bails.
 fn opset() -> OpSet {
-    OpSet::filtered(|k| {
-        // Boolean allocation and the and/not combinators participate (their
-        // booleanity and result constraints are plain gates/enforces the
-        // solver already models, and the boolean cheat checks booleanity).
-        // `ConditionalSelect` stays out — it routes a boolean back into an
-        // element, which needs field-valued select semantics to compare
-        // soundly. `AllocRaw` stays out (its skip depends on fuzzer bytes,
-        // not a mutatable value).
-        !matches!(k, OpKind::ConditionalSelect | OpKind::AllocRaw)
-    })
+    OpSet::ALL
 }
 
 fuzz_target!(|input: Input| {
@@ -606,12 +621,15 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
     //    (input honestly zero) now executes. The honest graph never captured
     //    that gadget, so there is nothing to compare against; still out of
     //    model, so bail.
-    //  * only the boolean stack changed — an `is_zero` result flipped. The
-    //    patcher vocabulary excludes `ConditionalSelect`, so a flipped
-    //    boolean cannot move any anchored element, and `repair` re-derives the
-    //    `is_zero` hint witness (`prod = x·inv`, the result bit, the inverse)
-    //    from the input. The element-anchor comparison therefore stays valid
-    //    — no bail.
+    //  * only the boolean stack changed — an `is_zero` result flipped.
+    //    `repair` re-derives the `is_zero` hint witness (`prod = x·inv`, the
+    //    result bit, the inverse) from the input, so the element-anchor
+    //    comparison stays valid and there is no bail — *provided* the
+    //    flipped boolean cannot reach the element stack. `ConditionalSelect`
+    //    is the one op that can carry it there, so its presence alongside a
+    //    flip is bailed on explicitly below. (It used to be excluded from
+    //    the vocabulary outright, which made the guard unnecessary; it now
+    //    participates, so the guard is what keeps this case honest.)
     //
     //    That re-derivation is not free: the hint gates have the input on one
     //    side and a hint on the other, so while the input is still unknown
@@ -676,6 +694,23 @@ fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program)
              ACCEPTED the repaired witness — the gadget's nonzero enforcement \
              is under-constrained (the soundness direction). Program: {program:?}",
         );
+        return;
+    }
+
+    // A flipped `is_zero` result is only comparable while it stays on the
+    // boolean stack. `ConditionalSelect` reads a boolean and pushes an
+    // *element*, so with one in the program a flip can move a value the
+    // anchors pin — and `native_ok` would then report a disagreement that is
+    // the cheat working as designed, not ragu under-constraining anything.
+    // Bail on the intersection rather than on either half: programs with a
+    // `ConditionalSelect` and no flip, and flips in programs without one,
+    // both stay fully under test.
+    if bools_flipped
+        && program
+            .ops
+            .iter()
+            .any(|op| op.kind() == OpKind::ConditionalSelect)
+    {
         return;
     }
 

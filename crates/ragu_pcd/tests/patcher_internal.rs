@@ -1,7 +1,7 @@
 //! Aiming the patcher engine at the production internal recursion circuits
 //! (issue #793).
 //!
-//! [`unstable::capture_internal_circuits`] hands every internal circuit —
+//! [`capture_internal_circuits`] hands every internal circuit —
 //! the five native ones and the nested endoscaling steps — its
 //! [`CircuitSpec`] and its honest witness, which exist only mid-fuse, to a
 //! visitor. Here the visitor captures each circuit through the recording
@@ -53,7 +53,10 @@ use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
-    unstable::{self, CircuitSpec, InternalCircuitVisitor, OutputRef},
+    fuzzing::patcher::{
+        CircuitSpec, InternalCircuitVisitor, OutputRef, capture_internal_circuits,
+        capture_internal_circuits_seeded,
+    },
 };
 use ragu_testing::{
     patcher::{
@@ -375,13 +378,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         point: "seeded",
         ..Default::default()
     };
-    unstable::capture_internal_circuits_seeded(
-        &app,
-        &mut rng,
-        leaf_step(),
-        Fp::from(42u64),
-        &mut seeded,
-    )?;
+    capture_internal_circuits_seeded(&app, &mut rng, leaf_step(), Fp::from(42u64), &mut seeded)?;
 
     // Level one: two leaves.
     let leaf = |rng: &mut StdRng| {
@@ -393,7 +390,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         ..Default::default()
     };
     let (l, r) = (leaf(&mut rng)?, leaf(&mut rng)?);
-    unstable::capture_internal_circuits(&app, &mut rng, hash2(), (), l, r, &mut leaves)?;
+    capture_internal_circuits(&app, &mut rng, hash2(), (), l, r, &mut leaves)?;
 
     // Level two: two nodes, each a real fuse of two leaves.
     let node = |rng: &mut StdRng| -> Result<_> {
@@ -405,7 +402,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         ..Default::default()
     };
     let (l, r) = (node(&mut rng)?, node(&mut rng)?);
-    unstable::capture_internal_circuits(&app, &mut rng, merge2(), (), l, r, &mut nodes)?;
+    capture_internal_circuits(&app, &mut rng, merge2(), (), l, r, &mut nodes)?;
 
     let native = [
         "hashes_1",

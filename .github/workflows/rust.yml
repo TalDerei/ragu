@@ -233,6 +233,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-fuzz-target-
 
+      # Cheap and build-free, so it runs before the compile: every target
+      # must be listed in fuzz.sh and in both workflow matrices, and must have
+      # committed seeds. A target missing from the cron matrix is simply never
+      # fuzzed, and one with no seeds makes the coverage workflow report
+      # "no inputs" — which used to be a green result.
+      - name: Fuzz target census
+        run: qa/fuzz/check_targets.sh
+
       - name: Test fuzz support library
         working-directory: qa/fuzz
         env:
