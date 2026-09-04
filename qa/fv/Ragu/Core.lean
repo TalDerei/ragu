@@ -22,10 +22,10 @@ instance : Field (F q) := inferInstance
 
 -- 2 is not zero in both fields
 instance : NeZero (2 : F p) where
-  out := by native_decide
+  out := by decide
 
 instance : NeZero (2 : F q) where
-  out := by native_decide
+  out := by decide
 
 end Ragu.Core.Primes
 

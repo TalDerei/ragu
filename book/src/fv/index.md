@@ -37,20 +37,28 @@ this part.
 
 ## What is verified today
 
-Verification currently covers the gadget layer: 31 concrete circuit instances,
+Verification currently covers the gadget layer: 53 concrete circuit instances,
 each one a specific instantiation at a fixed prime field with all compile-time
 parameters made concrete.
 
 - **Field elements** — multiplication, squaring, allocation, inversion,
   division by a nonzero element, zero and equality tests, root-of-unity
-  enforcement, and folding at two arities.
-- **Curve points** — allocation on both curves of the cycle, doubling,
-  incomplete addition, incomplete double-and-add, and conditional
-  endomorphism application and negation.
-- **Booleans** — allocation, conjunction, conditional selection, and
-  conditional equality enforcement.
-- **Endoscalars** — allocation, lifting, and group scaling.
-- **Nonzero banks** and the core multiplication gate.
+  enforcement, invertible allocation, enforcement, and re-establishment, and
+  folding at four arities.
+- **Curve points** — allocation and contract re-establishment on both curves
+  of the cycle, doubling, incomplete addition, incomplete double-and-add, and
+  conditional endomorphism application and negation.
+- **Booleans** — allocation, conjunction, conditional selection, conditional
+  equality enforcement, and contract re-establishment.
+- **Endoscalars** — allocation, extraction, lifting, and group scaling.
+- **Poseidon** — the permutation at the deployed Pasta parameters on both
+  fields, and the sponge in several distinct control-flow shapes:
+  single-block hashing on each field, uniform blocks across a rate boundary,
+  a ragged final block, absorption after a squeeze, repeated squeezes, and
+  the save/resume path.
+- **Horner evaluation** at three arities, plus the trailing-constant $k(Y)$
+  form.
+- **Nonzero banks** at three arities, and the core multiplication gate.
 
 Every one of these is proved without `sorry`, and the Lean build runs with
 `--wfail` so that an admitted goal fails CI rather than passing quietly. The
@@ -61,7 +69,26 @@ assumptions chapter records which ones appear and what trusting them costs.
 
 Everything above the gadget layer. The internal recursion circuits, the
 accumulation scheme, the staging system, and the protocol as a whole have no
-Lean theorems about them. Neither does any Rust code: the proofs are about
+Lean theorems about them.
+
+Some of the gadget layer has nothing to verify rather than something unproved,
+and the distinction matters when reading the list above as a coverage claim.
+Demotion (`promotion.rs`) strips witness data through a driver whose every
+method is unreachable, and the serialization surface (`io.rs`) moves wires
+without emitting constraints; a reimplementation of either would prove a
+theorem about no constraints. What they are not exempt from is *trust*: the
+extractor relies on this serialization to read wires in and out, so a bug there
+would change what every other theorem is about.
+
+The `Consistent` implementations are the one place this boundary is easy to
+misread. `Boolean`, `Point`, and `Invertible` each re-establish their wire
+contracts by allocating a fresh gadget and constraining it equal to the
+existing wires — real constraints, emitted where the staging machinery
+substitutes wires — and the re-establishment instances above cover exactly
+that trace. `Nonzero`'s implementation is `Element::enforce_invertible`, which
+is covered under that name.
+
+Neither is any Rust code verified: the proofs are about
 circuits extracted from Rust, not about the Rust implementation that extracted
 them, and not about the prover and verifier that run the protocol. The
 cryptographic assumptions underlying the construction are out of scope by

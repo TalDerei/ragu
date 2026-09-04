@@ -9,6 +9,14 @@ use crate::{
 
 pub struct NonzeroBankScopeInstance<const K: usize>;
 
+/// `K = 0`: an empty scope still discharges, constraining the initial product
+/// `1` nonzero. The Lean reimpl splits `K = 0` from `K + 1` (`Fin 0` is not
+/// `Inhabited`), so without this instance that branch is never fingerprinted.
+pub type NonzeroBankScopeInstanceK0 = NonzeroBankScopeInstance<0>;
+
+/// `K = 1`: a single fold, the smallest case going through the `foldl` body.
+pub type NonzeroBankScopeInstanceK1 = NonzeroBankScopeInstance<1>;
+
 pub type NonzeroBankScopeInstanceK2 = NonzeroBankScopeInstance<2>;
 
 impl<const K: usize> CircuitInstance for NonzeroBankScopeInstance<K> {

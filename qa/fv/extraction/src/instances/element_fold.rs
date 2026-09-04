@@ -7,6 +7,18 @@ use crate::{
     instance::{CircuitInstance, WireCollector, WireDeserializer},
 };
 
+pub struct ElementFoldInstanceN2;
+
+impl CircuitInstance for ElementFoldInstanceN2 {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        // n = 2: exactly one Mul gate — the last of the Lean reimpl's small-n
+        // branches before the uniform `n >= 3` case that N3/N7/N19 pin.
+        fold_at_length::<2>(dr)
+    }
+}
+
 pub struct ElementFoldInstanceN3;
 
 impl CircuitInstance for ElementFoldInstanceN3 {

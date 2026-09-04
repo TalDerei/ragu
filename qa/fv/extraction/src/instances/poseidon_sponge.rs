@@ -1,4 +1,4 @@
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use ragu_arithmetic::PoseidonPermutation;
 use ragu_pasta::{Fp, Fq, PoseidonFp, PoseidonFq};
 use ragu_primitives::{Element, poseidon::Sponge};
@@ -49,6 +49,134 @@ impl CircuitInstance for PoseidonHash1InstanceFq {
     fn circuit(dr: &mut ExtractionDriver<Fq>) -> ragu_core::Result<Vec<Expr<Fq>>> {
         sponge_absorb_n::<Fq, PoseidonFq, 1>(dr, &PoseidonFq)
     }
+}
+
+/// Two full rate blocks absorbed, then three squeezes.
+///
+/// This is the shape `PoseidonHash{1,4}Instance*` cannot reach. Absorbing a
+/// 5th element makes Rust permute the buffered block and start a new one, so
+/// eight elements run *two* permutations over the same state — which is where
+/// a bug that contaminated the capacity word across a block boundary would
+/// show up. The three squeezes then come out of one permutation without
+/// triggering another (`get_rate` reverses the rate words and `squeeze` pops
+/// the last), pinning that the i-th squeezed element is state word i.
+///
+/// Input wires: `x₀ … x₇` (8 wires). Outputs: three squeezed elements.
+pub struct PoseidonBlocks2Squeeze3InstanceFp;
+
+impl CircuitInstance for PoseidonBlocks2Squeeze3InstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        sponge_blocks::<Fp, PoseidonFp, 8, 3>(dr, &PoseidonFp)
+    }
+}
+
+/// Six absorbs, then two squeezes: one full rate block and a two-element
+/// tail, so the sponge permutes at the block boundary and again on the
+/// short tail at `squeeze` — the ragged shape `PoseidonBlocks2Squeeze3InstanceFp`
+/// cannot reach. Ties to the Lean `Sponge.Ragged` family.
+///
+/// Input wires: `x₀ … x₅` (6 wires). Outputs: two squeezed elements.
+pub struct PoseidonBlocks1Tail2InstanceFp;
+
+impl CircuitInstance for PoseidonBlocks1Tail2InstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        sponge_blocks::<Fp, PoseidonFp, 6, 2>(dr, &PoseidonFp)
+    }
+}
+
+/// `absorb(x)` → `save_state` → `resume` → `squeeze()`: the `Transcript`
+/// API's path through the sponge. Trace-identical to
+/// [`PoseidonHash1InstanceFp`] — `save_state` runs the permutation the
+/// first `squeeze` would, `resume` re-enters squeeze mode on that state —
+/// so the Lean instance is `Hash1Fp`'s; what this pins is that the
+/// save/resume path emits the same trace as the direct one.
+pub struct PoseidonSaveResumeInstanceFp;
+
+impl CircuitInstance for PoseidonSaveResumeInstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        let element_template = Element::constant(dr, Fp::ZERO);
+        let input_wires = dr.alloc_input_wires(1);
+        let x = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
+
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
+        sponge.absorb(dr, &x)?;
+        let state = sponge
+            .save_state(dr)
+            .expect("one element was absorbed and nothing squeezed");
+        let mut sponge = Sponge::resume(state, &PoseidonFp);
+        let out = sponge.squeeze(dr)?;
+
+        WireCollector::collect_from(&out)
+    }
+}
+
+/// `absorb(x)` → `squeeze()` → `absorb(y)` → `squeeze()`: absorption after
+/// a squeeze. The second `absorb` re-enters absorb mode on the permuted
+/// state, so the second `squeeze` permutes `state + [y]` — two permutations
+/// over two width-1 batches, the narrow-block reading of the Lean `Squeeze`
+/// family. Only the final squeeze is collected; the first is word `0` of the
+/// intermediate state, which `Hash1Fp` pins.
+///
+/// Input wires: `x, y` (2 wires). Output: the final squeezed element.
+pub struct PoseidonInterleavedInstanceFp;
+
+impl CircuitInstance for PoseidonInterleavedInstanceFp {
+    type Field = Fp;
+
+    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+        let element_template = Element::constant(dr, Fp::ZERO);
+        let x_wires = dr.alloc_input_wires(1);
+        let x = WireDeserializer::new(x_wires).into_gadget(&element_template)?;
+        let y_wires = dr.alloc_input_wires(1);
+        let y = WireDeserializer::new(y_wires).into_gadget(&element_template)?;
+
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
+        sponge.absorb(dr, &x)?;
+        let _first = sponge.squeeze(dr)?;
+        sponge.absorb(dr, &y)?;
+        let out = sponge.squeeze(dr)?;
+
+        WireCollector::collect_from(&out)
+    }
+}
+
+/// Absorbs `N` elements consecutively — `N` may exceed `P::RATE`, in which
+/// case the sponge permutes at each block boundary — and squeezes `S`
+/// elements. On the Lean side a multiple of `RATE` is `Sponge.Blocks`
+/// (uniform full blocks); anything else is `Sponge.Ragged` (full blocks plus
+/// a short tail).
+fn sponge_blocks<F: PrimeField, P: PoseidonPermutation<F>, const N: usize, const S: usize>(
+    dr: &mut ExtractionDriver<F>,
+    params: &'static P,
+) -> ragu_core::Result<Vec<Expr<F>>> {
+    assert!(N > 0, "the Rust sponge refuses to squeeze before an absorb");
+    assert!(S > 0, "the final permutation is run by the first squeeze");
+    assert!(
+        S <= P::RATE,
+        "more squeezes than the rate would permute again"
+    );
+    let element_template = Element::constant(dr, F::ZERO);
+
+    let mut sponge = Sponge::<'_, _, P>::new(dr, params);
+    for _ in 0..N {
+        let input_wires = dr.alloc_input_wires(1);
+        let x = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
+        sponge.absorb(dr, &x)?;
+    }
+
+    let mut outputs = Vec::new();
+    for _ in 0..S {
+        let out = sponge.squeeze(dr)?;
+        outputs.extend(WireCollector::collect_from(&out)?);
+    }
+
+    Ok(outputs)
 }
 
 /// Absorbs `N` input wires (at most `P::RATE`, so one permutation) into a
