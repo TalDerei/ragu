@@ -296,14 +296,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
-name = "maybe-rayon"
-version = "0.1.1"
-source = "git+https://github.com/tachyon-zcash/maybe-rayon.git?rev=5c37ee0dd448e8c1edc4529d0b8897ecaff5aad1#5c37ee0dd448e8c1edc4529d0b8897ecaff5aad1"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -436,9 +428,9 @@ version = "0.0.0"
 dependencies = [
  "ff",
  "group",
- "maybe-rayon",
  "ragu_macros",
  "rand 0.10.2",
+ "tachyon-maybe-rayon",
  "zakura-pasta-curves",
 ]
 
@@ -455,10 +447,10 @@ name = "ragu_circuits"
 version = "0.0.0"
 dependencies = [
  "blake2b_simd",
- "maybe-rayon",
  "ragu_arithmetic",
  "ragu_core",
  "ragu_primitives",
+ "tachyon-maybe-rayon",
 ]
 
 [[package]]
@@ -494,13 +486,13 @@ dependencies = [
 name = "ragu_pcd"
 version = "0.0.0"
 dependencies = [
- "maybe-rayon",
  "ragu_acceleration",
  "ragu_arithmetic",
  "ragu_backend",
  "ragu_circuits",
  "ragu_core",
  "ragu_primitives",
+ "tachyon-maybe-rayon",
 ]
 
 [[package]]
@@ -676,6 +668,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tachyon-maybe-rayon"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85270e8ca1975f46b1e703622f0720c0b92b36394442843381c31c5c34aca3f9"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
