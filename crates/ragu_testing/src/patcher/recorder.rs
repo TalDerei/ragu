@@ -22,6 +22,8 @@
 //! `ragu_pcd`'s own tests — an internal recursion circuit. See the
 //! [parent module](super) for the `Circuit`-level entry points.
 
+use std::collections::BTreeSet;
+
 use ragu_arithmetic::{
     Coeff,
     ff::{Field, PrimeField, PrimeFieldBits},
@@ -730,11 +732,18 @@ fn decompositions<F: PrimeFieldBits>(
             }
             let mut weight = base;
             let mut bits = Vec::with_capacity(terms.len());
+            let mut seen = BTreeSet::new();
             for (i, &(wire, coeff)) in terms.iter().enumerate() {
                 if i > 0 {
                     weight = weight.double();
                 }
-                if coeff != weight || !is_boolean.get(wire).copied().unwrap_or(false) {
+                // A repeated wire carries the *sum* of its weights, which is
+                // not a power of two, so the assignment is no longer unique
+                // and reading bit `i` off the output would be wrong.
+                if coeff != weight
+                    || !is_boolean.get(wire).copied().unwrap_or(false)
+                    || !seen.insert(wire)
+                {
                     return None;
                 }
                 bits.push(wire);
