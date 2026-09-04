@@ -1,3 +1,4 @@
+#![cfg(feature = "unstable-fuzzing")]
 //! Handing the internal recursion circuits, their honest witnesses and their
 //! oracle specifications to a patcher harness (issue #793).
 //!
@@ -56,7 +57,10 @@
 //! no witness of their own to capture.
 //!
 //! Like the rest of the fuzzing surface it is gated behind `unstable-fuzzing`
-//! and is **not** part of the stable API. It deliberately mirrors
+//! — by the inner attribute at the top of this file, so the pipeline modules
+//! carry none — and is **not** part of the stable API: harnesses reach it
+//! through [`unstable`](crate::unstable), which re-exports the vocabulary and
+//! wraps the entry points as free functions. It deliberately mirrors
 //! [`fuse`](Application::fuse) rather than hooking into it, so the production
 //! proving path is untouched; a change to `fuse` that this mirror does not
 //! track will surface as a failing patcher test.
@@ -121,7 +125,7 @@ pub struct CircuitSpec {
     /// numbered).
     pub name: String,
     /// The wires it is responsible for: its outputs under the pinned-input
-    /// oracle (see the [module docs](self)).
+    /// oracle (see the `fuse::patcher` module docs).
     pub outputs: Vec<OutputRef>,
 }
 
@@ -216,7 +220,7 @@ impl CircuitSpec {
 
 /// Receives each native internal recursion circuit, its specification and
 /// its honest witness during
-/// [`capture_internal_circuits`](Application::capture_internal_circuits).
+/// [`capture_internal_circuits`](crate::unstable::capture_internal_circuits).
 ///
 /// `make_witness` builds the circuit's honest witness on demand; it is a
 /// builder rather than a value so the visitor can run the circuit through
@@ -285,6 +289,27 @@ fn covered_elements<'w, F: Field, Cir: Circuit<F>>(
         .witness(&mut Emulator::execute(), Always::maybe_just(|| witness))?
         .into_aux();
     Ok(coverage(aux.take()))
+}
+
+/// The positions, in the unified output's $k(Y)$ order, of the covered
+/// *element* slots of `coverage`: the values the covering circuit derives
+/// in-circuit (`Slot::provide`) or receives and checks (`Slot::receive`).
+/// Covered *point* slots are received commitments, which no circuit derives,
+/// so they are omitted; a point writes two wires and an element one, which is
+/// how the two are told apart.
+///
+/// This is a circuit's output declaration for the harness: with every other
+/// instance wire pinned, these are the wires its constraints must determine.
+fn covered_element_positions(coverage: &native::unified::Coverage) -> Vec<usize> {
+    let mut positions = Vec::new();
+    let mut position = 0;
+    coverage.for_each_slot(|_, covered, wires| {
+        if wires == 1 && covered {
+            positions.push(position);
+        }
+        position += wires;
+    });
+    positions
 }
 
 /// A driver that is never driven: its `usize` wires let a stage gadget be
@@ -414,7 +439,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     ///
     /// Propagates any error from witness generation, from laying out a
     /// stage, or from the visitor.
-    pub fn capture_internal_circuits<'source, RNG, S, V>(
+    pub(crate) fn capture_internal_circuits<'source, RNG, S, V>(
         &self,
         rng: &mut RNG,
         step: S,
@@ -443,7 +468,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// # Errors
     ///
     /// As [`capture_internal_circuits`](Self::capture_internal_circuits).
-    pub fn capture_internal_circuits_seeded<'source, RNG, S, V>(
+    pub(crate) fn capture_internal_circuits_seeded<'source, RNG, S, V>(
         &self,
         rng: &mut RNG,
         step: S,
@@ -658,7 +683,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 })
             };
         let coverage = |unified: native::unified::Instance<C>| -> Vec<usize> {
-            unified.coverage.covered_element_positions()
+            covered_element_positions(&unified.coverage)
         };
 
         type OuterError<C, R, const HEADER_SIZE: usize> =

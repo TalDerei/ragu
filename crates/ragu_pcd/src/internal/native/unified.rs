@@ -64,24 +64,12 @@ macro_rules! unified_instance_type {
 }
 
 /// Maps a field type to the number of $k(Y)$ wires it writes.
-#[cfg(feature = "unstable-fuzzing")]
 macro_rules! unified_wires {
     (Point) => {
         2
     };
     (Element) => {
         1
-    };
-}
-
-/// Whether a field type is a single circuit-field element.
-#[cfg(feature = "unstable-fuzzing")]
-macro_rules! unified_is_element {
-    (Point) => {
-        false
-    };
-    (Element) => {
-        true
     };
 }
 
@@ -263,31 +251,20 @@ macro_rules! define_unified_instance {
                 assert!(flag, "slot `{name}` not covered by any circuit");
             }
 
+            /// Asserts that every slot has been covered, in declaration order.
             fn assert_complete(self) {
-                $( Self::assert_covered(self.$field, stringify!($field)); )+
+                self.for_each_slot(|name, covered, _| Self::assert_covered(covered, name));
             }
 
-            /// The positions, in the unified output's $k(Y)$ order, of the
-            /// covered *element* slots: the values the covering circuit
-            /// derives in-circuit ([`Slot::provide`]) or receives and checks
-            /// ([`Slot::receive`]). Covered *point* slots are received
-            /// commitments, which no circuit derives, so they are omitted.
+            /// Walks the slots in the output's $k(Y)$ order, handing `f` each
+            /// slot's name, whether a circuit has covered it, and the number
+            /// of $k(Y)$ wires it writes: two for a point, one for an element.
             ///
-            /// This is a circuit's output declaration for the patcher
-            /// harness (see [`patcher`](crate::patcher)): with every other
-            /// instance wire pinned, these are the wires its constraints
-            /// must determine.
-            #[cfg(feature = "unstable-fuzzing")]
-            pub fn covered_element_positions(&self) -> alloc::vec::Vec<usize> {
-                let mut positions = alloc::vec::Vec::new();
-                let mut position = 0;
-                $(
-                    if unified_is_element!($field_type) && self.$field {
-                        positions.push(position);
-                    }
-                    position += unified_wires!($field_type);
-                )+
-                positions
+            /// `assert_complete` walks it to check every slot; the patcher
+            /// harness (see `fuse::patcher`) walks it to read a circuit's
+            /// output declaration off its coverage.
+            pub fn for_each_slot(&self, mut f: impl FnMut(&'static str, bool, usize)) {
+                $( f(stringify!($field), self.$field, unified_wires!($field_type)); )+
             }
         }
     };

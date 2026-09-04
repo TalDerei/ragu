@@ -11,7 +11,7 @@
 //! # Setup, paid once
 //!
 //! The circuits' honest witnesses exist only mid-fuse, so
-//! [`Application::capture_internal_circuits`] runs real fuses and hands each
+//! [`unstable::capture_internal_circuits`] runs real fuses and hands each
 //! circuit, its [`CircuitSpec`] and its witness to a visitor that records the
 //! constraint graph ([`ragu_testing::patcher::capture_staged`]). It does so at
 //! three points of a small tree — the base case (a seed over two trivial
@@ -28,7 +28,7 @@
 //!
 //! A circuit's spec declares what it is responsible for: the unified instance
 //! slots it covers and the stage values it checks (see
-//! [`ragu_pcd::patcher`]). Those are its **outputs**; every other instance
+//! [`ragu_pcd::unstable`]). Those are its **outputs**; every other instance
 //! wire and every other reserved stage wire is an **input** — received
 //! commitments, challenges another circuit derived, stage values another
 //! circuit checks. Before any fuzzing, a static check runs
@@ -69,7 +69,7 @@ use ragu_core::Result;
 use ragu_pasta::Pasta;
 use ragu_pcd::{
     ApplicationBuilder,
-    patcher::{CircuitSpec, InternalCircuitVisitor},
+    unstable::{self, CircuitSpec, InternalCircuitVisitor},
 };
 use ragu_testing::{
     patcher::{Prepared, ProbeOutcome, capture_with_stage_values, discover_free_advice, forced_by},
@@ -241,7 +241,8 @@ static CIRCUITS: LazyLock<Collector<NativeField, NestedField>> = LazyLock::new(|
         native: Vec::new(),
         nested: Vec::new(),
     };
-    app.capture_internal_circuits_seeded(
+    unstable::capture_internal_circuits_seeded(
+        &app,
         &mut rng,
         leaf_step(),
         NativeField::from(42u64),
@@ -251,12 +252,12 @@ static CIRCUITS: LazyLock<Collector<NativeField, NestedField>> = LazyLock::new(|
 
     collector.point = "leaves";
     let (l, r) = (leaf(&mut rng), leaf(&mut rng));
-    app.capture_internal_circuits(&mut rng, hash2(), (), l, r, &mut collector)
+    unstable::capture_internal_circuits(&app, &mut rng, hash2(), (), l, r, &mut collector)
         .expect("capturing the internal circuits over two leaves must succeed");
 
     collector.point = "nodes";
     let (l, r) = (node(&mut rng), node(&mut rng));
-    app.capture_internal_circuits(&mut rng, merge2(), (), l, r, &mut collector)
+    unstable::capture_internal_circuits(&app, &mut rng, merge2(), (), l, r, &mut collector)
         .expect("capturing the internal circuits over two nodes must succeed");
     collector
 });

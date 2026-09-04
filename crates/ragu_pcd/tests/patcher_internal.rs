@@ -1,7 +1,7 @@
 //! Aiming the patcher engine at the production internal recursion circuits
 //! (issue #793).
 //!
-//! [`Application::capture_internal_circuits`] hands every internal circuit —
+//! [`unstable::capture_internal_circuits`] hands every internal circuit —
 //! the five native ones and the nested endoscaling steps — its
 //! [`CircuitSpec`] and its honest witness, which exist only mid-fuse, to a
 //! visitor. Here the visitor captures each circuit through the recording
@@ -53,7 +53,7 @@ use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
-    patcher::{CircuitSpec, InternalCircuitVisitor, OutputRef},
+    unstable::{self, CircuitSpec, InternalCircuitVisitor, OutputRef},
 };
 use ragu_testing::{
     patcher::{
@@ -375,7 +375,13 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         point: "seeded",
         ..Default::default()
     };
-    app.capture_internal_circuits_seeded(&mut rng, leaf_step(), Fp::from(42u64), &mut seeded)?;
+    unstable::capture_internal_circuits_seeded(
+        &app,
+        &mut rng,
+        leaf_step(),
+        Fp::from(42u64),
+        &mut seeded,
+    )?;
 
     // Level one: two leaves.
     let leaf = |rng: &mut StdRng| {
@@ -387,7 +393,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         ..Default::default()
     };
     let (l, r) = (leaf(&mut rng)?, leaf(&mut rng)?);
-    app.capture_internal_circuits(&mut rng, hash2(), (), l, r, &mut leaves)?;
+    unstable::capture_internal_circuits(&app, &mut rng, hash2(), (), l, r, &mut leaves)?;
 
     // Level two: two nodes, each a real fuse of two leaves.
     let node = |rng: &mut StdRng| -> Result<_> {
@@ -399,7 +405,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         ..Default::default()
     };
     let (l, r) = (node(&mut rng)?, node(&mut rng)?);
-    app.capture_internal_circuits(&mut rng, merge2(), (), l, r, &mut nodes)?;
+    unstable::capture_internal_circuits(&app, &mut rng, merge2(), (), l, r, &mut nodes)?;
 
     let native = [
         "hashes_1",

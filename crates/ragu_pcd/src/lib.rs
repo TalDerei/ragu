@@ -29,17 +29,15 @@ mod backend;
 #[path = "../tests/backend_equivalence/mod.rs"]
 mod backend_equivalence;
 mod fuse;
-/// Patcher harness surface: hands the internal recursion circuits, their
-/// honest witnesses and their oracle specifications to a visitor mid-fuse.
-/// See [`fuse::patcher`]. Not part of the stable API.
-#[cfg(feature = "unstable-fuzzing")]
-pub use fuse::patcher;
 #[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;
 pub mod header;
 mod internal;
 mod proof;
 pub mod step;
+// Gates itself behind `unstable-fuzzing` with an inner `#![cfg]` and hides
+// itself from the docs, so no feature attribute appears here.
+pub mod unstable;
 mod verify;
 
 use alloc::collections::BTreeMap;
