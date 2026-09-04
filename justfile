@@ -125,8 +125,27 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
         -o "target/flamegraph-{{PACKAGE}}-{{GROUP}}-{{TARGET}}.svg" {{ARGS}} \
         -- --gungraun-run {{GROUP}} "$func_idx" 0
 
+# backend feature configurations compile cleanly
+backend_clippy:
+  cargo clippy -p ragu_acceleration --lib --tests --no-default-features --features native-msm -- -D warnings
+  cargo clippy -p ragu_pcd --lib --tests --benches --no-default-features --features native-msm -- -D warnings
+
+# backend lane: differential, parity, and liveness tests in the serial
+# native-msm configuration
+backend_equivalence *ARGS:
+  cargo test --release -p ragu_acceleration --no-default-features --features native-msm {{ARGS}} -- --test-threads=1
+  PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --no-default-features --features native-msm --lib backend_equivalence:: {{ARGS}} -- --test-threads=1
+
+# correctness-first fallbacks retain their bare-metal no_std configurations
+backend_nostd:
+  cargo build -p ragu_backend -p ragu_acceleration --lib --no-default-features --target thumbv7em-none-eabihf
+  cargo build -p ragu_pcd --lib --no-default-features --features alloc --target thumbv7em-none-eabihf
+
+# backend correctness lane: compilation, liveness, and equivalence
+backend_lane: backend_clippy backend_equivalence backend_nostd
+
 # run CI checks locally (formatting, clippy, tests)
-ci_local: _book_setup
+ci_local: _book_setup backend_lane
   @echo "Running formatting check..."
   cargo +{{_nightly}} fmt --all -- --config-path rustfmt.nightly.toml --check
   @echo "Running clippy..."

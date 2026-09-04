@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `std` feature now enables the required `alloc` feature.
 - Routed sparse polynomial evaluation, reverse-dot computations, registry
   evaluation, and polynomial commitments through the selected backend across
   proving and verification paths.

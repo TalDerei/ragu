@@ -1,7 +1,9 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use proptest::{prelude::*, test_runner::TestCaseResult};
 use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
 use ragu_arithmetic::{Cycle, ff::Field};
-use ragu_backend::ReferenceBackend;
+use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     polynomials::{ProductionRank, Rank, sparse},
     registry::CircuitIndex,
@@ -14,6 +16,44 @@ use crate::{
     Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
     step::internal::trivial::Trivial,
 };
+
+static TRACKING_MSM_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+/// Test backend that records whether PCD dispatch reaches `Backend::msm`.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TrackingBackend;
+
+impl TrackingBackend {
+    fn reset_msm_calls() {
+        TRACKING_MSM_CALLS.store(0, Ordering::Relaxed);
+    }
+
+    fn msm_calls() -> usize {
+        TRACKING_MSM_CALLS.load(Ordering::Relaxed)
+    }
+}
+
+impl Backend for TrackingBackend {
+    fn msm<
+        'a,
+        C: ragu_arithmetic::CurveAffine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+    >(
+        coeffs: A,
+        bases: Bases,
+    ) -> C::Curve
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        TRACKING_MSM_CALLS.fetch_add(1, Ordering::Relaxed);
+        ReferenceBackend::msm(coeffs, bases)
+    }
+}
+
+impl crate::backend::TestSealed for TrackingBackend {
+    type Verifier = Self;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VerifierDecision {
@@ -367,6 +407,27 @@ fn check_corrupted_pcd_equivalence(
     }
 
     Ok(())
+}
+
+#[test]
+fn selected_backend_dispatch_reaches_msm() {
+    let app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+        .with_backend::<TrackingBackend>()
+        .register_dummy_circuits(0)
+        .unwrap()
+        .finalize(Pasta::baked())
+        .unwrap();
+    let mut rng = StdRng::seed_from_u64(0);
+    let (left, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
+    let (right, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
+
+    TrackingBackend::reset_msm_calls();
+    let _ = app.fuse(&mut rng, Trivial::new(), (), left, right).unwrap();
+
+    assert!(
+        TrackingBackend::msm_calls() > 0,
+        "PCD did not dispatch MSM through its selected backend",
+    );
 }
 
 proptest! {

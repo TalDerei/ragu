@@ -27,6 +27,9 @@ mod sealed {
     }
 }
 
+#[cfg(test)]
+pub(crate) use sealed::Sealed as TestSealed;
+
 /// A Ragu-owned computational backend.
 ///
 /// This trait is sealed: applications may select one of Ragu's supported
