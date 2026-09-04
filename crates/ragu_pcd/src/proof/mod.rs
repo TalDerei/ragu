@@ -17,6 +17,17 @@ pub(crate) mod builder;
 #[cfg(test)]
 #[path = "../../tests/backend_equivalence/proof.rs"]
 mod proof_equivalence;
+// Mutable component access for the corruption vocabulary (see
+// `crate::fuzzing`). Its source lives with the rest of the fuzzing surface in
+// `src/fuzzing/`, but it is mounted here, as a child of `proof`, so it can
+// reach the private `Cached` fields without loosening them. The file gates
+// itself behind `unstable-fuzzing` with an inner `#![cfg]`, so no feature
+// attribute appears here.
+// TODO: Revisit this layout; for now, it keeps the fuzzing surface in one
+// directory without loosening `Proof`'s privacy or adding a feature
+// attribute here.
+#[path = "../fuzzing/access.rs"]
+mod access;
 
 use alloc::{sync::Arc, vec, vec::Vec};
 
@@ -49,15 +60,8 @@ use crate::{
 /// Wraps a value that can be recomputed from primary proof data. Used to
 /// distinguish commitment caches from primary polynomial fields at the type
 /// level. Immutable once constructed.
-///
-/// Both the type and its field are `pub(crate)` rather than private, so that
-/// `fuzzing::corrupt` can address the whole proof from one place. That is a real
-/// concession: "immutable once constructed" is no longer enforced by the
-/// type, only by convention. It is made deliberately, because the only code
-/// in the crate that writes through it is the corruption harness, whose whole
-/// purpose is to break proofs and watch the verifier reject them.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Cached<T>(pub(crate) T);
+struct Cached<T>(T);
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
 /// some accompanying data.
@@ -176,10 +180,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) bridge_f_rx: Arc<sparse::Polynomial<C::ScalarField, R>>,
 
     // Bridge rx polynomials (cached, derived from bridge_alpha + native commitments)
-    pub(crate) bridge_outer_error_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    pub(crate) bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    pub(crate) bridge_query_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
-    pub(crate) bridge_eval_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_outer_error_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_query_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
+    bridge_eval_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling data (ScalarField, NestedCurve commitment)
     pub(crate) nested_endoscaling_step_rxs: Vec<sparse::Polynomial<C::ScalarField, R>>,
@@ -228,10 +232,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) bridge_f_commitment: C::NestedCurve,
 
     // Bridge commitments (cached, derived from cached bridge rx)
-    pub(crate) bridge_outer_error_commitment: Cached<C::NestedCurve>,
-    pub(crate) bridge_ab_commitment: Cached<C::NestedCurve>,
-    pub(crate) bridge_query_commitment: Cached<C::NestedCurve>,
-    pub(crate) bridge_eval_commitment: Cached<C::NestedCurve>,
+    bridge_outer_error_commitment: Cached<C::NestedCurve>,
+    bridge_ab_commitment: Cached<C::NestedCurve>,
+    bridge_query_commitment: Cached<C::NestedCurve>,
+    bridge_eval_commitment: Cached<C::NestedCurve>,
 
     // Children's stage rx polynomials (for copying circuit claims)
     pub(crate) child_left_stage_rx: ChildStageRx<C::ScalarField, R>,

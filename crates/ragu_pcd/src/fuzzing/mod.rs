@@ -16,6 +16,10 @@
 //!   itself is mounted under `fuse` (see `fuse/mod.rs`) so that it can call
 //!   the same private pipeline steps `fuse` does; [`patcher`] is its public
 //!   face.
+//! * `access.rs` — the mutable component accessors [`corrupt`] writes
+//!   through. Not a module of this namespace: it is mounted as a child of
+//!   `proof` (see `proof/mod.rs`) so it can reach `Proof`'s private fields
+//!   without loosening them, the same arrangement as `patcher` under `fuse`.
 
 pub mod corrupt;
 
