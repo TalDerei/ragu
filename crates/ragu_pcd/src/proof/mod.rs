@@ -290,21 +290,26 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         Pcd { proof: self, data }
     }
 
-    /// Returns the revdot product $c = \text{revdot}(A, B)$.
+    // TODO: Route this witness-value computation through the selected backend
+    // without making `Proof` backend-parametric or threading `c` through the
+    // backend-independent stage-witness APIs.
+    /// Returns the revdot product $c = \text{revdot}(A, B)$ for witness
+    /// generation.
     ///
-    /// This is used while allocating canonical circuit witnesses. The
-    /// backend-selected prover path computes the same value through
-    /// [`ProofBuilder`]; keeping this path canonical
-    /// prevents circuit synthesis from depending on the selected backend.
+    /// This computes witness data, not circuit structure. An exact-equivalent
+    /// backend implementation would leave the synthesized constraints unchanged.
     pub(crate) fn c(&self) -> C::CircuitField {
         self.native_a_poly.revdot(&self.native_b_poly)
     }
 
-    /// Returns the evaluation $v = p(u)$.
+    // TODO: Route this witness-value computation through the selected backend
+    // without making `Proof` backend-parametric or threading `v` through the
+    // backend-independent stage-witness APIs.
+    /// Returns the evaluation $v = p(u)$ for witness generation.
     ///
-    /// As with [`Self::c`], this canonical implementation is retained for
-    /// circuit witness allocation while prover-side computation is dispatched
-    /// through the selected backend.
+    /// As with [`Self::c`], this computes witness data, not circuit structure.
+    /// An exact-equivalent backend implementation would leave the synthesized
+    /// constraints unchanged.
     pub(crate) fn v(&self) -> C::CircuitField {
         self.native_p_poly.eval(self.u)
     }
