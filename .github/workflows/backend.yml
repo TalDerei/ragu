@@ -1,0 +1,64 @@
+name: Backend CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress runs when a new commit is pushed to the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # Extend this shared matrix when another accelerated backend lands instead
+  # of adding a feature-specific matrix (and three more PR status checks).
+  # The general Rust jobs exercise all features together; this checks each
+  # backend's distinct feature configuration and end-to-end boundary.
+  backend-equivalence:
+    name: backend equivalence (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+        with:
+          cache-suffix: backend-equivalence
+      - name: Run acceleration backend equivalence suite
+        run: >-
+          cargo test --release -p ragu_acceleration --locked --no-default-features
+          --features native-msm -- --test-threads=1
+      - name: Run native PCD backend equivalence
+        if: matrix.os == 'ubuntu-latest'
+        run: >-
+          cargo test --release -p ragu_pcd --locked --no-default-features
+          --features native-msm --lib backend_equivalence:: -- --test-threads=1
+
+  # Stable status for the ruleset. Future backend jobs, such as routing checks,
+  # should be added to this list instead of becoming separate required checks.
+  backend-required:
+    name: backend-required
+    if: always()
+    needs:
+      - backend-equivalence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required backend jobs
+        env:
+          BACKEND_RESULT: ${{ needs.backend-equivalence.result }}
+        run: |
+          if [[ "$BACKEND_RESULT" != "success" ]]; then
+            echo "Backend equivalence did not succeed: $BACKEND_RESULT"
+            exit 1
+          fi

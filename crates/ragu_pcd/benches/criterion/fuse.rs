@@ -1,4 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
+use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
@@ -11,6 +12,14 @@ fn fuse_bench(c: &mut Criterion) {
     let poseidon_params = Pasta::circuit_poseidon(pasta);
 
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
+        .register(nontrivial::WitnessLeaf { poseidon_params })
+        .unwrap()
+        .register(nontrivial::Hash2 { poseidon_params })
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+    let accelerated_app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
+        .with_backend::<AcceleratedBackend>()
         .register(nontrivial::WitnessLeaf { poseidon_params })
         .unwrap()
         .register(nontrivial::Hash2 { poseidon_params })
@@ -41,6 +50,18 @@ fn fuse_bench(c: &mut Criterion) {
             || (leaf1.clone(), leaf2.clone(), StdRng::seed_from_u64(5678)),
             |(l1, l2, mut rng)| {
                 app.fuse(&mut rng, nontrivial::Hash2 { poseidon_params }, (), l1, l2)
+                    .unwrap()
+            },
+            criterion::BatchSize::PerIteration,
+        );
+    });
+
+    c.bench_function("fuse_accelerated_backend", |b| {
+        b.iter_batched(
+            || (leaf1.clone(), leaf2.clone(), StdRng::seed_from_u64(5678)),
+            |(l1, l2, mut rng)| {
+                accelerated_app
+                    .fuse(&mut rng, nontrivial::Hash2 { poseidon_params }, (), l1, l2)
                     .unwrap()
             },
             criterion::BatchSize::PerIteration,
