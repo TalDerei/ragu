@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `AcceleratedBackend`, initially inheriting all reference defaults.
+- Added `AcceleratedProver`, which accelerates proving while `ragu_pcd`
+  verifies with the reference kernels, and the `verifier` module that hosts
+  verifier-consulted overrides.
+
 ## [0.0.0] - 2026-08-16
 
 ### Added

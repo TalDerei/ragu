@@ -13,13 +13,15 @@ use crate::{
     proof::ProofBuilder,
 };
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     pub(super) fn compute_preamble<'a, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>> {
         let preamble_witness = self.compute_native_preamble(rng, left, right, builder)?;
         self.compute_bridge_preamble(rng, left, right, builder)?;
@@ -31,7 +33,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>> {
         let preamble_witness = native::stages::preamble::Witness::new(
             left,
@@ -55,7 +57,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let bridge_rx = nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::random(&mut *rng),
@@ -65,7 +67,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 right: nested::stages::preamble::ChildWitness::from_proof(right),
             },
         )?;
-        let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
+        let bridge_commitment =
+            B::sparse_commit_to_affine(&bridge_rx, C::nested_generators(self.params));
         builder.set_bridge_preamble_rx(bridge_rx, bridge_commitment);
         Ok(())
     }

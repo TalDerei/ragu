@@ -290,12 +290,26 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         Pcd { proof: self, data }
     }
 
-    /// Returns the revdot product $c = \text{revdot}(A, B)$.
+    // TODO: Route this witness-value computation through the selected backend
+    // without making `Proof` backend-parametric or threading `c` through the
+    // backend-independent stage-witness APIs.
+    /// Returns the revdot product $c = \text{revdot}(A, B)$ for witness
+    /// generation.
+    ///
+    /// This computes witness data, not circuit structure. An exact-equivalent
+    /// backend implementation would leave the synthesized constraints unchanged.
     pub(crate) fn c(&self) -> C::CircuitField {
         self.native_a_poly.revdot(&self.native_b_poly)
     }
 
-    /// Returns the evaluation $v = p(u)$.
+    // TODO: Route this witness-value computation through the selected backend
+    // without making `Proof` backend-parametric or threading `v` through the
+    // backend-independent stage-witness APIs.
+    /// Returns the evaluation $v = p(u)$ for witness generation.
+    ///
+    /// As with [`Self::c`], this computes witness data, not circuit structure.
+    /// An exact-equivalent backend implementation would leave the synthesized
+    /// constraints unchanged.
     pub(crate) fn v(&self) -> C::CircuitField {
         self.native_p_poly.eval(self.u)
     }
@@ -444,7 +458,9 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     }
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    crate::Application<'_, C, R, HEADER_SIZE, B>
+{
     /// Runs endoscaling over the host-curve commitments that feed
     /// `PointsStage`, in the order `compute_p` (`_10_p.rs`)
     /// accumulates them. Writes `nested_endoscalar_rx`,
@@ -462,7 +478,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         points: &[C::HostCurve],
         endoscalar_alpha: C::ScalarField,
         points_alpha: C::ScalarField,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<C::HostCurve> {
         assert_eq!(points.len(), NUM_ENDOSCALING_POINTS);
 
@@ -518,14 +534,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             view.d.push(C::CircuitField::ONE);
             view.build()
         };
-        let host_commitment = ones_host.commit_to_affine(C::host_generators(self.params));
+        let host_commitment =
+            B::sparse_commit_to_affine(&ones_host, C::host_generators(self.params));
 
         // registry_xy must be the actual registry evaluation (fuse cross-checks it).
-        let registry_xy_poly = self
-            .native_registry
-            .xy(C::CircuitField::ONE, C::CircuitField::ONE);
+        let registry_xy_poly = B::registry_xy(
+            &self.native_registry,
+            C::CircuitField::ONE,
+            C::CircuitField::ONE,
+        );
 
-        let mut builder = ProofBuilder::new(self.params, C::ScalarField::ONE);
+        let mut builder = ProofBuilder::<C, R, B>::new(self.params, C::ScalarField::ONE);
 
         builder.set_circuit_id(CircuitIndex::new(0));
         builder.set_left_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
@@ -568,7 +587,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
             )
             .expect("trivial s_prime rx");
-            let commitment = rx.commit_to_affine(nested_gen);
+            let commitment = B::sparse_commit_to_affine(&rx, nested_gen);
             builder.set_bridge_s_prime_rx(rx, commitment);
         }
         {
@@ -580,7 +599,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
             )
             .expect("trivial inner_error rx");
-            let commitment = rx.commit_to_affine(nested_gen);
+            let commitment = B::sparse_commit_to_affine(&rx, nested_gen);
             builder.set_bridge_inner_error_rx(rx, commitment);
         }
         {
@@ -591,7 +610,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
             )
             .expect("trivial f rx");
-            let commitment = rx.commit_to_affine(nested_gen);
+            let commitment = B::sparse_commit_to_affine(&rx, nested_gen);
             builder.set_bridge_f_rx(rx, commitment);
         }
 
@@ -674,7 +693,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 },
             )
             .expect("trivial preamble rx");
-            let commitment = rx.commit_to_affine(nested_gen);
+            let commitment = B::sparse_commit_to_affine(&rx, nested_gen);
             builder.set_bridge_preamble_rx(rx, commitment);
         }
 

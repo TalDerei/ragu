@@ -15,7 +15,9 @@ use ragu_primitives::Element;
 use super::{NativeSPrime, RegistryWy};
 use crate::{Application, Proof, internal::native, proof::ProofBuilder};
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     pub(super) fn compute_eval<'dr, D>(
         &self,
         u: &Element<'dr, D>,
@@ -23,7 +25,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
         registry_wy: &RegistryWy<C, R>,
-        builder: &ProofBuilder<'_, C, R>,
+        builder: &ProofBuilder<'_, C, R, B>,
     ) -> native::stages::eval::Witness<C::CircuitField>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -31,19 +33,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let u = *u.value().take();
 
         native::stages::eval::Witness {
-            left: native::stages::eval::ChildEvaluationsWitness::from_proof(left, u),
-            right: native::stages::eval::ChildEvaluationsWitness::from_proof(right, u),
+            left: native::stages::eval::ChildEvaluationsWitness::from_proof::<C, R, B>(left, u),
+            right: native::stages::eval::ChildEvaluationsWitness::from_proof::<C, R, B>(right, u),
             current: native::stages::eval::CurrentStepWitness {
                 // TODO: the registry evaluations here could _theoretically_ be more
                 // efficient if they're computed simultaneously with assistance
                 // from the registry itself, rather than individually evaluated for
                 // each of these restrictions.
-                registry_wx0: s_prime.registry_wx0_poly.eval(u),
-                registry_wx1: s_prime.registry_wx1_poly.eval(u),
-                registry_wy: registry_wy.poly.eval(u),
-                a_poly: builder.native_a_poly().eval(u),
-                b_poly: builder.native_b_poly().eval(u),
-                registry_xy: builder.native_registry_xy_poly().eval(u),
+                registry_wx0: B::sparse_eval(&s_prime.registry_wx0_poly, u),
+                registry_wx1: B::sparse_eval(&s_prime.registry_wx1_poly, u),
+                registry_wy: B::sparse_eval(&registry_wy.poly, u),
+                a_poly: B::sparse_eval(builder.native_a_poly(), u),
+                b_poly: B::sparse_eval(builder.native_b_poly(), u),
+                registry_xy: B::sparse_eval(builder.native_registry_xy_poly(), u),
             },
         }
     }
@@ -60,13 +62,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         eval_witness: &native::stages::eval::Witness<C::CircuitField>,
-        builder: &ProofBuilder<'_, C, R>,
+        builder: &ProofBuilder<'_, C, R, B>,
     ) -> Result<(sparse::Polynomial<C::CircuitField, R>, C::NestedCurve)> {
         let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
             C::CircuitField::random(&mut *rng),
             eval_witness,
         )?;
-        let native_eval_commitment = eval_rx.commit_to_affine(C::host_generators(self.params));
+        let native_eval_commitment =
+            B::sparse_commit_to_affine(&eval_rx, C::host_generators(self.params));
         let bridge_eval_commitment =
             builder.candidate_bridge_eval_commitment(native_eval_commitment)?;
 

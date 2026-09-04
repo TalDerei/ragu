@@ -22,7 +22,9 @@ use crate::{
     proof::ProofBuilder,
 };
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     pub(super) fn inner_error_terms<'dr, 'rx, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
@@ -30,10 +32,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
         source: &FuseProofSource<'rx, C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<(
         native::stages::inner_error::Witness<C, native::RevdotParameters>,
-        FuseBuilder<'_, 'rx, C::CircuitField, R>,
+        FuseBuilder<'_, 'rx, C::CircuitField, R, B>,
         RegistryWy<C, R>,
     )>
     where
@@ -49,7 +51,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         registry_wy: &RegistryWy<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let bridge_rx = nested::stages::inner_error::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::random(&mut *rng),
@@ -58,7 +60,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_wy: registry_wy.commitment,
             },
         )?;
-        let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
+        let bridge_commitment =
+            B::sparse_commit_to_affine(&bridge_rx, C::nested_generators(self.params));
         builder.set_bridge_inner_error_rx(bridge_rx, bridge_commitment);
         Ok(())
     }
@@ -70,10 +73,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
         source: &FuseProofSource<'rx, C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<(
         native::stages::inner_error::Witness<C, native::RevdotParameters>,
-        FuseBuilder<'_, 'rx, C::CircuitField, R>,
+        FuseBuilder<'_, 'rx, C::CircuitField, R, B>,
         RegistryWy<C, R>,
     )>
     where
@@ -82,15 +85,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let z = *z.value().take();
 
-        let mut claims_builder = claims::Builder::new(&self.native_registry, y, z);
+        let mut claims_builder =
+            claims::Builder::<_, C::CircuitField, R, B>::new(&self.native_registry, y, z);
         native::claims::build(source, &mut claims_builder)?;
 
         let inner_error_witness =
             native::stages::inner_error::Witness::<C, native::RevdotParameters> {
-                error_terms: fold_revdot::inner_error_terms::<_, R, native::RevdotParameters>(
-                    &claims_builder.a,
-                    &claims_builder.b,
-                ),
+                error_terms: fold_revdot::inner_error_terms_with_backend::<
+                    B,
+                    _,
+                    R,
+                    native::RevdotParameters,
+                >(&claims_builder.a, &claims_builder.b),
             };
         let native_rx =
             native::stages::inner_error::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
@@ -100,9 +106,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         builder.set_native_inner_error_rx(native_rx);
 
-        let registry_wy_poly = native_registry.y(y);
+        let registry_wy_poly = B::registry_at_y(native_registry, y);
         let registry_wy_commitment =
-            registry_wy_poly.commit_to_affine(C::host_generators(self.params));
+            B::sparse_commit_to_affine(&registry_wy_poly, C::host_generators(self.params));
         let registry_wy = RegistryWy {
             poly: registry_wy_poly,
             commitment: registry_wy_commitment,

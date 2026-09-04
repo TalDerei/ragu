@@ -19,9 +19,11 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 
 [features]
 default = []
+multicore = ["ragu_backend/multicore", "std"]
 std = []
 
 [lib]
 bench = false
 
 [dependencies]
+ragu_backend = { path = "../ragu_backend", version = "0.0.0", default-features = false }

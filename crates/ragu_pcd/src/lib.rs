@@ -24,6 +24,7 @@ extern crate alloc;
 #[cfg(any(feature = "std", test))]
 extern crate std;
 
+mod backend;
 mod fuse;
 #[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;
@@ -39,6 +40,7 @@ use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 use header::Header;
 pub use proof::{Pcd, Proof};
 use ragu_arithmetic::{Cycle, rand::CryptoRng};
+use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{Registry, RegistryBuilder},
@@ -50,25 +52,33 @@ use step::{Step, internal::adapter::Adapter};
 // FIXME: choose a permanent domain separation tag before release.
 pub(crate) const RAGU_TAG: &[u8] = b"FIXME";
 
+pub use backend::SelectableBackend;
+
 /// Builder for an [`Application`] for proof-carrying data.
-pub struct ApplicationBuilder<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+pub struct ApplicationBuilder<
+    'params,
+    C: Cycle,
+    R: Rank,
+    const HEADER_SIZE: usize,
+    B: SelectableBackend = ReferenceBackend,
+> {
     native_registry: RegistryBuilder<'params, C::CircuitField, R>,
     nested_registry: RegistryBuilder<'params, C::ScalarField, R>,
     num_application_steps: usize,
     header_map: BTreeMap<header::Suffix, TypeId>,
-    _marker: PhantomData<[(); HEADER_SIZE]>,
+    _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Default
-    for ApplicationBuilder<'_, C, R, HEADER_SIZE>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend> Default
+    for ApplicationBuilder<'_, C, R, HEADER_SIZE, B>
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
-    ApplicationBuilder<'params, C, R, HEADER_SIZE>
+impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+    ApplicationBuilder<'params, C, R, HEADER_SIZE, B>
 {
     /// Create an empty [`ApplicationBuilder`] for proof-carrying data.
     pub fn new() -> Self {
@@ -77,6 +87,25 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
             nested_registry: RegistryBuilder::new(),
             num_application_steps: 0,
             header_map: BTreeMap::new(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Selects a Ragu-owned computational backend.
+    ///
+    /// The selected backend is used for proving and native witness
+    /// computation; [`Application::verify`] consults the kernels of its
+    /// [`SelectableBackend::Verifier`], which the selection fixes (for
+    /// example `AcceleratedProver` accelerates proving only). Applications may
+    /// select a Ragu implementation but cannot provide one.
+    pub fn with_backend<SelectedBackend: SelectableBackend>(
+        self,
+    ) -> ApplicationBuilder<'params, C, R, HEADER_SIZE, SelectedBackend> {
+        ApplicationBuilder {
+            native_registry: self.native_registry,
+            nested_registry: self.nested_registry,
+            num_application_steps: self.num_application_steps,
+            header_map: self.header_map,
             _marker: PhantomData,
         }
     }
@@ -130,7 +159,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
     pub fn finalize(
         mut self,
         params: &'params C::Params,
-    ) -> Result<Application<'params, C, R, HEADER_SIZE>> {
+    ) -> Result<Application<'params, C, R, HEADER_SIZE, B>> {
         // Build the native registry:
         // 1. Application circuits (already registered)
         // 2. Internal circuits and masks
@@ -200,17 +229,25 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 }
 
 /// The recursion context that is used to create and verify proof-carrying data.
-pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+pub struct Application<
+    'params,
+    C: Cycle,
+    R: Rank,
+    const HEADER_SIZE: usize,
+    B: SelectableBackend = ReferenceBackend,
+> {
     native_registry: Registry<'params, C::CircuitField, R>,
     nested_registry: Registry<'params, C::ScalarField, R>,
     params: &'params C::Params,
     num_application_steps: usize,
     /// Cached seeded trivial proof for rerandomization.
     seeded_trivial: OnceCell<Proof<C, R>>,
-    _marker: PhantomData<[(); HEADER_SIZE]>,
+    _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     /// Seed a new computation by running a step with trivial inputs.
     ///
     /// This is the entry point for creating leaf nodes in a PCD tree.

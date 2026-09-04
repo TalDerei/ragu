@@ -16,7 +16,9 @@ use ragu_primitives::Element;
 use super::RegistryWy;
 use crate::{Application, Proof, internal::native, proof::ProofBuilder};
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     pub(super) fn compute_query<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
@@ -27,7 +29,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         registry_wy: &RegistryWy<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-        builder: &mut ProofBuilder<'_, C, R>,
+        builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<native::stages::query::Witness<C>>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -37,16 +39,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let xz = x * *z.value().take();
 
-        let registry_xy_poly = self.native_registry.xy(x, y);
+        let registry_xy_poly = B::registry_xy(&self.native_registry, x, y);
 
         let query_witness = native::stages::query::Witness {
             // TODO: these can all be evaluated at the same time; in fact,
             // that's what registry.xy is supposed to allow.
             fixed_registry: native::InternalCircuitValues::from_fn(|id| {
-                registry_xy_poly.eval(id.circuit_index().omega_j())
+                B::sparse_eval(&registry_xy_poly, id.circuit_index().omega_j())
             }),
-            registry_wxy: registry_xy_poly.eval(w),
-            left: native::stages::query::ChildEvaluationsWitness::from_proof(
+            registry_wxy: B::sparse_eval(&registry_xy_poly, w),
+            left: native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
                 left,
                 w,
                 x,
@@ -54,7 +56,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 &registry_xy_poly,
                 &registry_wy.poly,
             ),
-            right: native::stages::query::ChildEvaluationsWitness::from_proof(
+            right: native::stages::query::ChildEvaluationsWitness::from_proof::<C, R, B>(
                 right,
                 w,
                 x,

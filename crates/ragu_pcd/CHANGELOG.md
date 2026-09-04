@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added sealed, static computational-backend selection between Ragu's reference
+  and accelerated implementations, defaulting to
+  `ragu_backend::ReferenceBackend`.
+- Added `SelectableBackend::Verifier`, the backend whose kernels
+  `Application::verify` consults, and support for
+  `ragu_acceleration::AcceleratedProver`, which accelerates proving while
+  verifying with the reference kernels.
+
+### Changed
+
+- Routed sparse polynomial evaluation, reverse-dot computations, registry
+  evaluation, and polynomial commitments through the selected backend across
+  proving and verification paths.
+- `Application::verify` computes its acceptance kernels through the sealed
+  `SelectableBackend::Verifier` of the selected backend rather than through
+  the selected backend directly.
+
 ## [0.0.0] - 2025-11-05
 
 ### Added

@@ -803,6 +803,9 @@ dependencies = [
 [[package]]
 name = "ragu_acceleration"
 version = "0.0.0"
+dependencies = [
+ "ragu_backend",
+]
 
 [[package]]
 name = "ragu_arithmetic"
@@ -823,6 +826,10 @@ dependencies = [
 [[package]]
 name = "ragu_backend"
 version = "0.0.0"
+dependencies = [
+ "ragu_arithmetic",
+ "ragu_circuits",
+]
 
 [[package]]
 name = "ragu_circuits"
@@ -894,7 +901,9 @@ dependencies = [
  "ff",
  "gungraun",
  "proptest",
+ "ragu_acceleration",
  "ragu_arithmetic",
+ "ragu_backend",
  "ragu_circuits",
  "ragu_core",
  "ragu_pasta",
@@ -926,7 +935,6 @@ dependencies = [
 name = "ragu_testing"
 version = "0.0.0"
 dependencies = [
- "ff",
  "proptest",
  "ragu_arithmetic",
  "ragu_circuits",
@@ -934,7 +942,6 @@ dependencies = [
  "ragu_pasta",
  "ragu_pcd",
  "ragu_primitives",
- "rand 0.10.1",
 ]
 
 [[package]]
