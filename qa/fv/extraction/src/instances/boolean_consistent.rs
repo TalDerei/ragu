@@ -2,7 +2,8 @@ use ragu_pasta::Fp;
 use ragu_primitives::consistent::Consistent;
 
 use crate::{
-    driver::ExtractionDriver, expr::Expr, instance::CircuitInstance, wire_remap::boolean_from_wire,
+    instance::{CircuitInstance, InstanceDriver},
+    wire_remap::boolean_from_wire,
 };
 
 /// `Boolean::enforce_consistent` on a boolean assembled from one input wire:
@@ -16,7 +17,10 @@ pub struct BooleanConsistentInstance;
 impl CircuitInstance for BooleanConsistentInstance {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: InstanceDriver<'dr, F = Fp>,
+    {
         let wire = dr
             .alloc_input_wires(1)
             .into_iter()

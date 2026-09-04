@@ -1,12 +1,9 @@
-use ff::Field;
-use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
-use ragu_primitives::{Invertible, consistent::Consistent};
+use ragu_primitives::consistent::Consistent;
 
 use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireDeserializer},
+    instance::{CircuitInstance, InstanceDriver},
+    wire_remap::invertible_from_wires,
 };
 
 /// `Invertible::enforce_consistent` on a pair assembled from two input wires:
@@ -24,15 +21,12 @@ pub struct ElementInvertibleConsistentInstance;
 impl CircuitInstance for ElementInvertibleConsistentInstance {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
-        let template = {
-            let mut scratch = ExtractionDriver::<Fp>::new();
-            let value = ExtractionDriver::<Fp>::just(|| Fp::ZERO);
-            let inverse_value = ExtractionDriver::<Fp>::just(|| Fp::ZERO);
-            Invertible::alloc_with_advice(&mut scratch, value, inverse_value)?
-        };
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: InstanceDriver<'dr, F = Fp>,
+    {
         let pair_wires = dr.alloc_input_wires(2);
-        let invertible = WireDeserializer::new(pair_wires).into_gadget(&template)?;
+        let invertible = invertible_from_wires::<D>(pair_wires)?;
 
         invertible.enforce_consistent(dr)?;
 

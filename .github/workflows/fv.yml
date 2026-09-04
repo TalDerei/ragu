@@ -38,6 +38,7 @@ jobs:
               - 'rust-toolchain.toml'
               - 'qa/fv/**'
               - 'scripts/check_fv_endpoint_census.sh'
+              - 'scripts/check_fv_contract_composition.sh'
               - '.github/workflows/fv.yml'
               - '.github/actions/**'
 
@@ -56,11 +57,17 @@ jobs:
         with:
           cache-suffix: lean-extraction
 
+      - name: Test FV extraction evaluators
+        run: cargo test --locked -p lean_extraction
+
       - name: Check exported Lean files are up to date
         run: cargo run --locked -p lean_extraction -- check
 
       - name: Check FV trust-boundary census coverage
         run: scripts/check_fv_endpoint_census.sh
+
+      - name: Check FV contract composition boundary
+        run: scripts/check_fv_contract_composition.sh
 
       # We install elan + invoke `lake` directly instead of using
       # `leanprover/lean-action`: that composite transitively references
@@ -103,3 +110,27 @@ jobs:
             | sort > "$RUNNER_TEMP/fingerprints-lean.txt"
           diff -u "$RUNNER_TEMP/fingerprints-rust.txt" "$RUNNER_TEMP/fingerprints-lean.txt"
           echo "all fingerprints match"
+
+      # This is the stronger gadget-level binding. Both implementations receive
+      # the same fresh seed but independently run their circuit model and derive
+      # domain-separated field challenges from it. Printing the non-secret seed
+      # makes a failed run exactly reproducible.
+      - name: Fresh randomized polynomial equivalence check
+        shell: bash
+        run: |
+          set -euo pipefail
+          seed="$(openssl rand -hex 32)"
+          if [[ ! "$seed" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "failed to generate a 32-byte polynomial fingerprint seed" >&2
+            exit 1
+          fi
+          echo "polynomial fingerprint seed: $seed"
+          cargo run --locked -p lean_extraction -- polynomial-fingerprint \
+            --seed "$seed" --points 2 \
+            | sort > "$RUNNER_TEMP/polynomial-fingerprints-rust.txt"
+          (cd qa/fv && lake env lean --run Ragu/PolynomialFingerprint/Main.lean "$seed" 2) \
+            | sort > "$RUNNER_TEMP/polynomial-fingerprints-lean.txt"
+          diff -u \
+            "$RUNNER_TEMP/polynomial-fingerprints-rust.txt" \
+            "$RUNNER_TEMP/polynomial-fingerprints-lean.txt"
+          echo "all randomized polynomial fingerprints match"

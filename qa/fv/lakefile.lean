@@ -18,6 +18,11 @@ lean_lib Ragu where
 lean_exe fingerprints where
   root := `Ragu.Fingerprint.Main
 
+-- Prints direct randomized polynomial evaluations for every formal instance;
+-- CI compares them with the production-Driver evaluator in Rust.
+lean_exe polynomial_fingerprints where
+  root := `Ragu.PolynomialFingerprint.Main
+
 -- Clean's last upstream Lean 4.30 revision, immediately before its 4.31 bump.
 -- Keep this independent of Ironwood's later Clean pin and API migrations.
 require clean from git "https://github.com/Verified-zkEVM/clean" @

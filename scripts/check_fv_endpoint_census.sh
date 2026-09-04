@@ -45,6 +45,12 @@ pins=$(grep -hE '^census_(axioms|computable) ' "$census" \
   | sed -E 's/^census_(axioms|computable)[[:space:]]+//; s/^_root_\.//; s/[[:space:]].*$//' \
   | sort -u || true)
 
+# Root-level executable entrypoints all elaborate as `_root_.main`, so they
+# cannot coexist in the central trust-boundary import closure. Each one must
+# instead have a dedicated checker that imports exactly that executable module
+# and pins its `main` in its own environment.
+main_checkers=$(find "$source_root/Meta" -maxdepth 1 -name '*MainTrustBoundary.lean' | sort)
+
 status=0
 count=0
 circuit_count=0
@@ -102,6 +108,24 @@ while IFS= read -r file; do
     [[ $base =~ $ENDPOINT_RE || $qualified =~ $EXACT_ENDPOINT_RE ]] || continue
 
     count=$((count + 1))
+    if [[ $qualified == main ]]; then
+      module=${file#qa/fv/}
+      module=${module%.lean}
+      module=${module//\//.}
+      checker_matches=0
+      while IFS= read -r checker; do
+        [[ -n $checker ]] || continue
+        if grep -qxF "import $module" "$checker" \
+          && grep -qE '^census_computable[[:space:]]+_root_\.main([[:space:]]|$)' "$checker"; then
+          checker_matches=$((checker_matches + 1))
+        fi
+      done <<< "$main_checkers"
+      if [[ $checker_matches -ne 1 ]]; then
+        echo "VIOLATION: executable endpoint main (${file}) must have exactly one dedicated MainTrustBoundary checker; found ${checker_matches}" >&2
+        status=1
+      fi
+      continue
+    fi
     if ! grep -qxF "$qualified" <<< "$pins"; then
       echo "VIOLATION: endpoint ${qualified} (${file}) has no direct census_axioms/census_computable entry" >&2
       status=1

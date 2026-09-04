@@ -1,8 +1,10 @@
 # Fingerprint Equivalence Check
 
-The connection between the Rust circuits and the Lean reimplementations is
-established by a *fingerprint equivalence check*, in the style of comparing
-verification keys.
+The deterministic connection between the Rust extractor trace and the Lean
+reimplementations is established by a *fingerprint equivalence check*, in the
+style of comparing verification keys. CI retains this exact check as a stable
+diagnostic alongside the complementary
+[direct randomized polynomial check](./polynomial-fingerprint.md).
 
 A fingerprint is the SHA-256 digest of a canonical byte encoding of a
 circuit's operation trace and output expressions, with every expression
@@ -43,10 +45,13 @@ the digest preimage. Two traces therefore produce the same digest only if
 they are identical as polynomials, up to SHA-256 collisions.
 
 A match consequently shows that the reimplementation emits exactly the same
-witness allocations, constraints, and outputs as the Rust circuit. Combined with
-the principle that circuits emitting identical operations and outputs are
-equivalent, the soundness and completeness theorems proved about the
-reimplementation apply to the circuit that the proof system actually verifies.
+witness allocations, constraints, and outputs as the Rust
+`ExtractionDriver` reports, modulo polynomial normalization. This is an exact
+statement about that three-wire symbolic model, not by itself a statement
+about every production-driver detail. In particular, the extractor omits the
+production gate's `D` slot and `C * D = 0` relation. The direct randomized check
+runs the production gadget through a separate four-slot driver and covers that
+gap probabilistically.
 
 No Lean source code is generated from the extracted traces: the digest is the
 only artifact that crosses the Rust-to-Lean boundary, and it is compared outside
@@ -78,6 +83,10 @@ implementations of the encoding (Rust:
   completeness theorems reason about the Lean witness generators, which are not
   compared against Rust; this matches the prior state of the project.)
 - Lookup operations are not supported by the encoding and fail loudly.
+- The extractor's three-wire gate shim is trusted. Its omission of `D`,
+  `C * D = 0`, and the production identity of an `assign_extra` token is not
+  repaired by hashing; see the direct randomized check for the complementary
+  four-slot evaluation.
 
 ## Encoding
 

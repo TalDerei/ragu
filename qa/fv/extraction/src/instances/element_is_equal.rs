@@ -2,18 +2,17 @@ use ff::Field;
 use ragu_pasta::Fp;
 use ragu_primitives::Element;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireCollector, WireDeserializer},
-};
+use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
 pub struct ElementIsEqualInstance;
 
 impl CircuitInstance for ElementIsEqualInstance {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: InstanceDriver<'dr, F = Fp>,
+    {
         let a_wires = dr.alloc_input_wires(1);
         let b_wires = dr.alloc_input_wires(1);
 

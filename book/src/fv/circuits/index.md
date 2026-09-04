@@ -77,13 +77,15 @@ instance, the Lean side provides a `reimplementation`: this is an ordinary
 it can remain parameterized in the usual Lean style.
 
 The Lean soundness and completeness theorems are proved about this
-reimplementation. Applying those theorems to the Rust circuit relies on the
-[fingerprint equivalence check](./fingerprint.md): the concrete instantiation of
-the `Clean` reimplementation must **emit exactly the same operations and output
-expressions as the extracted circuit instance**. Both the Rust extractor and the
-Lean side compute a canonical digest over the operation trace and output
-expressions of their respective sides, and CI compares the two — in the style of
-comparing verification keys.
+reimplementation. Applying those theorems to the Rust circuit relies on two
+complementary checks. The
+[fingerprint equivalence check](./fingerprint.md) requires the concrete `Clean`
+reimplementation to emit the same normalized operations and outputs as the
+exact three-wire extractor trace. The
+[direct randomized polynomial check](./polynomial-fingerprint.md) separately
+runs the real gadget through a four-slot production-style driver while Lean
+reconstructs the same evaluations from its own model. CI requires both checks
+for every instance.
 
 This gives the best of both approaches:
 
@@ -92,16 +94,16 @@ This gives the best of both approaches:
 - the proof can still use the full compositional structure of `Clean`,
 - the actual soundness and completeness arguments are carried out on the
   structured reimplementation, so that proofs are much more manageable,
-- the fingerprint comparison connects those results back to the extracted
-  circuit.
+- the exact and randomized comparisons connect those results back to the Rust
+  gadget's driver-level constraint system.
 
 ```admonish note
-This approach relies on one important principle: circuits that produce the same
-exact operations and the same exact outputs are equivalent. This is quite easy
-to see: if the operations are identical, the two circuits make the same exact
-allocations, enforce the same exact constraints and emit the same exact outputs.
-That is why we prove properties about the `Clean` reimplementation rather than
-reasoning directly over the raw extracted trace.
+The exact check relies on the principle that identical normalized operations
+and outputs describe the same abstract constraint system. The randomized check
+tests equality of the corresponding ordered polynomial relations without first
+constructing that complete symbolic Rust object. Neither check establishes the
+backend layout or final deployed composed circuit; those are separate
+refinement obligations.
 ```
 
 ## Maintenance considerations
@@ -112,8 +114,9 @@ updated anyway. Most of the maintenance cost lies in repairing the proofs, not
 in adjusting the reimplementation.
 
 The reimplementation also does not need to mimic the Rust code line by line. It
-only needs to produce the same operations and outputs — drift in either
-direction is caught by the fingerprint comparison in CI. Because of that, it is
+only needs to produce the same constraint polynomials and outputs — drift in
+either direction is caught by the exact and randomized comparisons in CI.
+Because of that, it is
 a good candidate for partial automation, including LLM-assisted generation, as
 long as the digests then match.
 
@@ -136,7 +139,7 @@ At a high level, its fields have the following roles:
 - `reimplementation` is the structured `Clean` `GeneralFormalCircuit.WithHint`
   used for the actual proofs.
 
-The connection to the Rust circuit is not a field of the structure: it is
-established by the [fingerprint equivalence check](./fingerprint.md), which
-evaluates the reimplementation at a canonical input and compares its digest
-against the Rust extractor's.
+The connection to the Rust circuit is not a field of the structure: CI applies
+both the exact [fingerprint equivalence check](./fingerprint.md) and the
+[direct randomized polynomial check](./polynomial-fingerprint.md) to the
+generated registry of formal instances.

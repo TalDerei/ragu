@@ -7,7 +7,7 @@
 
 use std::vec::{IntoIter, Vec};
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Error, Result,
     convert::WireMap,
@@ -16,11 +16,8 @@ use ragu_core::{
         emulator::{Emulator, Wireless},
     },
     gadgets::{Bound, Gadget},
-    maybe::Empty,
 };
-use ragu_primitives::{Boolean, Endoscalar};
-
-use crate::{driver::ExtractionDriver, expr::Expr};
+use ragu_primitives::{Boolean, Endoscalar, Invertible};
 
 type TemplateDriver<D> =
     Emulator<Wireless<<D as DriverTypes>::MaybeKind, <D as DriverTypes>::ImplField>>;
@@ -104,10 +101,8 @@ fn endoscalar_unchecked<'dr, D: Driver<'dr>>(
 /// # Errors
 ///
 /// Propagates a structural error from the gadget remapping.
-pub(crate) fn boolean_from_wire<'dr, F: Field>(
-    wire: Expr<F>,
-) -> Result<Boolean<'dr, ExtractionDriver<F>>> {
-    boolean_unchecked(wire, Empty)
+pub(crate) fn boolean_from_wire<'dr, D: Driver<'dr>>(wire: D::Wire) -> Result<Boolean<'dr, D>> {
+    boolean_unchecked(wire, D::just(|| false))
 }
 
 /// Assembles an [`Endoscalar`] from exactly 128 wrapped input bits without
@@ -119,8 +114,24 @@ pub(crate) fn boolean_from_wire<'dr, F: Field>(
 /// # Errors
 ///
 /// Propagates a structural error from the gadget remapping.
-pub(crate) fn endoscalar_from_bits<'dr, F: Field>(
-    bits: &[Boolean<'dr, ExtractionDriver<F>>],
-) -> Result<Endoscalar<'dr, ExtractionDriver<F>>> {
-    endoscalar_unchecked(bits, Empty)
+pub(crate) fn endoscalar_from_bits<'dr, D: Driver<'dr>>(
+    bits: &[Boolean<'dr, D>],
+) -> Result<Endoscalar<'dr, D>> {
+    endoscalar_unchecked(bits, D::just(|| 0))
+}
+
+/// Assembles an [`Invertible`] from its element and inverse wires without
+/// emitting the allocation gate used by [`Invertible::alloc_with_advice`].
+///
+/// The caller is responsible for imposing the relation it wants to test. This
+/// is used by the consistency instance, whose real operation immediately
+/// allocates a fresh checked pair and links it to these two input wires.
+pub(crate) fn invertible_from_wires<'dr, D: Driver<'dr>>(
+    wires: Vec<D::Wire>,
+) -> Result<Invertible<'dr, D>> {
+    let mut dr = TemplateDriver::<D>::wireless();
+    let value = D::just(|| D::F::ZERO);
+    let inverse = D::just(|| D::F::ZERO);
+    let template = Invertible::alloc_with_advice(&mut dr, value, inverse)?;
+    remap_template(&template, wires)
 }

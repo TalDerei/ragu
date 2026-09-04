@@ -1,11 +1,7 @@
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, NonzeroBank};
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::{CircuitInstance, WireDeserializer},
-};
+use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
 pub struct NonzeroBankScopeInstance<const K: usize>;
 
@@ -22,7 +18,10 @@ pub type NonzeroBankScopeInstanceK2 = NonzeroBankScopeInstance<2>;
 impl<const K: usize> CircuitInstance for NonzeroBankScopeInstance<K> {
     type Field = Fp;
 
-    fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
+    fn circuit<'dr, D>(dr: &mut D) -> ragu_core::Result<Vec<D::Wire>>
+    where
+        D: InstanceDriver<'dr, F = Fp>,
+    {
         // Packages a full `NonzeroBank::scope` over `K` factors as a standalone
         // lemma circuit: every fold mul gate + the final discharge. The Lean
         // reimpl spec is that every input factor is nonzero — i.e., the
