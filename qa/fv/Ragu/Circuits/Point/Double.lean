@@ -40,8 +40,7 @@ def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output :
   output.isOnCurve curveParams
 
 instance elaborated :
-    ElaboratedCircuit (F p) Spec.Point Spec.Point where
-  main
+    ElaboratedCircuit (F p) Spec.Point Spec.Point main where
   localLength _ := 12
   -- Offsets follow the sub-gadget layout: Square (3) + Divide (3), then the
   -- second Square's product wire, then Mul's product wire.
@@ -53,13 +52,13 @@ instance elaborated :
     rcases input with ⟨x, y⟩
     simp [main, circuit_norm, Element.Square.circuit, Element.Divide.circuit,
       Element.Mul.circuit]
-    exact ⟨rfl, rfl⟩
 
 theorem soundness (curveParams : Spec.CurveParams p) :
-    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+    Soundness (F p) (Input := Spec.Point) (Output := Spec.Point) main (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  simp only [sub_eq_add_neg] at h_holds ⊢
   obtain ⟨h_curve, h_no_order2⟩ := h_assumptions
   have hy_ne : input_y ≠ 0 := h_no_order2 ⟨input_x, input_y⟩ h_curve
   have h_2y_eq : input_y + input_y = 2 * input_y := (two_mul _).symm
@@ -81,7 +80,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_curve h_no_order2
 
 theorem completeness (curveParams : Spec.CurveParams p) :
-    Completeness (F p) elaborated (Assumptions curveParams) := by
+    Completeness (F p) (Input := Spec.Point) (Output := Spec.Point) main (Assumptions curveParams) := by
   circuit_proof_start [Element.Square.circuit, Element.Square.Assumptions,
     Element.Divide.circuit, Element.Divide.ProverAssumptions,
     Element.Mul.circuit, Element.Mul.Assumptions]
@@ -91,7 +90,8 @@ theorem completeness (curveParams : Spec.CurveParams p) :
   exact mul_ne_zero (NeZero.ne 2) hy_ne
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Spec.Point Spec.Point where
-  elaborated
+  main
+  elaborated := elaborated
   Assumptions := Assumptions curveParams
   Spec := Spec curveParams
   soundness := soundness curveParams

@@ -124,8 +124,7 @@ makes the round `ConstantOutput`, and so usable as a `Circuit.foldl` body. -/
 def sboxWires (offset : ℕ) : Vector (Expression (F p)) t :=
   .ofFn fun i => var ⟨offset + i.val * 9 + 8⟩
 
-instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (fields t) where
-  main := main P
+instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (fields t) (main P) where
   localLength _ := 9 * t
   output _ offset := applyMds P.mds (sboxWires offset)
   localLength_eq state offset := by
@@ -137,9 +136,11 @@ instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (f
     simp [circuit_norm]
   subcircuitsConsistent state offset := by
     simp [main, circuit_norm]
+  channelsLawful := by
+    simp [main, circuit_norm, Sbox.circuit]
 
 theorem soundness (P : Params (F p) t) :
-    Soundness (F p) (elaborated P) Assumptions (Spec P) := by
+    Soundness (F p) (Input := (fields t)) (Output := (fields t)) (main P) Assumptions (Spec P) := by
   circuit_proof_start [Sbox.circuit, Sbox.Assumptions, Sbox.Spec]
   rw [eval_applyMds]
   congr 1
@@ -149,11 +150,14 @@ theorem soundness (P : Params (F p) t) :
   exact h_holds ⟨i, hi⟩
 
 theorem completeness (P : Params (F p) t) :
-    Completeness (F p) (elaborated P) Assumptions := by
+    Completeness (F p) (Input := (fields t)) (Output := (fields t)) (main P) Assumptions := by
   circuit_proof_start [Sbox.circuit, Sbox.Assumptions]
 
 def circuit (P : Params (F p) t) : FormalCircuit (F p) (fields t) (fields t) :=
-  { elaborated P with
+  { main := main P,
+    elaborated := elaborated P,
+    requirementsChannelsLawful := by
+      simp [main, circuit_norm, Sbox.circuit]
     Assumptions
     Spec := Spec P
     soundness := soundness P
@@ -175,8 +179,7 @@ def Assumptions (_state : Vector (F p) t) := True
 def Spec (P : Params (F p) t) (state : Vector (F p) t) (out : Vector (F p) t) :=
   out = applyMdsVal P.mds (sboxFirstVal (addConstantsVal P.rc state))
 
-instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (fields t) where
-  main := main P
+instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (fields t) (main P) where
   localLength _ := 9
   output state offset :=
     applyMds P.mds ((addConstants P.rc state).set 0 (varFromOffset field (offset + 8))
@@ -187,9 +190,11 @@ instance elaborated (P : Params (F p) t) : ElaboratedCircuit (F p) (fields t) (f
     simp [main, circuit_norm]
   output_eq state offset := by
     simp [main, circuit_norm, Sbox.circuit]
+  channelsLawful := by
+    simp [main, circuit_norm, Sbox.circuit]
 
 theorem soundness (P : Params (F p) t) :
-    Soundness (F p) (elaborated P) Assumptions (Spec P) := by
+    Soundness (F p) (Input := (fields t)) (Output := (fields t)) (main P) Assumptions (Spec P) := by
   circuit_proof_start [Sbox.circuit, Sbox.Assumptions, Sbox.Spec]
   rw [eval_applyMds]
   congr 1
@@ -204,11 +209,14 @@ theorem soundness (P : Params (F p) t) :
   · rfl
 
 theorem completeness (P : Params (F p) t) :
-    Completeness (F p) (elaborated P) Assumptions := by
+    Completeness (F p) (Input := (fields t)) (Output := (fields t)) (main P) Assumptions := by
   circuit_proof_start [Sbox.circuit, Sbox.Assumptions]
 
 def circuit (P : Params (F p) t) : FormalCircuit (F p) (fields t) (fields t) :=
-  { elaborated P with
+  { main := main P,
+    elaborated := elaborated P,
+    requirementsChannelsLawful := by
+      simp [main, circuit_norm, Sbox.circuit]
     Assumptions
     Spec := Spec P
     soundness := soundness P

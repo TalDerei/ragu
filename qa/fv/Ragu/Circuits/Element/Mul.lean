@@ -21,22 +21,21 @@ def Assumptions (_input : Input (F p)) := True
 def Spec (input : Input (F p)) (out : field (F p)) :=
   out = input.x * input.y
 
-instance elaborated : ElaboratedCircuit (F p) Input field where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input field main where
   output _ offset := varFromOffset field (offset + 2)
   localLength _ := 3
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := Input) (Output := field) main Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
-  rw [add_neg_eq_zero] at c2 c3
+  rw [sub_eq_zero] at c2 c3
   rw [←c2, ←c3, c1]
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := Input) (Output := field) main Assumptions := by
   circuit_proof_start
   grind
 
 def circuit : FormalCircuit (F p) Input field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.Mul

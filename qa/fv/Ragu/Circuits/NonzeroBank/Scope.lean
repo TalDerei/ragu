@@ -12,7 +12,7 @@ hint with the inverse of their product, used by the discharge at scope
 end. -/
 structure Input (K : ℕ) (F : Type) where
   factors : Vector F K
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- `NonzeroBank::scope` over `K` factors, polymorphic on `K : ℕ` (the
@@ -66,8 +66,7 @@ def ProverAssumptions (K : ℕ) (input : ProverValue (Input K) (F p))
   let inverse : F p := input.inverse
   (∏ i : Fin K, factors[i]) * inverse = 1
 
-instance elaborated (K : ℕ) : ElaboratedCircuit (F p) (Input K) unit where
-  main := main K
+instance elaborated (K : ℕ) : ElaboratedCircuit (F p) (Input K) unit (main K) where
   output _ _ := ()
   -- K Mul gates (3 wires each) + 1 EnforceNonzero (3 wires) = 3·(K+1).
   localLength _ := 3 * (K + 1)
@@ -79,6 +78,10 @@ instance elaborated (K : ℕ) : ElaboratedCircuit (F p) (Input K) unit where
     rcases K with _ | K
     · simp [main, circuit_norm, Element.EnforceNonzero.circuit]
     · simp +arith [main, circuit_norm, Element.Mul.circuit, Element.EnforceNonzero.circuit]
+  channelsLawful := by
+    rcases K with _ | K
+    · simp [main, circuit_norm, Element.EnforceNonzero.circuit]
+    · simp +arith [main, circuit_norm, Element.Mul.circuit, Element.EnforceNonzero.circuit]
 
 -- The running-product wire after `k` folds equals the product of the
 -- first `k+1` factors. Parameterized over an explicit `env` and value-level
@@ -86,7 +89,6 @@ instance elaborated (K : ℕ) : ElaboratedCircuit (F p) (Input K) unit where
 -- the `have`-site (cf. `EnforceRootOfUnity.wire_value_eq_pow`,
 -- `Fold.wire_value_eq_horner`). `omit` doesn't bind through a `/-- -/`
 -- docstring, so this comment is line-style.
-omit [Fact p.Prime] in
 private theorem wire_value_eq_prod (K : ℕ) (env : Environment (F p))
     (factors_val : Vector (F p) (K + 1)) (i₀ : ℕ)
     (h0 : env.get (i₀ + 2) = factors_val[0])
@@ -109,7 +111,7 @@ private theorem wire_value_eq_prod (K : ℕ) (env : Environment (F p))
     simp [Fin.val_last, Fin.val_castSucc]
 
 theorem soundness (K : ℕ) :
-    GeneralFormalCircuit.WithHint.Soundness (F p) (elaborated K) (fun _ _ => True) (Spec K) := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (Input K)) (Output := unit) (main K) (fun _ _ => True) (Spec K) := by
   rcases K with _ | K
   · -- K = 0: Spec is `∀ i : Fin 0, …`, vacuously true.
     circuit_proof_start [Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec]
@@ -132,13 +134,12 @@ theorem soundness (K : ℕ) :
     have wire_K := wire_value_eq_prod K env fv i₀ h0' hk' K (le_refl K)
     rw [show K + 1 - 1 = K from by omega, wire_K] at h_disc
     -- h_disc : (∏ j : Fin (K+1), fv[j.val]) ≠ 0, where `fv` is a genuine Vector.
-    rw [Finset.prod_ne_zero_iff (f := fun j : Fin (K + 1) => fv[(j : ℕ)])] at h_disc
     intro i
     rw [← heq]
-    exact h_disc i (Finset.mem_univ i)
+    exact (Finset.prod_ne_zero_iff.mp h_disc) i (Finset.mem_univ i)
 
 theorem completeness (K : ℕ) :
-    GeneralFormalCircuit.WithHint.Completeness (F p) (elaborated K) (ProverAssumptions K)
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (Input K)) (Output := unit) (main K) (ProverAssumptions K)
       (fun _ _ _ => True) := by
   rcases K with _ | K
   · -- K = 0
@@ -163,7 +164,12 @@ theorem completeness (K : ℕ) :
     exact h_assumptions
 
 def circuit (K : ℕ) : GeneralFormalCircuit.WithHint (F p) (Input K) unit where
+  main := main K
   elaborated := elaborated K
+  requirementsChannelsLawful := by
+    rcases K with _ | K
+    · simp [main, circuit_norm, Element.EnforceNonzero.circuit]
+    · simp +arith [main, circuit_norm, Element.Mul.circuit, Element.EnforceNonzero.circuit]
   Spec := Spec K
   ProverAssumptions := ProverAssumptions K
   soundness := soundness K

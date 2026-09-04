@@ -13,19 +13,18 @@ assertion-style gadget, soundness gives back the same predicate the
 caller had to promise. -/
 def Spec (input : F p) := input = 0
 
-instance elaborated : ElaboratedCircuit (F p) field unit where
-  main
+instance elaborated : ElaboratedCircuit (F p) field unit main where
   localLength _ := 0
 
-theorem soundness : FormalAssertion.Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : FormalAssertion.Soundness (F p) (Input := field) main Assumptions Spec := by
   circuit_proof_start
   exact h_holds
 
-theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions Spec := by
+theorem completeness : FormalAssertion.Completeness (F p) (Input := field) main Assumptions Spec := by
   circuit_proof_start
   exact h_spec
 
 def circuit : FormalAssertion (F p) field :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.EnforceZero

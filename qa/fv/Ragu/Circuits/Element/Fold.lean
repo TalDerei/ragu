@@ -27,12 +27,12 @@ structure Input (n : ℕ) (F : Type) where
 deriving ProvableStruct
 
 def main : (n : ℕ) → Var (Input n) (F p) → Circuit (F p) (Expression (F p))
-  | 0, _ => pure 0
-  | 1, input => pure input.xs[0]
-  | 2, input => do
+  | 0 => fun _ => pure 0
+  | 1 => fun input => pure input.xs[0]
+  | 2 => fun input => do
     let scaled ← Mul.circuit ⟨input.xs[0], input.s⟩
     pure (scaled + input.xs[1])
-  | n+3, input => do
+  | n+3 => fun input => do
     let scaled_0 ← Mul.circuit ⟨input.xs[0], input.s⟩
     let scaled_last ← Circuit.foldl (.finRange (n+1)) scaled_0 fun acc i =>
       Mul.circuit ⟨acc + input.xs[i.val + 1], input.s⟩
@@ -48,8 +48,7 @@ def Spec {n : ℕ} (input : Input n (F p)) (output : F p) :=
     | m+1, xs => Fin.foldl m
         (fun acc (i : Fin m) => acc * input.s + xs[i.val + 1]) xs[0]
 
-instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field where
-  main := main n
+instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field (main n) where
   localLength _ := 3 * (n - 1)
   localLength_eq input offset := by
     rcases n with _ | _ | _ | n
@@ -63,13 +62,18 @@ instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field where
     · simp [main, circuit_norm]
     · simp +arith [main, circuit_norm, Mul.circuit]
     · simp +arith [main, circuit_norm, Mul.circuit]
+  channelsLawful := by
+    rcases n with _ | _ | _ | n
+    · simp [main, circuit_norm]
+    · simp [main, circuit_norm]
+    · simp +arith [main, circuit_norm, Mul.circuit]
+    · simp +arith [main, circuit_norm, Mul.circuit]
 
 -- For n+3 elements, each foldl Mul wire `wire(k) = env.get (i₀+3+k*3+2)`
 -- holds `horner(k+1) * s`, where `horner` is the value-level Horner partial.
 -- Sidesteps the `field (F p) = F p` HPow snag the same way as
 -- `EnforceRootOfUnity.wire_value_eq_pow`: parameterize by `xs_val : Vector
 -- (F p) _` and `s_val : F p`.
-omit [Fact p.Prime] in
 private theorem wire_value_eq_horner (n : ℕ) (env : Environment (F p))
     (xs_val : Vector (F p) (n+3)) (s_val : F p) (i₀ : ℕ)
     (h0 : env.get (i₀ + 2) = xs_val[0] * s_val)
@@ -98,7 +102,7 @@ private theorem wire_value_eq_horner (n : ℕ) (env : Environment (F p))
     simp [Fin.val_last, Fin.val_castSucc]
 
 theorem soundness (n : ℕ) :
-    Soundness (F p) (elaborated n) Assumptions Spec := by
+    Soundness (F p) (Input := (Input n)) (Output := field) (main n) Assumptions Spec := by
   rcases n with _ | _ | _ | n
   · -- 0 elements
     circuit_proof_start
@@ -111,20 +115,10 @@ theorem soundness (n : ℕ) :
     circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
     -- h_holds : env.get (i₀ + 2) = eval xs[0] * eval s
     -- Goal: env.get (i₀ + 2) + eval xs[1] = Fin.foldl 1 val_body input.xs[0]
-    have h_s : Expression.eval env input_var.s = input.s := congrArg Input.s h_input
-    have h_xs0 : Expression.eval env input_var.xs[0] = input.xs[0] := by
-      have heq : Vector.map (Expression.eval env) input_var.xs = input.xs :=
-        congrArg Input.xs h_input
-      have := congrArg (fun v => v[0]) heq
-      simpa [Vector.getElem_map] using this
-    have h_xs1 : Expression.eval env input_var.xs[1] = input.xs[1] := by
-      have heq : Vector.map (Expression.eval env) input_var.xs = input.xs :=
-        congrArg Input.xs h_input
-      have := congrArg (fun v => v[1]) heq
-      simpa [Vector.getElem_map] using this
-    rw [h_xs0, h_s] at h_holds
+    cases h_input
+    simp only [Vector.getElem_map] at h_holds ⊢
     -- Fin.foldl 1 val_body xs[0] = val_body xs[0] ⟨0,_⟩ = xs[0]*s + xs[1]
-    rw [Fin.foldl_succ_last, Fin.foldl_zero, h_holds, h_xs1]
+    rw [Fin.foldl_succ_last, Fin.foldl_zero, h_holds]
   · -- n+3 elements
     circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
     obtain ⟨h0, h_iter0, h_iterk⟩ := h_holds
@@ -166,7 +160,7 @@ theorem soundness (n : ℕ) :
     simp [Fin.val_last, Fin.val_castSucc]
 
 theorem completeness (n : ℕ) :
-    Completeness (F p) (elaborated n) Assumptions := by
+    Completeness (F p) (Input := (Input n)) (Output := field) (main n) Assumptions := by
   rcases n with _ | _ | _ | n
   · circuit_proof_start
   · circuit_proof_start
@@ -174,7 +168,14 @@ theorem completeness (n : ℕ) :
   · circuit_proof_start [Mul.circuit, Mul.Assumptions, Mul.Spec]
 
 def circuit (n : ℕ) : FormalCircuit (F p) (Input n) field :=
-  { elaborated n with
+  { main := main n,
+    elaborated := elaborated n,
+    requirementsChannelsLawful := by
+      rcases n with _ | _ | _ | n
+      · simp [main, circuit_norm]
+      · simp [main, circuit_norm]
+      · simp +arith [main, circuit_norm, Mul.circuit]
+      · simp +arith [main, circuit_norm, Mul.circuit]
     Assumptions
     Spec
     soundness := soundness n

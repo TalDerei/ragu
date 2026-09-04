@@ -22,21 +22,20 @@ def Spec (_input : Unit) (_out : F p) (_data : ProverData (F p)) := True
 def ProverSpec (input : F p) (out : F p) (_ : ProverHint (F p)) :=
   out = input
 
-instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep field) field where
-  main
+instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDepNative field) field main where
   output _ offset := varFromOffset field offset
   localLength _ := 3
 
 theorem soundness
-    : GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    : GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedDepNative field)) (Output := field) main (fun _ _ => True) Spec := by
   circuit_proof_start
 
-theorem completeness : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
+theorem completeness : GeneralFormalCircuit.WithHint.Completeness (F p) (Input := (UnconstrainedDepNative field)) (Output := field) main
     (fun _ _ _ => True) ProverSpec := by
   circuit_proof_start
   grind
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) field :=
-  { elaborated with Spec, ProverSpec, soundness, completeness }
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDepNative field) field :=
+  { main := main, elaborated := elaborated, Spec, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.Alloc

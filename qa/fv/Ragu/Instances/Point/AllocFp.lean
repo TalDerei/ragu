@@ -8,7 +8,7 @@ def p := Core.Primes.p
 
 set_option linter.unusedVariables false in
 def deserializeInput (input : Vector (Expression (F p)) 0) :
-    Var (UnconstrainedDep Circuits.Point.Spec.Point) (F p) :=
+    Var (UnconstrainedDepNative Circuits.Point.Spec.Point) (F p) :=
   default
 
 def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) 2 :=

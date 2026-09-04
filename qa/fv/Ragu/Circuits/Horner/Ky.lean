@@ -40,8 +40,7 @@ def Spec {n : ℕ} (input : Input n (F p)) (output : F p) :=
 
 /-- Three wires per multiplication, one per coefficient after the first;
 the trailing constant adds an addition, not a gate. -/
-instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field where
-  main := main n
+instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field (main n) where
   localLength _ := 3 * n
   localLength_eq input offset := by
     simp +arith [main, circuit_norm, Element.Fold.circuit]
@@ -50,7 +49,7 @@ instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field where
 
 /-- `Element.Fold`'s spec, read at the coefficient vector with `1` pushed. -/
 theorem soundness (n : ℕ) :
-    Soundness (F p) (elaborated n) Assumptions Spec := by
+    Soundness (F p) (Input := (Input n)) (Output := field) (main n) Assumptions Spec := by
   circuit_proof_start [Element.Fold.circuit, Element.Fold.Assumptions, Element.Fold.Spec]
   rw [h_holds]
   subst h_input
@@ -59,12 +58,13 @@ theorem soundness (n : ℕ) :
 
 /-- `Element.Fold` is total. -/
 theorem completeness (n : ℕ) :
-    Completeness (F p) (elaborated n) Assumptions := by
+    Completeness (F p) (Input := (Input n)) (Output := field) (main n) Assumptions := by
   circuit_proof_start [Element.Fold.circuit, Element.Fold.Assumptions]
 
 /-- `Horner::finish_ky`: evaluate at `point`, with a trailing constant `1`. -/
 def circuit (n : ℕ) : FormalCircuit (F p) (Input n) field :=
-  { elaborated n with
+  { main := main n,
+    elaborated := elaborated n,
     Assumptions
     Spec
     soundness := soundness n

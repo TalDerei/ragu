@@ -73,8 +73,7 @@ def Spec (curveParams : Spec.CurveParams p)
     r.add_incomplete input.P1 = some output ∧
     output.isOnCurve curveParams
 
-instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
-  main
+instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point main where
   -- divide1 (3) + square1 (3) + divide2 (3) + square2 (3) + mul_for_y (3) = 15
   localLength _ := 15
   -- Offsets follow the sub-gadget layout: `x_s` uses the two Squares' product
@@ -87,13 +86,13 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
     rcases input with ⟨⟨x_p, y_p⟩, ⟨x_q, y_q⟩⟩
     simp [main, circuit_norm, Element.Divide.circuit, Element.Square.circuit,
       Element.Mul.circuit]
-    exact ⟨rfl, rfl⟩
 
 theorem soundness (curveParams : Spec.CurveParams p) :
-    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+    Soundness (F p) (Input := Inputs) (Output := Spec.Point) main (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start [Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
+  simp only [sub_eq_add_neg] at h_holds ⊢
   obtain ⟨h_curve1, h_curve2, r0, out0, h_add1, h_add2⟩ := h_assumptions
   obtain ⟨h_div1, h_sq1, h_div2, h_sq2, h_yterm⟩ := h_holds
   -- First distinct-x condition, from the assumption chain's first `some`.
@@ -156,11 +155,12 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     { x := input_P1_x, y := input_P1_y } curveParams h_r_ne_xp h_r_curve h_curve1
 
 theorem completeness (curveParams : Spec.CurveParams p) :
-    Completeness (F p) elaborated (Assumptions curveParams) := by
+    Completeness (F p) (Input := Inputs) (Output := Spec.Point) main (Assumptions curveParams) := by
   circuit_proof_start [Element.Divide.circuit, Element.Divide.ProverAssumptions,
     Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions]
+  simp only [sub_eq_add_neg] at h_env ⊢
   obtain ⟨_, _, r0, out0, h_add1, h_add2⟩ := h_assumptions
   obtain ⟨h_div1_env, h_sq1_env, _⟩ := h_env
   have h_x_ne : input_P1_x ≠ input_P2_x := by
@@ -192,7 +192,8 @@ theorem completeness (curveParams : Spec.CurveParams p) :
   linear_combination -h
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Inputs Spec.Point :=
-  { elaborated with
+  { main := main,
+    elaborated := elaborated,
     Assumptions := Assumptions curveParams
     Spec := Spec curveParams
     soundness := soundness curveParams

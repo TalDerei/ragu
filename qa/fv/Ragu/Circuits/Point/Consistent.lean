@@ -31,18 +31,18 @@ def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) :=
 
 /-- One `Point::alloc`; the two links allocate nothing. -/
 instance elaborated (curveParams : Spec.CurveParams p) :
-    ElaboratedCircuit (F p) Spec.Point unit where
-  main := main curveParams
+    ElaboratedCircuit (F p) Spec.Point unit (main curveParams) where
   localLength _ := 9
 
 /-- The fresh point is on the curve by `Alloc`'s spec, the links make it the
 existing point, and the supported-curve facts rule out zero coordinates. -/
 theorem soundness (curveParams : Spec.CurveParams p)
     (h_nonzero : curveParams.nonzeroCoordinates) :
-    FormalAssertion.Soundness (F p) (elaborated curveParams) Assumptions (Spec curveParams) := by
+    FormalAssertion.Soundness (F p) (Input := Spec.Point) (main curveParams)
+      Assumptions (Spec curveParams) := by
   circuit_proof_start [Alloc.circuit, Alloc.Assumptions, Alloc.Spec]
   obtain ⟨h_curve, h_x, h_y⟩ := h_holds
-  rw [add_neg_eq_zero] at h_x h_y
+  rw [sub_eq_zero] at h_x h_y
   have h_curve_input : (Spec.Point.mk input_x input_y).isOnCurve curveParams := by
     simp only [Spec.Point.isOnCurve] at h_curve ⊢
     rw [← h_x, ← h_y]
@@ -53,7 +53,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
 /-- Seeding the fresh point from a point already on the curve reproduces it,
 so both links hold; `Alloc`'s prover precondition is the spec. -/
 theorem completeness (curveParams : Spec.CurveParams p) :
-    FormalAssertion.Completeness (F p) (elaborated curveParams) Assumptions (Spec curveParams) := by
+    FormalAssertion.Completeness (F p) (Input := Spec.Point) (main curveParams)
+      Assumptions (Spec curveParams) := by
   circuit_proof_start [Alloc.circuit, Alloc.ProverAssumptions, Alloc.ProverSpec]
   obtain ⟨h_curve, _, _⟩ := h_spec
   obtain ⟨_, h_eq⟩ := h_env h_curve
@@ -64,7 +65,8 @@ theorem completeness (curveParams : Spec.CurveParams p) :
 /-- `Point::enforce_consistent`. -/
 def circuit (curveParams : Spec.CurveParams p) (h_nonzero : curveParams.nonzeroCoordinates) :
     FormalAssertion (F p) Spec.Point :=
-  { elaborated curveParams with
+  { main := main curveParams
+    elaborated := elaborated curveParams
     Assumptions
     Spec := Spec curveParams
     soundness := soundness curveParams h_nonzero

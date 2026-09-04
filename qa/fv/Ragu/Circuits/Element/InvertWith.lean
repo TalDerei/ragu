@@ -7,7 +7,7 @@ variable {p : ℕ} [Fact p.Prime]
 
 structure Input (F : Type) where
   input : F
-  inverse : UnconstrainedDep field F
+  inverse : UnconstrainedDepNative field F
 deriving CircuitType
 
 /-- `invert_with` allocates a mul gate `(a, b, c)` with `a·b = c`, then
@@ -38,27 +38,26 @@ def ProverSpec (input : ProverValue Input (F p))
   out = input.inverse
 
 instance elaborated
-    : ElaboratedCircuit (F p) Input field where
-  main
+    : ElaboratedCircuit (F p) Input field main where
   output _ offset := varFromOffset field (offset + 1)
   localLength _ := 3
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) (Input := Input) (Output := field) main (fun _ _ => True) Spec := by
   circuit_proof_start
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
   -- h_mul : a * b = c, h_c : c - 1 = 0, h_lin : input - a = 0
-  rw [add_neg_eq_zero] at h_c h_lin
+  rw [sub_eq_zero] at h_c h_lin
   -- h_c : c = 1, h_lin : input = a
   rw [← h_lin, h_c] at h_mul
   exact h_mul
 
 theorem completeness :
-    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions ProverSpec := by
+    GeneralFormalCircuit.WithHint.Completeness (F p) (Input := Input) (Output := field) main ProverAssumptions ProverSpec := by
   circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field :=
-  { elaborated with Spec, ProverAssumptions, ProverSpec, soundness, completeness }
+  { main := main, elaborated := elaborated, Spec, ProverAssumptions, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.InvertWith

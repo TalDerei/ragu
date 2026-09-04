@@ -7,7 +7,7 @@ namespace Ragu.Instances.Point.AllocFq
 def p := Core.Primes.q
 
 def deserializeInput (_ : Vector (Expression (F p)) 0) :
-    Var (UnconstrainedDep Circuits.Point.Spec.Point) (F p) :=
+    Var (UnconstrainedDepNative Circuits.Point.Spec.Point) (F p) :=
   default
 
 def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) 2 :=

@@ -31,25 +31,24 @@ def Spec (input : Input (F p)) (output : Spec.Point (F p)) :=
   output.x = input.x ∧
   output.y = if input.cond = 1 then -input.y else input.y
 
-instance elaborated : ElaboratedCircuit (F p) Input Spec.Point where
-  main
+instance elaborated : ElaboratedCircuit (F p) Input Spec.Point main where
   localLength _ := 3
   -- `y` selected against `-y`: the `ConditionalSelect` output is `y + (its Mul wire)`.
   output input offset := ⟨input.x, input.y + varFromOffset field (offset + 2)⟩
   output_eq := by
     simp [main, circuit_norm, Boolean.ConditionalSelect.circuit]
 
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness : Soundness (F p) (Input := Input) (Output := Spec.Point) main Assumptions Spec := by
   circuit_proof_start [Boolean.ConditionalSelect.circuit,
     Boolean.ConditionalSelect.Assumptions, Boolean.ConditionalSelect.Spec]
   exact h_holds h_assumptions
 
-theorem completeness : Completeness (F p) elaborated Assumptions := by
+theorem completeness : Completeness (F p) (Input := Input) (Output := Spec.Point) main Assumptions := by
   circuit_proof_start [Boolean.ConditionalSelect.circuit,
     Boolean.ConditionalSelect.Assumptions]
   exact h_assumptions
 
 def circuit : FormalCircuit (F p) Input Spec.Point :=
-  { elaborated with Assumptions, Spec, soundness, completeness }
+  { main := main, elaborated := elaborated, Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Point.ConditionalNegate

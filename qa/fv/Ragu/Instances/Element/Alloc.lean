@@ -7,7 +7,7 @@ namespace Ragu.Instances.Element.Alloc
 def p := Core.Primes.p
 
 def deserializeInput (_ : Vector (Expression (F p)) 0) :
-    Var (UnconstrainedDep field) (F p) :=
+    Var (UnconstrainedDepNative field) (F p) :=
   fun _ => 0
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
