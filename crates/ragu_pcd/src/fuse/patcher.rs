@@ -64,7 +64,7 @@
 use alloc::{format, string::String, vec::Vec};
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Coeff, CryptoRngCore, Cycle, ff::Field};
+use ragu_arithmetic::{Coeff, Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     Circuit,
     polynomials::Rank,
@@ -81,7 +81,7 @@ use ragu_core::{
     maybe::{Always, Empty, Maybe, MaybeKind},
 };
 use ragu_primitives::{
-    GadgetExt, Point, extract_endoscalar,
+    EndoscalarChallenge, GadgetExt, Point, extract_endoscalar,
     vec::{CollectFixed, Len},
 };
 
@@ -393,7 +393,9 @@ fn stage_wire_indices<F: Field, R: Rank, S: Stage<F, R> + Default>(
     select(rebound)
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
     /// Runs the fuse witness-generation and hands each native internal
     /// recursion circuit, its [`CircuitSpec`] and its honest witness to
     /// `visitor`, in place of tracing them into a proof.
@@ -422,7 +424,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         visitor: &mut V,
     ) -> Result<()>
     where
-        RNG: CryptoRngCore,
+        RNG: CryptoRng,
         S: Step<C>,
         V: InternalCircuitVisitor<C>,
     {
@@ -449,7 +451,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         visitor: &mut V,
     ) -> Result<()>
     where
-        RNG: CryptoRngCore,
+        RNG: CryptoRng,
         S: Step<C, Left = (), Right = ()>,
         V: InternalCircuitVisitor<C>,
     {
@@ -476,7 +478,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         visitor: &mut V,
     ) -> Result<()>
     where
-        RNG: CryptoRngCore,
+        RNG: CryptoRng,
         S: Step<C>,
         V: InternalCircuitVisitor<C>,
     {
@@ -578,18 +580,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         f_commitment.write(&mut dr, &mut transcript)?;
         let u = transcript.challenge(&mut dr)?;
 
-        let eval_witness = self.compute_eval(
-            rng,
-            &u,
-            &left,
-            &right,
-            &native_s_prime,
-            &registry_wy,
-            &mut builder,
-        )?;
-        let eval_commitment = Point::constant(&mut dr, builder.bridge_eval_commitment()?)?;
-        eval_commitment.write(&mut dr, &mut transcript)?;
-        let pre_beta = transcript.challenge(&mut dr)?;
+        let eval_witness =
+            self.compute_eval(&u, &left, &right, &native_s_prime, &registry_wy, &builder);
+
+        // Mirrors `fuse`: `pre_beta` is ground rather than squeezed once, so
+        // each attempt re-blinds the eval commitment and re-derives it from a
+        // fresh transcript clone until it lands in endoscalar range.
+        let (pre_beta, eval_rx) = EndoscalarChallenge::sample(&mut dr, |dr| {
+            let (eval_rx, bridge_eval_commitment) =
+                self.sample_eval_commitment(rng, &eval_witness, &builder)?;
+
+            let mut transcript = transcript.clone();
+            let eval_commitment = Point::constant(dr, bridge_eval_commitment)?;
+            eval_commitment.write(dr, &mut transcript)?;
+            let pre_beta = transcript.challenge(dr)?;
+
+            Ok((pre_beta, eval_rx))
+        })?;
+        builder.set_native_eval_rx(eval_rx);
 
         self.compute_p(
             rng,
@@ -612,7 +620,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         builder.set_x(*x.value().take());
         builder.set_alpha(*alpha.value().take());
         builder.set_u(*u.value().take());
-        builder.set_pre_beta(*pre_beta.value().take());
+        builder.set_pre_beta(*pre_beta.element().value().take());
 
         builder.set_child_left_stage_rx(left.as_child_stage_rx());
         builder.set_child_right_stage_rx(right.as_child_stage_rx());
@@ -623,7 +631,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // the constraints a circuit emits, so a fresh instance yields the same
         // capture — and reports each circuit's own coverage.
         let make_unified =
-            |builder: &ProofBuilder<'_, C, R>| -> Result<native::unified::Instance<C>> {
+            |builder: &ProofBuilder<'_, C, R, B>| -> Result<native::unified::Instance<C>> {
                 Ok(native::unified::Instance {
                     bridge_preamble_commitment: builder.bridge_preamble_commitment(),
                     w: builder.w(),
@@ -867,7 +875,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // `compute_p`'s order from the same objects it used; any valid point
         // list exercises the step circuits identically, so the order only
         // keeps the capture faithful to the prover's.
-        let beta_endo = extract_endoscalar(builder.pre_beta());
+        let beta_endo = extract_endoscalar(builder.pre_beta())?;
         let mut points: Vec<C::HostCurve> = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
         points.push(native_f.commitment);
         for proof in [&left, &right] {
