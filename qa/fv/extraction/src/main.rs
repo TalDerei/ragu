@@ -190,8 +190,12 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     },
 ];
 
-fn default_autogen_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../lean")
+/// The Lean source tree (`qa/fv/`) is the parent directory of this crate.
+fn default_lean_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("CARGO_MANIFEST_DIR is absolute, so it has a parent")
+        .to_path_buf()
 }
 
 #[derive(Parser)]
@@ -202,8 +206,8 @@ struct Cli {
     command: Command,
 
     /// Root directory that contains the Lean source tree.
-    #[arg(default_value_os_t = default_autogen_root())]
-    autogen_root: PathBuf,
+    #[arg(default_value_os_t = default_lean_root())]
+    lean_root: PathBuf,
 }
 
 #[derive(Subcommand, Clone, Copy)]
@@ -225,8 +229,8 @@ fn fingerprint_instance<I: CircuitInstance>() -> String {
     I::fingerprint()
 }
 
-fn generated_instances_root(autogen_root: &Path) -> (PathBuf, String) {
-    let path = autogen_root.join("Ragu/Instances.lean");
+fn generated_instances_root(lean_root: &Path) -> (PathBuf, String) {
+    let path = lean_root.join("Ragu/Instances.lean");
     let mut contents = EXPORT_TARGETS
         .iter()
         .map(|target| format!("import {}", target.name))
@@ -238,8 +242,8 @@ fn generated_instances_root(autogen_root: &Path) -> (PathBuf, String) {
 
 /// Generated list pairing every formal instance with its module name, used by
 /// the `fingerprints` executable on the Lean side.
-fn generated_fingerprint_instances(autogen_root: &Path) -> (PathBuf, String) {
-    let path = autogen_root.join("Ragu/Fingerprint/Instances.lean");
+fn generated_fingerprint_instances(lean_root: &Path) -> (PathBuf, String) {
+    let path = lean_root.join("Ragu/Fingerprint/Instances.lean");
     let entries = EXPORT_TARGETS
         .iter()
         .map(|target| target.name)
@@ -258,12 +262,12 @@ fn generated_fingerprint_instances(autogen_root: &Path) -> (PathBuf, String) {
     (path, contents)
 }
 
-fn export_all(autogen_root: &Path) -> std::io::Result<()> {
-    let (path, contents) = generated_instances_root(autogen_root);
+fn export_all(lean_root: &Path) -> std::io::Result<()> {
+    let (path, contents) = generated_instances_root(lean_root);
     fs::write(&path, contents)?;
     println!("wrote Ragu.Instances to {}", path.display());
 
-    let (path, contents) = generated_fingerprint_instances(autogen_root);
+    let (path, contents) = generated_fingerprint_instances(lean_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -304,13 +308,13 @@ fn check_file(
     Ok(())
 }
 
-fn check_all(autogen_root: &Path) -> std::io::Result<bool> {
+fn check_all(lean_root: &Path) -> std::io::Result<bool> {
     let mut mismatches = 0;
 
-    let (path, expected) = generated_instances_root(autogen_root);
+    let (path, expected) = generated_instances_root(lean_root);
     check_file("Ragu.Instances", path, expected, &mut mismatches)?;
 
-    let (path, expected) = generated_fingerprint_instances(autogen_root);
+    let (path, expected) = generated_fingerprint_instances(lean_root);
     check_file(
         "Ragu.Fingerprint.Instances",
         path,
@@ -332,8 +336,8 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Command::Export => export_all(&cli.autogen_root).map(|_| ExitCode::SUCCESS),
-        Command::Check => check_all(&cli.autogen_root).map(|ok| {
+        Command::Export => export_all(&cli.lean_root).map(|_| ExitCode::SUCCESS),
+        Command::Check => check_all(&cli.lean_root).map(|ok| {
             if ok {
                 ExitCode::SUCCESS
             } else {

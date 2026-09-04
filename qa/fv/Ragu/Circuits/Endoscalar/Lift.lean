@@ -27,9 +27,9 @@ The circuit-side `main` separates the two phases of the loop:
   with no constraint emission. The final answer adds a closed-form constant
   capturing the initial `2·(ζ+1)` and the 64 implicit `+1` shifts.
 
-Extraction instance: `qa/crates/lean_extraction/src/instances/endoscalar_lift.rs`,
+Extraction instance: `qa/fv/extraction/src/instances/endoscalar_lift.rs`,
 tied to this reimpl by the fingerprint equivalence check via the formal instance
-in `qa/lean/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance wraps the
+in `qa/fv/Ragu/Instances/Endoscalar/Lift.lean`. The Rust instance wraps the
 bit wires as `Boolean`s (`wire_remap::endoscalar_from_bits`) and calls the
 deployed `Endoscalar::lift` itself, so the extracted trace is the shipped
 gadget's. The fingerprint hashes polynomial normal forms, so the tree shape

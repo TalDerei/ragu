@@ -13,7 +13,7 @@ The FV documentation lives in the repo. This skill is a routing layer: pick the 
 
 The FV docs are Part IV of the Ragu book, rooted at **`book/src/fv/`**. Treat `<docs>` below as that path.
 
-Older checkouts predate the merge into the book and have the docs as a standalone mdBook at `qa/lean/docs/src/` (or, earlier still, `fv/docs/src/`), with `clean/core/` in place of `clean/`, `ragu/` in place of `circuits/`, and `introduction.md` in place of `index.md`. If unsure, `ls book/src/fv/ 2>/dev/null || ls qa/lean/docs/src/` resolves it.
+Older checkouts predate the merge into the book and have the docs as a standalone mdBook at `qa/lean/docs/src/` (or, earlier still, `fv/docs/src/`), with `clean/core/` in place of `clean/`, `ragu/` in place of `circuits/`, and `introduction.md` in place of `index.md`. If unsure, `ls book/src/fv/ 2>/dev/null || ls qa/fv/docs/src/` resolves it.
 
 ## Topic → file (what each doc answers)
 
@@ -34,7 +34,7 @@ Older checkouts predate the merge into the book and have the docs as a standalon
 - `<docs>/circuits/serialization.md` — symbolic input wires, `input_var.get i`, `alloc_input_wires`, `serializeOutput` / `deserializeInput`.
 - `<docs>/circuits/fingerprint.md` — the vk-style fingerprint equivalence check (the sole Rust↔Lean tie since the autogen trace files and `same_constraints` proofs were removed): canonical byte encoding + SHA-256 digest of the op trace, computed in both the Rust extractor (`lean_extraction -- fingerprint`) and Lean (`lake exe fingerprints`), compared in CI; the `2³²` input-variable index region; trust assumptions of the check.
 - `<docs>/circuits/assumptions.md` — what the FV does and does not guarantee; trusted core; axiom dependencies (`propext`, `Classical.choice`, `Quot.sound`, `Lean.ofReduceBool`, `Lean.trustCompiler`, `Ragu.Core.Primes.p_prime`).
-- `<docs>/circuits/ci.md` — `cargo run -p lean_extraction -- check`, `lean-action` build, `--wfail` (sorry-as-failure); only files imported by `qa/lean/Ragu.lean` are checked; fingerprint comparison step.
+- `<docs>/circuits/ci.md` — `cargo run -p lean_extraction -- check`, `lake build --wfail` (sorry-as-failure) over every module under `qa/fv/Ragu/` via the lib glob, so an unimported file cannot escape; fingerprint comparison step.
 
 The book TOC lives at `book/src/SUMMARY.md` if you want the canonical reading order.
 
@@ -63,7 +63,7 @@ The book TOC lives at `book/src/SUMMARY.md` if you want the canonical reading or
 ## Out of scope
 
 - Lean syntax basics, tactic strategy, mathlib usage — not in this corpus; consult Lean / mathlib docs.
-- Specific gadget proof bodies (e.g., the body of `Point.AddIncomplete.soundness`) — read source under `qa/lean/Ragu/Circuits/...`.
+- Specific gadget proof bodies (e.g., the body of `Point.AddIncomplete.soundness`) — read source under `qa/fv/Ragu/Circuits/...`.
 - Opinion on circuit-type choice, naming conventions, spec style, "did the spec lift to high-level operations" — that's `/fv-review`.
 
 ## Routing rule of thumb

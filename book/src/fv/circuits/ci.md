@@ -4,7 +4,7 @@ The CI formal verification workflow helps developers check whether the formal
 verification pipeline runs successfully.
 
 At its core, the workflow runs the extraction exporter, builds the Lean
-development in `qa/lean`, and compares the circuit fingerprints computed on both
+development in `qa/fv`, and compares the circuit fingerprints computed on both
 sides.
 
 Concretely, it first runs `cargo run --locked -p lean_extraction -- check`,
@@ -19,7 +19,7 @@ together. The build is run with `--wfail`, so Lean warnings (and in particular
 `sorry`s) are treated as failures.
 
 ```admonish warning
-Concretely, the Lean build step builds every module under `qa/lean/Ragu/` (the
+Concretely, the Lean build step builds every module under `qa/fv/Ragu/` (the
 library uses a glob), so a file that no aggregator imports cannot silently
 escape CI.
 ```
@@ -32,5 +32,5 @@ in Lean from the `Clean` reimplementations
 If the Rust circuit code changes the extracted operations or outputs, CI fails
 until the Lean reimplementation is updated to match (and its proofs repaired).
 
-Independent, hand-written Lean checks should be imported through `Ragu.Contrib`,
+Independent, hand-written Lean checks should be imported through `Ragu.Lemmas`,
 not through the Rust extraction exporter.
