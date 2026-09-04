@@ -2,10 +2,12 @@
 
 extern crate alloc;
 
-use crate::AcceleratedBackend;
 use alloc::vec::Vec;
+
 use ragu_arithmetic::CurveAffine;
 use ragu_backend::Backend;
+
+use crate::AcceleratedBackend;
 
 impl Backend for AcceleratedBackend {
     fn msm<
@@ -34,7 +36,7 @@ impl Backend for AcceleratedBackend {
 /// threads only when `maybe-rayon` threading is enabled (via the `multicore`
 /// feature) and beneficial.
 ///
-/// Unequal input lengths violate [`Backend::msm`](ragu_backend::Backend::msm)'s
+/// Unequal input lengths violate [`Backend::msm`]'s
 /// contract. The reference implementation zips its inputs and so truncates the
 /// longer one; this does the same, so the two backends agree even on inputs
 /// the contract excludes rather than diverging between a panic and a result.
