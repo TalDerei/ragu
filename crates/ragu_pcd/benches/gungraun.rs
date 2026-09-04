@@ -5,7 +5,6 @@ mod setup;
 use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
-#[cfg(feature = "native-msm")]
 use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
@@ -13,10 +12,9 @@ use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::rngs::StdRng;
-#[cfg(feature = "native-msm")]
-use setup::setup_fuse_accelerated;
 use setup::{
-    setup_finalize, setup_fuse, setup_register, setup_seed, setup_verify_leaf, setup_verify_node,
+    setup_finalize, setup_fuse, setup_fuse_accelerated, setup_register, setup_seed,
+    setup_verify_leaf, setup_verify_node,
 };
 
 #[library_benchmark(setup = setup_register)]
@@ -97,7 +95,6 @@ library_benchmark_group!(
 
 // The accelerated counterpart to `fuse`. Comparing the two tracked baselines
 // is how a regression in an overridden backend operation surfaces.
-#[cfg(feature = "native-msm")]
 #[library_benchmark(setup = setup_fuse_accelerated)]
 #[bench::fuse_accelerated()]
 fn fuse_accelerated(
@@ -119,7 +116,6 @@ fn fuse_accelerated(
     .unwrap();
 }
 
-#[cfg(feature = "native-msm")]
 library_benchmark_group!(
     name = app_proof_accelerated;
     benchmarks = fuse_accelerated
@@ -166,13 +162,9 @@ library_benchmark_group!(
     benchmarks = verify_leaf, verify_node, rerandomize
 );
 
-#[cfg(feature = "native-msm")]
 main!(
     library_benchmark_groups = app_setup,
     app_proof,
     app_proof_accelerated,
     app_verify
 );
-
-#[cfg(not(feature = "native-msm"))]
-main!(library_benchmark_groups = app_setup, app_proof, app_verify);

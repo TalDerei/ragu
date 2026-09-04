@@ -11,9 +11,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-#[cfg(feature = "native-msm")]
-extern crate alloc;
-
+#[cfg(not(feature = "native-msm"))]
+mod fallback;
 #[cfg(feature = "native-msm")]
 mod msm;
 
@@ -40,33 +39,6 @@ pub struct AcceleratedBackend;
 /// the verifier-side speedups.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AcceleratedProver;
-
-impl ragu_backend::Backend for AcceleratedBackend {
-    fn msm<
-        'a,
-        C: ragu_arithmetic::CurveAffine,
-        A: IntoIterator<Item = &'a C::Scalar>,
-        Bases: IntoIterator<Item = &'a C>,
-    >(
-        coeffs: A,
-        bases: Bases,
-    ) -> C::Curve
-    where
-        Bases::IntoIter: Clone + Sync,
-    {
-        #[cfg(feature = "native-msm")]
-        {
-            let coeffs: alloc::vec::Vec<_> = coeffs.into_iter().copied().collect();
-            let bases: alloc::vec::Vec<_> = bases.into_iter().copied().collect();
-            msm::accelerated_msm(&coeffs, &bases)
-        }
-
-        #[cfg(not(feature = "native-msm"))]
-        {
-            ragu_arithmetic::msm(coeffs, bases)
-        }
-    }
-}
 
 // `AcceleratedProver` must forward every override to `AcceleratedBackend`,
 // one method per override, so the two impl blocks stay comparable and a new

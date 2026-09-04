@@ -1,4 +1,3 @@
-#[cfg(feature = "native-msm")]
 use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
@@ -80,7 +79,6 @@ pub fn setup_fuse() -> (
 
 /// Mirrors [`setup_fuse`], but selects the accelerated backend so the tracked
 /// baselines isolate the cost of the overridden operations.
-#[cfg(feature = "native-msm")]
 pub fn setup_fuse_accelerated() -> (
     Application<'static, Pasta, ProductionRank, 4, AcceleratedBackend>,
     Pcd<Pasta, ProductionRank, nontrivial::LeafNode>,

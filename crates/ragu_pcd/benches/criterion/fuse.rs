@@ -1,5 +1,4 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-#[cfg(feature = "native-msm")]
 use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
@@ -19,7 +18,6 @@ fn fuse_bench(c: &mut Criterion) {
         .unwrap()
         .finalize(pasta)
         .unwrap();
-    #[cfg(feature = "native-msm")]
     let accelerated_app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .with_backend::<AcceleratedBackend>()
         .register(nontrivial::WitnessLeaf { poseidon_params })
@@ -58,8 +56,7 @@ fn fuse_bench(c: &mut Criterion) {
         );
     });
 
-    #[cfg(feature = "native-msm")]
-    c.bench_function("fuse_accelerated_native_msm", |b| {
+    c.bench_function("fuse_accelerated_backend", |b| {
         b.iter_batched(
             || (leaf1.clone(), leaf2.clone(), StdRng::seed_from_u64(5678)),
             |(l1, l2, mut rng)| {
