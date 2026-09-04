@@ -112,17 +112,9 @@ criteria = "safe-to-run"
 version = "2.7.1"
 criteria = "safe-to-run"
 
-[[exemptions.hashbrown]]
-version = "0.12.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.hermit-abi]]
 version = "0.5.2"
 criteria = "safe-to-run"
-
-[[exemptions.indexmap]]
-version = "1.9.3"
-criteria = "safe-to-deploy"
 
 [[exemptions.once_cell]]
 version = "1.21.3"
@@ -189,11 +181,11 @@ version = "0.5.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.zakura-halo2-proofs]]
-version = "1.0.0-rc.2"
+version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zakura-pasta-curves]]
-version = "1.0.0-rc.2"
+version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zerocopy]]

@@ -29,7 +29,7 @@ bench = false
 [dependencies]
 ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_backend = { path = "../ragu_backend", version = "0.0.0", default-features = false }
-halo2_proofs = { package = "zakura-halo2-proofs", version = "1.0.0-rc.2", default-features = false, optional = true }
+halo2_proofs = { package = "zakura-halo2-proofs", version = "1.1.0", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
