@@ -21,6 +21,10 @@ inputs:
     description: Optional suffix to differentiate cache keys between jobs
     required: false
     default: ""
+  locked:
+    description: Whether setup must preserve Cargo.lock
+    required: false
+    default: "true"
 runs:
   using: composite
   steps:
@@ -112,20 +116,35 @@ runs:
           ${{ runner.os }}-target-${{ inputs.targets }}-${{ inputs.cache-suffix }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-target-${{ inputs.targets }}-${{ inputs.cache-suffix }}-${{ hashFiles('rust-toolchain.toml') }}-
 
-    - name: Fetch dependencies
-      if: steps.registry-cache.outputs.cache-hit != 'true'
+    - name: Fetch dependencies (locked)
+      if: steps.registry-cache.outputs.cache-hit != 'true' && inputs.locked == 'true'
       shell: bash
       run: cargo fetch --locked
+
+    - name: Fetch dependencies (unlocked)
+      if: steps.registry-cache.outputs.cache-hit != 'true' && inputs.locked == 'false'
+      shell: bash
+      run: cargo fetch
 
     # Clean workspace crates to ensure fresh builds (keeps dependency artifacts)
     - name: Clean workspace crates (keep deps)
       shell: bash
+      env:
+        LOCKED: ${{ inputs.locked }}
       run: |
         set -euo pipefail
-        pkgs=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json; print("\n".join(p["name"] for p in json.load(sys.stdin)["packages"]))')
+        case "$LOCKED" in
+          true) cargo_lock_args=(--locked) ;;
+          false) cargo_lock_args=() ;;
+          *)
+            echo "::error::rust-setup input 'locked' must be 'true' or 'false'"
+            exit 1
+            ;;
+        esac
+        pkgs=$(cargo metadata "${cargo_lock_args[@]}" --no-deps --format-version 1 | python3 -c 'import sys,json; print("\n".join(p["name"] for p in json.load(sys.stdin)["packages"]))')
         for p in $pkgs; do
-          cargo clean -p "$p" --release 2>/dev/null || true
-          cargo clean -p "$p" 2>/dev/null || true
+          cargo clean "${cargo_lock_args[@]}" -p "$p" --release 2>/dev/null || true
+          cargo clean "${cargo_lock_args[@]}" -p "$p" 2>/dev/null || true
         done
 
     - name: Install cargo tools

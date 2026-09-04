@@ -232,13 +232,13 @@ jobs:
         working-directory: qa/fuzz
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
-        run: cargo test --lib --locked
+        run: cargo test --lib
 
       - name: Check all fuzz targets
         working-directory: qa/fuzz
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
-        run: cargo check --bins --locked
+        run: cargo check --bins
 
   docs:
     name: docs

@@ -12,7 +12,7 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
     Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
-    step::internal::trivial::Trivial,
+    backend::tracking::TrackingBackend, step::internal::trivial::Trivial,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -367,6 +367,27 @@ fn check_corrupted_pcd_equivalence(
     }
 
     Ok(())
+}
+
+#[test]
+fn selected_backend_dispatch_reaches_msm() {
+    let app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+        .with_backend::<TrackingBackend>()
+        .register_dummy_circuits(0)
+        .unwrap()
+        .finalize(Pasta::baked())
+        .unwrap();
+    let mut rng = StdRng::seed_from_u64(0);
+    let (left, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
+    let (right, _) = app.seed(&mut rng, Trivial::new(), ()).unwrap();
+
+    TrackingBackend::reset_msm_calls();
+    let _ = app.fuse(&mut rng, Trivial::new(), (), left, right).unwrap();
+
+    assert!(
+        TrackingBackend::msm_calls() > 0,
+        "PCD did not dispatch MSM through its selected backend",
+    );
 }
 
 proptest! {

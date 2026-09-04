@@ -16,9 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an opt-in `native-msm` override backed by Zakura's signed-Booth
   multiexp (`zakura-halo2-proofs`), with Pallas and Vesta differential
   property tests against the reference and canonical implementations.
-- Added `AcceleratedProver`, which accelerates proving while `ragu_pcd`
-  verifies with the reference kernels, and the `verifier` module that hosts
-  verifier-consulted overrides.
 
 ### Changed
 

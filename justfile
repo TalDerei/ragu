@@ -127,19 +127,29 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
 
 # compiler-resolved production routing through the Backend seam
 backend_routing:
-  CLIPPY_CONF_DIR=qa/backend cargo clippy -p ragu_pcd --lib --no-deps --locked --features native-msm -- -D clippy::disallowed-methods -D warnings
+  CLIPPY_CONF_DIR=qa/backend cargo clippy -p ragu_pcd --lib --no-deps --no-default-features --features native-msm -- -D clippy::disallowed-methods -D warnings
+
+# backend feature configurations compile cleanly
+backend_clippy:
+  cargo clippy -p ragu_acceleration --lib --tests --no-default-features --features native-msm -- -D warnings
+  cargo clippy -p ragu_pcd --lib --tests --benches --no-default-features --features native-msm -- -D warnings
 
 # backend lane: differential, parity, and liveness tests in the serial
 # native-msm configuration
 backend_equivalence *ARGS:
-  cargo test --release -p ragu_acceleration --locked --features native-msm {{ARGS}}
-  PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --locked --features native-msm --lib backend_equivalence:: {{ARGS}}
+  cargo test --release -p ragu_acceleration --no-default-features --features native-msm {{ARGS}} -- --test-threads=1
+  PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --no-default-features --features native-msm --lib backend_equivalence:: {{ARGS}} -- --test-threads=1
 
-# backend correctness lane: routing plus differential and end-to-end parity
-backend_lane: backend_routing backend_equivalence
+# correctness-first fallbacks retain their bare-metal no_std configurations
+backend_nostd:
+  cargo build -p ragu_backend -p ragu_acceleration --lib --no-default-features --target thumbv7em-none-eabihf
+  cargo build -p ragu_pcd --lib --no-default-features --features alloc --target thumbv7em-none-eabihf
+
+# backend correctness lane: routing, compilation, liveness, and equivalence
+backend_lane: backend_routing backend_clippy backend_equivalence backend_nostd
 
 # run CI checks locally (formatting, clippy, tests)
-ci_local: _book_setup backend_routing
+ci_local: _book_setup backend_lane
   @echo "Running formatting check..."
   cargo +{{_nightly}} fmt --all -- --config-path rustfmt.nightly.toml --check
   @echo "Running clippy..."
