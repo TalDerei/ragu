@@ -21,6 +21,15 @@
 //!   of [`Event`]s over `usize` wires, alongside the honest wire values.
 //!   [`TrackingAllocator`] is the production pooling allocator with
 //!   bookkeeping of the wires it wastes.
+//! * [`analyze_source_shape`] / [`source_lint`] — witness-free source-shape
+//!   analysis: executes the same generic circuit code with an `Empty` driver,
+//!   then requires its exact event, coefficient, wire, and output shape to
+//!   equal concrete synthesis. This is Ragu-level abstract interpretation,
+//!   not a general rustc AST/MIR lint.
+//! * [`analyze_connectivity`] / [`analyze_component_rank`] — post-synthesis
+//!   static checks for isolated or floating subgraphs and locally movable
+//!   derived wires. Rank coverage is explicit: components above the caller's
+//!   dense-elimination cap are reported as skipped, never called clean.
 //! * [`repair`] / [`constraints_hold`] — the repair solver and the
 //!   acceptance check over a recorded graph.
 //! * [`underconstrained_derived`] — the rank/nullity oracle: derived wires
@@ -56,12 +65,20 @@
 //! Everything is driven through the `Driver` trait alone; the engine never
 //! needs to know how a circuit was produced.
 
+mod analysis;
 mod circuit;
 mod discover;
 mod oracle;
 mod recorder;
 
-pub use circuit::{Capture, capture, capture_with_stage_values, playback};
+pub use analysis::{
+    ComponentRankReport, ConnectedSubgraph, ConnectivityReport, analyze_component_rank,
+    analyze_connectivity,
+};
+pub use circuit::{
+    Capture, SourceLintReport, SourceShape, analyze_source_shape, capture,
+    capture_with_stage_values, playback, source_lint,
+};
 pub use discover::{allocation_waste, discover_free_advice, forced_by};
 pub use oracle::{
     Prepared, ProbeOutcome, SweepReport, Violation, determinism_probe, determinism_sweep,

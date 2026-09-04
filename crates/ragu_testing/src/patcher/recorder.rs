@@ -31,12 +31,12 @@ use ragu_arithmetic::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverTypes, LinearExpression},
-    maybe::Always,
+    maybe::{Always, Empty},
 };
 use ragu_primitives::allocator::{Allocator, Standard};
 
 /// A captured constraint / wire definition, in emission order.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event<F> {
     /// `out` is a virtual wire equal to `Σ coeff · wire` over `terms`.
     Lin {
@@ -195,6 +195,87 @@ impl<'dr, F: Field> Driver<'dr> for Recorder<F> {
         let built = lc(RecLc::default());
         let value = built.terms.iter().map(|(w, c)| self.values[*w] * c).sum();
         let out = self.push_wire(value);
+        self.events.push(Event::Lin {
+            out,
+            terms: built.terms,
+        });
+        out
+    }
+
+    fn enforce_zero(&mut self, lc: impl Fn(RecLc<F>) -> RecLc<F>) -> Result<()> {
+        let built = lc(RecLc::default());
+        self.events.push(Event::Enforce { terms: built.terms });
+        Ok(())
+    }
+}
+
+/// A witness-free recording driver used to lint the constraint shape emitted
+/// by monomorphized circuit source.
+///
+/// Unlike [`Recorder`], this driver has [`Empty`] values and therefore never
+/// evaluates assignment closures. It still executes the circuit's structural
+/// code and records exact wire ids, coefficients, gates, linear definitions,
+/// and constraints. Comparing its result with a witness-bearing [`Recorder`]
+/// capture detects constraint emission that improperly depends on witness
+/// generation.
+pub(super) struct ShapeRecorder<F> {
+    /// Number of structurally allocated wires, including the fixed ONE wire.
+    pub(super) wire_count: usize,
+    /// Constraint-shape events in emission order.
+    pub(super) events: Vec<Event<F>>,
+}
+
+impl<F: Field> ShapeRecorder<F> {
+    /// Creates a shape recorder containing only the fixed ONE wire.
+    pub(super) fn new() -> Self {
+        Self {
+            wire_count: 1,
+            events: Vec::new(),
+        }
+    }
+
+    /// Allocates the next structural wire id.
+    fn push_wire(&mut self) -> usize {
+        let wire = self.wire_count;
+        self.wire_count += 1;
+        wire
+    }
+}
+
+impl<F: Field> DriverTypes for ShapeRecorder<F> {
+    type ImplField = F;
+    type ImplWire = usize;
+    type MaybeKind = Empty;
+    type LCadd = RecLc<F>;
+    type LCenforce = RecLc<F>;
+    type Extra = usize;
+
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<(usize, usize, usize, usize)> {
+        let a = self.push_wire();
+        let b = self.push_wire();
+        let c = self.push_wire();
+        self.events.push(Event::Gate { a, b, c });
+        Ok((a, b, c, c))
+    }
+
+    fn assign_extra(&mut self, c: usize, _: impl Fn() -> Result<Coeff<F>>) -> Result<usize> {
+        let d = self.push_wire();
+        self.events.push(Event::Extra { c, d });
+        Ok(d)
+    }
+}
+
+impl<'dr, F: Field> Driver<'dr> for ShapeRecorder<F> {
+    type F = F;
+    type Wire = usize;
+    const ONE: usize = 0;
+
+    fn add(&mut self, lc: impl Fn(RecLc<F>) -> RecLc<F>) -> usize {
+        let built = lc(RecLc::default());
+        let out = self.push_wire();
         self.events.push(Event::Lin {
             out,
             terms: built.terms,
