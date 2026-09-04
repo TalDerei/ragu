@@ -15,6 +15,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENDPOINT_RE='(^|_)(soundness|completeness|error_bound|finite_security|measure_le|probability_bound|prob_le|capstone)([^A-Za-z0-9]|$)|^(p_prime|q_prime|fingerprint|instances)$'
+EXACT_ENDPOINT_RE='^(main'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.(bindOrRelationWitness|finForallOrRelationWitness|finForallOption|finForallOption_isSome_of|boundedForallOrRelationWitness|listForallOrRelationWitness)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Pasta\.(p_eq_pallasBaseCard|q_eq_pallasScalarCard|pallas_base_prime|pallas_scalar_prime|pallas_group_order|vesta_group_order|pallas_no_two_torsion|vesta_no_two_torsion)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Probability\.(uniformOfFintype_toOuterMeasure_finset|map_uniformOfFintype_equiv|uniformOfFintype_prod_fiber_bound|uniformOfFintype_prod_fiber_bound_right|uniformOfFintype_fresh_read_bound|uniformOfFintype_point_mem_blind_le|PMFEventBiasLE|PMFWeightedBiasLE|PMFWeightedBiasLE\.eventBiasLE|PMFEventBiasLE\.(weightedBiasLE|trans|bind_same|bind_average)|event_measure_le_of_bias|tendsto_toOuterMeasure_of_eventBiasLE)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.OracleComp\.(queries_queryList|queries_bind|mem_queries_completing|restrictSum|reachSet|run_congr_reachSet|restrictTo|splitDomain|run_congr_of_agree|runFreshPMF|runFreshPMF_eventBiasLE|readFin|withReads|run_withReads|queryBound_withReads)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.(queryCharge|queryCharge_sum_mul_le|queryCharge_sum_mul_le_table_budget|le_queryCharge_of_mem_queries|mem_queries_dedup|applyUpdates_apply_mem_nodup|steeredCharge_context_sum_mul_le|steeredCharge_context_sum_mul_le_table_budget|steeredCharge_sum_mul_le)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.LabeledOracleComp\.(erase|runWithAnnotations|findLabel|finalBadWithoutRelation_measure_le|firstLabelOrFallbackBad_measure_le)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Oracle\.MultiOracleComp\.(runTables|mapQuery|runTables_mapQuery|queryBound_mapQuery|runFreshPMF|runFreshPMF_eventBiasLE)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.AlgebraicRelation\.(commitGen|representationEval|AlgebraicRelationWitness\.(toGroupRepresentation|toAlgebraicPoint|augment)|NontrivialRelation\.ofCombinationCollision|discreteLogOfBasis_of_relation|discreteLogOfChallenge_of_relation|programmedExtractOrMiss|AugmentedRelationWitness\.toAlgebraicRelationWitness|discreteLogOfAugmentedRelationAtChallenge|discreteLogOfU_of_augmentedRelation|discreteLogOfW_of_augmentedRelation|programmedRelSet_card|programmedRelSet_subset_win_union_miss|missSet_card_le|relation_prob_le_of_textbookDL|independentProductPMF|independentProductPMF_map_left|independentProductPMF_uniform|programmedRelSetWithCoins_card|programmedRelSetWithCoins_subset_win_union_miss|missSetWithCoins_card_le|relationWithCoins_prob_le_of_textbookDL|truncateRelationFinder|truncatedRelationFinderCalls|truncatedRelationFinderCalls_le|TextbookDLWithCoinsFixedCallsAdvantageLE|TextbookDLWithCoinsTruncatedAdvantageLE|textbookDLWithCoinsTruncatedAdvantageLE_iff|RelationFinderExpectedCallsLE|relationFinderCallTail|relSetWithCoins_subset_truncate_union_tail|relationFinderCallTail_prob_le|relationWithCoins_prob_le_of_truncated_textbookDL)'
+EXACT_ENDPOINT_RE+='|CompPoly\.CPolynomial\.(map|mapRingHom|comp|rootsBy|eq_zero_of_natDegree_lt_card_of_eval_eq_zero|rootsBy_eq_toFinset|card_rootsBy_le)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.Polynomial\.(schwartz_zippel_fin|schwartz_zippel_index)'
+EXACT_ENDPOINT_RE+='|Ragu\.Foundation\.IPA\.(commit|evalVector|innerProduct|IpaRelation|foldVec|loHalf|hiHalf|append|append_loHalf_hiHalf|ipaRelation_unshift|ipaRelation_unblind|commit_eq_commitGen|commitGen_round|accepting_fold_eq_foldVec|NontrivialDLRelation\.(ofCollision|ofIpaOpenings)|foldGens|commitGen_split|commitGen_append|commitGen_sum))$'
 
 source_root='qa/fv/Ragu'
 census='qa/fv/Ragu/Meta/TrustBoundary.lean'
@@ -86,8 +98,8 @@ while IFS= read -r file; do
     fi
 
     base=${declared##*.}
-    # `main` is exact: a generic namespace-local `main` is not the fingerprint executable boundary.
-    [[ $base =~ $ENDPOINT_RE || $qualified == main ]] || continue
+    # Generic names such as `main` and foundation exports are qualified explicitly above.
+    [[ $base =~ $ENDPOINT_RE || $qualified =~ $EXACT_ENDPOINT_RE ]] || continue
 
     count=$((count + 1))
     if ! grep -qxF "$qualified" <<< "$pins"; then

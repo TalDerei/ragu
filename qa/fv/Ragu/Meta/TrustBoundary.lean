@@ -1,5 +1,12 @@
 import Ragu.Meta.EndpointCensus
 import Ragu.Core
+import Ragu.Foundation.AlgebraicRelation
+import Ragu.Foundation.IPA
+import Ragu.Foundation.Pasta.Basic
+import Ragu.Foundation.Polynomial
+import Ragu.Foundation.Oracle
+import Ragu.Foundation.Probability
+import Ragu.Foundation.RelationWitness
 import Ragu.Fingerprint.Instances
 import Ragu.Fingerprint.Main
 import Ragu.Circuits.Boolean.Alloc
@@ -65,9 +72,167 @@ computable axiom budget. These checks do not prove that the trusted fingerprint 
 serialization assign the intended semantics, and they do not connect this gadget layer to an
 unfinished Ragu verifier. Those remain separate manual and future refinement obligations.
 
+The relation-witness traversal combinators are also pinned as computed data. They preserve explicit
+break branches while composing future reductions; their companion theorem is pinned at the standard
+theorem tier.
+
 The entries below are intentionally fully qualified and direct. Transitive coverage disappears
 when a consumer is refactored and therefore does not satisfy the endpoint census.
 -/
+
+/-! ## Computed-break foundation -/
+
+census_computable Ragu.Foundation.bindOrRelationWitness
+census_computable Ragu.Foundation.finForallOrRelationWitness
+census_computable Ragu.Foundation.finForallOption
+census_axioms Ragu.Foundation.finForallOption_isSome_of
+census_computable Ragu.Foundation.boundedForallOrRelationWitness
+census_computable Ragu.Foundation.listForallOrRelationWitness
+
+/-! ## Pasta cycle foundation -/
+
+census_axioms Ragu.Foundation.Pasta.p_eq_pallasBaseCard
+census_axioms Ragu.Foundation.Pasta.q_eq_pallasScalarCard
+census_axioms Ragu.Foundation.Pasta.pallas_base_prime
+census_axioms Ragu.Foundation.Pasta.pallas_scalar_prime
+census_axioms Ragu.Foundation.Pasta.pallas_group_order +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt)
+census_axioms Ragu.Foundation.Pasta.vesta_group_order +native(
+  CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt)
+census_axioms Ragu.Foundation.Pasta.pallas_no_two_torsion
+census_axioms Ragu.Foundation.Pasta.vesta_no_two_torsion
+
+/-! ## Probability foundation -/
+
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_toOuterMeasure_finset
+census_axioms Ragu.Foundation.Probability.map_uniformOfFintype_equiv
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_prod_fiber_bound_right
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_fresh_read_bound
+census_axioms Ragu.Foundation.Probability.sum_point_mem_measure_le
+census_axioms Ragu.Foundation.Probability.uniformOfFintype_point_mem_blind_le
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE
+census_axioms Ragu.Foundation.Probability.PMFWeightedBiasLE
+census_axioms Ragu.Foundation.Probability.PMFWeightedBiasLE.eventBiasLE
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.weightedBiasLE
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.trans
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_same
+census_axioms Ragu.Foundation.Probability.PMFEventBiasLE.bind_average
+census_axioms Ragu.Foundation.Probability.event_measure_le_of_bias
+census_axioms Ragu.Foundation.Probability.tendsto_toOuterMeasure_of_eventBiasLE
+
+/-! ## Oracle foundation -/
+
+census_axioms Ragu.Foundation.Oracle.OracleComp.queries_queryList
+census_axioms Ragu.Foundation.Oracle.OracleComp.queries_bind
+census_axioms Ragu.Foundation.Oracle.OracleComp.mem_queries_completing
+census_computable Ragu.Foundation.Oracle.OracleComp.restrictSum
+census_computable Ragu.Foundation.Oracle.OracleComp.reachSet +choice
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_congr_reachSet
+census_computable Ragu.Foundation.Oracle.OracleComp.restrictTo +choice
+census_computable Ragu.Foundation.Oracle.OracleComp.splitDomain +choice
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_congr_of_agree
+census_computable Ragu.Foundation.Oracle.queryCharge
+census_axioms Ragu.Foundation.Oracle.queryCharge_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.queryCharge_sum_mul_le_table_budget
+census_axioms Ragu.Foundation.Oracle.le_queryCharge_of_mem_queries
+census_axioms Ragu.Foundation.Oracle.mem_queries_dedup
+census_axioms Ragu.Foundation.Oracle.applyUpdates_apply_mem_nodup
+census_axioms Ragu.Foundation.Oracle.steeredCharge_context_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.steeredCharge_context_sum_mul_le_table_budget
+census_axioms Ragu.Foundation.Oracle.steeredCharge_sum_mul_le
+census_axioms Ragu.Foundation.Oracle.escapesDuringC_measure_le
+census_axioms Ragu.Foundation.Oracle.escapesDuringC_measure_le'
+census_axioms Ragu.Foundation.Oracle.OracleComp.runFreshPMF
+census_axioms Ragu.Foundation.Oracle.OracleComp.runFreshPMF_eventBiasLE
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.erase
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.runWithAnnotations
+census_computable Ragu.Foundation.Oracle.LabeledOracleComp.findLabel
+census_axioms Ragu.Foundation.Oracle.LabeledOracleComp.finalBadWithoutRelation_measure_le
+census_axioms Ragu.Foundation.Oracle.LabeledOracleComp.firstLabelOrFallbackBad_measure_le
+census_computable Ragu.Foundation.Oracle.MultiOracleComp.runTables
+census_computable Ragu.Foundation.Oracle.MultiOracleComp.mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runTables_mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.queryBound_mapQuery
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF
+census_axioms Ragu.Foundation.Oracle.MultiOracleComp.runFreshPMF_eventBiasLE
+census_computable Ragu.Foundation.Oracle.OracleComp.readFin
+census_computable Ragu.Foundation.Oracle.OracleComp.withReads
+census_axioms Ragu.Foundation.Oracle.OracleComp.run_withReads
+census_axioms Ragu.Foundation.Oracle.OracleComp.queryBound_withReads
+
+/-! ## Algebraic-relation and DLOG foundation -/
+
+census_computable Ragu.Foundation.AlgebraicRelation.commitGen +choice
+census_computable Ragu.Foundation.AlgebraicRelation.representationEval
+census_computable Ragu.Foundation.AlgebraicRelation.AlgebraicRelationWitness.toGroupRepresentation
+census_computable Ragu.Foundation.AlgebraicRelation.AlgebraicRelationWitness.toAlgebraicPoint
+census_computable Ragu.Foundation.AlgebraicRelation.NontrivialRelation.ofCombinationCollision +choice
+census_computable Ragu.Foundation.AlgebraicRelation.discreteLogOfBasis_of_relation +choice
+census_computable Ragu.Foundation.AlgebraicRelation.discreteLogOfChallenge_of_relation +choice
+census_computable Ragu.Foundation.AlgebraicRelation.programmedExtractOrMiss +choice
+census_computable Ragu.Foundation.AlgebraicRelation.AugmentedRelationWitness.toAlgebraicRelationWitness +choice
+census_computable Ragu.Foundation.AlgebraicRelation.discreteLogOfAugmentedRelationAtChallenge +choice
+census_computable Ragu.Foundation.AlgebraicRelation.discreteLogOfU_of_augmentedRelation +choice
+census_computable Ragu.Foundation.AlgebraicRelation.discreteLogOfW_of_augmentedRelation +choice
+census_axioms Ragu.Foundation.AlgebraicRelation.AlgebraicRelationWitness.augment
+census_axioms Ragu.Foundation.AlgebraicRelation.programmedRelSet_card
+census_axioms Ragu.Foundation.AlgebraicRelation.programmedRelSet_subset_win_union_miss
+census_axioms Ragu.Foundation.AlgebraicRelation.missSet_card_le
+census_axioms Ragu.Foundation.AlgebraicRelation.relation_prob_le_of_textbookDL
+census_axioms Ragu.Foundation.AlgebraicRelation.independentProductPMF
+census_axioms Ragu.Foundation.AlgebraicRelation.independentProductPMF_map_left
+census_axioms Ragu.Foundation.AlgebraicRelation.independentProductPMF_uniform
+census_axioms Ragu.Foundation.AlgebraicRelation.programmedRelSetWithCoins_card
+census_axioms Ragu.Foundation.AlgebraicRelation.programmedRelSetWithCoins_subset_win_union_miss
+census_axioms Ragu.Foundation.AlgebraicRelation.missSetWithCoins_card_le
+census_axioms Ragu.Foundation.AlgebraicRelation.relationWithCoins_prob_le_of_textbookDL
+census_axioms Ragu.Foundation.AlgebraicRelation.truncateRelationFinder
+census_axioms Ragu.Foundation.AlgebraicRelation.truncatedRelationFinderCalls
+census_axioms Ragu.Foundation.AlgebraicRelation.truncatedRelationFinderCalls_le
+census_axioms Ragu.Foundation.AlgebraicRelation.TextbookDLWithCoinsFixedCallsAdvantageLE
+census_axioms Ragu.Foundation.AlgebraicRelation.TextbookDLWithCoinsTruncatedAdvantageLE
+census_axioms Ragu.Foundation.AlgebraicRelation.textbookDLWithCoinsTruncatedAdvantageLE_iff
+census_axioms Ragu.Foundation.AlgebraicRelation.RelationFinderExpectedCallsLE
+census_axioms Ragu.Foundation.AlgebraicRelation.relationFinderCallTail
+census_axioms Ragu.Foundation.AlgebraicRelation.relSetWithCoins_subset_truncate_union_tail
+census_axioms Ragu.Foundation.AlgebraicRelation.relationFinderCallTail_prob_le
+census_axioms Ragu.Foundation.AlgebraicRelation.relationWithCoins_prob_le_of_truncated_textbookDL
+
+/-! ## Polynomial foundation -/
+
+census_computable CompPoly.CPolynomial.map +choice
+census_computable CompPoly.CPolynomial.mapRingHom +choice
+census_computable CompPoly.CPolynomial.comp +choice
+census_computable CompPoly.CPolynomial.rootsBy +choice
+census_axioms CompPoly.CPolynomial.eq_zero_of_natDegree_lt_card_of_eval_eq_zero
+census_axioms CompPoly.CPolynomial.rootsBy_eq_toFinset
+census_axioms CompPoly.CPolynomial.card_rootsBy_le
+census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_fin
+census_axioms Ragu.Foundation.Polynomial.schwartz_zippel_index
+
+/-! ## IPA algebra foundation -/
+
+census_computable Ragu.Foundation.IPA.commit +choice
+census_computable Ragu.Foundation.IPA.evalVector
+census_computable Ragu.Foundation.IPA.innerProduct +choice
+census_axioms Ragu.Foundation.IPA.IpaRelation
+census_computable Ragu.Foundation.IPA.foldVec
+census_computable Ragu.Foundation.IPA.loHalf
+census_computable Ragu.Foundation.IPA.hiHalf
+census_computable Ragu.Foundation.IPA.append
+census_axioms Ragu.Foundation.IPA.append_loHalf_hiHalf
+census_axioms Ragu.Foundation.IPA.ipaRelation_unshift
+census_axioms Ragu.Foundation.IPA.ipaRelation_unblind
+census_axioms Ragu.Foundation.IPA.commit_eq_commitGen
+census_axioms Ragu.Foundation.IPA.commitGen_round
+census_axioms Ragu.Foundation.IPA.accepting_fold_eq_foldVec
+census_computable Ragu.Foundation.IPA.NontrivialDLRelation.ofCollision +choice
+census_computable Ragu.Foundation.IPA.NontrivialDLRelation.ofIpaOpenings +choice
+census_computable Ragu.Foundation.IPA.foldGens +choice
+census_axioms Ragu.Foundation.IPA.commitGen_split
+census_axioms Ragu.Foundation.IPA.commitGen_append
+census_axioms Ragu.Foundation.IPA.commitGen_sum
 
 /-! ## Boolean circuits -/
 
