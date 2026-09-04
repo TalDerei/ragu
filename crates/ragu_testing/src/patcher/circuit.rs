@@ -98,7 +98,9 @@ mod tests {
     use super::*;
     use crate::{
         circuits::{MySimpleCircuit, SquareCircuit},
-        patcher::{allocation_waste, constraints_hold, discover_free_advice, repair},
+        patcher::{
+            allocation_waste, constraints_hold, determinism_sweep, discover_free_advice, repair,
+        },
     };
 
     /// `MySimpleCircuit` proves `a⁵ = b²` and outputs `(a + b, a − b)`.
@@ -217,6 +219,72 @@ mod tests {
             "the output kept its stale value — no constraint carries the cheat"
         );
         assert_ne!(values[cap.instance[0]], (root + Fp::ONE).square());
+
+        Ok(())
+    }
+
+    /// The pinned-input soundness oracle over the same planted circuit,
+    /// end to end through `capture`: with `root` declared as the input and
+    /// the public instance as the outputs, the sweep finds **two** ways the
+    /// prover can move the output with the input pinned, and each evidence
+    /// witness is independently accepted by a live playback:
+    ///
+    /// * cheat the unpinned `square` hint directly (wire 4); or
+    /// * cheat the allocation gate's waste `b` (wire 2) — the gate output
+    ///   `c = a·b` goes nonzero, and the pooled gate's `C · D = 0` then
+    ///   *forces the co-allocated `square` to zero*. A second genuine
+    ///   lever on the same missing constraint, reachable only because the
+    ///   engine records the pooled allocator's auxiliary constraint.
+    ///
+    /// The healthy `MySimpleCircuit`, with its two private witnesses
+    /// declared, reports no violation — but *vacuously*, by the rule
+    /// `SweepReport` states for itself: its one cheatable wire, the waste
+    /// `b`, is **rejected** rather than neutralized, because `C · D = 0`
+    /// collides with the pinned witness on the D wire. Rejection is
+    /// inconclusive, so this half pins down the counters, not a determinism
+    /// guarantee for `MySimpleCircuit`.
+    #[test]
+    fn determinism_sweep_over_captures() -> Result<()> {
+        let root = Fp::from(7u64);
+        let cap = capture(&UnderconstrainedSquare, root)?;
+        let rec = &cap.recorder;
+
+        let report = determinism_sweep(&rec.events, &rec.values, &[1], &cap.instance);
+        let square = cap.instance[0];
+        let violations = &report.violations;
+        assert_eq!(violations.len(), 2, "the waste lever and the hint itself");
+        assert_eq!(violations[0].advice, 2, "allocation waste `b`");
+        assert_eq!(violations[0].moved, vec![(square, root.square(), Fp::ZERO)]);
+        assert_eq!(violations[1].advice, square, "the unpinned hint directly");
+        for violation in violations {
+            assert!(playback(
+                &UnderconstrainedSquare,
+                root,
+                violation.witness.clone()
+            )?);
+        }
+
+        let (a, b) = (Fp::from(4u64), Fp::from(32u64));
+        let cap = capture(&MySimpleCircuit, (a, b))?;
+        let report = determinism_sweep(
+            &cap.recorder.events,
+            &cap.recorder.values,
+            &[1, 4],
+            &cap.instance,
+        );
+        assert!(
+            report.violations.is_empty(),
+            "no lever on the output was found: {:?}",
+            report.violations,
+        );
+        assert_eq!(
+            (report.pinned, report.rejected),
+            (0, 1),
+            "vacuous, not clean: the one cheatable wire (the waste `b`) is \
+             rejected outright — `C · D = 0` collides with the pinned witness \
+             on the co-allocated `d` wire — so the sweep demonstrated nothing \
+             about determinism here",
+        );
 
         Ok(())
     }
