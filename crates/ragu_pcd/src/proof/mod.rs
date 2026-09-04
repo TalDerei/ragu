@@ -22,7 +22,6 @@ use alloc::{sync::Arc, vec, vec::Vec};
 
 pub(crate) use builder::ProofBuilder;
 use ragu_arithmetic::{Cycle, ff::Field};
-use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, sparse},
@@ -307,7 +306,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     /// This computes witness data, not circuit structure. An exact-equivalent
     /// backend implementation would leave the synthesized constraints unchanged.
     pub(crate) fn c(&self) -> C::CircuitField {
-        ReferenceBackend::sparse_revdot(&self.native_a_poly, &self.native_b_poly)
+        self.native_a_poly.revdot(&self.native_b_poly)
     }
 
     // TODO: Route this witness-value computation through the selected backend
@@ -319,7 +318,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     /// An exact-equivalent backend implementation would leave the synthesized
     /// constraints unchanged.
     pub(crate) fn v(&self) -> C::CircuitField {
-        ReferenceBackend::sparse_eval(&self.native_p_poly, self.u)
+        self.native_p_poly.eval(self.u)
     }
 
     pub(crate) fn circuit_id(&self) -> CircuitIndex {
