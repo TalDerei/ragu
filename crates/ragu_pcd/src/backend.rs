@@ -27,6 +27,9 @@ mod sealed {
     }
 }
 
+#[cfg(test)]
+pub(crate) use sealed::Sealed as TestSealed;
+
 /// A Ragu-owned computational backend.
 ///
 /// This trait is sealed: applications may select one of Ragu's supported
@@ -46,9 +49,4 @@ pub trait SelectableBackend: Backend + sealed::Sealed {
 
 impl<T: Backend + sealed::Sealed> SelectableBackend for T {
     type Verifier = <T as sealed::Sealed>::Verifier;
-}
-
-#[cfg(test)]
-impl sealed::Sealed for crate::backend_equivalence::TrackingBackend {
-    type Verifier = Self;
 }

@@ -51,6 +51,10 @@ impl Backend for TrackingBackend {
     }
 }
 
+impl crate::backend::TestSealed for TrackingBackend {
+    type Verifier = Self;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VerifierDecision {
     Accept,
