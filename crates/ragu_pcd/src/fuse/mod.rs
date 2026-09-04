@@ -15,8 +15,12 @@ mod _09_eval;
 mod _10_p;
 mod _11_circuits;
 pub(crate) mod claims;
-// Gates itself behind `unstable-fuzzing` with an inner `#![cfg]`, so the
-// pipeline carries no feature attribute; reached through `crate::unstable`.
+// The patcher seam (see `crate::fuzzing`). Its source lives with the rest of
+// the fuzzing surface in `src/fuzzing/`, but it is mounted here because it
+// calls this pipeline's `pub(super)` steps. The file gates itself behind
+// `unstable-fuzzing` with an inner `#![cfg]`, so no feature attribute appears
+// here.
+#[path = "../fuzzing/patcher.rs"]
 pub(crate) mod patcher;
 
 use claims::FuseProofSource;

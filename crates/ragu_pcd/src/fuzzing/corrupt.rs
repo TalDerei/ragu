@@ -499,6 +499,7 @@ fn nested_enters_circuit_claim(index: NestedRx) -> bool {
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Apply a [`Corruption`] to this proof, reporting whether
     /// [`verify`](crate::Application::verify) is obliged to reject afterwards.
+    #[doc(hidden)]
     pub fn corrupt(&mut self, corruption: Corruption<C>) -> Binding {
         match corruption {
             Corruption::CircuitId(id) => {
@@ -655,6 +656,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
 
     /// The number of coefficients a polynomial of this proof's rank carries,
     /// so a harness can bound the coefficient indices it chooses.
+    #[doc(hidden)]
     pub fn num_coeffs() -> usize {
         R::num_coeffs()
     }
@@ -662,6 +664,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     /// The number of coefficients at the low end that a circuit claim's
     /// $t\_z$ term reaches, so a harness can steer toward corruptions whose
     /// rejection is asserted.
+    #[doc(hidden)]
     pub fn num_bound_coeffs() -> usize {
         R::n()
     }
@@ -671,6 +674,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Create a trivial (all-zero) proof for testing.
+    #[doc(hidden)]
     pub fn test_trivial_proof(&self) -> Proof<C, R> {
         self.trivial_proof()
     }

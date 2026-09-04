@@ -29,15 +29,14 @@ mod backend;
 #[path = "../tests/backend_equivalence/mod.rs"]
 mod backend_equivalence;
 mod fuse;
-#[cfg(feature = "unstable-fuzzing")]
-pub mod fuzz_utils;
+// The fuzzing surface. Gates itself behind `unstable-fuzzing` with an inner
+// `#![cfg]` and hides itself from the docs, so no feature attribute appears
+// here.
+pub mod fuzzing;
 pub mod header;
 mod internal;
 mod proof;
 pub mod step;
-// Gates itself behind `unstable-fuzzing` with an inner `#![cfg]` and hides
-// itself from the docs, so no feature attribute appears here.
-pub mod unstable;
 mod verify;
 
 use alloc::collections::BTreeMap;

@@ -5,7 +5,7 @@
 //! `fuzz_pcd_lifecycle` builds fresh trees and corrupts what it built. They
 //! share the application fixtures, the proof shapes, and the [`Arbitrary`]
 //! vocabulary that decodes fuzzer bytes into
-//! [`ragu_pcd::fuzz_utils::Corruption`] — so a corruption added once is
+//! [`ragu_pcd::fuzzing::corrupt::Corruption`] — so a corruption added once is
 //! reachable from all three.
 //!
 //! # No fixture is the trivial proof
@@ -24,7 +24,7 @@ use ragu_core::Result;
 use ragu_pasta::Pasta;
 use ragu_pcd::{
     Application, ApplicationBuilder, Proof,
-    fuzz_utils::{
+    fuzzing::corrupt::{
         Binding, BridgeCommitment, Challenge, Corruption, NativeRx, NestedRx, RxComponent, Side,
     },
 };
@@ -271,7 +271,7 @@ pub fn fused_fixtures(app: &Application<'_, C, R, HEADER_SIZE>) -> Vec<Fixture> 
 /// rejected out of hand and the fuzzer's mutations stay meaningful. The
 /// `bound` flags steer a coefficient index into the low `n` coefficients,
 /// where a circuit claim's $t_z$ term makes rejection mandatory — see
-/// [`ragu_pcd::fuzz_utils`].
+/// [`ragu_pcd::fuzzing::corrupt`].
 #[derive(Arbitrary, Debug, Clone)]
 pub enum FuzzCorruption {
     /// Replace the circuit id.

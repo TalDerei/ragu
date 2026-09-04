@@ -23,7 +23,7 @@ use ragu_core::Result;
 use ragu_pasta::{Fp, Fq, Pasta};
 use ragu_pcd::{
     Application, ApplicationBuilder, Proof,
-    fuzz_utils::{
+    fuzzing::corrupt::{
         Binding, BridgeCommitment, Challenge, Corruption, NativeRx, NestedRx, RxComponent, Side,
     },
 };

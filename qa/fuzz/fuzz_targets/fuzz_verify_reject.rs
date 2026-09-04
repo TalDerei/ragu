@@ -11,7 +11,7 @@
 //! bound it (`Ok(false)` or `Err` are both rejections). A corruption the
 //! verifier is *not* obliged to notice — a blinding coefficient no claim
 //! binds — is still exercised, but its verdict is not asserted; see
-//! [`ragu_pcd::fuzz_utils`] for how the two are told apart.
+//! [`ragu_pcd::fuzzing::corrupt`] for how the two are told apart.
 //!
 //! This target used to corrupt `Application::trivial_proof`. That fixture is
 //! the all-zero placeholder a base case fuses against, and `verify` rejects it

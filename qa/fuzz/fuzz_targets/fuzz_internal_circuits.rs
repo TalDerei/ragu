@@ -11,7 +11,7 @@
 //! # Setup, paid once
 //!
 //! The circuits' honest witnesses exist only mid-fuse, so
-//! [`unstable::capture_internal_circuits`] runs real fuses and hands each
+//! [`capture_internal_circuits`] runs real fuses and hands each
 //! circuit, its [`CircuitSpec`] and its witness to a visitor that records the
 //! constraint graph ([`ragu_testing::patcher::capture_with_stage_values`]). It
 //! does so at four [`Point`]s of a tree, because the cheap ones are degenerate
@@ -36,7 +36,7 @@
 //!
 //! A circuit's spec declares what it is responsible for: the unified instance
 //! slots it covers and the stage values it checks (see
-//! [`ragu_pcd::unstable`]). Those are its **outputs**; every other instance
+//! [`ragu_pcd::fuzzing::patcher`]). Those are its **outputs**; every other instance
 //! wire and every other reserved stage wire is an **input** — received
 //! commitments, challenges another circuit derived, stage values another
 //! circuit checks. Before any fuzzing, a static check runs
@@ -98,10 +98,7 @@ use std::sync::LazyLock;
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use ragu_arithmetic::{
-    Cycle,
-    ff::PrimeFieldBits,
-};
+use ragu_arithmetic::{Cycle, ff::PrimeFieldBits};
 use ragu_circuits::Circuit;
 use ragu_core::Result;
 // The fields must come from the cycle's own dependency graph: the fuzz
@@ -110,7 +107,10 @@ use ragu_core::Result;
 use ragu_pasta::Pasta;
 use ragu_pcd::{
     Application,
-    unstable::{self, CircuitSpec, InternalCircuitVisitor},
+    fuzzing::patcher::{
+        CircuitSpec, InternalCircuitVisitor, capture_internal_circuits,
+        capture_internal_circuits_seeded,
+    },
 };
 use ragu_testing::patcher::{
     Prepared, ProbeOutcome, capture_with_stage_values, discover_free_advice, forced_by, playback,
@@ -213,7 +213,7 @@ impl Point {
         let mut rng = StdRng::seed_from_u64(self.rng_seed());
         let w = self.witnesses();
         match self {
-            Point::Seeded => unstable::capture_internal_circuits_seeded(
+            Point::Seeded => capture_internal_circuits_seeded(
                 app,
                 &mut rng,
                 pcd::witness_leaf(),
@@ -223,19 +223,19 @@ impl Point {
             Point::Leaves => {
                 let left = pcd::seed(app, &mut rng, w[0]);
                 let right = pcd::seed(app, &mut rng, w[1]);
-                unstable::capture_internal_circuits(app, &mut rng, pcd::hash2(), (), left, right, visitor)
+                capture_internal_circuits(app, &mut rng, pcd::hash2(), (), left, right, visitor)
             }
             Point::Nodes => {
                 let left = pcd::node(app, &mut rng, w[0], w[1]);
                 let right = pcd::node(app, &mut rng, w[2], w[3]);
-                unstable::capture_internal_circuits(app, &mut rng, pcd::merge2(), (), left, right, visitor)
+                capture_internal_circuits(app, &mut rng, pcd::merge2(), (), left, right, visitor)
             }
             Point::Lopsided => {
                 let ll = pcd::node(app, &mut rng, w[0], w[1]);
                 let lr = pcd::node(app, &mut rng, w[2], w[3]);
                 let deep = app.fuse(&mut rng, pcd::merge2(), (), ll, lr)?.0;
                 let shallow = pcd::node(app, &mut rng, w[4], w[5]);
-                unstable::capture_internal_circuits(app, &mut rng, pcd::merge2(), (), deep, shallow, visitor)
+                capture_internal_circuits(app, &mut rng, pcd::merge2(), (), deep, shallow, visitor)
             }
         }
     }

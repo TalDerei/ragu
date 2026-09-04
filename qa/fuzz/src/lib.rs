@@ -16,7 +16,7 @@
 //!
 //! [`pcd`] holds what the proof-level targets share: the application
 //! fixtures, the honest proof shapes, and the `Arbitrary` vocabulary that
-//! decodes fuzzer bytes into a `ragu_pcd::fuzz_utils::Corruption`.
+//! decodes fuzzer bytes into a `ragu_pcd::fuzzing::corrupt::Corruption`.
 
 pub mod params;
 pub mod pcd;

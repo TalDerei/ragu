@@ -51,7 +51,7 @@ use crate::{
 /// level. Immutable once constructed.
 ///
 /// Both the type and its field are `pub(crate)` rather than private, so that
-/// `fuzz_utils` can address the whole proof from one place. That is a real
+/// `fuzzing::corrupt` can address the whole proof from one place. That is a real
 /// concession: "immutable once constructed" is no longer enforced by the
 /// type, only by convention. It is made deliberately, because the only code
 /// in the crate that writes through it is the corruption harness, whose whole
