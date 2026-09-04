@@ -29,7 +29,7 @@ mod backend;
 #[path = "../tests/backend_equivalence/mod.rs"]
 mod backend_equivalence;
 mod fuse;
-#[cfg(any(feature = "unstable-fuzzing", test))]
+#[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;
 pub mod header;
 mod internal;

@@ -14,15 +14,12 @@ use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::polynomials::{ProductionRank, Rank, TestRank, sparse::Polynomial};
 use ragu_testing::strategies::{bounded_edge_usize, prime_field_element};
 
-/// Sizes at which the accelerated MSM changes algorithm
-/// (`qa/backend/transitions/msm.txt`).
-pub fn msm_transition_sizes() -> Vec<usize> {
-    include_str!("../../../../qa/backend/transitions/msm.txt")
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(|line| line.parse::<usize>().expect("transition size"))
-        .collect()
+/// Sizes at which the canonical MSM changes its Booth-window width.
+///
+/// The width is 1 below 4 terms and 3 below 32 terms, then `ceil(ln n)`,
+/// whose transitions occur at `floor(e^k) + 1`.
+pub fn msm_transition_sizes() -> &'static [usize] {
+    &[4, 32, 55, 149, 404, 1097, 2981, 8104]
 }
 
 pub fn arb_msm_size() -> impl Strategy<Value = usize> {
@@ -123,7 +120,8 @@ where
     C::ScalarExt: From<u64>,
 {
     let sizes = msm_transition_sizes()
-        .into_iter()
+        .iter()
+        .copied()
         .flat_map(|boundary| [boundary - 1, boundary])
         .chain(core::iter::once(ProductionRank::num_coeffs()));
     for size in sizes {
