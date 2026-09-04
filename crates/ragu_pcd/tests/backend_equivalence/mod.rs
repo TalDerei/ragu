@@ -1,13 +1,17 @@
 use proptest::{prelude::*, test_runner::TestCaseResult};
 use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
+use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_backend::ReferenceBackend;
-use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
+use ragu_circuits::{
+    polynomials::{ProductionRank, Rank, sparse},
+    registry::CircuitIndex,
+};
 use ragu_pasta::{Fp, Pasta};
 use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field_element};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
-    Application, ApplicationBuilder, Pcd, Proof, SelectableBackend, fuzz_utils::Corruption,
+    Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
     step::internal::trivial::Trivial,
 };
 
@@ -122,6 +126,51 @@ struct CorruptionInputs {
     right_header_len: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ProofMutation<F> {
+    PBlind(F),
+    PEval(F),
+    AbC(F),
+    CircuitId(u32),
+    ChallengeU(F),
+    ChallengeX(F),
+    ChallengeY(F),
+    LeftHeaderLen(usize),
+    RightHeaderLen(usize),
+}
+
+fn apply_proof_mutation<C: Cycle, R: Rank>(
+    proof: &mut Proof<C, R>,
+    mutation: ProofMutation<C::CircuitField>,
+) {
+    match mutation {
+        ProofMutation::PBlind(value) => proof
+            .native_p_poly
+            .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![value])),
+        ProofMutation::PEval(value) => {
+            proof
+                .native_p_poly
+                .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
+                    C::CircuitField::ZERO,
+                    value,
+                ]))
+        }
+        ProofMutation::AbC(value) => proof
+            .native_a_poly
+            .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![value])),
+        ProofMutation::CircuitId(id) => proof.circuit_id = CircuitIndex::from_u32(id),
+        ProofMutation::ChallengeU(value) => proof.u = value,
+        ProofMutation::ChallengeX(value) => proof.x = value,
+        ProofMutation::ChallengeY(value) => proof.y = value,
+        ProofMutation::LeftHeaderLen(len) => {
+            proof.left_header.resize(len, C::CircuitField::ZERO);
+        }
+        ProofMutation::RightHeaderLen(len) => {
+            proof.right_header.resize(len, C::CircuitField::ZERO);
+        }
+    }
+}
+
 fn arb_dummy_circuit_count() -> impl Strategy<Value = usize> {
     bounded_edge_usize(MAX_DUMMY_CIRCUITS)
 }
@@ -204,31 +253,31 @@ fn verifier_outcome<B: SelectableBackend>(
 fn corruptions(
     proof: &Proof<Pasta, ProductionRank>,
     inputs: CorruptionInputs,
-) -> impl IntoIterator<Item = (&'static str, Corruption<Fp>)> {
+) -> impl IntoIterator<Item = (&'static str, ProofMutation<Fp>)> {
     [
-        ("p blind", Corruption::PBlind(inputs.p_blind_delta)),
-        ("p evaluation", Corruption::PEval(inputs.p_eval_delta)),
-        ("ab revdot", Corruption::AbC(inputs.ab_c_delta)),
-        ("circuit id", Corruption::CircuitId(inputs.circuit_id)),
+        ("p blind", ProofMutation::PBlind(inputs.p_blind_delta)),
+        ("p evaluation", ProofMutation::PEval(inputs.p_eval_delta)),
+        ("ab revdot", ProofMutation::AbC(inputs.ab_c_delta)),
+        ("circuit id", ProofMutation::CircuitId(inputs.circuit_id)),
         (
             "challenge u",
-            Corruption::ChallengeU(proof.u() + inputs.challenge_u_delta),
+            ProofMutation::ChallengeU(proof.u() + inputs.challenge_u_delta),
         ),
         (
             "challenge x",
-            Corruption::ChallengeX(proof.x() + inputs.challenge_x_delta),
+            ProofMutation::ChallengeX(proof.x() + inputs.challenge_x_delta),
         ),
         (
             "challenge y",
-            Corruption::ChallengeY(proof.y() + inputs.challenge_y_delta),
+            ProofMutation::ChallengeY(proof.y() + inputs.challenge_y_delta),
         ),
         (
             "left header",
-            Corruption::LeftHeaderLen(inputs.left_header_len),
+            ProofMutation::LeftHeaderLen(inputs.left_header_len),
         ),
         (
             "right header",
-            Corruption::RightHeaderLen(inputs.right_header_len),
+            ProofMutation::RightHeaderLen(inputs.right_header_len),
         ),
     ]
 }
@@ -299,7 +348,7 @@ fn check_corrupted_pcd_equivalence(
 ) -> TestCaseResult {
     for (corruption_name, corruption) in corruptions(pcd.proof(), corruption_inputs) {
         let mut corrupted = pcd.proof().clone();
-        corrupted.corrupt(corruption);
+        apply_proof_mutation(&mut corrupted, corruption);
         prop_assert!(
             pcd.proof().test_mismatch(&corrupted).is_some(),
             "proof comparison ignored {} corruption in {} proof",
@@ -355,7 +404,7 @@ proptest! {
         );
 
         let mut corrupted = valid_pcd.proof().clone();
-        corrupted.corrupt(Corruption::CircuitId(
+        apply_proof_mutation(&mut corrupted, ProofMutation::CircuitId(
             usize::from(padded).try_into().unwrap(),
         ));
         prop_assert!(valid_pcd.proof().test_mismatch(&corrupted).is_some());

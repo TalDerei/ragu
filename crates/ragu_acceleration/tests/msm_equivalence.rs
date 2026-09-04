@@ -7,7 +7,7 @@ use ragu_arithmetic::pasta_curves::{pallas, vesta};
 
 #[test]
 fn exact_algorithm_boundaries_match_canonical_msm() -> TestCaseResult {
-    // Sizes at which the override changes algorithm (qa/backend/transitions/).
+    // Sizes at which the canonical MSM changes its Booth-window width.
     // Keep them deterministic: the proptest strategy is power-of-two biased and
     // cannot generate most of these transition points.
     check_msm_transitions::<pallas::Affine, AcceleratedBackend>()?;
