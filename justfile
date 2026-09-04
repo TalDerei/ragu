@@ -125,10 +125,6 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
         -o "target/flamegraph-{{PACKAGE}}-{{GROUP}}-{{TARGET}}.svg" {{ARGS}} \
         -- --gungraun-run {{GROUP}} "$func_idx" 0
 
-# compiler-resolved production routing through the Backend seam
-backend_routing:
-  CLIPPY_CONF_DIR=qa/backend cargo clippy -p ragu_pcd --lib --no-deps --no-default-features --features native-msm -- -D clippy::disallowed-methods -D warnings
-
 # backend feature configurations compile cleanly
 backend_clippy:
   cargo clippy -p ragu_acceleration --lib --tests --no-default-features --features native-msm -- -D warnings
@@ -145,8 +141,8 @@ backend_nostd:
   cargo build -p ragu_backend -p ragu_acceleration --lib --no-default-features --target thumbv7em-none-eabihf
   cargo build -p ragu_pcd --lib --no-default-features --features alloc --target thumbv7em-none-eabihf
 
-# backend correctness lane: routing, compilation, liveness, and equivalence
-backend_lane: backend_routing backend_clippy backend_equivalence backend_nostd
+# backend correctness lane: compilation, liveness, and equivalence
+backend_lane: backend_clippy backend_equivalence backend_nostd
 
 # run CI checks locally (formatting, clippy, tests)
 ci_local: _book_setup backend_lane

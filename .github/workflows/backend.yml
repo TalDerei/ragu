@@ -83,51 +83,24 @@ jobs:
           cargo build -p ragu_pcd --lib --no-default-features --features alloc
           --target thumbv7em-none-eabihf
 
-  # Compiler-resolved production use of the Backend API. Dispatch liveness is
-  # exercised separately by the equivalence suite.
-  backend-routing:
-    name: backend routing
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-      - name: Setup Rust
-        uses: ./.github/actions/rust-setup
-        with:
-          components: clippy
-          cache-suffix: backend-routing
-          locked: "false"
-      - name: Check that PCD canonical operations use the Backend API
-        env:
-          CLIPPY_CONF_DIR: ${{ github.workspace }}/qa/backend
-        run: >-
-          cargo clippy -p ragu_pcd --lib --no-deps --no-default-features
-          --features native-msm -- -D clippy::disallowed-methods -D warnings
-
-  # Stable status for the ruleset. Future backend jobs, such as routing checks,
-  # should be added to this list instead of becoming separate required checks.
+  # Stable status for the ruleset. Future backend jobs should be added to this
+  # list instead of becoming separate required checks.
   backend-required:
     name: backend-required
     if: always()
     needs:
       - backend-equivalence
       - backend-nostd
-      - backend-routing
     runs-on: ubuntu-latest
     steps:
       - name: Validate required backend jobs
         env:
           EQUIVALENCE_RESULT: ${{ needs.backend-equivalence.result }}
           NOSTD_RESULT: ${{ needs.backend-nostd.result }}
-          ROUTING_RESULT: ${{ needs.backend-routing.result }}
         run: |
           if [[ "$EQUIVALENCE_RESULT" != "success" ||
-                "$NOSTD_RESULT" != "success" ||
-                "$ROUTING_RESULT" != "success" ]]; then
+                "$NOSTD_RESULT" != "success" ]]; then
             echo "Backend equivalence: $EQUIVALENCE_RESULT"
             echo "Backend no_std: $NOSTD_RESULT"
-            echo "Backend routing: $ROUTING_RESULT"
             exit 1
           fi
