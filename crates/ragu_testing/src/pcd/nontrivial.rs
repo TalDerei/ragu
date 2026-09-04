@@ -17,6 +17,8 @@ use ragu_primitives::{
     poseidon::Sponge,
 };
 
+/// A [`Header`] for the leaves of the tree: a single field element, the hash
+/// of the witness the leaf commits to.
 pub struct LeafNode;
 
 impl<F: Field> Header<F> for LeafNode {
@@ -33,6 +35,8 @@ impl<F: Field> Header<F> for LeafNode {
     }
 }
 
+/// A [`Header`] for the internal nodes of the tree: a single field element,
+/// the hash of the two child headers.
 pub struct InternalNode;
 
 impl<F: Field> Header<F> for InternalNode {
@@ -49,7 +53,11 @@ impl<F: Field> Header<F> for InternalNode {
     }
 }
 
+/// A [`Step`] that combines two [`LeafNode`] children into an
+/// [`InternalNode`] by absorbing both into a Poseidon sponge and squeezing
+/// the parent header out of it.
 pub struct Hash2<'params, C: Cycle> {
+    /// The Poseidon parameters the sponge is instantiated with.
     pub poseidon_params: &'params C::CircuitPoseidon,
 }
 
@@ -94,7 +102,10 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     }
 }
 
+/// A [`Step`] with no children that hashes a witnessed field element into a
+/// [`LeafNode`], seeding the tree.
 pub struct WitnessLeaf<'params, C: Cycle> {
+    /// The Poseidon parameters the sponge is instantiated with.
     pub poseidon_params: &'params C::CircuitPoseidon,
 }
 
