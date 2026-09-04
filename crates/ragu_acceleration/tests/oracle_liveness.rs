@@ -24,6 +24,7 @@ const SENTINEL_MSM_SIZE: usize = 8104;
 /// A stored-coefficient count the sparse strategy generates.
 const SENTINEL_POLY_SIZE: usize = 17;
 
+#[derive(Clone, Copy, Debug, Default)]
 struct SentinelBackend;
 
 impl Backend for SentinelBackend {
