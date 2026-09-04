@@ -24,7 +24,7 @@
 
 use ragu_arithmetic::{
     Coeff,
-    ff::{Field, PrimeField},
+    ff::{Field, PrimeField, PrimeFieldBits},
 };
 use ragu_core::{
     Result,
@@ -679,6 +679,109 @@ pub(super) fn deduce<F: Field>(events: &[Event<F>], values: &mut [F], known: &mu
     }
 }
 
+/// A recomposition of a boolean decomposition: the virtual wire `out`, the
+/// bit wires in ascending weight order, and the weight `base` carried by the
+/// lowest bit.
+struct Decomposition<F> {
+    out: usize,
+    bits: Vec<usize>,
+    base: F,
+}
+
+/// The [`Event::Lin`] combinations that recompose a boolean decomposition:
+/// every term is a [`Boolean::alloc`](ragu_primitives::Boolean::alloc) wire
+/// and the weights are a doubling chain `c, 2c, 4c, …` of at most
+/// [`PrimeField::CAPACITY`] terms.
+///
+/// Such a combination admits exactly one boolean assignment per value of
+/// `out`: the weighted sums cover `c · [0, 2^n)`, injective because
+/// `n <= CAPACITY` keeps `2^n` inside the field, and scaling by a nonzero `c`
+/// is a bijection. So `out` forces every bit.
+///
+/// Neither [`deduce`] nor a bounded case split can reach that on its own. The
+/// bits are coupled through this one constraint and nothing else, so no
+/// single-unknown rule applies, `cluster_solve` sees a cluster far wider than
+/// [`CLUSTER_SOLVE_CAP`], and flipping one bit while its `n - 1` neighbours
+/// are still unknown leaves the constraint satisfiable, so neither branch
+/// dies. Recognising the shape is what closes that gap.
+fn decompositions<F: PrimeFieldBits>(
+    events: &[Event<F>],
+    booleans: &[usize],
+) -> Vec<Decomposition<F>> {
+    // Wires above the highest boolean are not booleans, so a lookup past the
+    // end reads as `false` rather than needing the full wire count here.
+    let mut is_boolean = vec![false; booleans.iter().copied().max().map_or(0, |w| w + 1)];
+    for &w in booleans {
+        is_boolean[w] = true;
+    }
+
+    events
+        .iter()
+        .filter_map(|ev| {
+            let Event::Lin { out, terms } = ev else {
+                return None;
+            };
+            if terms.len() < 2 || terms.len() > F::CAPACITY as usize {
+                return None;
+            }
+            let base = terms[0].1;
+            if bool::from(base.is_zero()) {
+                return None;
+            }
+            let mut weight = base;
+            let mut bits = Vec::with_capacity(terms.len());
+            for (i, &(wire, coeff)) in terms.iter().enumerate() {
+                if i > 0 {
+                    weight = weight.double();
+                }
+                if coeff != weight || !is_boolean.get(wire).copied().unwrap_or(false) {
+                    return None;
+                }
+                bits.push(wire);
+            }
+            Some(Decomposition {
+                out: *out,
+                bits,
+                base,
+            })
+        })
+        .collect()
+}
+
+/// Assigns the bits of every decomposition whose `out` is known, reporting
+/// whether anything was newly assigned.
+///
+/// A known `out` is divided through by the base weight and read off in
+/// little-endian order. An `out` outside `c · [0, 2^n)` has no boolean
+/// decomposition at all; the low `n` bits are still written, leaving the
+/// recomposition visibly violated so that
+/// [`branch_consistent`] retires the branch that produced it.
+fn deduce_decompositions<F: PrimeFieldBits>(
+    decompositions: &[Decomposition<F>],
+    values: &mut [F],
+    known: &mut [bool],
+) -> bool {
+    let mut progress = false;
+    for decomposition in decompositions {
+        if !known[decomposition.out] || decomposition.bits.iter().all(|&w| known[w]) {
+            continue;
+        }
+        let Some(inverse) = Option::<F>::from(decomposition.base.invert()) else {
+            continue;
+        };
+        let le_bits = (values[decomposition.out] * inverse).to_le_bits();
+        for (i, &wire) in decomposition.bits.iter().enumerate() {
+            if known[wire] {
+                continue;
+            }
+            values[wire] = if le_bits[i] { F::ONE } else { F::ZERO };
+            known[wire] = true;
+            progress = true;
+        }
+    }
+    progress
+}
+
 /// [`deduce`] extended with case analysis on booleans, for the static
 /// checks.
 ///
@@ -690,10 +793,13 @@ pub(super) fn deduce<F: Field>(events: &[Event<F>], values: &mut [F], known: &mu
 /// when exactly one branch survives. A branch dies on a fully-known
 /// constraint it violates, or on a square it cannot take: an `alloc_square`
 /// gate `r·r = s` (its operands tied by a copy constraint) whose `s` is known
-/// and is not a square. That root test is the one place the solver needs
-/// field arithmetic beyond linear algebra, and it is exactly how
-/// `Endoscalar::extract` binds each bit to whether `value + i` is a quadratic
-/// residue. The root itself is never assigned: its sign is genuine freedom.
+/// and is not a square. That root test is the one place the case split needs
+/// field arithmetic beyond linear algebra. The root itself is never assigned:
+/// its sign is genuine freedom.
+///
+/// Boolean decompositions are handled separately, by [`decompositions`]:
+/// their bits are coupled through a single wide constraint that no case split
+/// on one bit can break, so the shape is recognised and read off directly.
 ///
 /// Everything committed is still a unique consequence of the known set
 /// (the other branch is unsatisfiable), so this is sound for
@@ -701,12 +807,17 @@ pub(super) fn deduce<F: Field>(events: &[Event<F>], values: &mut [F], known: &mu
 /// not run inside `repair`, where the cost per probe would matter and the
 /// guessing tier already picks a branch, nor inside discovery, which calls
 /// the solver once per free wire.
-pub(super) fn deduce_by_cases<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
+pub(super) fn deduce_by_cases<F: PrimeFieldBits>(
+    events: &[Event<F>],
+    values: &mut [F],
+    known: &mut [bool],
+) {
     let booleans = boolean_wires(events);
     let squares = square_gates(events);
+    let decompositions = decompositions(events, &booleans);
     loop {
         deduce(events, values, known);
-        let mut committed = false;
+        let mut committed = deduce_decompositions(&decompositions, values, known);
         for &bit in &booleans {
             if known[bit] {
                 continue;

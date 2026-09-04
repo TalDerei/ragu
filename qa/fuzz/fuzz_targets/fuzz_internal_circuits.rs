@@ -59,7 +59,7 @@ use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use ragu_arithmetic::{
     Cycle,
-    ff::{Field, PrimeField},
+    ff::PrimeFieldBits,
 };
 use ragu_circuits::{Circuit, polynomials::ProductionRank};
 use ragu_core::Result;
@@ -91,7 +91,7 @@ struct Captured<F> {
 
 /// Captures one circuit, checks its spec statically, and classifies its
 /// wires.
-fn collect<'w, F: Field, Cir: Circuit<F>>(
+fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     point: &str,
     spec: &CircuitSpec,
     circuit: &Cir,
@@ -316,7 +316,7 @@ fuzz_target!(
 
 /// One fuzz iteration: resolve the cheats onto the captured circuit and
 /// probe.
-fn probe<F: PrimeField>(circuit: &Captured<F>, input: &Input) {
+fn probe<F: PrimeFieldBits>(circuit: &Captured<F>, input: &Input) {
     if circuit.cheatable.is_empty() {
         return;
     }

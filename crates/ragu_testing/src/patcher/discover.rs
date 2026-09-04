@@ -55,7 +55,7 @@
 //!   substrate by an exactness proptest there (discovery must equal the
 //!   substrate's own allocation list on anchorless programs).
 
-use ragu_arithmetic::ff::Field;
+use ragu_arithmetic::ff::{Field, PrimeFieldBits};
 
 use super::recorder::{Event, Recorder, deduce, deduce_by_cases};
 
@@ -127,9 +127,10 @@ pub fn allocation_waste<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<(usi
 /// oracle.
 ///
 /// Seeds the known set with `inputs` and the fixed ONE wire, runs the
-/// solver — `deduce` plus case analysis on booleans, which is what decides
-/// an endoscalar's bits from the value they decompose — to a fixpoint, and
-/// returns every other wire it marked known, ascending. A declared *output*
+/// solver — `deduce`, case analysis on booleans, and recognition of boolean
+/// decompositions, which is what decides an endoscalar's bits from the value
+/// they decompose — to a fixpoint, and returns every other wire it marked
+/// known, ascending. A declared *output*
 /// that is missing from the result is not a function of the declared inputs
 /// as far as the constraints (and the bounded solver) can tell: either the
 /// circuit leaves it under-constrained, or the witness sits at a degenerate
@@ -141,7 +142,11 @@ pub fn allocation_waste<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<(usi
 /// The converse carries the usual solver caveat: a wire *is* forced when the
 /// bounded solver can reach it, so one pinned only through a coupled cluster
 /// wider than its cap is reported unforced even though it is determined.
-pub fn forced_by<F: Field>(events: &[Event<F>], values: &[F], inputs: &[usize]) -> Vec<usize> {
+pub fn forced_by<F: PrimeFieldBits>(
+    events: &[Event<F>],
+    values: &[F],
+    inputs: &[usize],
+) -> Vec<usize> {
     let mut scratch = values.to_vec();
     let mut known = vec![false; scratch.len()];
     known[Recorder::<F>::ONE] = true;
@@ -285,11 +290,12 @@ mod tests {
         Ok(())
     }
 
-    /// The case analysis decides what a value forces through its endoscalar
-    /// decomposition: each bit is bound to whether `value + i` is a square,
-    /// which needs a root to decide, so discovery (no case analysis) leaves
-    /// every bit free while `forced_by` from the value alone reaches all 128
-    /// of them and the lifted scalar.
+    /// The solver decides what a value forces through its endoscalar
+    /// decomposition: the bits are coupled to it through one recomposition
+    /// constraint and nothing else, so discovery (which reaches a wire only
+    /// through a rule that determines it alone) leaves every bit free, while
+    /// `forced_by` from the value alone recognises the decomposition and
+    /// reaches all 128 of them and the lifted scalar.
     #[test]
     fn forced_by_decides_endoscalar_bits() -> ragu_core::Result<()> {
         use ragu_primitives::{Endoscalar, EndoscalarChallenge};

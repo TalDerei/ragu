@@ -47,7 +47,7 @@
 
 use std::time::{Duration, Instant};
 
-use ragu_arithmetic::{Cycle, ff::Field};
+use ragu_arithmetic::{Cycle, ff::PrimeFieldBits};
 use ragu_circuits::{Circuit, polynomials::ProductionRank};
 use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
@@ -88,7 +88,7 @@ struct Census {
 }
 
 /// Captures one circuit and runs every check, returning its census.
-fn check<'w, F: Field, Cir: Circuit<F>>(
+fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     point: &str,
     spec: &CircuitSpec,
     circuit: &Cir,
@@ -318,7 +318,7 @@ fn expected(name: &str, point: &str) -> Census {
         "inner_collapse" => (1254, 6264, 30, 19, 0, 19, 653),
         "outer_collapse" if point == "seeded" => (456, 2896, 30, 6, 0, 6, 234),
         "outer_collapse" => (456, 2896, 30, 7, 0, 7, 238),
-        "compute_v" => (166, 3811, 30, 1, 0, 1, 340),
+        "compute_v" => (166, 3422, 30, 1, 0, 1, 337),
         step if step.starts_with("endoscaling_step_") => (220, 10380, 0, 2, 0, 2, 109),
         other => panic!("no census pinned for {other}"),
     };
@@ -329,10 +329,10 @@ fn expected(name: &str, point: &str) -> Census {
         ("inner_collapse", _) => (529, 124),
         ("outer_collapse", "seeded") => (190, 44),
         ("outer_collapse", _) => (188, 50),
-        ("compute_v", _) => (13, 327),
-        (_, "seeded") => (50, 59),
+        ("compute_v", _) => (13, 324),
+        (_, "seeded") => (44, 65),
         (_, "leaves") => (51, 58),
-        (_, "nodes") => (46, 63),
+        (_, "nodes") => (47, 62),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {
