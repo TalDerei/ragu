@@ -29,12 +29,12 @@
 //! # What a circuit is responsible for
 //!
 //! Every internal circuit is a [`MultiStage`] circuit over the shared
-//! [`unified`](native::unified) instance. Its outputs under the oracle are
-//! the wires its constraints must determine once everything it merely
-//! *reads* is held fixed:
+//! `unified` instance. Its outputs under the oracle are the wires its
+//! constraints must determine once everything it merely *reads* is held
+//! fixed:
 //!
 //! * the unified slots it covers — `provide`s, or `receive`s and checks —
-//!   read off the [`Coverage`](native::unified::Coverage) it reports; and
+//!   read off the `Coverage` it reports; and
 //! * the stage values it checks against an in-circuit computation: the
 //!   collapsed claims `inner_collapse` folds to, the $k(y)$ evaluations
 //!   `outer_collapse` recomputes, the sponge state `hashes_1` saves. These
@@ -274,8 +274,8 @@ fn stage_values<'source, F: Field, R: Rank, S: Stage<F, R> + Default>(
 }
 
 /// The unified element slots a circuit covers, as instance positions, read
-/// off the [`Coverage`](native::unified::Coverage) the circuit reports after
-/// one execution of its witness on a wireless emulator.
+/// off the `Coverage` the circuit reports after one execution of its witness
+/// on a wireless emulator.
 fn covered_elements<'w, F: Field, Cir: Circuit<F>>(
     circuit: &Cir,
     witness: Cir::Witness<'w>,
@@ -406,9 +406,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// fresh for each circuit from the finished builder (its coverage
     /// bookkeeping does not affect the emitted constraints), so no proof is
     /// produced and the children's proofs are not consumed for one. That
-    /// fresh coverage is also what makes each circuit's reported
-    /// [`Coverage`](native::unified::Coverage) *its own* contribution, which
-    /// the spec reads as the unified slots it is responsible for.
+    /// fresh coverage is also what makes each circuit's reported `Coverage`
+    /// *its own* contribution, which the spec reads as the unified slots it is
+    /// responsible for.
     ///
     /// # Errors
     ///
