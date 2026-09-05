@@ -46,8 +46,36 @@ permissions:
   contents: read
 
 jobs:
+  source-lint:
+    name: circuit source lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned nightly toolchain
+        id: nightly
+        uses: ./.github/actions/rust-nightly-setup
+
+      - name: Cache source-lint build artifacts
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: qa/fuzz/target
+          key: ${{ runner.os }}-fuzz-source-lint-target-${{ hashFiles('qa/fuzz/Cargo.lock', 'qa/fuzz/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-source-lint-target-
+
+      - name: Run no-execution circuit source lint
+        working-directory: qa/fuzz
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
+        run: cargo run --locked --bin circuit_lint -- --deny-advisories
+
   fuzz:
     name: fuzz ${{ matrix.target }}
+    needs: source-lint
     # Saturday belongs to `hardening`; every other fire is this campaign.
     if: github.event.schedule != '0 0 * * 6'
     runs-on: ubuntu-latest
@@ -346,6 +374,7 @@ jobs:
   # instrumented, which the pinned curve and arithmetic crates are not.
   hardening:
     name: hardening ${{ matrix.flavor }} ${{ matrix.target }}
+    needs: source-lint
     if: github.event.schedule == '0 0 * * 6' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_hardening == 'true')
     runs-on: ubuntu-latest
     # `careful` rebuilds the standard library from source, which dominates
