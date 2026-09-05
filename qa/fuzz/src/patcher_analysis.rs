@@ -114,16 +114,18 @@ pub struct ComponentRankReport {
 
 /// Builds connected components of a recorded circuit graph.
 ///
-/// Every `Lin`, `Gate`, `Enforce`, and `Extra` event connects all of its
-/// non-ONE wires. The fixed wire `0` is treated as an anchor rather than a
-/// universal bridge, preserving independent constant-anchored subgraphs.
-/// Isolated allocated wires are retained as singleton components.
+/// Every `Lin`, `Gate`, `Enforce`, and `Extra` event connects its algebraically
+/// present non-ONE wires. Repeated linear terms and the output's implicit
+/// coefficient are combined first so coefficients that cancel cannot create a
+/// false dependency path. The fixed wire `0` is treated as an anchor rather
+/// than a universal bridge, preserving independent constant-anchored
+/// subgraphs. Isolated allocated wires are retained as singleton components.
 ///
 /// # Panics
 ///
 /// Panics when an event or declared boundary references a wire outside
 /// `0..wire_count`, or when ONE is declared as an input or output.
-pub fn analyze_connectivity<F>(
+pub fn analyze_connectivity<F: Field>(
     events: &[Event<F>],
     wire_count: usize,
     inputs: &[usize],
@@ -306,17 +308,32 @@ pub fn analyze_component_rank<F: Field>(
     report
 }
 
-fn wires_of<F>(event: &Event<F>) -> Vec<usize> {
+fn wires_of<F: Field>(event: &Event<F>) -> Vec<usize> {
     match event {
-        Event::Lin { out, terms } => terms
-            .iter()
-            .map(|(wire, _)| *wire)
-            .chain(std::iter::once(*out))
-            .collect(),
+        // A `Lin` event records `out = sum(terms)`, so `out` contributes an
+        // implicit -1 coefficient to the corresponding zero equality.
+        Event::Lin { out, terms } => {
+            normalized_term_wires(std::iter::once((*out, -F::ONE)).chain(terms.iter().copied()))
+        }
         Event::Gate { a, b, c } => vec![*a, *b, *c],
-        Event::Enforce { terms } => terms.iter().map(|(wire, _)| *wire).collect(),
+        Event::Enforce { terms } => normalized_term_wires(terms.iter().copied()),
         Event::Extra { c, d } => vec![*c, *d],
     }
+}
+
+/// Returns the wires with a nonzero net coefficient. The recorder drops each
+/// individually-zero term, but the same wire can still be added more than once
+/// with coefficients that cancel. Such a syntactic mention is not an algebraic
+/// dependency and must not join otherwise independent components.
+fn normalized_term_wires<F: Field>(terms: impl IntoIterator<Item = (usize, F)>) -> Vec<usize> {
+    let mut coefficients = BTreeMap::<usize, F>::new();
+    for (wire, coefficient) in terms {
+        *coefficients.entry(wire).or_insert(F::ZERO) += coefficient;
+    }
+    coefficients
+        .into_iter()
+        .filter_map(|(wire, coefficient)| (coefficient != F::ZERO).then_some(wire))
+        .collect()
 }
 
 struct DisjointSet {
@@ -437,6 +454,38 @@ mod tests {
         );
         assert!(report.floating_components().is_empty());
         assert_eq!(report.constant_only_events, vec![2]);
+    }
+
+    #[test]
+    fn cancelled_terms_do_not_create_an_input_output_path() {
+        // Algebraically this is `wire 2 = 0`; wire 1 has no influence on the
+        // output even though it appears twice in the raw event.
+        let events = vec![Event::Lin {
+            out: 2,
+            terms: vec![(1, Fp::ONE), (1, -Fp::ONE)],
+        }];
+        let report = analyze_connectivity(&events, 3, &[1], &[2]);
+
+        assert_eq!(report.isolated_wires(), vec![1]);
+        assert_eq!(report.output_components_without_inputs(), vec![1]);
+        assert_eq!(report.components[1].wires, vec![2]);
+        assert_eq!(report.components[1].events, vec![0]);
+    }
+
+    #[test]
+    fn linear_output_cancellation_does_not_create_a_dependency_path() {
+        // `wire 2 = wire 1 + wire 2` constrains only wire 1. The output is not
+        // algebraically present after its implicit coefficient is combined.
+        let events = vec![Event::Lin {
+            out: 2,
+            terms: vec![(1, Fp::ONE), (2, Fp::ONE)],
+        }];
+        let report = analyze_connectivity(&events, 3, &[1], &[2]);
+
+        assert_eq!(report.isolated_wires(), vec![2]);
+        assert_eq!(report.output_components_without_inputs(), vec![1]);
+        assert_eq!(report.components[0].wires, vec![1]);
+        assert_eq!(report.components[0].events, vec![0]);
     }
 
     #[test]

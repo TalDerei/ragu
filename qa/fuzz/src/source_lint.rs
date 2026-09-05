@@ -401,7 +401,7 @@ impl SourceAnalyzer {
         let mut driver_types = inherited.clone();
         driver_types.extend(driver_type_parameters(&signature.generics));
         let driver_variables = driver_variables(signature, &driver_types);
-        if driver_variables.is_empty() {
+        if driver_types.is_empty() && driver_variables.is_empty() {
             return;
         }
 
@@ -411,9 +411,14 @@ impl SourceAnalyzer {
         };
         closure_pass.visit_block(block);
 
+        // Associated constructors such as `D::just` can run witness closures
+        // and return fallible driver-managed values even in helpers that do not
+        // take a driver value directly. Keep analyzing those operations; shape
+        // rules naturally remain quiet when there is no driver variable.
         let use_counts = expression_identifier_counts(block);
         let witness_variables = witness_tainted_variables(signature, block);
         let mut body_pass = FunctionBodyPass {
+            driver_types: &driver_types,
             driver_variables: &driver_variables,
             captured_mutations: &closure_pass.captured_mutations,
             witness_variables: &witness_variables,
@@ -624,6 +629,11 @@ struct WitnessLocalPass<'a> {
 }
 
 impl<'ast> Visit<'ast> for WitnessLocalPass<'_> {
+    fn visit_item(&mut self, _: &'ast syn::Item) {
+        // Nested functions and other item bodies have their own bindings and
+        // are analyzed independently by `SourceAnalyzer`.
+    }
+
     fn visit_local(&mut self, local: &'ast syn::Local) {
         if let Some(initializer) = &local.init
             && (expression_mentions_any_identifier(&initializer.expr, self.tainted)
@@ -645,9 +655,15 @@ fn expression_contains_witness_constructor(expression: &Expr) -> bool {
         found: bool,
     }
     impl<'ast> Visit<'ast> for Finder {
+        fn visit_item(&mut self, _: &'ast syn::Item) {}
+
         fn visit_expr_call(&mut self, expression: &'ast ExprCall) {
-            self.found |= called_name(&expression.func)
-                .is_some_and(|name| matches!(name.as_str(), "just" | "try_just"));
+            self.found |= called_name(&expression.func).is_some_and(|name| {
+                matches!(
+                    name.as_str(),
+                    "just" | "maybe_just" | "maybe_try_just" | "try_just"
+                )
+            });
             if !self.found {
                 visit::visit_expr_call(self, expression);
             }
@@ -706,6 +722,10 @@ impl AssignmentClosurePass<'_> {
 }
 
 impl<'ast> Visit<'ast> for AssignmentClosurePass<'_> {
+    fn visit_item(&mut self, _: &'ast syn::Item) {
+        // Do not cross into a nested function's capture boundary.
+    }
+
     fn visit_expr_method_call(&mut self, expression: &'ast ExprMethodCall) {
         self.inspect_call(&expression.method.to_string(), expression.args.iter());
         visit::visit_expr_method_call(self, expression);
@@ -728,6 +748,8 @@ fn is_assignment_source(name: &str) -> bool {
             | "assign_extra"
             | "gate"
             | "just"
+            | "maybe_just"
+            | "maybe_try_just"
             | "mul"
             | "try_just"
     )
@@ -738,6 +760,8 @@ struct ClosureLocalPass<'a> {
 }
 
 impl<'ast> Visit<'ast> for ClosureLocalPass<'_> {
+    fn visit_item(&mut self, _: &'ast syn::Item) {}
+
     fn visit_local(&mut self, local: &'ast syn::Local) {
         collect_pattern_bindings(&local.pat, self.bindings);
         visit::visit_local(self, local);
@@ -764,6 +788,8 @@ impl ClosureMutationPass<'_> {
 }
 
 impl<'ast> Visit<'ast> for ClosureMutationPass<'_> {
+    fn visit_item(&mut self, _: &'ast syn::Item) {}
+
     fn visit_expr_assign(&mut self, expression: &'ast syn::ExprAssign) {
         self.record(&expression.left);
         visit::visit_expr_assign(self, expression);
@@ -816,6 +842,7 @@ impl<'ast> Visit<'ast> for ClosureMutationPass<'_> {
 }
 
 struct FunctionBodyPass<'a> {
+    driver_types: &'a BTreeSet<String>,
     driver_variables: &'a BTreeSet<String>,
     captured_mutations: &'a BTreeSet<String>,
     witness_variables: &'a BTreeSet<String>,
@@ -826,6 +853,7 @@ struct FunctionBodyPass<'a> {
 impl FunctionBodyPass<'_> {
     fn driver_operation(&self, expression: &Expr) -> Option<String> {
         top_level_driver_operation(expression, self.driver_variables)
+            .or_else(|| top_level_driver_type_operation(expression, self.driver_types))
     }
 
     fn inspect_condition<'ast>(
@@ -833,6 +861,7 @@ impl FunctionBodyPass<'_> {
         condition: &Expr,
         arms: impl IntoIterator<Item = &'ast Expr>,
         span: Span,
+        additionally_witness_observable: bool,
     ) {
         let arms: Vec<_> = arms.into_iter().collect();
         let shapes: Vec<_> = arms
@@ -843,7 +872,9 @@ impl FunctionBodyPass<'_> {
             return;
         }
 
-        if is_witness_observable(condition, self.captured_mutations, self.witness_variables) {
+        if additionally_witness_observable
+            || is_witness_observable(condition, self.captured_mutations, self.witness_variables)
+        {
             self.diagnostics.push(Diagnostic::new(
                 Rule::WitnessDependentShape,
                 span,
@@ -858,9 +889,144 @@ impl FunctionBodyPass<'_> {
             ));
         }
     }
+
+    fn inspect_early_exit<'ast>(
+        &mut self,
+        condition: &Expr,
+        arms: impl IntoIterator<Item = &'ast Expr>,
+        continuation: &[Stmt],
+        span: Span,
+        additionally_witness_observable: bool,
+    ) {
+        if driver_operation_shape_block(
+            &Block {
+                brace_token: Default::default(),
+                stmts: continuation.to_vec(),
+            },
+            self.driver_variables,
+        )
+        .is_empty()
+        {
+            return;
+        }
+
+        let arms: Vec<_> = arms.into_iter().collect();
+        if arms
+            .iter()
+            .any(|arm| !driver_operation_shape(arm, self.driver_variables).is_empty())
+        {
+            // The ordinary arm comparison already reports witness control when
+            // an arm itself emits constraints. This helper covers the missing
+            // case where an otherwise-empty arm exits before later emissions.
+            return;
+        }
+        let exits: Vec<_> = arms
+            .iter()
+            .map(|arm| expression_must_diverge(arm))
+            .collect();
+        if exits.iter().all(|exit| *exit) || exits.iter().all(|exit| !*exit) {
+            return;
+        }
+
+        if additionally_witness_observable
+            || is_witness_observable(condition, self.captured_mutations, self.witness_variables)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                Rule::WitnessDependentShape,
+                span,
+                "witness-observable branch can exit before later driver/gadget operations",
+            ));
+        }
+        self.diagnostics.push(Diagnostic::new(
+            Rule::BranchShapeDivergence,
+            span,
+            "conditional arm can exit before later driver/gadget operations",
+        ));
+    }
 }
 
 impl<'ast> Visit<'ast> for FunctionBodyPass<'_> {
+    fn visit_item(&mut self, _: &'ast syn::Item) {
+        // `SourceAnalyzer` visits nested functions separately with their own
+        // driver parameters, taint set, and use counts.
+    }
+
+    fn visit_block(&mut self, block: &'ast Block) {
+        for (index, statement) in block.stmts.iter().enumerate() {
+            if let Stmt::Expr(expression, _) = statement {
+                match peel_expression(expression) {
+                    Expr::If(expression) => {
+                        let then_arm = Expr::Block(syn::ExprBlock {
+                            attrs: Vec::new(),
+                            label: None,
+                            block: expression.then_branch.clone(),
+                        });
+                        let empty_else = Expr::Tuple(syn::ExprTuple {
+                            attrs: Vec::new(),
+                            paren_token: Default::default(),
+                            elems: Default::default(),
+                        });
+                        let else_arm = expression
+                            .else_branch
+                            .as_ref()
+                            .map(|(_, expression)| expression.as_ref())
+                            .unwrap_or(&empty_else);
+                        self.inspect_early_exit(
+                            &expression.cond,
+                            [&then_arm, else_arm],
+                            &block.stmts[index + 1..],
+                            expression.if_token.span,
+                            false,
+                        );
+                    }
+                    Expr::Match(expression) => {
+                        let witness_dependent_guard = expression.arms.iter().any(|arm| {
+                            arm.guard.as_ref().is_some_and(|(_, guard)| {
+                                is_witness_observable(
+                                    guard,
+                                    self.captured_mutations,
+                                    self.witness_variables,
+                                )
+                            })
+                        });
+                        self.inspect_early_exit(
+                            &expression.expr,
+                            expression.arms.iter().map(|arm| arm.body.as_ref()),
+                            &block.stmts[index + 1..],
+                            expression.match_token.span,
+                            witness_dependent_guard,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            if let Stmt::Local(local) = statement
+                && let Some(initializer) = &local.init
+                && let Some((_, diverge)) = &initializer.diverge
+            {
+                // A let-else chooses between its diverging arm and the rest of
+                // the enclosing block. Comparing only the local statement
+                // would miss the common `else { return }` case where all
+                // constraint emission lives in that continuation.
+                let continuation = Expr::Block(syn::ExprBlock {
+                    attrs: Vec::new(),
+                    label: None,
+                    block: Block {
+                        brace_token: Default::default(),
+                        stmts: block.stmts[index + 1..].to_vec(),
+                    },
+                });
+                self.inspect_condition(
+                    &initializer.expr,
+                    [&continuation, diverge.as_ref()],
+                    local.let_token.span,
+                    false,
+                );
+            }
+            self.visit_stmt(statement);
+        }
+    }
+
     fn visit_stmt(&mut self, statement: &'ast Stmt) {
         match statement {
             Stmt::Local(local) => {
@@ -869,7 +1035,17 @@ impl<'ast> Visit<'ast> for FunctionBodyPass<'_> {
                     return;
                 };
                 if let Some(operation) = self.driver_operation(&initializer.expr) {
-                    if matches!(local.pat, Pat::Wild(_)) {
+                    let mut bindings = BTreeSet::new();
+                    collect_pattern_bindings(&local.pat, &mut bindings);
+                    let unused_underscore_bindings: Vec<_> = bindings
+                        .into_iter()
+                        .filter(|binding| {
+                            binding.starts_with('_')
+                                && self.use_counts.get(binding).copied().unwrap_or(0) == 0
+                        })
+                        .collect();
+                    let contains_wildcard = pattern_contains_wildcard(&local.pat);
+                    if contains_wildcard || !unused_underscore_bindings.is_empty() {
                         let (rule, message) = if is_fallible_operation(&operation)
                             && !explicitly_handles_result(&initializer.expr)
                         {
@@ -880,44 +1056,40 @@ impl<'ast> Visit<'ast> for FunctionBodyPass<'_> {
                                 ),
                             )
                         } else {
+                            let discarded = if contains_wildcard {
+                                "wildcard pattern".to_owned()
+                            } else {
+                                format!("binding(s) {}", unused_underscore_bindings.join(", "))
+                            };
                             (
                                 Rule::DiscardedConstraintValue,
-                                format!("value produced by `{operation}` is explicitly discarded"),
+                                format!(
+                                    "value produced by `{operation}` is explicitly discarded by {discarded}"
+                                ),
                             )
                         };
                         self.diagnostics
                             .push(Diagnostic::new(rule, local.pat.span(), message));
-                    } else {
-                        let mut bindings = BTreeSet::new();
-                        collect_pattern_bindings(&local.pat, &mut bindings);
-                        for binding in bindings {
-                            if binding.starts_with('_')
-                                && self.use_counts.get(&binding).copied().unwrap_or(0) == 0
-                            {
-                                self.diagnostics.push(Diagnostic::new(
-                                    Rule::DiscardedConstraintValue,
-                                    local.pat.span(),
-                                    format!(
-                                        "driver-produced `{binding}` is never used after its binding"
-                                    ),
-                                ));
-                            }
-                        }
                     }
                 }
             }
             Stmt::Expr(expression, Some(_)) => {
-                if let Some(operation) = self.driver_operation(expression)
-                    && is_fallible_operation(&operation)
-                    && !explicitly_handles_result(expression)
-                {
-                    self.diagnostics.push(Diagnostic::new(
-                        Rule::IgnoredDriverResult,
-                        expression.span(),
-                        format!(
-                            "fallible `{operation}` result is ignored without `?`, matching, or explicit handling"
-                        ),
-                    ));
+                if let Some(operation) = self.driver_operation(expression) {
+                    if is_fallible_operation(&operation) && !explicitly_handles_result(expression) {
+                        self.diagnostics.push(Diagnostic::new(
+                            Rule::IgnoredDriverResult,
+                            expression.span(),
+                            format!(
+                                "fallible `{operation}` result is ignored without `?`, matching, or explicit handling"
+                            ),
+                        ));
+                    } else if produces_constraint_value(&operation) {
+                        self.diagnostics.push(Diagnostic::new(
+                            Rule::DiscardedConstraintValue,
+                            expression.span(),
+                            format!("value produced by `{operation}` is explicitly discarded"),
+                        ));
+                    }
                 }
             }
             _ => {}
@@ -945,15 +1117,39 @@ impl<'ast> Visit<'ast> for FunctionBodyPass<'_> {
             &expression.cond,
             [&then_arm, else_arm],
             expression.if_token.span,
+            false,
         );
         visit::visit_expr_if(self, expression);
     }
 
+    fn visit_expr_binary(&mut self, expression: &'ast syn::ExprBinary) {
+        if matches!(expression.op, BinOp::And(_) | BinOp::Or(_)) {
+            let skipped_arm = Expr::Tuple(syn::ExprTuple {
+                attrs: Vec::new(),
+                paren_token: Default::default(),
+                elems: Default::default(),
+            });
+            self.inspect_condition(
+                &expression.left,
+                [expression.right.as_ref(), &skipped_arm],
+                expression.op.span(),
+                false,
+            );
+        }
+        visit::visit_expr_binary(self, expression);
+    }
+
     fn visit_expr_match(&mut self, expression: &'ast ExprMatch) {
+        let witness_dependent_guard = expression.arms.iter().any(|arm| {
+            arm.guard.as_ref().is_some_and(|(_, guard)| {
+                is_witness_observable(guard, self.captured_mutations, self.witness_variables)
+            })
+        });
         self.inspect_condition(
             &expression.expr,
             expression.arms.iter().map(|arm| arm.body.as_ref()),
             expression.match_token.span,
+            witness_dependent_guard,
         );
         visit::visit_expr_match(self, expression);
     }
@@ -1021,6 +1217,35 @@ fn peel_expression(mut expression: &Expr) -> &Expr {
     }
 }
 
+fn expression_must_diverge(expression: &Expr) -> bool {
+    match peel_expression(expression) {
+        Expr::Break(_) | Expr::Continue(_) | Expr::Return(_) => true,
+        Expr::Block(expression) => block_must_diverge(&expression.block),
+        Expr::If(expression) => {
+            block_must_diverge(&expression.then_branch)
+                && expression
+                    .else_branch
+                    .as_ref()
+                    .is_some_and(|(_, expression)| expression_must_diverge(expression))
+        }
+        Expr::Match(expression) => {
+            !expression.arms.is_empty()
+                && expression
+                    .arms
+                    .iter()
+                    .all(|arm| expression_must_diverge(&arm.body))
+        }
+        _ => false,
+    }
+}
+
+fn block_must_diverge(block: &Block) -> bool {
+    block.stmts.last().is_some_and(|statement| match statement {
+        Stmt::Expr(expression, _) => expression_must_diverge(expression),
+        Stmt::Local(_) | Stmt::Item(_) | Stmt::Macro(_) => false,
+    })
+}
+
 fn top_level_driver_operation(
     expression: &Expr,
     driver_variables: &BTreeSet<String>,
@@ -1031,7 +1256,8 @@ fn top_level_driver_operation(
             Some(call.method.to_string())
         }
         Expr::Call(call)
-            if called_name(&call.func).is_some_and(|name| name == "drop")
+            if called_name(&call.func)
+                .is_some_and(|name| matches!(name.as_str(), "drop" | "forget"))
                 && call.args.len() == 1 =>
         {
             top_level_driver_operation(&call.args[0], driver_variables)
@@ -1045,6 +1271,32 @@ fn top_level_driver_operation(
             called_name(&call.func)
         }
         Expr::MethodCall(call) => top_level_driver_operation(&call.receiver, driver_variables),
+        _ => None,
+    }
+}
+
+fn top_level_driver_type_operation(
+    expression: &Expr,
+    driver_types: &BTreeSet<String>,
+) -> Option<String> {
+    match peel_expression(expression) {
+        Expr::Try(expression) => top_level_driver_type_operation(&expression.expr, driver_types),
+        Expr::Call(call)
+            if called_name(&call.func)
+                .is_some_and(|name| matches!(name.as_str(), "drop" | "forget"))
+                && call.args.len() == 1 =>
+        {
+            top_level_driver_type_operation(&call.args[0], driver_types)
+        }
+        Expr::Call(call) if call.args.len() == 1 => {
+            let Expr::Path(function) = peel_expression(&call.func) else {
+                return None;
+            };
+            let first = function.path.segments.first()?.ident.to_string();
+            let name = function.path.segments.last()?.ident.to_string();
+            (driver_types.contains(&first) && is_assignment_source(&name)).then_some(name)
+        }
+        Expr::MethodCall(call) => top_level_driver_type_operation(&call.receiver, driver_types),
         _ => None,
     }
 }
@@ -1072,11 +1324,30 @@ fn is_fallible_operation(name: &str) -> bool {
         || name == "invert"
         || name.starts_with("invert_")
         || name == "mul"
+        || name == "maybe_try_just"
         || name == "receive"
         || name == "routine"
         || name == "square"
         || name == "try_just"
         || name.starts_with("enforce")
+}
+
+fn produces_constraint_value(name: &str) -> bool {
+    matches!(
+        name,
+        "add"
+            | "alloc"
+            | "assign_extra"
+            | "divide"
+            | "fold"
+            | "gate"
+            | "invert"
+            | "mul"
+            | "receive"
+            | "routine"
+            | "square"
+    ) || name.starts_with("alloc_")
+        || name.starts_with("invert_")
 }
 
 fn driver_operation_shape(expression: &Expr, driver_variables: &BTreeSet<String>) -> Vec<String> {
@@ -1085,6 +1356,8 @@ fn driver_operation_shape(expression: &Expr, driver_variables: &BTreeSet<String>
         operations: Vec<String>,
     }
     impl<'ast> Visit<'ast> for ShapePass<'_> {
+        fn visit_item(&mut self, _: &'ast syn::Item) {}
+
         fn visit_expr_method_call(&mut self, call: &'ast ExprMethodCall) {
             if method_call_uses_driver(call, self.drivers) {
                 self.operations.push(call.method.to_string());
@@ -1132,6 +1405,8 @@ fn is_witness_observable(
         found: bool,
     }
     impl<'ast> Visit<'ast> for WitnessPass<'_> {
+        fn visit_item(&mut self, _: &'ast syn::Item) {}
+
         fn visit_expr_path(&mut self, expression: &'ast syn::ExprPath) {
             if expression.qself.is_none() && expression.path.segments.len() == 1 {
                 let identifier = expression.path.segments[0].ident.to_string();
@@ -1154,6 +1429,8 @@ fn expression_identifier_counts(block: &Block) -> BTreeMap<String, usize> {
         counts: BTreeMap<String, usize>,
     }
     impl<'ast> Visit<'ast> for CountPass {
+        fn visit_item(&mut self, _: &'ast syn::Item) {}
+
         fn visit_expr_path(&mut self, expression: &'ast syn::ExprPath) {
             if expression.qself.is_none() && expression.path.segments.len() == 1 {
                 *self
@@ -1177,6 +1454,8 @@ fn expression_mentions_any_identifier(expression: &Expr, identifiers: &BTreeSet<
         found: bool,
     }
     impl<'ast> Visit<'ast> for Finder<'_> {
+        fn visit_item(&mut self, _: &'ast syn::Item) {}
+
         fn visit_expr_path(&mut self, expression: &'ast syn::ExprPath) {
             if expression.qself.is_none() && expression.path.segments.len() == 1 {
                 self.found |= self
@@ -1233,6 +1512,20 @@ fn collect_pattern_bindings(pattern: &Pat, output: &mut BTreeSet<String>) {
     PatternPass { output }.visit_pat(pattern);
 }
 
+fn pattern_contains_wildcard(pattern: &Pat) -> bool {
+    struct WildcardPass {
+        found: bool,
+    }
+    impl<'ast> Visit<'ast> for WildcardPass {
+        fn visit_pat_wild(&mut self, _: &'ast syn::PatWild) {
+            self.found = true;
+        }
+    }
+    let mut pass = WildcardPass { found: false };
+    pass.visit_pat(pattern);
+    pass.found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1268,10 +1561,74 @@ mod tests {
     }
 
     #[test]
+    fn analyzes_nested_function_once_in_its_own_scope() {
+        let source = r#"
+            fn outer<'dr, D: Driver<'dr>>(_dr: &mut D) {
+                fn inner<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                    let _ignored = dr.mul(|| {
+                        Err(Error::InvalidWitness("swallowed".into()))
+                    });
+                    Ok(())
+                }
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU001"]);
+    }
+
+    #[test]
     fn accepts_propagated_driver_error() {
         let source = r#"
             fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
                 let _ = dr.mul(|| Err(Error::InvalidWitness("propagated".into())))?;
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU004"]);
+    }
+
+    #[test]
+    fn underscore_binding_cannot_hide_a_fallible_result() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                let _ignored = dr.mul(|| Err(Error::InvalidWitness("swallowed".into())));
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU001"]);
+    }
+
+    #[test]
+    fn associated_witness_error_cannot_be_discarded() {
+        let source = r#"
+            fn helper<'dr, D: Driver<'dr>>() -> Result<()> {
+                let _ignored = D::maybe_try_just(|| {
+                    Err(Error::InvalidWitness("swallowed".into()))
+                });
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU001"]);
+    }
+
+    #[test]
+    fn warns_about_partially_discarded_driver_output() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                let (_, right, product) = dr.mul(|| {
+                    Ok((Coeff::One, Coeff::One, Coeff::One))
+                })?;
+                dr.enforce_equal(&right, &product)?;
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU004"]);
+    }
+
+    #[test]
+    fn warns_about_driver_output_discarded_as_a_statement() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
                 Ok(())
             }
         "#;
@@ -1303,6 +1660,19 @@ mod tests {
     }
 
     #[test]
+    fn rejects_forgetting_a_fallible_result() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                core::mem::forget(dr.mul(|| {
+                    Err(Error::InvalidWitness("swallowed".into()))
+                }));
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU001"]);
+    }
+
+    #[test]
     fn rejects_assignment_closure_side_effect_and_branch() {
         let source = r#"
             fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
@@ -1318,6 +1688,40 @@ mod tests {
             }
         "#;
         assert_eq!(codes(source), ["RAGU002", "RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_maybe_just_closure_side_effect_and_branch() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
+                let ran = Cell::new(false);
+                let value = D::maybe_just(|| {
+                    ran.set(true);
+                    F::ONE
+                });
+                drop(value);
+                if ran.get() {
+                    dr.enforce_zero(|lc| lc)?;
+                }
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU002", "RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_assignment_side_effect_without_a_driver_argument() {
+        let source = r#"
+            fn helper<'dr, D: Driver<'dr>>() {
+                let mut ran = false;
+                let value = D::just(|| {
+                    ran = true;
+                    F::ONE
+                });
+                drop(value);
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU002"]);
     }
 
     #[test]
@@ -1343,6 +1747,76 @@ mod tests {
                 if witness.into_option().unwrap_or(false) {
                     dr.enforce_zero(|lc| lc)?;
                 }
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_driver_value_controlled_short_circuit() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(
+                dr: &mut D,
+                witness: DriverValue<D, bool>,
+            ) -> Result<()> {
+                let _ran = witness.into_option().unwrap_or(false) && {
+                    dr.enforce_zero(|lc| lc)?;
+                    true
+                };
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_driver_value_controlled_match_guard() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(
+                dr: &mut D,
+                witness: DriverValue<D, bool>,
+            ) -> Result<()> {
+                match () {
+                    _ if witness.into_option().unwrap_or(false) => {
+                        dr.enforce_zero(|lc| lc)?;
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_driver_value_controlled_let_else() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(
+                dr: &mut D,
+                witness: DriverValue<D, Option<F>>,
+            ) -> Result<()> {
+                let Some(_) = witness.into_option().flatten() else {
+                    return Ok(());
+                };
+                dr.enforce_zero(|lc| lc)?;
+                Ok(())
+            }
+        "#;
+        assert_eq!(codes(source), ["RAGU003", "RAGU005"]);
+    }
+
+    #[test]
+    fn rejects_driver_value_controlled_early_return() {
+        let source = r#"
+            fn witness<'dr, D: Driver<'dr>>(
+                dr: &mut D,
+                witness: DriverValue<D, bool>,
+            ) -> Result<()> {
+                if witness.into_option().unwrap_or(false) {
+                    return Ok(());
+                }
+                dr.enforce_zero(|lc| lc)?;
                 Ok(())
             }
         "#;
