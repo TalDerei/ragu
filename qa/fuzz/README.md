@@ -63,6 +63,32 @@ toolchain CI uses (from `.github/actions/rust-nightly-setup/action.yml`):
 NIGHTLY=+nightly-2026-05-23 ./fuzz.sh seeds
 ```
 
+## Circuit source lint
+
+`circuit_lint` parses production Rust with `syn` without typechecking,
+executing the code, synthesizing constraints, or invoking witness closures.
+It reports narrowly scoped circuit-construction hazards:
+
+| Code | Level | Finding |
+|---|---|---|
+| `RAGU001` | error | Discarded fallible driver or gadget result |
+| `RAGU002` | error | Witness-assignment closure mutates captured state |
+| `RAGU003` | error | Witness-observable state controls emitted operations |
+| `RAGU004` | advisory | Driver-produced constraint value is discarded |
+| `RAGU005` | advisory | Conditional arms emit different operation shapes |
+| `RAGU006` | error | Reviewed baseline entry is stale |
+
+Errors cannot be suppressed. `source-lint-baseline.txt` records only reviewed
+`RAGU004`/`RAGU005` exceptions, keyed by exact rule, source path, line, and
+rationale; moving or removing a finding makes its entry stale and fails the
+gate. PR/push CI and the scheduled fuzz workflow run the same analyzer, with
+the scheduled scan gating both the regular campaign and Saturday hardening.
+
+This syntax pass cannot infer an unstated intended constraint and does not
+expand macros or provide type-resolved HIR/MIR def-use analysis. Witness-free
+source-shape comparison, synthesized-graph connectivity/rank checks, patcher
+fuzzing, and fresh-witness replay remain complementary.
+
 ## Corpus durability
 
 The fuzzing itself was never the broken part. `fuzz-cron.yml` runs every
@@ -136,11 +162,8 @@ see the "Shared substrate" note at the bottom.
 Constraint-side under-constraint oracles over generated
 [`ragu_testing_fuzz::substrate`] circuits (issues #728, #793, #796). Each starts
 from a satisfying witness, introduces a prover-style cheat, and demands the
-constraint system reject it. The production-circuit pipeline and its remaining
-coverage limits are tracked in the
-[circuit under-constraint analysis checklist](STATIC_ANALYSIS_CHECKLIST.md).
-Its no-execution front end and exact diagnostic rules are documented in
-[`SOURCE_LINT.md`](SOURCE_LINT.md).
+constraint system reject it. The no-execution front end is described in
+[Circuit source lint](#circuit-source-lint).
 
 | Target | What it catches |
 |---|---|
