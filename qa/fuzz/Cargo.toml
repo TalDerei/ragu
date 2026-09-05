@@ -44,7 +44,9 @@ ragu_pcd = { path = "../../crates/ragu_pcd", features = ["unstable-fuzzing"] }
 # `fuzz_advice_patcher` drives over generated programs.
 ragu_testing = { path = "../../crates/ragu_testing" }
 proptest = "1"
+proc-macro2 = { version = "1", features = ["span-locations"] }
 rand = "0.10"
+syn = { version = "2", features = ["full", "visit"] }
 
 # Poseidon sponge: absorb/squeeze mode transitions + save/resume consistency
 [[bin]]
@@ -230,6 +232,15 @@ bench = false
 [[bin]]
 name = "extract_dict"
 path = "bin/extract_dict.rs"
+test = false
+doc = false
+bench = false
+
+# No-execution AST lint for production circuit/gadget source. This is an
+# auxiliary QA tool, not a libFuzzer target.
+[[bin]]
+name = "circuit_lint"
+path = "bin/circuit_lint.rs"
 test = false
 doc = false
 bench = false

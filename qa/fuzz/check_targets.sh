@@ -36,7 +36,7 @@ note() {
 # well as on the runner, so every list is read with a plain loop.
 
 # The manifest is the source of truth: a target that is not a `[[bin]]` cannot
-# be built at all. `extract_dict` is a tool, not a fuzz target.
+# be built at all. `extract_dict` and `circuit_lint` are tools, not fuzz targets.
 manifest=()
 while IFS= read -r line; do
   [ -n "$line" ] && manifest+=("$line")

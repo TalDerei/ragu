@@ -39,12 +39,18 @@
 //! [`ragu_pcd::fuzzing::patcher`]). Those are its **outputs**; every other instance
 //! wire and every other reserved stage wire is an **input** — received
 //! commitments, challenges another circuit derived, stage values another
-//! circuit checks. Before any fuzzing, a static check runs
-//! [`forced_by`](ragu_testing::patcher::forced_by) twice: granting the inputs
-//! and every other free wire except the outputs, it must derive every output
-//! — one it cannot reach is an output the circuit never constrains, a finding
-//! in itself, and the harness refuses to start; and it reports how many
-//! outputs the inputs *alone* force.
+//! circuit checks. Before any fuzzing, witness-free
+//! [`analyze_source_shape`](ragu_testing_fuzz::source_shape::analyze_source_shape) must
+//! match concrete synthesis exactly; connectivity analysis rejects isolated wires and
+//! floating subgraphs; bounded component-local Jacobian checks reject movable
+//! derived wires and require non-vacuous rank coverage; and
+//! [`forced_by`](ragu_testing::patcher::forced_by) runs twice. Granting the
+//! inputs and every other free wire except the outputs, it must derive every
+//! output — one it cannot reach is an output the circuit never constrains, a
+//! finding in itself, and the harness refuses to start; it also reports how
+//! many outputs the inputs *alone* force. Components too large for dense rank
+//! elimination are explicitly reported as skipped by the analysis API rather
+//! than certified.
 //!
 //! Then: pin the inputs, let the prover rewrite any other free advice —
 //! Poseidon hints, allocator slack, the outputs themselves — and repair the
@@ -115,7 +121,11 @@ use ragu_pcd::{
 use ragu_testing::patcher::{
     Prepared, ProbeOutcome, capture_with_stage_values, discover_free_advice, forced_by, playback,
 };
-use ragu_testing_fuzz::pcd::{self, HEADER_SIZE, R, SyncApp};
+use ragu_testing_fuzz::{
+    patcher_analysis::{analyze_component_rank, analyze_connectivity},
+    pcd::{self, HEADER_SIZE, R, SyncApp},
+    source_shape::analyze_source_shape,
+};
 use rand::{SeedableRng, rngs::StdRng};
 
 type NativeField = <Pasta as Cycle>::CircuitField;
@@ -271,6 +281,7 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
 ) -> Result<Captured<F>> {
     let name = format!("{}@{}", spec.name, point.name());
+    let source_shape = analyze_source_shape(circuit)?;
     let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)?;
     let resolution = spec.resolve(&cap.instance, &cap.stage_wires)?;
     assert!(
@@ -278,11 +289,53 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
         "{name}: nothing to watch — the oracle would be vacuous here",
     );
 
+    let source = source_shape.compare(&cap);
+    assert!(
+        source.is_clean(),
+        "{name}: witness-free source shape disagrees with concrete synthesis: {source:?}",
+    );
+
     // The static half: granting the inputs and every other free wire except
     // the outputs, the solver must force every output — else the circuit
     // never constrains it and no cheat can tell us anything about it.
     // Whether the inputs *alone* force it is reported.
     let free = discover_free_advice(&cap.recorder.events, &cap.recorder.values);
+    let connectivity = analyze_connectivity(
+        &cap.recorder.events,
+        cap.recorder.values.len(),
+        &resolution.inputs,
+        &resolution.outputs,
+    );
+    assert!(
+        connectivity.isolated_wires().is_empty(),
+        "{name}: synthesized wires are absent from every constraint subgraph: {:?}",
+        connectivity.isolated_wires(),
+    );
+    assert!(
+        connectivity.floating_components().is_empty(),
+        "{name}: constraint subgraphs reach no input, output, or fixed constant: {:?}",
+        connectivity.floating_components(),
+    );
+    assert!(
+        connectivity.output_components_without_inputs().is_empty(),
+        "{name}: output subgraphs have no declared input path: {:?}",
+        connectivity.output_components_without_inputs(),
+    );
+    let rank = analyze_component_rank(
+        &cap.recorder.events,
+        &cap.recorder.values,
+        &free,
+        &connectivity,
+        384,
+    );
+    assert!(
+        rank.checked_derived_wires > 0,
+        "{name}: bounded component rank check covered no derived wire: {rank:?}",
+    );
+    assert!(
+        rank.movable.is_empty(),
+        "{name}: bounded component rank check found movable derived wires: {rank:?}",
+    );
     let cheatable: Vec<usize> = free
         .iter()
         .copied()
@@ -326,11 +379,17 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     let (residual, total) = prepared.residual_events();
     eprintln!(
         "{name}: {} wires, {} inputs pinned, {} outputs watched ({strongly_forced} forced by \
-         the inputs alone), {} cheatable, {residual} of {total} events solved per probe",
+         the inputs alone), {} cheatable, {residual} of {total} events solved per probe; rank \
+         checked {} derived wires in {} components and skipped {} wires in {} oversized \
+         components",
         prepared.honest().len(),
         prepared.inputs().len(),
         prepared.outputs().len(),
         cheatable.len(),
+        rank.checked_derived_wires,
+        rank.checked_components,
+        rank.skipped_derived_wires,
+        rank.skipped_components,
     );
 
     Ok(Captured {

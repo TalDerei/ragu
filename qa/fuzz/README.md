@@ -1,7 +1,7 @@
 # `ragu_testing-fuzz`
 
-cargo-fuzz harness for the Ragu project. 28 fuzz targets + 1 auxiliary
-dictionary-extractor tool. Standalone workspace (the `[workspace]` table in
+cargo-fuzz harness for the Ragu project. 28 fuzz targets + 2 auxiliary tools
+(dictionary extraction and no-execution source linting). Standalone workspace (the `[workspace]` table in
 `Cargo.toml` makes this crate its own root) so nightly + libfuzzer flags
 don't leak into the rest of the repo.
 
@@ -49,6 +49,9 @@ cargo +nightly fuzz run fuzz_element_ops -- -max_total_time=60
 
 # Check the four target lists agree.
 ./fuzz.sh census
+
+# Parse production circuit/gadget source without executing it.
+./fuzz.sh source-lint
 ```
 
 `+nightly` is whatever rustup calls nightly on the machine, which is
@@ -59,6 +62,32 @@ toolchain CI uses (from `.github/actions/rust-nightly-setup/action.yml`):
 ```bash
 NIGHTLY=+nightly-2026-05-23 ./fuzz.sh seeds
 ```
+
+## Circuit source lint
+
+`circuit_lint` parses production Rust with `syn` without typechecking,
+executing the code, synthesizing constraints, or invoking witness closures.
+It reports narrowly scoped circuit-construction hazards:
+
+| Code | Level | Finding |
+|---|---|---|
+| `RAGU001` | error | Discarded fallible driver or gadget result |
+| `RAGU002` | error | Witness-assignment closure mutates captured state |
+| `RAGU003` | error | Witness-observable state controls emitted operations |
+| `RAGU004` | advisory | Driver-produced constraint value is discarded |
+| `RAGU005` | advisory | Conditional arms emit different operation shapes |
+| `RAGU006` | error | Reviewed baseline entry is stale |
+
+Errors cannot be suppressed. `source-lint-baseline.txt` records only reviewed
+`RAGU004`/`RAGU005` exceptions, keyed by exact rule, source path, line, and
+rationale; moving or removing a finding makes its entry stale and fails the
+gate. PR/push CI and the scheduled fuzz workflow run the same analyzer, with
+the scheduled scan gating both the regular campaign and Saturday hardening.
+
+This syntax pass cannot infer an unstated intended constraint and does not
+expand macros or provide type-resolved HIR/MIR def-use analysis. Witness-free
+source-shape comparison, synthesized-graph connectivity/rank checks, patcher
+fuzzing, and fresh-witness replay remain complementary.
 
 ## Corpus durability
 
@@ -133,14 +162,15 @@ see the "Shared substrate" note at the bottom.
 Constraint-side under-constraint oracles over generated
 [`ragu_testing_fuzz::substrate`] circuits (issues #728, #793, #796). Each starts
 from a satisfying witness, introduces a prover-style cheat, and demands the
-constraint system reject it.
+constraint system reject it. The no-execution front end is described in
+[Circuit source lint](#circuit-source-lint).
 
 | Target | What it catches |
 |---|---|
 | `fuzz_witness_pinning` | Mutates one occupied coefficient of the assembled trace polynomial and demands the revdot identity reject it. The generated circuit is made fully-pinned (an `Anchor` per element) so every live coefficient is constrained — a survivor means the constraint system fails to pin that wire. |
 | `fuzz_circuit_cheat` | Mutates one witness input, re-traces, and asserts the assembled constraint-identity verdict matches an independent native oracle (with a Simulator cross-check). The operational patcher whose "repair" is re-tracing. |
 | `fuzz_advice_patcher` | Captures the emitted constraint graph through a recording driver, mutates free advice wires, and **repairs through the captured constraints** (not gadget logic) before comparing to the native shadow — catches under-constrained *advice* that re-trace-based repair masks. `PATCHER_SELFTEST=1` proves the oracle fires on a planted bug. |
-| `fuzz_internal_circuits` | The patcher aimed at the **production internal recursion circuits**. Captures all five native circuits and the nested endoscaling steps from real fuses at three points of a small tree — the base case, two leaves, two nodes — (paid once, in libFuzzer's `init`), each with the spec `ragu_pcd::fuzzing::patcher` declares for it: the unified slots it covers and the stage values it checks are its *outputs*; every other instance and stage wire is an *input*. A static check first confirms that, granted the inputs and every other hint, the captured constraints force every output — an output they do not reach is a finding on its own, and the harness refuses to start. Then, through a `Prepared` probe that solved the input-forced part of each witness once and re-solves only what a cheat can change (tens of µs per probe instead of tens of ms), it pins the inputs, cheats any other free advice, repairs through the captured constraints, and demands that no output moved. For the hash circuits that is Fiat–Shamir binding; for the collapse circuits, a folded claim the prover cannot choose. |
+| `fuzz_internal_circuits` | The patcher aimed at the **production internal recursion circuits**. Captures all five native circuits and the nested endoscaling steps from real fuses at four points — seeded, leaves, nodes, and a lopsided tree — paid once in libFuzzer's `init`. Before mutation, witness-free source-shape linting must match concrete synthesis; connectivity rejects isolated/floating subgraphs; bounded component rank checks reject movable derived wires with explicit skipped coverage; and `forced_by` requires the declared outputs to be constrained. A `Prepared` probe then pins declared inputs, mutates other free advice, and repairs through captured constraints. Any moved output is replayed through fresh synthesis and becomes a soundness signal only if that synthesis accepts the candidate witness. |
 | `fuzz_completeness` | Runs arbitrary witnesses through anchorless, value-infallible generated circuits; every such witness must be accepted, so rejection is an over-constraint signal independent of the patcher's bounded repair search. |
 
 ### Gadget-API property and identity targets
