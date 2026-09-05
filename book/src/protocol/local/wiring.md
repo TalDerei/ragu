@@ -168,4 +168,92 @@ All wiring polynomials share the same layout. Circuit wiring polynomials have
 $s(X, 0) = 1$ (because of the `ONE` constraint against $\v{k}_0$) but bonding
 polynomials skip this constraint with $s(X, 0) = 0$.
 
+### Layout of the Stage-Mask Bonding Polynomial
+
+For the stage-mask bonding polynomial $s_{\text{mask}}(X, Y)$ defined above,
+its coefficient matrix has the following four diagonal blocks:
+
+| reversed trace | monomials          | $Y^0..Y^{n-1}$ | $Y^n..Y^{2n-1}$ | $Y^{2n}..Y^{3n-1}$ | $Y^{3n}..Y^{4n-1}$ |
+|:--------:|:------------------:|:--------------:|:---------------:|:------------------:|:------------------:|
+| $\v{d}$  | $X^0..X^{n-1}$     | $D_{\v{d}}$    | $\mathbf{0}$    | $\mathbf{0}$       | $\mathbf{0}$       |
+| $\rv{b}$ | $X^n..X^{2n-1}$    | $\mathbf{0}$   | $D_{\rv{b}}$    | $\mathbf{0}$       | $\mathbf{0}$       |
+| $\v{a}$  | $X^{2n}..X^{3n-1}$ | $\mathbf{0}$   | $\mathbf{0}$    | $D_{\v{a}}$        | $\mathbf{0}$       |
+| $\rv{c}$ | $X^{3n}..X^{4n-1}$ | $\mathbf{0}$   | $\mathbf{0}$    | $\mathbf{0}$       | $D_{\rv{c}}$       |
+
+In this stage-mask matrix, each diagonal block is an $n \times n$ main-diagonal
+matrix with $1$ at every position where the corresponding wire is forced to $0$ (via
+$\revdot{\v{r}}{\v{s}} = 0$) and $0$ at every stage-gate position that this mask
+leaves unconstrained. The `SYSTEM` corners are also $0$, except that the
+registry-key contribution changes the $\v{c}_0$ entry to $\kappa$, as explained
+below.
+
+The diagrams below show the generic case with distinct boundary positions. When
+$m = 1$, the two labeled boundary entries coincide; when $g = 1$ or $g + m = n$,
+the corresponding run of $1$s is empty and omitted. When $m = 0$, the stage owns
+no gates and the carve-out is empty, so all non-`SYSTEM` positions remain masked.
+
+Drawing all four blocks (with
+`SYSTEM`-wire $0$ subscripted by the wire name, stage $0$s subscripted only
+at the boundaries of the carve-out, and plain $1$s in between):
+
+$$
+D_{\v{d}}^{(g,m)} =
+\begin{bmatrix}
+\color{blue}{0_{\v{d}_0}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{d}_g} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{d}_{g+m-1}} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 \\
+\end{bmatrix}
+\qquad
+D_{\rv{b}}^{(g,m)} =
+\begin{bmatrix}
+1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_{g+m-1}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_g} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{b}_0} \\
+\end{bmatrix}
+$$
+
+$$
+D_{\v{a}}^{(g,m)} =
+\begin{bmatrix}
+\color{#dc2626}{0_{\v{a}_0}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{a}_g} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{a}_{g+m-1}} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 \\
+\end{bmatrix}
+\qquad
+D_{\rv{c}}^{(g,m)} =
+\begin{bmatrix}
+1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & 1 & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{c}_{g+m-1}} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \ddots & \phantom{0} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 0_{\v{c}_g} & \phantom{0} & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & 1 & \phantom{0} \\
+\phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \phantom{0} & \color{#7e22ce}{\kappa_{\v{c}_0}} \\
+\end{bmatrix}
+$$
+
+The bottom-right of $D_{\rv{c}}$ holds $\color{#7e22ce}{\kappa}$ rather than
+$0$: $\v{c}_0$'s `SYSTEM` exemption would put a $0$ at $(X^{4n-1}, Y^{4n-1})$,
+but the registry adds $\kappa \cdot (XY)^{4n-1}$ at exactly that slot (see
+[the SYSTEM gate](#the-system-gate) properties), so the effective coefficient
+once the bonding polynomial is assembled into the registry polynomial $m(W, X,
+Y)$ is $\kappa$. The other three `SYSTEM` corners stay $0$ — $\kappa$ touches
+only the $\v{c}_0$ slot.
+
 [`ONE`]: ragu_core::drivers::Driver::ONE
