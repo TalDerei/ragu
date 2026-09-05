@@ -12,7 +12,7 @@ build_release *ARGS:
 
 _nightly := "nightly-2026-05-23"
 
-lint: _typos_setup _book_setup
+lint: _typos_setup _book_setup circuit_lint
   cargo clippy --workspace --lib --tests --benches --all-features -- -D warnings
   cargo +{{_nightly}} fmt --all -- --config-path rustfmt.nightly.toml --check
   typos
@@ -23,6 +23,10 @@ fix: _typos_setup
   cargo fix --allow-dirty --allow-staged --all-features
   cargo clippy --fix --allow-dirty --allow-staged --all-features
   typos -w
+
+# parse production circuit/gadget source without compiling or executing it
+circuit_lint:
+  cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
 
 _install_binstall:
   @command -v cargo-binstall > /dev/null || cargo install cargo-binstall
@@ -145,7 +149,7 @@ backend_nostd:
 backend_lane: backend_clippy backend_equivalence backend_nostd
 
 # run CI checks locally (formatting, clippy, tests)
-ci_local: _book_setup backend_lane
+ci_local: _book_setup backend_lane circuit_lint
   @echo "Running formatting check..."
   cargo +{{_nightly}} fmt --all -- --config-path rustfmt.nightly.toml --check
   @echo "Running clippy..."

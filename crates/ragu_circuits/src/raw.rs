@@ -169,6 +169,8 @@ where
     //    `Driver::ONE` references gate 0's d-wire by convention, and circuit
     //    bodies never need direct handles to the other SYSTEM-gate wires.
     let (_, _, _, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+    // This consumes the reserved extra wire solely to pin it to zero.
+    // ragu-lint: allow-next-line RAGU004
     let _ = dr.assign_extra(extra, || Ok(Coeff::Zero))?;
 
     // 2. Run the circuit body.

@@ -2,13 +2,39 @@
 
 Target pipeline:
 
-`source-shape linting -> circuit synthesis -> graph/connectivity/rank checks -> patcher fuzzing -> concrete-witness validation`
+`source AST linting -> witness-free source-shape linting -> circuit synthesis -> graph/connectivity/rank checks -> patcher fuzzing -> concrete-witness validation`
 
-The stages are complementary. The first and third stages are white-box static
-analysis; synthesis creates the constraint IR they inspect; patching is
-structure-aware grey-box fuzzing; replay is dynamic validation.
+The stages are complementary. The AST pass is true no-execution source static
+analysis. Source-shape linting abstractly executes generic circuit code without
+witness values. Synthesis creates the constraint IR inspected by structural
+graph analysis and witness-local rank analysis; patching is structure-aware
+grey-box fuzzing; replay is dynamic validation.
 
-## 1. Source-shape linting
+## 1. Source AST linting
+
+- [x] Parse every production crate source file with `syn`, without compiling or
+  executing circuit code.
+- [x] Reject discarded fallible driver/gadget results that bypass `?`, matching,
+  or explicit error handling (`RAGU001`).
+- [x] Reject witness-assignment closures that mutate captured state
+  (`RAGU002`).
+- [x] Reject witness-tainted conditions or loop bounds that control driver or
+  gadget operations (`RAGU003`).
+- [x] Review explicitly discarded constraint values and branches with different
+  syntactic operation shapes (`RAGU004`/`RAGU005`).
+- [x] Keep reviewed exceptions as line- and rule-specific source suppressions,
+  with a rationale adjacent to each one; reject stale suppressions (`RAGU006`).
+- [x] Run the strict no-advisory gate in Rust CI and `just lint`.
+- [ ] Add macro-expanded, type-resolved HIR/MIR def-use and interprocedural
+  taint analysis for aliases and helper calls that syntax alone cannot resolve.
+- [ ] Add machine-readable circuit intent annotations before claiming that a
+  missing `enforce_*` call is detectable in general; neither AST nor MIR can
+  infer an unstated intended relation.
+
+Implementation and rule documentation live in
+[`qa/circuit-lint`](../circuit-lint/README.md).
+
+## 2. Witness-free source-shape linting
 
 - [x] Execute generic circuit code with a witness-free `Empty` driver, so
   witness-assignment closures cannot run.
@@ -20,11 +46,10 @@ structure-aware grey-box fuzzing; replay is dynamic validation.
   must reject.
 - [x] Run the lint over every captured production recursion circuit before a
   fuzz campaign starts.
-- [ ] Add a general rustc AST/MIR lint for arbitrary Rust locals and missing
-  API calls. The implemented pass is Ragu driver-level abstract interpretation,
-  not a whole-language source analyzer.
+- [x] Keep this driver-level abstract interpretation separate from the
+  no-execution AST lint above.
 
-## 2. Circuit synthesis
+## 3. Circuit synthesis
 
 - [x] Capture every `Gate`, assigned `Extra`, virtual `Lin`, and `Enforce`
   event with its honest values.
@@ -35,7 +60,7 @@ structure-aware grey-box fuzzing; replay is dynamic validation.
 - [x] Identify declared instance/stage inputs and watched outputs through each
   internal circuit's `CircuitSpec`.
 
-## 3. Graph, connectivity, and rank checks
+## 4. Graph, connectivity, and rank checks
 
 - [x] Treat wires as vertices and each event as a hyperedge.
 - [x] Keep the fixed ONE wire as an anchor, not a universal bridge between
@@ -57,7 +82,7 @@ structure-aware grey-box fuzzing; replay is dynamic validation.
 - [ ] Add a scalable sparse/exact rank backend for large connected production
   components, eliminating the current dense-elimination cap.
 
-## 4. Patcher fuzzing
+## 5. Patcher fuzzing
 
 - [x] Keep `fuzz_advice_patcher` for generated gadget programs with an
   independent native shadow.
@@ -69,7 +94,7 @@ structure-aware grey-box fuzzing; replay is dynamic validation.
 - [x] Keep the deterministic exhaustive single-wire sweep in
   `patcher_internal`, independent of libFuzzer.
 
-## 5. Concrete-witness validation
+## 6. Concrete-witness validation
 
 - [x] Treat recorded-graph rejection as inconclusive, not a soundness signal.
 - [x] When patching moves a watched output while inputs remain pinned, inject
@@ -81,6 +106,7 @@ structure-aware grey-box fuzzing; replay is dynamic validation.
 ## Verification
 
 ```sh
+cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
 cargo test -p ragu_testing
 cargo test -p ragu_pcd --features unstable-fuzzing --test patcher_internal
 cd qa/fuzz
@@ -88,6 +114,7 @@ cargo test --lib
 cargo check --bins
 ```
 
-The first two commands exercise deterministic analyzers and sweeps. The last
-two compile the libFuzzer harnesses without running a campaign; scheduled fuzz
-campaigns provide the guided mutation search.
+The first command is the no-execution source gate. The next two commands
+exercise deterministic analyzers and sweeps. The last two compile the
+libFuzzer harnesses without running a campaign; scheduled fuzz campaigns
+provide the guided mutation search.

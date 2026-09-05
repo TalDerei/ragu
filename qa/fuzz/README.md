@@ -136,6 +136,8 @@ from a satisfying witness, introduces a prover-style cheat, and demands the
 constraint system reject it. The production-circuit pipeline and its remaining
 coverage limits are tracked in the
 [circuit under-constraint analysis checklist](STATIC_ANALYSIS_CHECKLIST.md).
+Its no-execution front end and exact diagnostic rules are documented under
+[`qa/circuit-lint`](../circuit-lint/README.md).
 
 | Target | What it catches |
 |---|---|

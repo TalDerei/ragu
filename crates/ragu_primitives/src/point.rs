@@ -104,6 +104,9 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// Returns an input error if `p` is the identity.
     pub fn constant(dr: &mut D, p: C) -> Result<Self> {
+        // `p` is a native constant supplied while building the circuit; this
+        // rejects the identity before embedding either coordinate.
+        // ragu-lint: allow-next-line RAGU005
         if let Some(coordinates) = p.coordinates().into_option() {
             let x = Element::constant(dr, *coordinates.x());
             let y = Element::constant(dr, *coordinates.y());

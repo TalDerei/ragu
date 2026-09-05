@@ -1,0 +1,15 @@
+[package]
+name = "ragu-circuit-lint"
+version.workspace = true
+authors.workspace = true
+description = "No-execution source linting for Ragu circuit and gadget code"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full", "visit"] }

@@ -1,0 +1,39 @@
+# Ragu circuit source lint
+
+`ragu-circuit-lint` is the no-execution front end of Ragu's
+under-constraint-analysis pipeline. It parses production Rust source with
+`syn`; it does not compile circuits, synthesize constraints, or invoke witness
+closures.
+
+The current rules are intentionally narrow:
+
+- `RAGU001` (error): a fallible driver or gadget result is discarded without
+  `?`, matching, or explicit handling.
+- `RAGU002` (error): a witness-assignment closure mutates captured state.
+- `RAGU003` (error): witness-observable state controls code that emits driver
+  or gadget operations.
+- `RAGU004` (advisory): a driver-produced constraint value is explicitly
+  discarded.
+- `RAGU005` (advisory): conditional arms emit different syntactic operation
+  shapes.
+- `RAGU006` (error): a line-specific suppression is stale or names an unknown
+  diagnostic.
+
+Run the same strict gate as CI:
+
+```sh
+cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
+```
+
+For a reviewed exception, place
+`// ragu-lint: allow-next-line RAGU005` immediately above the reported source
+line. Same-line `// ragu-lint: allow RAGU005` is also supported. Suppressions
+are rule- and line-specific.
+
+This AST pass is not a proof that every intended constraint exists. Rust syntax
+does not encode the circuit specification, and `syn` does not provide resolved
+types or MIR def-use chains. The current pass analyzes driver-generic functions
+with a direct `&mut D` parameter; helpers that store or alias a driver require
+the type-aware follow-up, and macro bodies are not expanded. Post-synthesis
+connectivity/rank checks and patcher fuzzing remain necessary; expanded,
+type-aware HIR/MIR taint analysis is not implemented yet.

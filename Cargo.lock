@@ -831,6 +831,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ragu-circuit-lint"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "syn",
+]
+
+[[package]]
 name = "ragu_acceleration"
 version = "0.0.0"
 dependencies = [

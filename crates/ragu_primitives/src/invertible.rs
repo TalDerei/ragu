@@ -336,6 +336,9 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// In discharging mode, any satisfying assignment for a successfully
     /// discharged scope makes every folded element nonzero.
     pub fn fold(&mut self, dr: &mut D, elem: Element<'dr, D>) -> Result<Nonzero<'dr, D>> {
+        // `product` is fixed by the scope's checked/unchecked construction
+        // mode, not by a circuit witness.
+        // ragu-lint: allow-next-line RAGU005
         if let Some(product) = &mut self.product {
             *product = product.mul(dr, &elem)?;
         }
@@ -346,6 +349,9 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
     /// In unchecked mode this is a no-op. Only callable inside the crate;
     /// users reach this via [`scope`](Self::scope).
     pub(crate) fn enforce(self, dr: &mut D) -> Result<()> {
+        // The same construction mode decides whether a batched nonzero proof
+        // exists to discharge.
+        // ragu-lint: allow-next-line RAGU005
         if let Some(product) = self.product {
             product.enforce_nonzero(dr)?;
         }
