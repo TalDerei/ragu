@@ -106,6 +106,9 @@ Error: exceeded the maximum number of gates (2048)
 2. Optimize circuit: Reduce unnecessary operations
 3. Split into multiple steps: Break large computation into smaller pieces
 
+[Step Capacity and Proving Cost](capacity.md) measures what each of these costs,
+including how much a step holds and what splitting one is worth.
+
 ## 3. HEADER_SIZE
 
 The **HEADER_SIZE** parameter specifies how many field elements flow through
