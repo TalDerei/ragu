@@ -1,7 +1,7 @@
 # `ragu_testing-fuzz`
 
-cargo-fuzz harness for the Ragu project. 28 fuzz targets + 1 auxiliary
-dictionary-extractor tool. Standalone workspace (the `[workspace]` table in
+cargo-fuzz harness for the Ragu project. 28 fuzz targets + 2 auxiliary tools
+(dictionary extraction and no-execution source linting). Standalone workspace (the `[workspace]` table in
 `Cargo.toml` makes this crate its own root) so nightly + libfuzzer flags
 don't leak into the rest of the repo.
 
@@ -49,6 +49,9 @@ cargo +nightly fuzz run fuzz_element_ops -- -max_total_time=60
 
 # Check the four target lists agree.
 ./fuzz.sh census
+
+# Parse production circuit/gadget source without executing it.
+./fuzz.sh source-lint
 ```
 
 `+nightly` is whatever rustup calls nightly on the machine, which is
@@ -136,8 +139,8 @@ from a satisfying witness, introduces a prover-style cheat, and demands the
 constraint system reject it. The production-circuit pipeline and its remaining
 coverage limits are tracked in the
 [circuit under-constraint analysis checklist](STATIC_ANALYSIS_CHECKLIST.md).
-Its no-execution front end and exact diagnostic rules are documented under
-[`qa/circuit-lint`](../circuit-lint/README.md).
+Its no-execution front end and exact diagnostic rules are documented in
+[`SOURCE_LINT.md`](SOURCE_LINT.md).
 
 | Target | What it catches |
 |---|---|

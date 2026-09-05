@@ -107,9 +107,6 @@ impl<E> Standard<E> {
 
 impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for Standard<D::Extra> {
     fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
-        // Pool occupancy is structural allocator state: redeeming a reserved
-        // D wire and opening a fresh gate are the two allocation shapes.
-        // ragu-lint: allow-next-line RAGU005
         if let Some(extra) = self.pool.pop() {
             dr.assign_extra(extra, value)
         } else {

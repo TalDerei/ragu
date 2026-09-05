@@ -351,9 +351,6 @@ fn short_circuit_routine<'dr, D: Driver<'dr, Wire = ()>, R: Routine<D::F> + 'dr>
     routine: R,
     input: Bound<'dr, D, R::Input>,
 ) -> Result<Bound<'dr, D, R::Output>> {
-    // A known prediction deliberately bypasses routine execution. This
-    // helper is restricted to the constraint-free emulator (`Wire = ()`).
-    // ragu-lint: allow-next-line RAGU005
     match routine.predict(dr, &input)? {
         Prediction::Known(output, _) => Ok(output),
         Prediction::Unknown(aux) => routine.execute(dr, input, aux),

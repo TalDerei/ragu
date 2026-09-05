@@ -14,6 +14,7 @@
 #   ./fuzz.sh coverage [target]               # Corpus coverage report (union report if all targets)
 #   ./fuzz.sh seeds [target] [seconds]        # Generate a local seed set from a short run
 #   ./fuzz.sh census                          # Check the four target lists agree
+#   ./fuzz.sh source-lint                     # Run no-execution circuit source lint
 #
 # Seeds: seeds/<target>/ is gitignored, local-only, and read-only to a run.
 # Nothing is committed. This substrate's decoder is total — every byte slice
@@ -104,6 +105,13 @@ TARGETS=(
   fuzz_io_roundtrip
   fuzz_registry
 )
+
+# `source-lint` subcommand: parse production circuit/gadget source and apply
+# the reviewed QA-local advisory baseline. The analyzer itself does not
+# synthesize a circuit or invoke witness closures.
+if [[ "${1:-}" == "source-lint" ]]; then
+  exec cargo "$NIGHTLY" run --locked --bin circuit_lint -- --deny-advisories
+fi
 
 # `summarize` subcommand: decode a single corpus/crash input via DEBUG_INPUT.
 if [[ "${1:-}" == "summarize" ]]; then

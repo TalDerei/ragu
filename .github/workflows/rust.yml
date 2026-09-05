@@ -84,8 +84,6 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           components: clippy
-      - name: Run no-execution circuit source lint
-        run: cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
       - name: Run clippy
         run: cargo clippy --workspace --lib --tests --benches --locked --all-features -- -D warnings
 

@@ -124,9 +124,6 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
     }
 
     fn permute(&mut self, dr: &mut D) -> Result<()> {
-        // Sponge mode is structural protocol state. Absorb mode must fold its
-        // buffered elements before both modes run the same permutation.
-        // ragu-lint: allow-next-line RAGU005
         match &mut self.mode {
             Mode::Squeeze { values, state } => {
                 *state = dr.routine(Permutation::from(self.params), state.clone())?;
@@ -171,9 +168,6 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
     pub fn squeeze(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
         match &mut self.mode {
             Mode::Squeeze { values, .. } => {
-                // Buffer occupancy is determined by the structural sequence
-                // of absorb/squeeze API calls, not by element values.
-                // ragu-lint: allow-next-line RAGU005
                 if values.is_empty() {
                     // Nothing to squeeze, we need to permute first
                     self.permute(dr)?;
@@ -183,9 +177,6 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
                 }
             }
             Mode::Absorb { values, .. } => {
-                // The empty absorb buffer is an API-state error; otherwise a
-                // fixed permutation transitions into squeeze mode.
-                // ragu-lint: allow-next-line RAGU005
                 if values.is_empty() {
                     return Err(ragu_core::Error::Initialization(
                         "cannot squeeze from empty sponge: no values absorbed".into(),
@@ -218,9 +209,6 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
     /// Propagates any synthesis error from the internal permutation needed
     /// when the absorb buffer is full or when switching out of squeeze mode.
     pub fn absorb(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
-        // Mode is structural protocol state; switching from squeeze to absorb
-        // carries the state without emitting a permutation at this point.
-        // ragu-lint: allow-next-line RAGU005
         match &mut self.mode {
             Mode::Squeeze { state, .. } => {
                 // Switch to absorb mode with the same state
@@ -230,9 +218,6 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
                 };
             }
             Mode::Absorb { values, .. } => {
-                // Buffer length follows the structural number of absorb calls;
-                // reaching the public rate triggers one fixed permutation.
-                // ragu-lint: allow-next-line RAGU005
                 if values.len() == P::RATE {
                     // We've absorbed too much, time to permute
                     self.permute(dr)?;
@@ -270,15 +255,9 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
         mut self,
         dr: &mut D,
     ) -> core::result::Result<SpongeState<'dr, D, P>, SaveError> {
-        // Save is an explicit API boundary whose mode determines whether any
-        // circuit work is permitted.
-        // ragu-lint: allow-next-line RAGU005
         match &self.mode {
             Mode::Squeeze { .. } => Err(SaveError::AlreadyInSqueezeMode),
             Mode::Absorb { values, .. } => {
-                // Pending-value count is structural sponge state; only a
-                // nonempty absorb buffer is committed by a permutation.
-                // ragu-lint: allow-next-line RAGU005
                 if values.is_empty() {
                     // Post condition of absorb is that values is never empty,
                     // so empty values implies that nothing was absorbed.
@@ -347,9 +326,6 @@ fn sbox<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>>(
     input: &mut [Element<'dr, D>],
 ) -> Result<()> {
     for x in input {
-        // ALPHA is a type-level permutation parameter and every unsupported
-        // value panics before synthesis.
-        // ragu-lint: allow-next-line RAGU005
         *x = match P::ALPHA {
             5 => x.square(dr)?.square(dr)?.mul(dr, x)?,
             _ => panic!("only alpha = 5 is supported in this implementation"),

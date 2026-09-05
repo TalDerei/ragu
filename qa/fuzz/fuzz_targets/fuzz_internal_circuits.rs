@@ -40,7 +40,7 @@
 //! wire and every other reserved stage wire is an **input** — received
 //! commitments, challenges another circuit derived, stage values another
 //! circuit checks. Before any fuzzing, witness-free
-//! [`analyze_source_shape`](ragu_testing::patcher::analyze_source_shape) must
+//! [`analyze_source_shape`](ragu_testing_fuzz::source_shape::analyze_source_shape) must
 //! match concrete synthesis exactly; connectivity analysis rejects isolated wires and
 //! floating subgraphs; bounded component-local Jacobian checks reject movable
 //! derived wires and require non-vacuous rank coverage; and
@@ -119,10 +119,13 @@ use ragu_pcd::{
     },
 };
 use ragu_testing::patcher::{
-    Prepared, ProbeOutcome, analyze_component_rank, analyze_connectivity, analyze_source_shape,
-    capture_with_stage_values, discover_free_advice, forced_by, playback,
+    Prepared, ProbeOutcome, capture_with_stage_values, discover_free_advice, forced_by, playback,
 };
-use ragu_testing_fuzz::pcd::{self, HEADER_SIZE, R, SyncApp};
+use ragu_testing_fuzz::{
+    patcher_analysis::{analyze_component_rank, analyze_connectivity},
+    pcd::{self, HEADER_SIZE, R, SyncApp},
+    source_shape::analyze_source_shape,
+};
 use rand::{SeedableRng, rngs::StdRng};
 
 type NativeField = <Pasta as Cycle>::CircuitField;

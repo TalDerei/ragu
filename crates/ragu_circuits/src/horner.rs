@@ -58,15 +58,10 @@ impl<'a, 'dr, D: Driver<'dr>> Horner<'a, 'dr, D> {
 
 impl<'a, 'dr, D: Driver<'dr>> Buffer<'dr, D> for Horner<'a, 'dr, D> {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
-        self.result = Some(
-            // The first public value seeds the accumulator; later values add
-            // one fixed Horner step according to the structural write order.
-            // ragu-lint: allow-next-line RAGU005
-            match self.result.take() {
-                Some(acc) => acc.mul(dr, self.point)?.add(dr, value),
-                None => value.clone(),
-            },
-        );
+        self.result = Some(match self.result.take() {
+            Some(acc) => acc.mul(dr, self.point)?.add(dr, value),
+            None => value.clone(),
+        });
         Ok(())
     }
 }

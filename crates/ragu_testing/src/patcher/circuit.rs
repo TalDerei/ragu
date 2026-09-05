@@ -34,11 +34,11 @@ use ragu_arithmetic::ff::Field;
 use ragu_circuits::Circuit;
 use ragu_core::{
     Result,
-    maybe::{Always, Empty, MaybeKind},
+    maybe::{Always, MaybeKind},
 };
 use ragu_primitives::{Element, GadgetExt};
 
-use super::{Event, Playback, Recorder, recorder::ShapeRecorder};
+use super::{Event, Playback, Recorder};
 
 /// A circuit synthesized through the [`Recorder`].
 pub struct Capture<F> {
@@ -61,155 +61,6 @@ pub struct Capture<F> {
     /// for the stage values this circuit is responsible for checking, as an
     /// output it watches.
     pub stage_wires: Vec<usize>,
-}
-
-/// Constraint shape produced by witness-free execution of circuit source.
-///
-/// Construct this with [`analyze_source_shape`] before concrete synthesis,
-/// then call [`compare`](Self::compare) once a [`Capture`] is available. The
-/// stored trace is independent of witness assignments because its driver uses
-/// [`Empty`].
-#[derive(Clone, Debug)]
-pub struct SourceShape<F> {
-    wire_count: usize,
-    events: Vec<Event<F>>,
-    outputs: Vec<usize>,
-}
-
-impl<F: Field> SourceShape<F> {
-    /// Number of structurally allocated wires, including fixed ONE.
-    pub fn wire_count(&self) -> usize {
-        self.wire_count
-    }
-
-    /// Exact witness-free event trace in source execution order.
-    pub fn events(&self) -> &[Event<F>] {
-        &self.events
-    }
-
-    /// Public-output wire ids in serialization order.
-    pub fn outputs(&self) -> &[usize] {
-        &self.outputs
-    }
-
-    /// Compares this witness-free shape with a concrete synthesis capture.
-    pub fn compare(&self, concrete: &Capture<F>) -> SourceLintReport {
-        let events = &concrete.recorder.events;
-        let first_event_mismatch = self
-            .events
-            .iter()
-            .zip(events)
-            .position(|(a, b)| a != b)
-            .or_else(|| {
-                (self.events.len() != events.len()).then_some(events.len().min(self.events.len()))
-            });
-        let first_output_mismatch = self
-            .outputs
-            .iter()
-            .zip(&concrete.instance)
-            .position(|(a, b)| a != b)
-            .or_else(|| {
-                (self.outputs.len() != concrete.instance.len())
-                    .then_some(self.outputs.len().min(concrete.instance.len()))
-            });
-
-        SourceLintReport {
-            witness_free_wires: self.wire_count,
-            concrete_wires: concrete.recorder.values.len(),
-            witness_free_events: self.events.len(),
-            concrete_events: events.len(),
-            witness_free_outputs: self.outputs.len(),
-            concrete_outputs: concrete.instance.len(),
-            first_event_mismatch,
-            first_output_mismatch,
-        }
-    }
-}
-
-/// Result of comparing witness-free circuit-code analysis with a concrete
-/// witness-bearing synthesis.
-///
-/// The witness-free side executes the same generic [`Circuit`] source with an
-/// [`Empty`] driver. Assignment closures are therefore unreachable, while all
-/// structural code still runs. A clean report means both executions allocated
-/// the same wires and emitted the same event and public-output shapes.
-///
-/// This is a source-shape lint over Ragu's driver abstraction, not a general
-/// rustc AST/MIR analysis of arbitrary Rust statements.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SourceLintReport {
-    /// Wires allocated by witness-free analysis.
-    pub witness_free_wires: usize,
-    /// Wires allocated by concrete synthesis.
-    pub concrete_wires: usize,
-    /// Events emitted by witness-free analysis.
-    pub witness_free_events: usize,
-    /// Events emitted by concrete synthesis.
-    pub concrete_events: usize,
-    /// Public-output elements emitted by witness-free analysis.
-    pub witness_free_outputs: usize,
-    /// Public-output elements emitted by concrete synthesis.
-    pub concrete_outputs: usize,
-    /// First differing event index, including the first missing trailing
-    /// event when one sequence is a strict prefix of the other.
-    pub first_event_mismatch: Option<usize>,
-    /// First differing public-output wire index, including the first missing
-    /// trailing output when one sequence is a strict prefix of the other.
-    pub first_output_mismatch: Option<usize>,
-}
-
-impl SourceLintReport {
-    /// Returns `true` when witness-free and concrete synthesis have exactly
-    /// the same wire, event, and output shape.
-    pub fn is_clean(&self) -> bool {
-        self.witness_free_wires == self.concrete_wires
-            && self.first_event_mismatch.is_none()
-            && self.first_output_mismatch.is_none()
-    }
-}
-
-/// Executes a circuit's generic source with a witness-free driver and records
-/// its exact constraint and output shape.
-///
-/// Assignment closures are unreachable under [`Empty`], so this analysis can
-/// run before any concrete witness exists. Use [`SourceShape::compare`] after
-/// synthesis to detect witness-dependent emission.
-///
-/// # Errors
-///
-/// Propagates any error emitted while the witness-free circuit body or its
-/// output serialization is executed.
-pub fn analyze_source_shape<F: Field, C: Circuit<F>>(circuit: &C) -> Result<SourceShape<F>> {
-    let mut recorder = ShapeRecorder::<F>::new();
-    let output = circuit.witness(&mut recorder, Empty)?.into_output();
-    let mut buffer: Vec<Element<'_, ShapeRecorder<F>>> = Vec::new();
-    output.write(&mut recorder, &mut buffer)?;
-    let outputs = buffer.iter().map(|element| *element.wire()).collect();
-    Ok(SourceShape {
-        wire_count: recorder.wire_count,
-        events: recorder.events,
-        outputs,
-    })
-}
-
-/// Lints a concrete capture against a witness-free execution of the same
-/// circuit source.
-///
-/// This pass detects witness-dependent constraint shape, including swallowed
-/// assignment errors and branches that cause the witness-bearing execution to
-/// allocate or constrain different wires. Exact event comparison includes
-/// coefficients and wire ids, so equal event counts alone cannot hide a shape
-/// change.
-///
-/// # Errors
-///
-/// Propagates any error emitted while the witness-free circuit body or its
-/// output serialization is executed.
-pub fn source_lint<F: Field, C: Circuit<F>>(
-    circuit: &C,
-    concrete: &Capture<F>,
-) -> Result<SourceLintReport> {
-    Ok(analyze_source_shape(circuit)?.compare(concrete))
 }
 
 /// Synthesizes a plain `circuit` on `witness` through the [`Recorder`].
@@ -365,12 +216,9 @@ pub fn playback<'witness, F: Field, C: Circuit<F>>(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-
-    use ragu_arithmetic::Coeff;
     use ragu_circuits::WithAux;
     use ragu_core::{
-        drivers::{Driver, DriverValue, LinearExpression},
+        drivers::{Driver, DriverValue},
         gadgets::{Bound, Kind},
         maybe::Maybe,
     };
@@ -405,19 +253,6 @@ mod tests {
         assert_eq!(rec.values[cap.instance[0]], a + b);
         assert_eq!(rec.values[cap.instance[1]], a - b);
         assert!(playback(&MySimpleCircuit, (a, b), rec.values.clone())?);
-        assert_eq!(
-            source_lint(&MySimpleCircuit, &cap)?,
-            SourceLintReport {
-                witness_free_wires: rec.values.len(),
-                concrete_wires: rec.values.len(),
-                witness_free_events: rec.events.len(),
-                concrete_events: rec.events.len(),
-                witness_free_outputs: cap.instance.len(),
-                concrete_outputs: cap.instance.len(),
-                first_event_mismatch: None,
-                first_output_mismatch: None,
-            },
-        );
 
         // Only the allocations are free: `a`, the wasted `b`, and `d`.
         // Everything else — the squaring chain, `b²`, both outputs — is
@@ -437,105 +272,6 @@ mod tests {
         corrupted[cap.instance[0]] += Fp::ONE;
         assert!(!playback(&MySimpleCircuit, (a, b), corrupted)?);
 
-        Ok(())
-    }
-
-    /// Deliberately violates the circuit contract by swallowing an assignment
-    /// error. The witness-bearing recorder omits the failed gate, while the
-    /// witness-free source-shape pass cannot execute the closure and records
-    /// the gate structurally.
-    struct WitnessDependentShape;
-
-    impl Circuit<Fp> for WitnessDependentShape {
-        type Instance<'instance> = ();
-        type Output = ();
-        type Witness<'witness> = ();
-        type Aux<'witness> = ();
-
-        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            _dr: &mut D,
-            _instance: DriverValue<D, Self::Instance<'instance>>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            Ok(())
-        }
-
-        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            dr: &mut D,
-            _witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
-        {
-            let _ = dr.mul(|| {
-                Err(ragu_core::Error::InvalidWitness(
-                    "deliberately swallowed".into(),
-                ))
-            });
-            Ok(WithAux::new((), D::unit()))
-        }
-    }
-
-    #[test]
-    fn source_lint_detects_witness_dependent_shape() -> Result<()> {
-        let cap = capture(&WitnessDependentShape, ())?;
-        let report = source_lint(&WitnessDependentShape, &cap)?;
-
-        assert!(!report.is_clean());
-        assert_eq!(report.witness_free_wires, 4);
-        assert_eq!(report.concrete_wires, 1);
-        assert_eq!(report.first_event_mismatch, Some(0));
-        Ok(())
-    }
-
-    /// Invoking an assignment closure changes a later coefficient without
-    /// changing allocation or event counts. Exact event comparison must catch
-    /// what a count-only source lint would miss.
-    struct EqualCountShapeDrift;
-
-    impl Circuit<Fp> for EqualCountShapeDrift {
-        type Instance<'instance> = ();
-        type Output = ();
-        type Witness<'witness> = ();
-        type Aux<'witness> = ();
-
-        fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            _dr: &mut D,
-            _instance: DriverValue<D, Self::Instance<'instance>>,
-        ) -> Result<Bound<'dr, D, Self::Output>> {
-            Ok(())
-        }
-
-        fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
-            &self,
-            dr: &mut D,
-            _witness: DriverValue<D, Self::Witness<'witness>>,
-        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
-        {
-            let assignment_ran = Cell::new(false);
-            let (_, _, zero) = dr.mul(|| {
-                assignment_ran.set(true);
-                Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero))
-            })?;
-            let coefficient = if assignment_ran.get() {
-                Coeff::One
-            } else {
-                Coeff::NegativeOne
-            };
-            dr.enforce_zero(|lc| lc.add_term(&zero, coefficient))?;
-            Ok(WithAux::new((), D::unit()))
-        }
-    }
-
-    #[test]
-    fn source_lint_compares_exact_shape_not_only_counts() -> Result<()> {
-        let cap = capture(&EqualCountShapeDrift, ())?;
-        let report = source_lint(&EqualCountShapeDrift, &cap)?;
-
-        assert_eq!(report.witness_free_wires, report.concrete_wires);
-        assert_eq!(report.witness_free_events, report.concrete_events);
-        assert_eq!(report.first_event_mismatch, Some(1));
-        assert!(!report.is_clean());
         Ok(())
     }
 

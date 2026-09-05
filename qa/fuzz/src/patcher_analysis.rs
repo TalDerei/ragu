@@ -9,8 +9,7 @@
 use std::collections::BTreeMap;
 
 use ragu_arithmetic::ff::Field;
-
-use super::{Event, underconstrained_derived};
+use ragu_testing::patcher::{Event, underconstrained_derived};
 
 /// One connected subgraph of non-constant wires.
 ///

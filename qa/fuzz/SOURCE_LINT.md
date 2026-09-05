@@ -1,9 +1,9 @@
 # Ragu circuit source lint
 
-`ragu-circuit-lint` is the no-execution front end of Ragu's
-under-constraint-analysis pipeline. It parses production Rust source with
-`syn`; it does not compile circuits, synthesize constraints, or invoke witness
-closures.
+`circuit_lint` is the no-execution front end of Ragu's under-constraint
+analysis pipeline. It lives entirely in the standalone `qa/fuzz` workspace and
+parses production Rust source with `syn`; the analysis does not typecheck or
+execute the inspected code, synthesize constraints, or invoke witness closures.
 
 The current rules are intentionally narrow:
 
@@ -16,19 +16,25 @@ The current rules are intentionally narrow:
   discarded.
 - `RAGU005` (advisory): conditional arms emit different syntactic operation
   shapes.
-- `RAGU006` (error): a line-specific suppression is stale or names an unknown
-  diagnostic.
+- `RAGU006` (error): a reviewed QA-baseline entry no longer matches its exact
+  rule, source path, and line.
 
 Run the same strict gate as CI:
 
 ```sh
-cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
+cd qa/fuzz
+./fuzz.sh source-lint
 ```
 
-For a reviewed exception, place
-`// ragu-lint: allow-next-line RAGU005` immediately above the reported source
-line. Same-line `// ragu-lint: allow RAGU005` is also supported. Suppressions
-are rule- and line-specific.
+Error-level findings cannot be suppressed. Reviewed advisory exceptions live
+in `qa/fuzz/source-lint-baseline.txt`, keyed by exact rule, repository-relative
+path, and source line with a rationale. A source edit that moves or removes a
+finding makes its baseline entry stale and fails the gate. Production files do
+not carry linter annotations.
+
+The existing fuzz-harness CI job runs this scan through the QA library test;
+the binary is the focused local entry point. Both implementations use the same
+analyzer and baseline.
 
 This AST pass is not a proof that every intended constraint exists. Rust syntax
 does not encode the circuit specification, and `syn` does not provide resolved

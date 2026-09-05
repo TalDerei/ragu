@@ -12,8 +12,8 @@ grey-box fuzzing; replay is dynamic validation.
 
 ## 1. Source AST linting
 
-- [x] Parse every production crate source file with `syn`, without compiling or
-  executing circuit code.
+- [x] Parse every production crate source file with `syn`, without typechecking
+  or executing the inspected code.
 - [x] Reject discarded fallible driver/gadget results that bypass `?`, matching,
   or explicit error handling (`RAGU001`).
 - [x] Reject witness-assignment closures that mutate captured state
@@ -22,9 +22,11 @@ grey-box fuzzing; replay is dynamic validation.
   gadget operations (`RAGU003`).
 - [x] Review explicitly discarded constraint values and branches with different
   syntactic operation shapes (`RAGU004`/`RAGU005`).
-- [x] Keep reviewed exceptions as line- and rule-specific source suppressions,
-  with a rationale adjacent to each one; reject stale suppressions (`RAGU006`).
-- [x] Run the strict no-advisory gate in Rust CI and `just lint`.
+- [x] Keep reviewed advisories in a QA-local, line/rule/path-specific baseline
+  with a rationale; reject stale entries (`RAGU006`) and forbid suppressing
+  error-level findings.
+- [x] Run the strict no-advisory gate through the existing fuzz-harness CI test
+  without adding a production workspace package.
 - [ ] Add macro-expanded, type-resolved HIR/MIR def-use and interprocedural
   taint analysis for aliases and helper calls that syntax alone cannot resolve.
 - [ ] Add machine-readable circuit intent annotations before claiming that a
@@ -32,7 +34,8 @@ grey-box fuzzing; replay is dynamic validation.
   infer an unstated intended relation.
 
 Implementation and rule documentation live in
-[`qa/circuit-lint`](../circuit-lint/README.md).
+[`SOURCE_LINT.md`](SOURCE_LINT.md); analyzer code and its baseline remain under
+`qa/fuzz`.
 
 ## 2. Witness-free source-shape linting
 
@@ -106,15 +109,13 @@ Implementation and rule documentation live in
 ## Verification
 
 ```sh
-cargo run --locked -p ragu-circuit-lint -- --root . --deny-advisories
-cargo test -p ragu_testing
-cargo test -p ragu_pcd --features unstable-fuzzing --test patcher_internal
 cd qa/fuzz
+./fuzz.sh source-lint
 cargo test --lib
 cargo check --bins
 ```
 
-The first command is the no-execution source gate. The next two commands
-exercise deterministic analyzers and sweeps. The last two compile the
-libFuzzer harnesses without running a campaign; scheduled fuzz campaigns
-provide the guided mutation search.
+The first command is the focused no-execution source gate. The library tests
+exercise the AST, source-shape, connectivity, and rank analyzers. The final
+command compiles every libFuzzer harness without running a campaign; scheduled
+campaigns provide the guided mutation search.

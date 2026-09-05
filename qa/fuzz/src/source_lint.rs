@@ -1,10 +1,15 @@
 //! No-execution source linting for Ragu circuit and gadget code.
 //!
-//! This crate parses Rust with [`syn`]. It does not compile or execute the
-//! inspected code. The rules deliberately target high-signal trust-boundary
-//! mistakes that ordinary `unused_must_use` checking can be told to ignore.
+//! This QA module parses Rust with [`syn`]. It does not typecheck or execute
+//! the inspected code. The rules deliberately target high-signal
+//! trust-boundary mistakes that ordinary `unused_must_use` checking can be
+//! told to ignore.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+};
 
 use proc_macro2::Span;
 use syn::{
@@ -29,12 +34,12 @@ pub enum Rule {
     DiscardedConstraintValue,
     /// Conditional arms emit different syntactic driver-operation shapes.
     BranchShapeDivergence,
-    /// A source suppression no longer matches a diagnostic at its exact line.
-    UnusedSuppression,
+    /// A QA-local baseline entry no longer matches its exact finding.
+    StaleBaseline,
 }
 
 impl Rule {
-    /// Stable diagnostic code suitable for source suppressions.
+    /// Stable diagnostic code suitable for the QA-local baseline.
     pub const fn code(self) -> &'static str {
         match self {
             Self::IgnoredDriverResult => "RAGU001",
@@ -42,7 +47,7 @@ impl Rule {
             Self::WitnessDependentShape => "RAGU003",
             Self::DiscardedConstraintValue => "RAGU004",
             Self::BranchShapeDivergence => "RAGU005",
-            Self::UnusedSuppression => "RAGU006",
+            Self::StaleBaseline => "RAGU006",
         }
     }
 
@@ -54,8 +59,20 @@ impl Rule {
             Self::IgnoredDriverResult
                 | Self::AssignmentClosureSideEffect
                 | Self::WitnessDependentShape
-                | Self::UnusedSuppression
+                | Self::StaleBaseline
         )
+    }
+
+    fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "RAGU001" => Some(Self::IgnoredDriverResult),
+            "RAGU002" => Some(Self::AssignmentClosureSideEffect),
+            "RAGU003" => Some(Self::WitnessDependentShape),
+            "RAGU004" => Some(Self::DiscardedConstraintValue),
+            "RAGU005" => Some(Self::BranchShapeDivergence),
+            "RAGU006" => Some(Self::StaleBaseline),
+            _ => None,
+        }
     }
 }
 
@@ -93,94 +110,281 @@ impl Diagnostic {
     }
 }
 
-/// Parses and analyzes one Rust source file without compiling or executing it.
-///
-/// Findings may be suppressed on the finding line with
-/// `// ragu-lint: allow RAGU001`, or from the immediately preceding line with
-/// `// ragu-lint: allow-next-line RAGU001`. Multiple codes may appear in the
-/// same comment.
+/// Parses and analyzes one Rust source file without typechecking or executing it.
 pub fn analyze_source(source: &str) -> syn::Result<Vec<Diagnostic>> {
     let file = syn::parse_file(source)?;
     let mut analyzer = SourceAnalyzer {
         diagnostics: Vec::new(),
     };
     analyzer.visit_file(&file);
-    apply_suppressions(source, &mut analyzer.diagnostics);
     analyzer
         .diagnostics
         .sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column, diagnostic.rule.code()));
     Ok(analyzer.diagnostics)
 }
 
-struct Suppression {
-    source_line: usize,
+/// One diagnostic paired with its repository-relative source path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocatedDiagnostic {
+    /// Path relative to the scanned repository root.
+    pub path: PathBuf,
+    /// Source-level finding.
+    pub diagnostic: Diagnostic,
+}
+
+/// Result of scanning the production Rust source tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScanReport {
+    /// Number of Rust files parsed.
+    pub files_scanned: usize,
+    /// Findings not covered by a reviewed QA-local advisory baseline.
+    pub diagnostics: Vec<LocatedDiagnostic>,
+}
+
+impl ScanReport {
+    /// Number of unsuppressed error-level findings.
+    pub fn errors(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|finding| finding.diagnostic.rule.is_error())
+            .count()
+    }
+
+    /// Number of unsuppressed advisory findings.
+    pub fn advisories(&self) -> usize {
+        self.diagnostics.len() - self.errors()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BaselineEntry {
+    baseline_line: usize,
+    rule: Rule,
+    path: PathBuf,
     target_line: usize,
-    column: usize,
-    code: String,
+    rationale: String,
     used: bool,
 }
 
-fn apply_suppressions(source: &str, diagnostics: &mut Vec<Diagnostic>) {
-    let mut suppressions = parse_suppressions(source);
-    diagnostics.retain(|diagnostic| {
-        let mut suppressed = false;
-        for suppression in &mut suppressions {
-            if suppression.target_line == diagnostic.line
-                && suppression.code == diagnostic.rule.code()
-            {
-                suppression.used = true;
-                suppressed = true;
+/// Scans production sources without compiling or executing the inspected code.
+///
+/// `requested` paths are relative to `root`; an empty list scans every
+/// `crates/*/src` tree plus a root `src` tree when present. `baseline` is also
+/// relative to `root` unless absolute. The baseline may suppress only
+/// advisory rules, and every entry must match exactly or becomes `RAGU006`.
+pub fn scan_sources(
+    root: &Path,
+    requested: &[PathBuf],
+    baseline: Option<&Path>,
+) -> Result<ScanReport, String> {
+    let full_scan = requested.is_empty();
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve {}: {error}", root.display()))?;
+    let roots = if requested.is_empty() {
+        default_roots(&root)?
+    } else {
+        requested.iter().map(|path| root.join(path)).collect()
+    };
+
+    let mut files = Vec::new();
+    for path in roots {
+        collect_rust_files(&path, &mut files)?;
+    }
+    files.sort();
+    files.dedup();
+    if files.is_empty() {
+        return Err("no Rust source files found".to_owned());
+    }
+
+    let baseline_path = baseline.map(|path| {
+        if path.is_absolute() {
+            path.to_owned()
+        } else {
+            root.join(path)
+        }
+    });
+    let mut entries = if let Some(path) = &baseline_path {
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        parse_baseline(&source)?
+    } else {
+        Vec::new()
+    };
+
+    let mut diagnostics = Vec::new();
+    for path in &files {
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        let relative = path.strip_prefix(&root).unwrap_or(path).to_owned();
+        let findings = analyze_source(&source)
+            .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+        for diagnostic in findings {
+            if let Some(entry) = entries.iter_mut().find(|entry| {
+                !entry.used
+                    && entry.rule == diagnostic.rule
+                    && entry.path == relative
+                    && entry.target_line == diagnostic.line
+            }) {
+                entry.used = true;
+            } else {
+                diagnostics.push(LocatedDiagnostic {
+                    path: relative.clone(),
+                    diagnostic,
+                });
             }
         }
-        !suppressed
-    });
-    for suppression in suppressions {
-        if !suppression.used {
-            diagnostics.push(Diagnostic::at(
-                Rule::UnusedSuppression,
-                suppression.source_line,
-                suppression.column,
-                format!(
-                    "suppression for {} does not match that rule on source line {}",
-                    suppression.code, suppression.target_line
-                ),
-            ));
-        }
     }
-}
 
-fn parse_suppressions(source: &str) -> Vec<Suppression> {
-    const NEXT: &str = "ragu-lint: allow-next-line ";
-    const SAME: &str = "ragu-lint: allow ";
-    let mut suppressions = Vec::new();
-    for (index, line) in source.lines().enumerate() {
-        let Some(comment) = line.find("//") else {
-            continue;
-        };
-        let comment_text = &line[comment + 2..];
-        let (relative_marker, target_line, prefix) = if let Some(column) = comment_text.find(NEXT) {
-            (column, index + 2, NEXT)
-        } else if let Some(column) = comment_text.find(SAME) {
-            (column, index + 1, SAME)
-        } else {
-            continue;
-        };
-        let marker = comment + 2 + relative_marker;
-        let codes = line[marker + prefix.len()..]
-            .split(|character: char| character.is_whitespace() || character == ',')
-            .take_while(|token| token.starts_with("RAGU"))
-            .filter(|token| !token.is_empty());
-        for code in codes {
-            suppressions.push(Suppression {
-                source_line: index + 1,
-                target_line,
-                column: marker + 1,
-                code: code.to_owned(),
-                used: false,
+    if let Some(path) = baseline_path {
+        let displayed = path.strip_prefix(&root).unwrap_or(&path).to_owned();
+        let scanned_paths: BTreeSet<_> = files
+            .iter()
+            .map(|file| file.strip_prefix(&root).unwrap_or(file).to_owned())
+            .collect();
+        for entry in entries
+            .into_iter()
+            .filter(|entry| !entry.used && (full_scan || scanned_paths.contains(&entry.path)))
+        {
+            diagnostics.push(LocatedDiagnostic {
+                path: displayed.clone(),
+                diagnostic: Diagnostic::at(
+                    Rule::StaleBaseline,
+                    entry.baseline_line,
+                    1,
+                    format!(
+                        "baseline entry for {} {}:{} is stale ({})",
+                        entry.rule.code(),
+                        entry.path.display(),
+                        entry.target_line,
+                        entry.rationale,
+                    ),
+                ),
             });
         }
     }
-    suppressions
+
+    diagnostics.sort_by(|left, right| {
+        (&left.path, left.diagnostic.line, left.diagnostic.column).cmp(&(
+            &right.path,
+            right.diagnostic.line,
+            right.diagnostic.column,
+        ))
+    });
+    Ok(ScanReport {
+        files_scanned: files.len(),
+        diagnostics,
+    })
+}
+
+fn parse_baseline(source: &str) -> Result<Vec<BaselineEntry>, String> {
+    let mut entries = Vec::new();
+    let mut keys = BTreeSet::new();
+    for (index, raw) in source.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = line.split('|').map(str::trim).collect();
+        if fields.len() != 4 {
+            return Err(format!(
+                "baseline line {} must be RULE|PATH|LINE|RATIONALE",
+                index + 1,
+            ));
+        }
+        let rule = Rule::from_code(fields[0]).ok_or_else(|| {
+            format!(
+                "baseline line {} names unknown rule {}",
+                index + 1,
+                fields[0]
+            )
+        })?;
+        if rule.is_error() {
+            return Err(format!(
+                "baseline line {} cannot suppress error-level {}",
+                index + 1,
+                rule.code(),
+            ));
+        }
+        let path = PathBuf::from(fields[1]);
+        if path.is_absolute() || fields[1].is_empty() {
+            return Err(format!(
+                "baseline line {} must use a nonempty repository-relative path",
+                index + 1,
+            ));
+        }
+        let target_line = fields[2]
+            .parse::<usize>()
+            .map_err(|_| format!("baseline line {} has an invalid source line", index + 1))?;
+        if target_line == 0 || fields[3].is_empty() {
+            return Err(format!(
+                "baseline line {} requires a positive line and a rationale",
+                index + 1,
+            ));
+        }
+        let key = (rule, path.clone(), target_line);
+        if !keys.insert(key) {
+            return Err(format!("baseline line {} duplicates an entry", index + 1));
+        }
+        entries.push(BaselineEntry {
+            baseline_line: index + 1,
+            rule,
+            path,
+            target_line,
+            rationale: fields[3].to_owned(),
+            used: false,
+        });
+    }
+    Ok(entries)
+}
+
+fn default_roots(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut roots = Vec::new();
+    let root_source = root.join("src");
+    if root_source.is_dir() {
+        roots.push(root_source);
+    }
+    let crates = root.join("crates");
+    let entries = fs::read_dir(&crates)
+        .map_err(|error| format!("failed to read {}: {error}", crates.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let source = entry.path().join("src");
+        if source.is_dir() {
+            roots.push(source);
+        }
+    }
+    Ok(roots)
+}
+
+fn collect_rust_files(path: &Path, output: &mut Vec<PathBuf>) -> Result<(), String> {
+    if path.is_file() {
+        if path.extension().is_some_and(|extension| extension == "rs") {
+            output.push(path.to_owned());
+        }
+        return Ok(());
+    }
+    if !path.is_dir() || skip_directory(path) {
+        return Ok(());
+    }
+    let entries = fs::read_dir(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        collect_rust_files(&entry.path(), output)?;
+    }
+    Ok(())
+}
+
+fn skip_directory(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            matches!(
+                name,
+                ".git" | ".claude" | "benches" | "examples" | "target" | "tests"
+            )
+        })
 }
 
 struct SourceAnalyzer {
@@ -1175,31 +1379,6 @@ mod tests {
     }
 
     #[test]
-    fn suppression_is_line_scoped() {
-        let source = r#"
-            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
-                // ragu-lint: allow-next-line RAGU001
-                let _ = dr.mul(|| Err(Error::InvalidWitness("known".into())));
-                Ok(())
-            }
-        "#;
-        assert!(codes(source).is_empty());
-    }
-
-    #[test]
-    fn rejects_stale_suppression() {
-        let source = r#"
-            fn witness<'dr, D: Driver<'dr>>(dr: &mut D) -> Result<()> {
-                // ragu-lint: allow-next-line RAGU001
-                let value = dr.add(|lc| lc);
-                dr.enforce_zero(|lc| lc.add(&value))?;
-                Ok(())
-            }
-        "#;
-        assert_eq!(codes(source), ["RAGU006"]);
-    }
-
-    #[test]
     fn skips_cfg_test_modules() {
         let source = r#"
             #[cfg(test)]
@@ -1229,5 +1408,27 @@ mod tests {
             }
         "#;
         assert_eq!(codes(source), ["RAGU001", "RAGU001"]);
+    }
+
+    #[test]
+    fn qa_baseline_cannot_suppress_errors() {
+        let error = parse_baseline(
+            "RAGU001|crates/ragu_core/src/example.rs|10|error suppression is forbidden",
+        )
+        .unwrap_err();
+        assert!(error.contains("cannot suppress error-level RAGU001"));
+    }
+
+    #[test]
+    fn production_sources_match_reviewed_qa_baseline() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let baseline = Path::new("qa/fuzz/source-lint-baseline.txt");
+        let report = scan_sources(&root, &[], Some(baseline)).unwrap();
+        assert_eq!((report.errors(), report.advisories()), (0, 0));
+        assert!(
+            report.diagnostics.is_empty(),
+            "production source lint found unreviewed or stale findings: {report:#?}",
+        );
+        assert!(report.files_scanned > 100);
     }
 }

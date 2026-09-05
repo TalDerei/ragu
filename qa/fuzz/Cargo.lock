@@ -525,6 +525,7 @@ dependencies = [
  "ff",
  "group",
  "libfuzzer-sys",
+ "proc-macro2",
  "proptest",
  "ragu_arithmetic",
  "ragu_circuits",
@@ -534,6 +535,7 @@ dependencies = [
  "ragu_primitives",
  "ragu_testing",
  "rand 0.10.2",
+ "syn 2.0.119",
  "zakura-pasta-curves",
 ]
 

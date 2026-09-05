@@ -94,9 +94,6 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     }
 
     pub(crate) fn write(self, dr: &mut D, buf: &mut Vec<Element<'dr, D>>) -> Result<()> {
-        // The enum records whether the caller supplied an already-uniform
-        // encoding or a gadget that must be constrained during conversion.
-        // ragu-lint: allow-next-line RAGU005
         match self.0 {
             EncodedInner::Gadget(gadget) => {
                 padded::for_header::<H, HEADER_SIZE, _>(dr, gadget)?.write(dr, buf)?

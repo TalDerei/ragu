@@ -13,16 +13,6 @@
 //!   the recorded graph. This exercises the whole engine on the production
 //!   circuits at once: routines (Poseidon permutations), pooled allocation,
 //!   and multi-stage reservation.
-//! * `source_lint` — the witness-free `Empty`-driver execution emits exactly
-//!   the same wires, coefficients, events, and outputs as concrete synthesis,
-//!   catching circuit shape that depends on witness generation.
-//! * `analyze_connectivity` — every allocated wire appears in the graph and
-//!   every boundary-free component reaches the fixed ONE wire; a constraint
-//!   island cannot hide behind ONE acting as a universal bridge.
-//! * `analyze_component_rank` — every small independent component gets an
-//!   exact Jacobian rank/nullity check, at least one derived wire is covered,
-//!   and no covered derived wire is movable. Oversized components remain
-//!   explicitly skipped rather than silently certified.
 //! * `playback` — a second, independent synthesis re-accepts the same
 //!   witness, so the recording matches a live re-execution rather than merely
 //!   agreeing with itself.
@@ -70,9 +60,8 @@ use ragu_pcd::{
 };
 use ragu_testing::{
     patcher::{
-        Prepared, ProbeOutcome, analyze_component_rank, analyze_connectivity, analyze_source_shape,
-        capture_with_stage_values, constraints_hold, determinism_probe, discover_free_advice,
-        forced_by, playback,
+        Prepared, ProbeOutcome, capture_with_stage_values, constraints_hold, determinism_probe,
+        discover_free_advice, forced_by, playback,
     },
     pcd::nontrivial::{Hash2, Merge2, WitnessLeaf},
 };
@@ -111,7 +100,6 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 ) -> Result<Census> {
     let name = spec.name.as_str();
 
-    let source_shape = analyze_source_shape(circuit)?;
     let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)
         .unwrap_or_else(|e| panic!("{name}@{point}: capture must succeed, got {e:?}"));
     let rec = &cap.recorder;
@@ -128,12 +116,6 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
         playback(circuit, make_witness()?, rec.values.clone())?,
         "{name}@{point}: an independent playback must re-accept the captured witness",
     );
-    let source = source_shape.compare(&cap);
-    assert!(
-        source.is_clean(),
-        "{name}@{point}: witness-free source shape disagrees with concrete synthesis: \
-         {source:?}",
-    );
 
     let resolution = spec.resolve(&cap.instance, &cap.stage_wires)?;
     assert!(
@@ -143,36 +125,6 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 
     // The static check, two tiers (see the module docs).
     let free = discover_free_advice(&rec.events, &rec.values);
-    let connectivity = analyze_connectivity(
-        &rec.events,
-        rec.values.len(),
-        &resolution.inputs,
-        &resolution.outputs,
-    );
-    assert!(
-        connectivity.isolated_wires().is_empty(),
-        "{name}@{point}: synthesized wires are absent from every constraint subgraph: {:?}",
-        connectivity.isolated_wires(),
-    );
-    assert!(
-        connectivity.floating_components().is_empty(),
-        "{name}@{point}: constraint subgraphs reach no input, output, or fixed constant: {:?}",
-        connectivity.floating_components(),
-    );
-    assert!(
-        connectivity.output_components_without_inputs().is_empty(),
-        "{name}@{point}: output subgraphs have no declared input path: {:?}",
-        connectivity.output_components_without_inputs(),
-    );
-    let rank = analyze_component_rank(&rec.events, &rec.values, &free, &connectivity, 384);
-    assert!(
-        rank.checked_derived_wires > 0,
-        "{name}@{point}: bounded component rank check covered no derived wire: {rank:?}",
-    );
-    assert!(
-        rank.movable.is_empty(),
-        "{name}@{point}: bounded component rank check found movable derived wires: {rank:?}",
-    );
     let mut granted = resolution.inputs.clone();
     granted.extend(
         free.iter()
@@ -303,15 +255,10 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
         let (residual, total) = prepared.residual_events();
         println!(
             "{name}@{point}: probe {:?} full vs {:?} prepared ({residual} of {total} events \
-             residual); sweep of {} wires in {sweep_time:?}; rank checked {} derived wires in \
-             {} components and skipped {} wires in {} oversized components",
+             residual); sweep of {} wires in {sweep_time:?}",
             full_time / n,
             fast_time / n,
             cheatable.len(),
-            rank.checked_derived_wires,
-            rank.checked_components,
-            rank.skipped_derived_wires,
-            rank.skipped_components,
         );
     }
 
