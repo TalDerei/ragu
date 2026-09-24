@@ -1,0 +1,242 @@
+//! The revdot claims evaluated from openings.
+//!
+//! The decider builds each claim's $a$ and $b$ as polynomials through
+//! [`claims::Builder`] and checks $\operatorname{revdot}(a, b) = k(y)$. The
+//! compressed verifier holds no polynomials, only each committed
+//! polynomial's openings at a point $r$ and at $rz$, so this module runs
+//! the same [`native::claims::build`] and [`nested::claims::build`] with a
+//! processor over those openings, producing each claim's $(a(r), b(r))$
+//! and its target: $a(r)$ sums the openings at $r$, and $b(r)$ is either a
+//! committed polynomial's own opening, the openings at $rz$ plus the
+//! circuit's wiring restriction and $t(z)$ at $r$, or that restriction
+//! alone. The compressor, holding the polynomials, uses the builder itself;
+//! both sides enumerate the claims through the same `build`, so the order
+//! and the targets line up.
+//!
+//! [`claims::Builder`]: crate::internal::claims::Builder
+
+use alloc::vec::Vec;
+use core::iter::{empty, once};
+
+use ragu_arithmetic::ff::Field;
+use ragu_circuits::{polynomials::Rank, registry::CircuitIndex};
+use ragu_core::Result;
+
+use crate::internal::{
+    claims::Source,
+    ky::{NativeKy, NestedKy},
+    native, nested,
+};
+
+/// A committed polynomial's openings at the query point and at its dilation.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Opened<F> {
+    /// The value at $r$.
+    pub at_r: F,
+    /// The value at $rz$.
+    pub at_rz: F,
+}
+
+/// One claim evaluated at $r$: $a(r)$, $b(r)$ and the target $k(y)$.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Evaluated<F> {
+    /// $a(r)$.
+    pub a: F,
+    /// $b(r)$.
+    pub b: F,
+    /// The target $k(y)$.
+    pub k: F,
+}
+
+/// A [`Source`] over one proof's native openings.
+struct NativeOpenings<G> {
+    circuit_id: CircuitIndex,
+    open: G,
+}
+
+impl<F, G: Fn(native::RxComponent) -> Opened<F>> Source for NativeOpenings<G> {
+    type RxComponent = native::RxComponent;
+    type Rx = Opened<F>;
+    type AppCircuitId = CircuitIndex;
+
+    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Opened<F>> {
+        once((self.open)(component))
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
+        once(self.circuit_id)
+    }
+}
+
+/// A [`Source`] over one proof's nested openings.
+struct NestedOpenings<G> {
+    open: G,
+}
+
+impl<F, G: Fn(nested::RxComponent) -> Opened<F>> Source for NestedOpenings<G> {
+    type RxComponent = nested::RxComponent;
+    type Rx = Opened<F>;
+    type AppCircuitId = ();
+
+    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Opened<F>> {
+        once((self.open)(component))
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = ()> {
+        empty()
+    }
+}
+
+/// The processor over openings: the evaluation counterpart of
+/// [`claims::Builder`](crate::internal::claims::Builder).
+struct Evaluator<F, S> {
+    z: F,
+    /// $t(z, X)$ at $r$.
+    tz: F,
+    /// A circuit's wiring restriction $s(X, y)$ at $r$.
+    restriction: S,
+    claims: Vec<Evaluated<F>>,
+}
+
+impl<F: Field, S: Fn(CircuitIndex) -> F> Evaluator<F, S> {
+    fn push(&mut self, a: F, b: F) {
+        self.claims.push(Evaluated { a, b, k: F::ZERO });
+    }
+
+    /// A circuit claim over the sum of `rxs`: $b = a(zX) + s(X, y) + t(z, X)$.
+    fn circuit(&mut self, circuit: CircuitIndex, rxs: impl Iterator<Item = Opened<F>>) {
+        let (a, dilated) = rxs.fold((F::ZERO, F::ZERO), |(a, dilated), rx| {
+            (a + rx.at_r, dilated + rx.at_rz)
+        });
+        let b = dilated + (self.restriction)(circuit) + self.tz;
+        self.push(a, b);
+    }
+
+    /// A bonding claim over the Horner fold of per-group sums under $z$, as
+    /// [`sparse::Polynomial::fold`](ragu_circuits::polynomials::sparse::Polynomial::fold)
+    /// weights it: $b = s(X, y)$.
+    fn bonding(
+        &mut self,
+        circuit: CircuitIndex,
+        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+    ) {
+        let a = groups.fold(F::ZERO, |acc, group| {
+            acc * self.z + group.fold(F::ZERO, |sum, rx| sum + rx.at_r)
+        });
+        let b = (self.restriction)(circuit);
+        self.push(a, b);
+    }
+}
+
+impl<F: Field, S: Fn(CircuitIndex) -> F> native::claims::Processor<Opened<F>, CircuitIndex>
+    for Evaluator<F, S>
+{
+    fn raw_claim(&mut self, a: Opened<F>, b: Opened<F>) {
+        self.push(a.at_r, b.at_r);
+    }
+
+    fn circuit_claim(&mut self, circuit_id: CircuitIndex, rx: Opened<F>) {
+        self.circuit(circuit_id, once(rx));
+    }
+
+    fn internal_circuit_claim(
+        &mut self,
+        id: native::InternalCircuitIndex,
+        rxs: impl Iterator<Item = Opened<F>>,
+    ) {
+        self.circuit(id.circuit_index(), rxs);
+    }
+
+    fn grouped_bonding_claim(
+        &mut self,
+        id: native::InternalCircuitIndex,
+        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+    ) -> Result<()> {
+        self.bonding(id.circuit_index(), groups);
+        Ok(())
+    }
+}
+
+impl<F: Field, S: Fn(CircuitIndex) -> F> nested::claims::Processor<Opened<F>> for Evaluator<F, S> {
+    fn raw_claim(&mut self, a: Opened<F>, b: Opened<F>) {
+        self.push(a.at_r, b.at_r);
+    }
+
+    fn internal_circuit_claim(
+        &mut self,
+        id: nested::InternalCircuitIndex,
+        rxs: impl Iterator<Item = Opened<F>>,
+    ) {
+        self.circuit(id.circuit_index(), rxs);
+    }
+
+    fn grouped_bonding_claim(
+        &mut self,
+        id: nested::InternalCircuitIndex,
+        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+    ) -> Result<()> {
+        self.bonding(id.circuit_index(), groups);
+        Ok(())
+    }
+}
+
+/// The native claims of a proof whose application circuit is `circuit_id`,
+/// evaluated at `r` from `open`, the openings of each committed polynomial,
+/// and `restriction`, each circuit's wiring restriction $s(X, y)$ at `r`.
+pub(crate) fn native<R: Rank, F: Field>(
+    circuit_id: CircuitIndex,
+    r: F,
+    z: F,
+    open: impl Fn(native::RxComponent) -> Opened<F>,
+    restriction: impl Fn(CircuitIndex) -> F,
+    targets: &NativeKy<F>,
+) -> Result<Vec<Evaluated<F>>> {
+    let mut evaluator = Evaluator {
+        z,
+        tz: R::tz(z).eval(r),
+        restriction,
+        claims: Vec::new(),
+    };
+    native::claims::build(&NativeOpenings { circuit_id, open }, &mut evaluator)?;
+    Ok(with_targets(
+        evaluator.claims,
+        native::claims::ky_values(targets),
+    ))
+}
+
+/// The nested claims of a proof, evaluated at `r` from `open` and
+/// `restriction` as [`native()`] takes them.
+pub(crate) fn nested<R: Rank, F: Field>(
+    r: F,
+    z: F,
+    open: impl Fn(nested::RxComponent) -> Opened<F>,
+    restriction: impl Fn(CircuitIndex) -> F,
+    targets: &NestedKy<F>,
+) -> Result<Vec<Evaluated<F>>> {
+    let mut evaluator = Evaluator {
+        z,
+        tz: R::tz(z).eval(r),
+        restriction,
+        claims: Vec::new(),
+    };
+    nested::claims::build(&NestedOpenings { open }, &mut evaluator)?;
+    Ok(with_targets(
+        evaluator.claims,
+        nested::claims::ky_values(targets),
+    ))
+}
+
+/// Pairs the evaluated claims with their targets, in claim order.
+fn with_targets<F>(
+    mut claims: Vec<Evaluated<F>>,
+    targets: impl Iterator<Item = F>,
+) -> Vec<Evaluated<F>> {
+    for (claim, k) in claims.iter_mut().zip(targets) {
+        claim.k = k;
+    }
+    claims
+}
+
+#[cfg(test)]
+#[path = "../../tests/compress_claims.rs"]
+mod tests;
