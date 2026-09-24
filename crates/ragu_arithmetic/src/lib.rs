@@ -193,6 +193,11 @@ pub trait FixedGenerators<C: CurveAffine>: Send + Sync + 'static {
     /// Generator used as a blinding factor or randomization.
     fn h(&self) -> &C;
 
+    /// Generator the inner product argument uses to bind the inner product
+    /// value into the commitment being opened. Independent of the vector
+    /// generators and of the blinding generator.
+    fn u(&self) -> &C;
+
     /// Compute a commitment to a single value.
     fn short_commit(&self, value: C::ScalarExt, blind: C::ScalarExt) -> C {
         (self.g()[0] * value + *self.h() * blind).into()
