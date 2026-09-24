@@ -113,6 +113,7 @@ fn native_round(app: &Application<'static, Pasta, TestR, HEADER_SIZE>, seed: u64
         Pasta::host_generators(Pasta::baked()),
         y,
         z,
+        &[],
         &mut t.host(),
     )
     .unwrap();
@@ -139,6 +140,7 @@ fn verify_native_round(
         round.y,
         round.z,
         &round.targets,
+        &[],
         reduction,
         &mut t.host(),
     )
@@ -196,6 +198,7 @@ fn nested_reduction_verifies() {
         generators,
         y,
         z,
+        &[],
         &mut t.nested(),
     )
     .unwrap();
@@ -217,6 +220,7 @@ fn nested_reduction_verifies() {
             y,
             z,
             &targets,
+            &[],
             reduction,
             &mut t.nested(),
         )

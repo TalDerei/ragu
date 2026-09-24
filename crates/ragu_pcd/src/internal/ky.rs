@@ -5,12 +5,20 @@
 use core::iter::once;
 
 use ragu_arithmetic::{Cycle, ff::Field};
-use ragu_circuits::polynomials::Rank;
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_circuits::{polynomials::Rank, registry::CircuitIndex};
+use ragu_core::{
+    Result,
+    drivers::emulator::{Emulator, Wireless},
+    maybe::{Always, Maybe},
+};
 use ragu_primitives::Element;
 
 use super::{
-    native::{self, stages::preamble::ProofInputs},
+    native::{
+        self,
+        stages::preamble::{ProofInputs, encode_output_header},
+        unified as native_unified,
+    },
     nested::{self, unified as nested_unified},
 };
 use crate::{Pcd, Proof, header::Header};
@@ -130,6 +138,64 @@ pub fn nested_ky<C: Cycle, R: Rank>(
         let y = Element::alloc(dr, &mut (), y)?;
         let output =
             nested_unified::Output::<_, C::HostCurve>::alloc(dr, &mut (), instance.as_ref())?;
+        Ok(*output.ky(dr, &y)?.value().take())
+    })
+}
+
+/// The parts of a proof's public data its native $k(y)$ values depend on,
+/// as a compressed proof's instance carries them.
+pub struct NativeParts<'a, C: Cycle> {
+    pub left_header: &'a [C::CircuitField],
+    pub right_header: &'a [C::CircuitField],
+    pub circuit_id: CircuitIndex,
+    pub unified: &'a native_unified::Instance<C>,
+}
+
+/// The native $k(y)$ values at `y` from an instance's parts and the header
+/// data, as [`native_ky`] computes them from a proof.
+pub fn native_ky_of<C: Cycle, H: Header<C::CircuitField>, const HEADER_SIZE: usize>(
+    parts: NativeParts<'_, C>,
+    data: H::Data,
+    y: C::CircuitField,
+) -> Result<NativeKy<C::CircuitField>> {
+    Emulator::emulate_wireless((parts, data, y), |dr, witness| {
+        let (parts, data, y) = witness.cast();
+        let y = Element::alloc(dr, &mut (), y)?;
+        let output_header = encode_output_header::<
+            Emulator<Wireless<Always<()>, C::CircuitField>>,
+            H,
+            HEADER_SIZE,
+        >(data)?;
+        let proof_inputs = ProofInputs::<_, C, HEADER_SIZE>::alloc_from_parts(
+            dr,
+            parts.as_ref().map(|p| p.left_header),
+            parts.as_ref().map(|p| p.right_header),
+            output_header.as_ref(),
+            parts.as_ref().map(|p| p.circuit_id.omega_j()),
+            parts.as_ref().map(|p| p.unified),
+        )?;
+
+        let (unified, unified_bridge) = proof_inputs.unified_ky_values(dr, &y)?;
+        let application = proof_inputs.application_ky(dr, &y)?;
+        Ok(NativeKy {
+            c: None,
+            unified: *unified.value().take(),
+            unified_bridge: *unified_bridge.value().take(),
+            application: *application.value().take(),
+        })
+    })
+}
+
+/// The nested unified instance's $k(y)$ at the nested `y` from the
+/// instance's values, as [`nested_ky`] computes it from a proof.
+pub fn nested_ky_of<C: Cycle>(
+    instance: &nested_unified::Instance<C::HostCurve>,
+    y: C::ScalarField,
+) -> Result<C::ScalarField> {
+    Emulator::emulate_wireless((instance, y), |dr, witness| {
+        let (instance, y) = witness.cast();
+        let y = Element::alloc(dr, &mut (), y)?;
+        let output = nested_unified::Output::<_, C::HostCurve>::alloc(dr, &mut (), instance)?;
         Ok(*output.ky(dr, &y)?.value().take())
     })
 }

@@ -99,6 +99,7 @@ fn native_evaluations_match_the_decider() {
         |component| open(&proof[component], r, z),
         restriction(&app.native_registry, y, r),
         &targets,
+        &[],
     )
     .unwrap();
 
@@ -130,6 +131,7 @@ fn nested_evaluations_match_the_decider() {
         |component| open(&proof[component], r, z),
         restriction(&app.nested_registry, y, r),
         &targets,
+        &[],
     )
     .unwrap();
 

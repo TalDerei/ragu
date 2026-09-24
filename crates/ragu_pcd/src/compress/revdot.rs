@@ -30,7 +30,7 @@ use ragu_circuits::{
 };
 use ragu_core::{Error, Result};
 
-use super::claims::{self, Evaluated, NativePolys, NestedPolys, Opened};
+use super::claims::{self, Evaluated, Masked, NativePolys, NestedPolys, Opened};
 use crate::{
     Proof,
     internal::{
@@ -114,7 +114,7 @@ pub(crate) fn native_components() -> impl Iterator<Item = native::RxComponent> {
 }
 
 /// The position of a native component in [`native_components`].
-fn native_position(component: native::RxComponent) -> usize {
+pub(crate) fn native_position(component: native::RxComponent) -> usize {
     match component {
         native::RxComponent::AbA => 0,
         native::RxComponent::AbB => 1,
@@ -139,7 +139,7 @@ pub(crate) fn nested_components() -> impl Iterator<Item = nested::RxComponent> {
 }
 
 /// The position of a nested component in [`nested_components`].
-fn nested_position(component: nested::RxComponent) -> usize {
+pub(crate) fn nested_position(component: nested::RxComponent) -> usize {
     match component {
         nested::RxComponent::AbA => 0,
         nested::RxComponent::AbB => 1,
@@ -313,6 +313,7 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     generators: &C::HostGenerators,
     y: C::CircuitField,
     z: C::CircuitField,
+    masked: &[Masked<native::RxComponent, C::CircuitField>],
     transcript: &mut T,
 ) -> Result<(Reduction<C::HostCurve>, Witness<C::CircuitField>)> {
     let mut builder = Builder::<_, C::CircuitField, R, B>::new(registry, y, z);
@@ -320,17 +321,20 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     let committed: Vec<_> = native_components()
         .map(|component| &proof[component])
         .collect();
-    reduce::<_, R, _>(
-        builder
-            .a
-            .iter()
-            .zip(&builder.b)
-            .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect())),
-        &committed,
-        generators,
-        z,
-        transcript,
-    )
+    let claims = builder
+        .a
+        .iter()
+        .zip(&builder.b)
+        .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect()))
+        .chain(masked.iter().map(|masked| {
+            let mut a = proof[masked.poly].clone();
+            a.sub_assign(&masked.expected::<R>());
+            (
+                a.iter_coeffs().collect(),
+                masked.mask::<R>().iter_coeffs().collect(),
+            )
+        }));
+    reduce::<_, R, _>(claims, &committed, generators, z, transcript)
 }
 
 /// The verifier's native side: `commitment` gives each component's
@@ -343,6 +347,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, T: IpaTranscript<C::HostCurve>>(
     y: C::CircuitField,
     z: C::CircuitField,
     targets: &NativeKy<C::CircuitField>,
+    masked: &[Masked<native::RxComponent, C::CircuitField>],
     reduction: &Reduction<C::HostCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::HostCurve>>> {
@@ -356,6 +361,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, T: IpaTranscript<C::HostCurve>>(
                 |component| openings[native_position(component)],
                 |circuit| registry.circuit_y(circuit, y).eval(r),
                 targets,
+                masked,
             )
         },
         commitments,
@@ -373,6 +379,7 @@ pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     generators: &C::NestedGenerators,
     y: C::ScalarField,
     z: C::ScalarField,
+    masked: &[Masked<nested::RxComponent, C::ScalarField>],
     transcript: &mut T,
 ) -> Result<(Reduction<C::NestedCurve>, Witness<C::ScalarField>)> {
     let mut builder = Builder::<_, C::ScalarField, R, B>::new(registry, y, z);
@@ -380,17 +387,20 @@ pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     let committed: Vec<_> = nested_components()
         .map(|component| &proof[component])
         .collect();
-    reduce::<_, R, _>(
-        builder
-            .a
-            .iter()
-            .zip(&builder.b)
-            .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect())),
-        &committed,
-        generators,
-        z,
-        transcript,
-    )
+    let claims = builder
+        .a
+        .iter()
+        .zip(&builder.b)
+        .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect()))
+        .chain(masked.iter().map(|masked| {
+            let mut a = proof[masked.poly].clone();
+            a.sub_assign(&masked.expected::<R>());
+            (
+                a.iter_coeffs().collect(),
+                masked.mask::<R>().iter_coeffs().collect(),
+            )
+        }));
+    reduce::<_, R, _>(claims, &committed, generators, z, transcript)
 }
 
 /// The verifier's nested side, as [`verify_native`] takes its inputs.
@@ -400,6 +410,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, T: IpaTranscript<C::NestedCurve>>
     y: C::ScalarField,
     z: C::ScalarField,
     targets: &NestedKy<C::ScalarField>,
+    masked: &[Masked<nested::RxComponent, C::ScalarField>],
     reduction: &Reduction<C::NestedCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::NestedCurve>>> {
@@ -412,6 +423,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, T: IpaTranscript<C::NestedCurve>>
                 |component| openings[nested_position(component)],
                 |circuit| registry.circuit_y(circuit, y).eval(r),
                 targets,
+                masked,
             )
         },
         commitments,
