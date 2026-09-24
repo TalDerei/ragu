@@ -4,7 +4,6 @@
 //! against its target.
 
 use alloc::borrow::Cow;
-use core::iter::once;
 
 use ragu_arithmetic::{
     DeferredField,
@@ -18,11 +17,11 @@ use ragu_circuits::{
 };
 use ragu_pasta::{Fp, Fq, Pasta};
 
-use super::{Evaluated, Opened};
+use super::{Evaluated, NativePolys, NestedPolys, Opened};
 use crate::{
-    Application, ApplicationBuilder, Proof,
+    Application, ApplicationBuilder,
     internal::{
-        claims::{Builder, Source},
+        claims::Builder,
         ky::{self, NativeKy, NestedKy},
         native, nested,
     },
@@ -35,39 +34,6 @@ fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
         .finalize(Pasta::baked())
         .expect("failed to create test application")
-}
-
-/// The decider's polynomial source over one proof, raw claim included.
-struct NativePolys<'a>(&'a Proof<Pasta, TestR>);
-
-impl<'a> Source for NativePolys<'a> {
-    type RxComponent = native::RxComponent;
-    type Rx = &'a sparse::Polynomial<Fp, TestR>;
-    type AppCircuitId = CircuitIndex;
-
-    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Self::Rx> {
-        once(&self.0[component])
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
-        once(self.0.circuit_id())
-    }
-}
-
-struct NestedPolys<'a>(&'a Proof<Pasta, TestR>);
-
-impl<'a> Source for NestedPolys<'a> {
-    type RxComponent = nested::RxComponent;
-    type Rx = &'a sparse::Polynomial<Fq, TestR>;
-    type AppCircuitId = ();
-
-    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Self::Rx> {
-        once(&self.0[component])
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = ()> {
-        core::iter::empty()
-    }
 }
 
 /// Holds the evaluated claims to the builder's polynomials at `r` and to

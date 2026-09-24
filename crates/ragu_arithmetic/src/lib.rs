@@ -106,8 +106,8 @@ pub use multicore::parallelize;
 /// more readable, but is not intended for use in other contexts.
 pub use ragu_macros::repr256;
 pub use util::{
-    batch_to_affine, decomp_product_poly, dot, eval, factor, factor_iter, geosum, low_u64, msm,
-    poly_mul, poly_with_roots,
+    batch_to_affine, decomp_poly, decomp_product_poly, dot, eval, factor, factor_iter, geosum,
+    low_u64, msm, poly_mul, poly_with_roots,
 };
 
 use crate::ff::{Field, FromUniformBytes, PrimeFieldBits, WithSmallOrderMulGroup};

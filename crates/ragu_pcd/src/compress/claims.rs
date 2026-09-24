@@ -18,14 +18,20 @@
 use alloc::vec::Vec;
 use core::iter::{empty, once};
 
-use ragu_arithmetic::ff::Field;
-use ragu_circuits::{polynomials::Rank, registry::CircuitIndex};
+use ragu_arithmetic::{Cycle, ff::Field};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    registry::CircuitIndex,
+};
 use ragu_core::Result;
 
-use crate::internal::{
-    claims::Source,
-    ky::{NativeKy, NestedKy},
-    native, nested,
+use crate::{
+    Proof,
+    internal::{
+        claims::Source,
+        ky::{NativeKy, NestedKy},
+        native, nested,
+    },
 };
 
 /// A committed polynomial's openings at the query point and at its dilation.
@@ -46,6 +52,42 @@ pub(crate) struct Evaluated<F> {
     pub b: F,
     /// The target $k(y)$.
     pub k: F,
+}
+
+/// The decider's polynomial [`Source`] over one proof, the raw accumulator
+/// claim included: what the compressor feeds
+/// [`claims::Builder`](crate::internal::claims::Builder).
+pub(crate) struct NativePolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
+
+impl<'a, C: Cycle, R: Rank> Source for NativePolys<'a, C, R> {
+    type RxComponent = native::RxComponent;
+    type Rx = &'a sparse::Polynomial<C::CircuitField, R>;
+    type AppCircuitId = CircuitIndex;
+
+    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Self::Rx> {
+        once(&self.0[component])
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
+        once(self.0.circuit_id())
+    }
+}
+
+/// The nested counterpart of [`NativePolys`].
+pub(crate) struct NestedPolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
+
+impl<'a, C: Cycle, R: Rank> Source for NestedPolys<'a, C, R> {
+    type RxComponent = nested::RxComponent;
+    type Rx = &'a sparse::Polynomial<C::ScalarField, R>;
+    type AppCircuitId = ();
+
+    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Self::Rx> {
+        once(&self.0[component])
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = ()> {
+        empty()
+    }
 }
 
 /// A [`Source`] over one proof's native openings.
