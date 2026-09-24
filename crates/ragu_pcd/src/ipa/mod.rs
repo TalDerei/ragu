@@ -2,9 +2,8 @@
 //!
 //! Adapted from halo2's `halo2_proofs/src/poly/commitment`: the prover and
 //! verifier keep the original structure, and the batch verifier is not
-//! ported. Fiat-Shamir goes through the [`IpaTranscript`] trait, halo2's
-//! transcript operations with the proof carried as a struct rather than a
-//! byte stream, which a transcript over the cycle implements.
+//! ported. Fiat-Shamir goes through the [`IpaTranscript`] trait, which the
+//! fuse's transcript implements for both curves as [`CycleTranscript`].
 
 use alloc::vec::Vec;
 
@@ -17,8 +16,16 @@ mod verifier;
 
 pub use msm::MSM;
 pub use prover::create_proof;
-pub use transcript::IpaTranscript;
+pub use transcript::{CycleTranscript, HostSide, IpaTranscript, NestedSide};
 pub use verifier::{Accumulator, Guard, verify_proof};
+
+/// Domain separation tag for the IPA sub-protocol, keeping its transcript
+/// distinct from the fuse's. The transcript handed to [`create_proof`] and
+/// [`verify_proof`] must be created with it.
+///
+/// The prover and all verifier paths must agree on this tag. Changing it
+/// breaks compatibility with existing proofs.
+pub const IPA_TAG: &[u8] = b"ragu-ipa-v1";
 
 /// Log-size IPA opening proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,3 +160,7 @@ impl<F: Field> core::ops::MulAssign<F> for Blind<F> {
         self.0 *= rhs;
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/ipa.rs"]
+mod tests;
