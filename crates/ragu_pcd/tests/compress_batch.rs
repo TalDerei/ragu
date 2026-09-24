@@ -65,7 +65,8 @@ where
     R: Rank,
     T: IpaTranscript<C>,
 {
-    let (messages, p) = batch::<C, R, _>(polys, &openings.claims, generators, transcript).unwrap();
+    let (messages, witness) =
+        batch::<C, R, _>(polys, &openings.claims, generators, transcript).unwrap();
     let claim = verify(
         &openings.commitments,
         &openings.claims,
@@ -73,19 +74,20 @@ where
         verifier_transcript,
     )
     .unwrap();
+    assert_eq!(claim.point, witness.u);
     let params = Params::new(generators);
     let opening = ipa::create_proof(
         &params,
         &mut *rng,
         transcript,
-        &p,
+        &witness.p,
         Blind(C::Scalar::ZERO),
-        claim.point,
+        witness.u,
     )
     .unwrap();
     Proved {
         batch: messages,
-        p,
+        p: witness.p,
         claim,
         opening,
     }

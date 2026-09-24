@@ -41,15 +41,22 @@ pub(crate) struct Batched<C: CurveAffine> {
     pub value: C::Scalar,
 }
 
+/// What the prover keeps to open the batched claim.
+pub(crate) struct Witness<F> {
+    /// $p$, the polynomial the IPA opens, with $n$ coefficients.
+    pub p: Vec<F>,
+    /// The point $u$ it opens it at.
+    pub u: F,
+}
+
 /// The prover's batch: `polys` are the committed polynomials the `claims`
-/// refer to, in the order their commitments are listed. Returns the
-/// messages and $p$, the polynomial the IPA opens, with $n$ coefficients.
+/// refer to, in the order their commitments are listed.
 pub(crate) fn batch<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     claims: &[OpeningClaim<C::Scalar>],
     generators: &impl FixedGenerators<C>,
     transcript: &mut T,
-) -> Result<(Batch<C>, Vec<C::Scalar>)> {
+) -> Result<(Batch<C>, Witness<C::Scalar>)> {
     let alpha = transcript.squeeze_challenge()?;
 
     // f: the quotients of every claim, batched under alpha.
@@ -82,7 +89,10 @@ pub(crate) fn batch<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
             f: f_commitment,
             evaluations,
         },
-        p.iter_coeffs().collect(),
+        Witness {
+            p: p.iter_coeffs().collect(),
+            u,
+        },
     ))
 }
 

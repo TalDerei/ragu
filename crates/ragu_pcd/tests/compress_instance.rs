@@ -69,8 +69,9 @@ fn targets_match_the_decider() {
     let mut rng = StdRng::seed_from_u64(1);
     let (y, nested_y) = (Fp::random(&mut rng), Fq::random(&mut rng));
 
+    let header = ky::output_header::<Pasta, (), HEADER_SIZE>(()).unwrap();
     let (native, nested) = instance
-        .targets::<(), HEADER_SIZE>(&challenges, (), y, nested_y)
+        .targets::<HEADER_SIZE>(&challenges, &header, y, nested_y)
         .unwrap();
     let expected = ky::native_ky::<Pasta, TestR, (), HEADER_SIZE>(&pcd, y).unwrap();
     assert_eq!(native.c, Some(pcd.proof().native_c()));
@@ -154,8 +155,9 @@ fn wire_bindings_hold() {
     // The evaluator appends the bindings after the decider's claims, as
     // (a(r), b(r), 0).
     let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
+    let header = ky::output_header::<Pasta, (), HEADER_SIZE>(()).unwrap();
     let targets = instance
-        .targets::<(), HEADER_SIZE>(&challenges, (), y, Fq::ONE)
+        .targets::<HEADER_SIZE>(&challenges, &header, y, Fq::ONE)
         .unwrap()
         .0;
     let evaluated = claims::native::<TestR, _>(

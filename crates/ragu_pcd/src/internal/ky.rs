@@ -2,6 +2,7 @@
 //! revdot claims, computed one way for every verifier: the decider on an
 //! uncompressed proof and the compressed verifier on a compressed one.
 
+use alloc::vec::Vec;
 use core::iter::once;
 
 use ragu_arithmetic::{Cycle, ff::Field};
@@ -142,35 +143,46 @@ pub fn nested_ky<C: Cycle, R: Rank>(
     })
 }
 
-/// The parts of a proof's public data its native $k(y)$ values depend on,
-/// as a compressed proof's instance carries them.
-pub struct NativeParts<'a, C: Cycle> {
-    pub left_header: &'a [C::CircuitField],
-    pub right_header: &'a [C::CircuitField],
-    pub circuit_id: CircuitIndex,
-    pub unified: &'a native_unified::Instance<C>,
-}
-
-/// The native $k(y)$ values at `y` from an instance's parts and the header
-/// data, as [`native_ky`] computes them from a proof.
-pub fn native_ky_of<C: Cycle, H: Header<C::CircuitField>, const HEADER_SIZE: usize>(
-    parts: NativeParts<'_, C>,
+/// The step's output header for `data`: the `HEADER_SIZE` field elements
+/// the application circuit's instance carries.
+pub fn output_header<C: Cycle, H: Header<C::CircuitField>, const HEADER_SIZE: usize>(
     data: H::Data,
-    y: C::CircuitField,
-) -> Result<NativeKy<C::CircuitField>> {
-    Emulator::emulate_wireless((parts, data, y), |dr, witness| {
-        let (parts, data, y) = witness.cast();
-        let y = Element::alloc(dr, &mut (), y)?;
-        let output_header = encode_output_header::<
+) -> Result<Vec<C::CircuitField>> {
+    Emulator::<Wireless<Always<()>, C::CircuitField>>::emulate_wireless(data, |_, data| {
+        let header = encode_output_header::<
             Emulator<Wireless<Always<()>, C::CircuitField>>,
             H,
             HEADER_SIZE,
         >(data)?;
+        Ok(header.take().to_vec())
+    })
+}
+
+/// The parts of a proof's public data its native $k(y)$ values depend on,
+/// as a compressed proof's instance carries them, the output header as
+/// [`output_header`] encodes it.
+pub struct NativeParts<'a, C: Cycle> {
+    pub left_header: &'a [C::CircuitField],
+    pub right_header: &'a [C::CircuitField],
+    pub output_header: &'a [C::CircuitField],
+    pub circuit_id: CircuitIndex,
+    pub unified: &'a native_unified::Instance<C>,
+}
+
+/// The native $k(y)$ values at `y` from an instance's parts, as
+/// [`native_ky`] computes them from a proof.
+pub fn native_ky_of<C: Cycle, const HEADER_SIZE: usize>(
+    parts: NativeParts<'_, C>,
+    y: C::CircuitField,
+) -> Result<NativeKy<C::CircuitField>> {
+    Emulator::emulate_wireless((parts, y), |dr, witness| {
+        let (parts, y) = witness.cast();
+        let y = Element::alloc(dr, &mut (), y)?;
         let proof_inputs = ProofInputs::<_, C, HEADER_SIZE>::alloc_from_parts(
             dr,
             parts.as_ref().map(|p| p.left_header),
             parts.as_ref().map(|p| p.right_header),
-            output_header.as_ref(),
+            parts.as_ref().map(|p| p.output_header),
             parts.as_ref().map(|p| p.circuit_id.omega_j()),
             parts.as_ref().map(|p| p.unified),
         )?;

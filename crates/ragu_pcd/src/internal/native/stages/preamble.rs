@@ -216,13 +216,13 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
     }
 
     /// Allocate ProofInputs from the parts a proof's instance carries: the
-    /// child headers, the processed output header, the circuit id as its
+    /// child headers, the encoded output header, the circuit id as its
     /// domain point, and the unified instance's values.
     pub fn alloc_from_parts(
         dr: &mut D,
         left_header: DriverValue<D, &[D::F]>,
         right_header: DriverValue<D, &[D::F]>,
-        output_header: DriverValue<D, &FixedVec<D::F, ConstLen<HEADER_SIZE>>>,
+        output_header: DriverValue<D, &[D::F]>,
         circuit_id: DriverValue<D, D::F>,
         unified: DriverValue<D, &unified::Instance<C>>,
     ) -> Result<Self> {
@@ -248,7 +248,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
                 left: alloc_header(dr, left_header)?,
                 right: alloc_header(dr, right_header)?,
             },
-            output_header: alloc_header(dr, output_header.as_ref().map(|h| &h[..]))?,
+            output_header: alloc_header(dr, output_header)?,
             circuit_id: Element::alloc(dr, &mut (), circuit_id)?,
             unified: unified::Output::alloc_from_instance(dr, &mut (), unified)?,
         })

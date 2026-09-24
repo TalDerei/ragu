@@ -19,9 +19,10 @@ pub use prover::create_proof;
 pub use transcript::{CycleTranscript, HostSide, IpaTranscript, NestedSide};
 pub use verifier::{Accumulator, Guard, verify_proof};
 
-/// Domain separation tag for the IPA sub-protocol, keeping its transcript
-/// distinct from the fuse's. The transcript handed to [`create_proof`] and
-/// [`verify_proof`] must be created with it.
+/// Domain separation tag for the compression, whose transcript runs from
+/// the instance through the reductions to the IPAs, keeping it distinct from
+/// the fuse's. A transcript handed to [`create_proof`] and [`verify_proof`]
+/// must be created with it.
 ///
 /// The prover and all verifier paths must agree on this tag. Changing it
 /// breaks compatibility with existing proofs.

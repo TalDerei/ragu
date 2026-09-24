@@ -85,6 +85,26 @@ pub(crate) struct Witness<F> {
 }
 
 impl<F: Field> Witness<F> {
+    /// The openings the verifier will require of `reduction` over
+    /// `commitments`, the components' in order, as [`verify`] lists them,
+    /// with $p(0)$ read off $p$.
+    pub(crate) fn openings<C: CurveAffine<ScalarExt = F>>(
+        &self,
+        commitments: Vec<C>,
+        reduction: &Reduction<C>,
+        z: F,
+    ) -> Result<Openings<C>> {
+        let inverse_r = invert(self.r)?;
+        Ok(openings(
+            commitments,
+            reduction,
+            self.r,
+            z,
+            inverse_r,
+            self.p[0],
+        ))
+    }
+
     /// The polynomials behind an [`Openings`]' commitments, in its order:
     /// `committed` in component order, then $p$, then $q$.
     pub(crate) fn polys<'a, R: Rank>(
@@ -261,6 +281,27 @@ fn verify<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
         return Ok(None);
     }
 
+    Ok(Some(openings(
+        commitments,
+        reduction,
+        r,
+        z,
+        inverse_r,
+        target,
+    )))
+}
+
+/// The opening claims a reduction leaves over `commitments`, the
+/// components' in order: each committed polynomial at $r$ and $rz$, $p$ at
+/// $1/r$, $q$ at $r$, and $p$ at $0$, where it must equal `target`.
+fn openings<C: CurveAffine>(
+    mut commitments: Vec<C>,
+    reduction: &Reduction<C>,
+    r: C::Scalar,
+    z: C::Scalar,
+    inverse_r: C::Scalar,
+    target: C::Scalar,
+) -> Openings<C> {
     let rz = r * z;
     let (p, q) = (commitments.len(), commitments.len() + 1);
     let mut claims = Vec::with_capacity(2 * commitments.len() + 3);
@@ -291,13 +332,12 @@ fn verify<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
         point: C::Scalar::ZERO,
         value: target,
     });
-    let mut commitments = commitments;
     commitments.push(reduction.p);
     commitments.push(reduction.q);
-    Ok(Some(Openings {
+    Openings {
         commitments,
         claims,
-    }))
+    }
 }
 
 /// The inverse of a challenge, which is zero with negligible probability.

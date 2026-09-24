@@ -33,7 +33,6 @@ use super::{
 };
 use crate::{
     Proof,
-    header::Header,
     internal::{
         ky::{self, NativeKy, NestedKy},
         native::{self, stages as native_stages, unified as native_unified},
@@ -244,10 +243,67 @@ impl<C: Cycle> Instance<C> {
         self.nested_commitment(nested::RxComponent::Rx(index))
     }
 
+    /// Absorbs the instance into `transcript`: the circuit id and the
+    /// headers, then every commitment and scalar of each curve, so that
+    /// every challenge squeezed afterwards depends on all of it.
+    pub(crate) fn absorb(&self, transcript: &mut CycleTranscript<'_, C>) -> Result<()> {
+        let mut host = transcript.host();
+        host.write_scalar(self.circuit_id.omega_j())?;
+        for &element in self.left_header.iter().chain(&self.right_header) {
+            host.write_scalar(element)?;
+        }
+        for &point in self
+            .native
+            .iter()
+            .chain([&self.native_registry_xy, &self.native_p])
+        {
+            host.write_point(point)?;
+        }
+        let (l, r) = (self.left, self.right);
+        for scalar in [
+            self.c,
+            self.v,
+            l.x,
+            l.y,
+            l.id,
+            r.x,
+            r.y,
+            r.id,
+            self.a_at_u,
+            self.b_at_u,
+        ] {
+            host.write_scalar(scalar)?;
+        }
+
+        let mut nested = transcript.nested();
+        for &point in self.nested.iter().chain([
+            &self.nested_registry_xy,
+            &self.nested_p,
+            &self.nested_challenges_partial,
+        ]) {
+            nested.write_point(point)?;
+        }
+        let (l, r) = (self.nested_left, self.nested_right);
+        for scalar in [
+            self.bridge_alpha,
+            self.nested_c,
+            self.nested_v,
+            l.x,
+            l.y,
+            r.x,
+            r.y,
+            self.nested_a_at_u,
+            self.nested_b_at_u,
+        ] {
+            nested.write_scalar(scalar)?;
+        }
+        Ok(())
+    }
+
     /// Rederives the fuse's challenges from the bridge commitments on
     /// `transcript`, which must be fresh under the fuse's tag, in the fuse's
-    /// schedule, leaving the transcript where the compression continues.
-    /// Returns `None` if `pre_beta` lies outside the endoscalar range.
+    /// schedule. Returns `None` if `pre_beta` lies outside the endoscalar
+    /// range.
     pub(crate) fn challenges(
         &self,
         transcript: &mut CycleTranscript<'_, C>,
@@ -372,25 +428,25 @@ impl<C: Cycle> Instance<C> {
     }
 
     /// The claims' targets at `y` and the nested `nested_y`, for the step's
-    /// output header `data`.
-    pub(crate) fn targets<H: Header<C::CircuitField>, const HEADER_SIZE: usize>(
+    /// encoded `output_header`.
+    pub(crate) fn targets<const HEADER_SIZE: usize>(
         &self,
         challenges: &nested::Challenges<C::CircuitField>,
-        data: H::Data,
+        output_header: &[C::CircuitField],
         y: C::CircuitField,
         nested_y: C::ScalarField,
     ) -> Result<(NativeKy<C::CircuitField>, NestedKy<C::ScalarField>)> {
         let unified = self.unified(challenges);
         let native = NativeKy {
             c: Some(self.c),
-            ..ky::native_ky_of::<C, H, HEADER_SIZE>(
+            ..ky::native_ky_of::<C, HEADER_SIZE>(
                 ky::NativeParts {
                     left_header: &self.left_header,
                     right_header: &self.right_header,
+                    output_header,
                     circuit_id: self.circuit_id,
                     unified: &unified,
                 },
-                data,
                 y,
             )?
         };
