@@ -35,6 +35,7 @@ mod fuse;
 pub mod fuzzing;
 pub mod header;
 mod internal;
+pub mod ipa;
 mod proof;
 pub mod step;
 mod verify;

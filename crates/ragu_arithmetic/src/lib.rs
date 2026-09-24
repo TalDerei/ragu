@@ -97,6 +97,9 @@ pub use fft::{Ring, bitreverse};
 /// When the `multicore` feature is disabled the closures simply run in
 /// sequence.
 pub use multicore::join;
+/// Runs one operation over a mutable slice, split into per-thread chunks
+/// when the `multicore` feature is enabled.
+pub use multicore::parallelize;
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`
 /// representation that e.g. [`Fp::from_raw`](crate::pasta_curves::Fp::from_raw) or
 /// [`Fp::pow`](crate::pasta_curves::Fp::pow) need as input. This makes constants
