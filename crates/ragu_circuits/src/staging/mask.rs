@@ -227,10 +227,28 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         self.notch_project(x)
     }
 
+    fn sx_with_cache(
+        &self,
+        x: F,
+        _floor_plan: &[crate::floor_planner::ConstraintSegment],
+        _cache: &mut crate::wiring::MemoCache<F>,
+    ) -> sparse::Polynomial<F, R> {
+        self.notch_project(x)
+    }
+
     fn sy(
         &self,
         y: F,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
+    ) -> sparse::Polynomial<F, R> {
+        self.notch_project(y)
+    }
+
+    fn sy_with_cache(
+        &self,
+        y: F,
+        _floor_plan: &[crate::floor_planner::ConstraintSegment],
+        _cache: &mut crate::wiring::MemoCache<F>,
     ) -> sparse::Polynomial<F, R> {
         self.notch_project(y)
     }

@@ -224,12 +224,38 @@ pub(crate) trait WiringObject<F: Field, R: Rank>: Send + Sync {
     ) -> F;
 
     /// Computes the polynomial restriction $s(x, Y)$ for some $x \in \mathbb{F}$.
+    ///
+    /// The reference evaluation without memoization; the registry uses
+    /// [`sx_with_cache`](Self::sx_with_cache), and tests compare the two.
+    #[cfg_attr(not(test), allow(dead_code))]
     fn sx(&self, x: F, floor_plan: &[floor_planner::ConstraintSegment])
     -> sparse::Polynomial<F, R>;
 
+    /// Computes $s(x, Y)$ with routine memoization, sharing `cache` across
+    /// circuits; see [`sxy_with_cache`](Self::sxy_with_cache).
+    fn sx_with_cache(
+        &self,
+        x: F,
+        floor_plan: &[floor_planner::ConstraintSegment],
+        cache: &mut wiring::MemoCache<F>,
+    ) -> sparse::Polynomial<F, R>;
+
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
+    ///
+    /// The reference evaluation without memoization; the registry uses
+    /// [`sy_with_cache`](Self::sy_with_cache), and tests compare the two.
+    #[cfg_attr(not(test), allow(dead_code))]
     fn sy(&self, y: F, floor_plan: &[floor_planner::ConstraintSegment])
     -> sparse::Polynomial<F, R>;
+
+    /// Computes $s(X, y)$ with routine memoization, sharing `cache` across
+    /// circuits; see [`sxy_with_cache`](Self::sxy_with_cache).
+    fn sy_with_cache(
+        &self,
+        y: F,
+        floor_plan: &[floor_planner::ConstraintSegment],
+        cache: &mut wiring::MemoCache<F>,
+    ) -> sparse::Polynomial<F, R>;
 
     /// Returns per-segment constraint records in DFS emission order.
     ///
@@ -317,7 +343,16 @@ where
             x: F,
             floor_plan: &[floor_planner::ConstraintSegment],
         ) -> sparse::Polynomial<F, R> {
-            wiring::sx::eval(&self.circuit, x, floor_plan)
+            wiring::sx::eval(&self.circuit, x, floor_plan, &self.metrics.segments)
+                .expect("should succeed if metrics succeeded")
+        }
+        fn sx_with_cache(
+            &self,
+            x: F,
+            floor_plan: &[floor_planner::ConstraintSegment],
+            cache: &mut wiring::MemoCache<F>,
+        ) -> sparse::Polynomial<F, R> {
+            wiring::sx::eval_with_cache(&self.circuit, x, floor_plan, &self.metrics.segments, cache)
                 .expect("should succeed if metrics succeeded")
         }
         fn sy(
@@ -325,7 +360,16 @@ where
             y: F,
             floor_plan: &[floor_planner::ConstraintSegment],
         ) -> sparse::Polynomial<F, R> {
-            wiring::sy::eval(&self.circuit, y, floor_plan)
+            wiring::sy::eval(&self.circuit, y, floor_plan, &self.metrics.segments)
+                .expect("should succeed if metrics succeeded")
+        }
+        fn sy_with_cache(
+            &self,
+            y: F,
+            floor_plan: &[floor_planner::ConstraintSegment],
+            cache: &mut wiring::MemoCache<F>,
+        ) -> sparse::Polynomial<F, R> {
+            wiring::sy::eval_with_cache(&self.circuit, y, floor_plan, &self.metrics.segments, cache)
                 .expect("should succeed if metrics succeeded")
         }
         fn segment_records(&self) -> &[SegmentRecord] {

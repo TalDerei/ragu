@@ -53,7 +53,7 @@
 //!
 //! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
 use ragu_core::{Error, Result};
 use udon::{
@@ -65,7 +65,7 @@ use crate::{
     BondingObject, Circuit, WiringObject,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, sparse},
-    wiring::MemoCache,
+    wiring::{MemoCache, Placement},
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
@@ -673,7 +673,7 @@ impl<F: Field, R: Rank> Registry<'_, F, R> {
         &self,
         cache: &LagrangeCache<F>,
         init: impl FnOnce() -> T,
-        add_poly: impl Fn(&dyn WiringObject<F, R>, &[ConstraintSegment], F, &mut T),
+        mut add_poly: impl FnMut(&dyn WiringObject<F, R>, &[ConstraintSegment], F, &mut T),
     ) -> T {
         let mut result = init();
 
@@ -785,16 +785,33 @@ impl<F: Field, R: Rank> Registry<'_, F, R> {
 
 impl<F: Field, R: Rank> RegistryAt<'_, F, R> {
     /// Evaluate the registry polynomial restricted at $W$ and $Y$, unrestricted at $X$.
+    ///
+    /// Routine contributions are memoized across the circuits, as in
+    /// [`wxy_over_domain`](Registry::wxy_over_domain).
     pub fn y(&self, y: F) -> sparse::Polynomial<F, R> {
+        let mut cache = MemoCache::new().with_sharing();
+        let mut shared: BTreeMap<(crate::DeepFingerprint, Placement), F> = BTreeMap::new();
         let mut poly = self.registry.w_cached(
             &self.cache,
             sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sy(y, floor_plan);
+                let mut tmp = circuit.sy_with_cache(y, floor_plan, &mut cache);
                 tmp.scale(coeff);
                 poly.add_assign(&tmp);
+                for block in cache.take_shared() {
+                    *shared.entry(block).or_insert(F::ZERO) += coeff;
+                }
             },
         );
+
+        // Each shared block's position-independent part, once per placement,
+        // scaled by the Lagrange coefficients of the circuits carrying it.
+        for ((fingerprint, placement), coeff) in shared {
+            let recorded = cache.get(&fingerprint).expect("noted blocks were recorded");
+            poly.add_assign(&crate::wiring::sy::shared_block::<F, R>(
+                recorded, placement, y, coeff,
+            ));
+        }
 
         // Masking polynomials return only -notch; add the shared global once,
         // weighted by the sum of Lagrange coefficients for all mask circuits at W.
@@ -816,16 +833,33 @@ impl<F: Field, R: Rank> RegistryAt<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial restricted at $W$ and $X$, unrestricted at $Y$.
+    ///
+    /// Routine contributions are memoized across the circuits, as in
+    /// [`wxy_over_domain`](Registry::wxy_over_domain).
     pub fn x(&self, x: F) -> sparse::Polynomial<F, R> {
+        let mut cache = MemoCache::new().with_sharing();
+        let mut shared: BTreeMap<(crate::DeepFingerprint, Placement), F> = BTreeMap::new();
         let mut poly = self.registry.w_cached(
             &self.cache,
             sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
-                let mut tmp = circuit.sx(x, floor_plan);
+                let mut tmp = circuit.sx_with_cache(x, floor_plan, &mut cache);
                 tmp.scale(coeff);
                 poly.add_assign(&tmp);
+                for block in cache.take_shared() {
+                    *shared.entry(block).or_insert(F::ZERO) += coeff;
+                }
             },
         );
+
+        // Each shared block's position-independent part, once per placement,
+        // scaled by the Lagrange coefficients of the circuits carrying it.
+        for ((fingerprint, placement), coeff) in shared {
+            let recorded = cache.get(&fingerprint).expect("noted blocks were recorded");
+            poly.add_assign(&crate::wiring::sx::shared_block::<F, R>(
+                recorded, placement, x, coeff,
+            ));
+        }
 
         // Masking polynomials return only -notch; add the shared global once,
         // weighted by the sum of Lagrange coefficients for all mask circuits at W.
