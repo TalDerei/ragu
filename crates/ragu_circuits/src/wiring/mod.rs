@@ -90,6 +90,7 @@
 //! [wiring polynomials]: https://tachyon.z.cash/ragu/protocol/local/wiring.html
 
 mod memo;
+mod record;
 pub mod sx;
 pub mod sxy;
 pub mod sy;
