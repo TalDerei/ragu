@@ -63,7 +63,6 @@ use udon::{
 
 use crate::{
     BondingObject, Circuit, WiringObject,
-    floor_plan::FloorPlan,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, sparse},
     wiring::MemoCache,
@@ -275,17 +274,11 @@ impl<'params, F: Field, R: Rank> RegistryBuilder<'params, F, R> {
             .map(|circuit| crate::floor_planner::floor_plan(circuit.segment_records()))
             .collect();
 
-        // Compute type-based floor plan from segment records for inter-circuit memoization.
-        let segment_records_refs: Vec<&[crate::SegmentRecord]> =
-            circuits.iter().map(|c| c.segment_records()).collect();
-        let type_floor_plan = FloorPlan::from_segment_records(&segment_records_refs, R::n());
-
         // Create provisional registry (tag not yet computed)
         let mut registry = Registry {
             domain,
             circuits,
             floor_plans,
-            type_floor_plan,
             tag: Tag::default(),
         };
         registry.tag = Tag::new(registry.compute_registry_tag(self.tag)?);
@@ -391,9 +384,6 @@ pub struct Registry<'params, F: Field, R: Rank> {
     /// Per-circuit floor plans computed during finalization.
     floor_plans: Vec<Vec<ConstraintSegment>>,
 
-    /// Type-based floor plan for inter-circuit memoization.
-    type_floor_plan: FloorPlan,
-
     /// Registry tag used to bind circuits to this registry.
     tag: Tag<F>,
 }
@@ -484,11 +474,6 @@ impl<F: Field, R: Rank> Registry<'_, F, R> {
     /// Returns the number of circuits in this registry.
     pub fn num_circuits(&self) -> usize {
         self.circuits.len()
-    }
-
-    /// Returns the type-based floor plan for inter-circuit memoization.
-    pub fn type_floor_plan(&self) -> &FloorPlan {
-        &self.type_floor_plan
     }
 
     /// Converts between a domain position and its circuit index: circuit `i`
@@ -656,7 +641,7 @@ impl<F: Field, R: Rank> Registry<'_, F, R> {
 
     /// Evaluates the registry polynomial with inter-circuit memoization.
     ///
-    /// Routines at the same canonical position share cached contributions
+    /// Routines with the same placement and inputs share cached contributions
     /// across circuits during Lagrange interpolation. Result is identical
     /// to [`wxy`](Self::wxy).
     pub fn wxy_combined(&self, w: F, x: F, y: F) -> F {
@@ -869,7 +854,7 @@ impl<F: Field, R: Rank> RegistryAt<'_, F, R> {
     /// Evaluate the registry polynomial at the point ($W$, $X$, $Y$) with
     /// inter-circuit memoization.
     ///
-    /// Routines at the same canonical position share cached contributions
+    /// Routines with the same placement and inputs share cached contributions
     /// across circuits during Lagrange interpolation. Result is identical
     /// to [`xy`](Self::xy).
     pub fn xy_combined(&self, x: F, y: F) -> F {
@@ -884,13 +869,8 @@ impl<F: Field, R: Rank> RegistryAt<'_, F, R> {
                 for (j, coeff) in coeffs.iter().enumerate() {
                     let i = registry.bitreversed_index(j);
                     if let Some(circuit) = registry.circuits.get(i) {
-                        let sxy = circuit.sxy_with_cache(
-                            x,
-                            y,
-                            &registry.floor_plans[i],
-                            &registry.type_floor_plan,
-                            &mut cache,
-                        );
+                        let sxy =
+                            circuit.sxy_with_cache(x, y, &registry.floor_plans[i], &mut cache);
                         F::mul_accumulate(&mut result, &sxy, coeff);
                     }
                 }
