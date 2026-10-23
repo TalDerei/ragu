@@ -7,6 +7,9 @@ review; deeper checks follow the risks of that particular PR.
 Start a review by posting `/ragu-audit` as a new PR conversation comment
 (requires write access).
 
+Results appear in one bot summary comment, updated on reruns, and in the
+completion check. The comment links to the full report.
+
 [context.json](context.json) supplies project context, and [RAGU.md](RAGU.md)
 provides optional cryptographic reference knowledge. These are read from the
 trusted configuration revision.
