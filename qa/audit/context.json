@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "context_paths": [
+    "README.md",
+    "book/src/implementation/arch.md"
+  ],
+  "reference_paths": [
+    "crates/ragu_pcd/src/verify.rs",
+    "crates/ragu_pcd/src/internal/ky.rs",
+    "crates/ragu_pcd/src/compress/verifier.rs",
+    "crates/ragu_pcd/src/internal/nested/circuits/collapse.rs",
+    "crates/ragu_pcd/src/profile.rs",
+    "crates/ragu_pcd/src/decompress/mod.rs"
+  ],
+  "notes_path": "qa/audit/RAGU.md"
+}

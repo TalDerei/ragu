@@ -1,0 +1,36 @@
+name: Ragu audit
+
+on: # zizmor: ignore[dangerous-triggers]
+  # The reusable workflow reads Git objects, never executes PR code, and uses
+  # credentials from environments restricted to the consuming repo's main.
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to review at its current head and base
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ragu-audit-${{ github.event.pull_request.number || inputs.pull_request }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: vars.RAGU_AUDIT_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    uses: tachyon-zcash/ragu-audit/.github/workflows/review.yml@9b57a482ba7ca30c32fb43ca65103e07f4a6886c
+    with:
+      pull_request: ${{ inputs.pull_request || format('{0}', github.event.pull_request.number) }}
+      execute: ${{ github.event_name == 'workflow_dispatch' }}
+      model: ${{ vars.RAGU_AUDIT_MODEL }}
+      app_id: ${{ vars.RAGU_AUDIT_APP_ID }}
+      config_path: qa/audit/context.json
+    secrets:
+      RAGU_AUDIT_APP_PRIVATE_KEY: ${{ secrets.RAGU_AUDIT_APP_PRIVATE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
