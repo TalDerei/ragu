@@ -24,7 +24,7 @@ concurrency:
 jobs:
   audit:
     if: vars.RAGU_AUDIT_ENABLED == 'true' && github.ref == 'refs/heads/main'
-    uses: tachyon-zcash/ragu-audit/.github/workflows/review.yml@9b57a482ba7ca30c32fb43ca65103e07f4a6886c
+    uses: tachyon-zcash/ragu-audit/.github/workflows/review.yml@7d3d5610f0efe2315c5ca42ed16f3d284f82f500
     with:
       pull_request: ${{ inputs.pull_request || format('{0}', github.event.pull_request.number) }}
       execute: ${{ github.event_name == 'workflow_dispatch' }}
