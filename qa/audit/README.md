@@ -4,6 +4,9 @@ Ragu uses the standalone [ragu-audit](https://github.com/tachyon-zcash/ragu-audi
 engine for change-aware AI source reviews. Every changed file gets a general
 review; deeper checks follow the risks of that particular PR.
 
+Start a review by posting `/ragu-audit` as a new PR conversation comment
+(requires write access).
+
 [context.json](context.json) supplies project context, and [RAGU.md](RAGU.md)
 provides optional cryptographic reference knowledge. These are read from the
 trusted configuration revision.

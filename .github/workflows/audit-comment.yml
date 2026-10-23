@@ -1,0 +1,21 @@
+name: Ragu audit comment command
+
+on: # zizmor: ignore[dangerous-triggers]
+  # Only trusted default-branch engine code reads the comment. It checks live
+  # write permission before dispatching; no App or model secrets are passed.
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  dispatch:
+    if: >-
+      vars.RAGU_AUDIT_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
+      github.event.issue.pull_request && contains(github.event.comment.body, '/ragu-audit')
+    uses: tachyon-zcash/ragu-audit/.github/workflows/comment.yml@4af4347a8df41d38ab8e1697587020764dd6705a
+    with:
+      workflow_file: audit.yml
